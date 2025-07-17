@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useMemo } from 'react';
@@ -8,6 +9,7 @@ import {
   Search,
   ShieldCheck,
 } from 'lucide-react';
+import { format } from 'date-fns';
 
 import { mockMessages, mockUser } from '@/lib/mock-data';
 import type { Mensaje } from '@/lib/types';
@@ -107,7 +109,7 @@ export default function DashboardClient() {
                       </div>
                     </div>
                      <div className="text-xs text-muted-foreground">
-                        {message.timestamp.toLocaleDateString()}
+                        {format(message.timestamp, 'dd/MM/yyyy')}
                     </div>
                   </div>
                    <div className="line-clamp-2 text-xs text-muted-foreground">
