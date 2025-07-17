@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Copy, ExternalLink, FileText, Fingerprint, MousePointerSquare, Stamp, XCircle } from 'lucide-react';
+import { CheckCircle2, Copy, ExternalLink, FileText, Fingerprint, MousePointerClick, Stamp, XCircle } from 'lucide-react';
 import type { Mensaje } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -64,7 +64,7 @@ export default function BfaTraceability({ message }: BfaTraceabilityProps) {
   const readData = message.bfaLeido ? [
     { label: 'Hash BFA', value: message.bfaLeido.hashRegistrado, icon: <Fingerprint className="h-4 w-4" /> },
     { label: 'Stamp ID', value: message.bfaLeido.stampId, icon: <Stamp className="h-4 w-4" /> },
-    { label: 'IP Address', value: message.bfaLeido.ipLector, icon: <MousePointerSquare className="h-4 w-4" /> },
+    { label: 'IP Address', value: message.bfaLeido.ipLector, icon: <MousePointerClick className="h-4 w-4" /> },
     { label: 'Device', value: message.bfaLeido.dispositivoLector.substring(0,25)+'...', icon: <FileText className="h-4 w-4" /> },
     { label: 'Verify', value: message.bfaLeido.verificacionUrl, icon: <CheckCircle2 className="h-4 w-4" /> },
   ] : [];
