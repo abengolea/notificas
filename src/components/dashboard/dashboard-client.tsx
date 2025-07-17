@@ -32,6 +32,8 @@ import {
 import {
   Sheet,
   SheetContent,
+  SheetHeader,
+  SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
 
@@ -119,7 +121,8 @@ export default function DashboardClient() {
       <Separator />
        <nav className="grid gap-1 p-2">
         {folders.map((folder) => (
-          <Tooltip key={folder.id}>
+          <TooltipProvider key={folder.id}>
+          <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant={selectedFolder === folder.id ? 'secondary' : 'ghost'}
@@ -128,14 +131,15 @@ export default function DashboardClient() {
               >
                 {folder.icon}
                 <span>{folder.label}</span>
-                 {folder.id === 'inbox' && <Badge className="ml-auto">{filteredMessages.filter(m => m.destinatario.uid === mockUser.uid).length}</Badge>}
-                 {folder.id === 'sent' && <Badge className="ml-auto">{filteredMessages.filter(m => m.remitente.uid === mockUser.uid).length}</Badge>}
+                 {folder.id === 'inbox' && <Badge className="ml-auto">{mockMessages.filter(m => m.destinatario.uid === mockUser.uid).length}</Badge>}
+                 {folder.id === 'sent' && <Badge className="ml-auto">{mockMessages.filter(m => m.remitente.uid === mockUser.uid).length}</Badge>}
               </Button>
             </TooltipTrigger>
             <TooltipContent side="right" sideOffset={5}>
               {folder.label}
             </TooltipContent>
           </Tooltip>
+          </TooltipProvider>
         ))}
       </nav>
       <Separator />
@@ -215,12 +219,14 @@ export default function DashboardClient() {
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="left" className="flex flex-col p-0">
-                  <div className="flex h-16 items-center border-b px-6">
-                    <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-                      <ShieldCheck className="h-6 w-6 text-primary" />
-                      <span>BFA Certify</span>
-                    </Link>
-                  </div>
+                  <SheetHeader className="flex h-16 items-center border-b px-6">
+                    <SheetTitle>
+                        <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
+                        <ShieldCheck className="h-6 w-6 text-primary" />
+                        <span>BFA Certify</span>
+                        </Link>
+                    </SheetTitle>
+                  </SheetHeader>
                   <div className="overflow-y-auto">
                     {messageList}
                   </div>
