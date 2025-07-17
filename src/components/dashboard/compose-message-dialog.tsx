@@ -3,7 +3,7 @@
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Loader2, Send } from "lucide-react"
+import { Loader2, PenSquare } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -124,7 +124,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange }: { childre
                     </>
                 ) : (
                     <>
-                        <Send className="mr-2 h-4 w-4" />
+                        <PenSquare className="mr-2 h-4 w-4" />
                         Enviar Mensaje Certificado
                     </>
                 )}
@@ -135,5 +135,3 @@ export function ComposeMessageDialog({ children, open, onOpenChange }: { childre
     </Dialog>
   )
 }
-
-    

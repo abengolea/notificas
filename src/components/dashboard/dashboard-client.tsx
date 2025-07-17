@@ -4,17 +4,26 @@
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import {
+  Archive,
+  ChevronDown,
+  ChevronRight,
   FileText,
-  PlusCircle,
-  Search,
-  Menu,
   Inbox,
+  LogOut,
+  PenSquare,
+  Search,
   Send,
+  User,
+  Wallet,
   FileEdit,
-  Trash2
+  Trash2,
+  Mail,
+  ReceiptText,
+  MessageSquareReply,
+  Megaphone,
+  Scale,
+  Gavel,
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 
 import { mockMessages, mockUser } from '@/lib/mock-data';
 import type { Mensaje } from '@/lib/types';
@@ -23,247 +32,272 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
+
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+
 
 import { ComposeMessageDialog } from './compose-message-dialog';
 import MessageView from './message-view';
 import { UserNav } from './user-nav';
 import { Logo } from '../logo';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
-type Folder = "inbox" | "sent" | "drafts" | "trash";
+type Folder = "inbox" | "sent" | "drafts" | "archive" | "trash";
+type MessageTypeFilter = "all" | "Comunicación" | "Notificación" | "Contestación" | "Oferta" | "Intimación" | "Oficio Judicial";
+
+
+const messageTypeIcons = {
+    "Comunicación": <Mail className="mr-2 h-4 w-4" />,
+    "Notificación": <ReceiptText className="mr-2 h-4 w-4" />,
+    "Contestación": <MessageSquareReply className="mr-2 h-4 w-4" />,
+    "Oferta": <Megaphone className="mr-2 h-4 w-4" />,
+    "Intimación": <Scale className="mr-2 h-4 w-4" />,
+    "Oficio Judicial": <Gavel className="mr-2 h-4 w-4" />,
+};
+
+const getUltimoEstado = (message: Mensaje) => {
+    if (message.estadoEnvio === 'leido') return 'Apertura de email';
+    if (message.bfaLeido?.dispositivoLector) return 'Lectura de documento desde link del email';
+    return 'Enviado';
+}
 
 export default function DashboardClient() {
-  const [selectedMessage, setSelectedMessage] = useState<Mensaje | null>(null);
   const [isComposeOpen, setComposeOpen] = useState(false);
   const [selectedFolder, setSelectedFolder] = useState<Folder>("inbox");
+  const [activeFilter, setActiveFilter] = useState<MessageTypeFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+
+
+  const messageCountsByType = useMemo(() => {
+    const counts = {
+        "Comunicación": 0,
+        "Notificación": 0,
+        "Contestación": 0,
+        "Oferta": 0,
+        "Intimación": 0,
+        "Oficio Judicial": 0,
+    };
+    // This is a mock, in a real app this would be more complex
+    counts["Notificación"] = 84;
+    counts["Contestación"] = 2;
+    counts["Intimación"] = 118;
+    counts["Oficio Judicial"] = 1;
+    return counts;
+  }, [mockMessages]);
+
 
   const filteredMessages = useMemo(() => {
-    const sorted = [...mockMessages].sort(
+    let messages = [...mockMessages].sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
 
-    switch (selectedFolder) {
-      case 'inbox':
-        return sorted.filter(m => m.destinatario.uid === mockUser.uid);
-      case 'sent':
-        return sorted.filter(m => m.remitente.uid === mockUser.uid);
-      // Mock data doesn't have drafts or trash, so these will be empty for now.
-      case 'drafts':
-        return [];
-      case 'trash':
-        return [];
-      default:
-        return sorted;
-    }
-  }, [selectedFolder]);
-  
-  // Set the initial selected message from the filtered list
-  React.useEffect(() => {
-    if (filteredMessages.length > 0) {
-      setSelectedMessage(filteredMessages[0]);
+    // This is a simplified filter logic based on mock data and selected folder
+    if (selectedFolder === 'inbox') {
+        messages = messages.filter(m => m.destinatario.uid === mockUser.uid);
+    } else if (selectedFolder === 'sent') {
+        messages = messages.filter(m => m.remitente.uid === mockUser.uid);
     } else {
-      setSelectedMessage(null);
+        messages = [] // Drafts, Archive not implemented with mock data
     }
-  }, [filteredMessages]);
+
+    if (activeFilter !== "all") {
+       // This is a mock filter logic, since type is not in the model
+       if (activeFilter === 'Notificación') return messages.filter(m => m.id === 'msg-003' || m.id === 'msg-001' )
+       if (activeFilter === 'Intimación') return messages.filter(m => m.id === 'msg-002')
+       return []
+    }
+
+    if (searchQuery) {
+        const lowercasedQuery = searchQuery.toLowerCase();
+        messages = messages.filter(m =>
+            m.remitente.nombre.toLowerCase().includes(lowercasedQuery) ||
+            m.destinatario.nombre.toLowerCase().includes(lowercasedQuery) ||
+            m.contenido.toLowerCase().includes(lowercasedQuery)
+        );
+    }
+    
+    return messages;
+  }, [selectedFolder, activeFilter, searchQuery]);
 
 
-  const getStatusInfo = (message: Mensaje) => {
-    switch (message.estadoEnvio) {
-      case 'leido':
-        return {
-          icon: <Badge className="w-2 h-2 p-0 bg-accent" />,
-          label: 'Leído',
-        };
-      case 'recibido':
-        return {
-          icon: <Badge className="w-2 h-2 p-0 bg-primary" />,
-          label: 'Recibido',
-        };
-      case 'enviado':
-      default:
-        return {
-          icon: <Badge className="w-2 h-2 p-0 bg-muted-foreground/50" />,
-          label: 'Enviado',
-        };
-    }
-  };
-  
   const folders: { id: Folder; label: string; icon: React.ReactNode }[] = [
-      { id: 'inbox', label: 'Recibidos', icon: <Inbox className="h-5 w-5" /> },
-      { id: 'sent', label: 'Enviados', icon: <Send className="h-5 w-5" /> },
-      { id: 'drafts', label: 'Borradores', icon: <FileEdit className="h-5 w-5" /> },
-      { id: 'trash', label: 'Papelera', icon: <Trash2 className="h-5 w-5" /> },
+      { id: 'inbox', label: 'Bandeja de Entrada', icon: <Inbox className="mr-3 h-5 w-5" /> },
+      { id: 'sent', label: 'Enviados', icon: <Send className="mr-3 h-5 w-5" /> },
+      { id: 'drafts', label: 'Borradores', icon: <FileEdit className="mr-3 h-5 w-5" /> },
+      { id: 'archive', label: 'Archivo', icon: <Archive className="mr-3 h-5 w-5" /> },
   ];
+  
+  const totalNotifications = filteredMessages.length;
 
-  const messageList = (
-    <div className="flex flex-col">
-       <div className="p-4 space-y-4">
-           <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Buscar mensajes..."
-                className="pl-8 w-full"
-              />
-            </div>
-      </div>
-      <Separator />
-       <nav className="grid gap-1 p-2">
-        {folders.map((folder) => (
-          <TooltipProvider key={folder.id}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={selectedFolder === folder.id ? 'secondary' : 'ghost'}
-                className="justify-start gap-2"
-                onClick={() => setSelectedFolder(folder.id)}
-              >
-                {folder.icon}
-                <span>{folder.label}</span>
-                 {folder.id === 'inbox' && <Badge className="ml-auto">{mockMessages.filter(m => m.destinatario.uid === mockUser.uid).length}</Badge>}
-                 {folder.id === 'sent' && <Badge className="ml-auto">{mockMessages.filter(m => m.remitente.uid === mockUser.uid).length}</Badge>}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={5}>
-              {folder.label}
-            </TooltipContent>
-          </Tooltip>
-          </TooltipProvider>
-        ))}
-      </nav>
-      <Separator />
-      <div className="flex-1 overflow-y-auto">
-        <nav className="grid gap-1 p-2">
-          {filteredMessages.length > 0 ? (
-            filteredMessages.map((message) => (
-            <button
-              key={message.id}
-              onClick={() => setSelectedMessage(message)}
-              className={cn(
-                'flex flex-col items-start gap-2 rounded-lg p-3 text-left text-sm transition-all hover:bg-muted',
-                selectedMessage?.id === message.id && 'bg-primary/10'
-              )}
-            >
-              <div className="flex w-full items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {getStatusInfo(message).icon}
-                  <div className="font-semibold">
-                    {message.remitente.uid === mockUser.uid
-                      ? message.destinatario.nombre
-                      : message.remitente.nombre}
-                  </div>
-                </div>
-                 <div className="text-xs text-muted-foreground">
-                    {format(new Date(message.timestamp), 'dd/MM/yyyy', { locale: es })}
-                </div>
-              </div>
-               <div className="line-clamp-2 text-xs text-muted-foreground">
-                {message.contenido.substring(0, 100)}...
-              </div>
-               {message.prioridad !== 'normal' && (
-                 <Badge 
-                    variant={message.prioridad === 'urgente' ? 'destructive' : 'secondary'} 
-                    className="capitalize text-xs"
+  const sidebar = (
+    <div className="flex flex-col h-full bg-card text-card-foreground">
+        <div className="flex items-center justify-center h-20 border-b px-6">
+            <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
+              <Logo className="h-12 w-auto" />
+            </Link>
+        </div>
+
+        <div className="p-4">
+             <ComposeMessageDialog open={isComposeOpen} onOpenChange={setComposeOpen}>
+                <Button className="w-full h-12 text-base" onClick={() => setComposeOpen(true)}>
+                    <PenSquare className="mr-2 h-5 w-5" />
+                    NUEVO ENVÍO
+                </Button>
+            </ComposeMessageDialog>
+        </div>
+
+        <nav className="flex-1 px-4 space-y-2">
+            {folders.map(folder => (
+                 <Button
+                    key={folder.id}
+                    variant={selectedFolder === folder.id ? 'secondary' : 'ghost'}
+                    className="w-full justify-start h-11 text-base"
+                    onClick={() => setSelectedFolder(folder.id)}
                   >
-                   {message.prioridad}
-                 </Badge>
-               )}
-            </button>
-          ))
-          ) : (
-             <div className="p-4 text-center text-sm text-muted-foreground">
-                No hay mensajes en esta carpeta.
-              </div>
-          )}
+                    {folder.icon}
+                    {folder.label}
+                  </Button>
+            ))}
         </nav>
-      </div>
+        
+        <div className="mt-auto p-6 space-y-6">
+            <Separator />
+
+             <div>
+                <Link href="#" className="flex items-center text-base font-medium text-card-foreground/80 hover:text-primary">
+                    <User className="mr-3 h-5 w-5" />
+                    Mi Perfil
+                </Link>
+             </div>
+             <div>
+                <Link href="/" className="flex items-center text-base font-medium text-card-foreground/80 hover:text-primary">
+                    <LogOut className="mr-3 h-5 w-5" />
+                    Cerrar sesión
+                </Link>
+             </div>
+
+            <Separator />
+            
+            <div className="space-y-2">
+                <div className="flex items-center text-lg font-semibold">
+                    <Wallet className="mr-2 h-6 w-6" />
+                    Billetera
+                </div>
+                <div className="flex justify-between items-center text-sm p-3 bg-muted rounded-lg">
+                    <span>Créditos</span>
+                    <span className="font-bold text-destructive">-5900</span>
+                </div>
+            </div>
+            
+            <div className="text-center">
+                <a href="mailto:info@ucu.org.ar" className="text-sm text-muted-foreground hover:underline">info@ucu.org.ar</a>
+            </div>
+        </div>
     </div>
-  );
+  )
 
   return (
-    <TooltipProvider delayDuration={0}>
-       <ComposeMessageDialog open={isComposeOpen} onOpenChange={setComposeOpen}>
-          {/* This empty div is a placeholder for the trigger which is now in the header */}
-          <div />
-        </ComposeMessageDialog>
       <div className="grid min-h-screen w-full lg:grid-cols-[280px_1fr]">
-        <div className="hidden border-r bg-card lg:flex lg:flex-col">
-          <div className="flex h-16 items-center border-b px-6">
-            <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-              <Logo className="h-8 w-8 text-primary" />
-              <span className='text-xl'>Notificas</span>
-            </Link>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {messageList}
-          </div>
+        <div className="hidden lg:block border-r">
+          {sidebar}
         </div>
-        <div className="flex flex-col">
-          <header className="flex h-16 items-center gap-4 border-b bg-card px-6">
-            <Sheet>
-                <SheetTrigger asChild>
-                  <Button variant="outline" size="icon" className="shrink-0 lg:hidden">
-                    <Menu className="h-5 w-5" />
-                    <span className="sr-only">Alternar menú de navegación</span>
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="left" className="flex flex-col p-0">
-                  <SheetHeader className="border-b">
-                    <SheetTitle className="p-4">
-                        <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-                        <Logo className="h-8 w-8 text-primary" />
-                        <span className='text-xl'>Notificas</span>
-                        </Link>
-                    </SheetTitle>
-                  </SheetHeader>
-                  <div className="overflow-y-auto">
-                    {messageList}
-                  </div>
-                </SheetContent>
-              </Sheet>
-
-             <div className="flex-1">
-                 {selectedMessage && (
-                    <h1 className="text-lg font-semibold md:text-xl hidden sm:block">
-                       Conversación con {selectedMessage.remitente.uid === mockUser.uid
-                          ? selectedMessage.destinatario.nombre
-                          : selectedMessage.remitente.nombre}
-                    </h1>
-                 )}
-            </div>
-             <div className="flex items-center gap-2">
-                <Button onClick={() => setComposeOpen(true)}>
-                  <PlusCircle className="mr-2 h-4 w-4" />
-                  Nuevo Mensaje
-                </Button>
-                <UserNav user={mockUser} />
-             </div>
+        <div className="flex flex-col bg-background">
+          <header className="flex h-16 items-center gap-4 border-b bg-card px-6 lg:hidden">
+              <UserNav user={mockUser} />
           </header>
-          <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-background">
-            {selectedMessage ? (
-              <MessageView message={selectedMessage} currentUser={mockUser} />
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
-                <FileText className="h-16 w-16 mb-4" />
-                <h2 className="text-2xl font-semibold">Ningún mensaje seleccionado</h2>
-                <p>Selecciona un mensaje de la lista para ver sus detalles.</p>
-              </div>
-            )}
+          <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
+                <h1 className="text-2xl font-semibold">Bandeja de Entrada <span className="text-muted-foreground">(Notificaciones Recientes)</span></h1>
+            </div>
+
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Que desea buscar"
+                className="pl-10 h-12 text-base rounded-full shadow-sm"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            
+            <div>
+                 <p className="text-sm text-muted-foreground mb-2">Total de Notificaciones: {totalNotifications}</p>
+                 <div className="flex flex-wrap gap-2">
+                     <h3 className="text-lg font-semibold mr-4 self-center">Tipos</h3>
+                     {Object.entries(messageCountsByType).map(([type, count]) => (
+                        <Button key={type} variant={activeFilter === type ? 'default' : 'outline'} className="rounded-full" onClick={() => setActiveFilter(type as MessageTypeFilter)}>
+                             {messageTypeIcons[type as keyof typeof messageTypeIcons]}
+                             {type}
+                             <Badge variant="secondary" className="ml-2">{count}</Badge>
+                        </Button>
+                     ))}
+                 </div>
+            </div>
+
+            <Card className="shadow-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fecha enviado</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Emisor</TableHead>
+                      <TableHead>Destinatario</TableHead>
+                      <TableHead>Asunto</TableHead>
+                      <TableHead>Ult. estado</TableHead>
+                      <TableHead className="text-right"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredMessages.map((message) => {
+                        const messageType = message.prioridad === 'urgente' ? 'Notificación' : 'Intimación';
+                        return (
+                             <TableRow key={message.id}>
+                              <TableCell>{format(new Date(message.timestamp), 'dd/MM/yyyy HH:mm', { locale: es })}</TableCell>
+                              <TableCell>{messageType}</TableCell>
+                              <TableCell className="font-medium text-primary hover:underline cursor-pointer">{message.remitente.nombre}</TableCell>
+                              <TableCell>{message.destinatario.nombre}</TableCell>
+                              <TableCell>Notificación - </TableCell>
+                              <TableCell>{getUltimoEstado(message)}</TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="icon">
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent>
+                                        <DropdownMenuItem>Ver Detalles</DropdownMenuItem>
+                                        <DropdownMenuItem>Archivar</DropdownMenuItem>
+                                        <DropdownMenuItem className="text-destructive">Eliminar</DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                        )
+                    })}
+                  </TableBody>
+                </Table>
+            </Card>
+
+
           </main>
         </div>
       </div>
-    </TooltipProvider>
   );
 }
