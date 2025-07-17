@@ -1,10 +1,11 @@
 import Link from 'next/link';
-import { ShieldCheck, Mail, KeyRound, User, Building, Phone } from 'lucide-react';
+import { Mail, KeyRound, User, Building, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Logo } from '@/components/logo';
 
 export default function SignupPage() {
   return (
@@ -12,7 +13,7 @@ export default function SignupPage() {
       <Card className="mx-auto w-full max-w-lg shadow-xl">
         <CardHeader className="text-center">
             <div className="mb-4 flex justify-center">
-                <ShieldCheck className="h-12 w-12 text-primary" />
+                <Logo className="h-16 w-16" />
             </div>
             <CardTitle className="text-3xl font-bold">Crear una Cuenta</CardTitle>
             <CardDescription>Únete a BFA Certify para enviar y recibir mensajes con validez legal.</CardDescription>
@@ -96,5 +97,3 @@ export default function SignupPage() {
     </div>
   );
 }
-
-    

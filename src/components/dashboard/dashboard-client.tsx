@@ -7,7 +7,6 @@ import {
   FileText,
   PlusCircle,
   Search,
-  ShieldCheck,
   Menu,
   Inbox,
   Send,
@@ -41,6 +40,7 @@ import {
 import { ComposeMessageDialog } from './compose-message-dialog';
 import MessageView from './message-view';
 import { UserNav } from './user-nav';
+import { Logo } from '../logo';
 
 type Folder = "inbox" | "sent" | "drafts" | "trash";
 
@@ -202,8 +202,8 @@ export default function DashboardClient() {
         <div className="hidden border-r bg-card lg:flex lg:flex-col">
           <div className="flex h-16 items-center border-b px-6">
             <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-              <ShieldCheck className="h-6 w-6 text-primary" />
-              <span>BFA Certify</span>
+              <Logo className="h-8 w-8 text-primary" />
+              <span className='text-xl'>BFA Certify</span>
             </Link>
           </div>
           <div className="flex-1 overflow-y-auto">
@@ -220,11 +220,11 @@ export default function DashboardClient() {
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="left" className="flex flex-col p-0">
-                  <SheetHeader className="flex h-16 items-center border-b px-6">
-                    <SheetTitle>
+                  <SheetHeader className="border-b">
+                    <SheetTitle className="p-4">
                         <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-                        <ShieldCheck className="h-6 w-6 text-primary" />
-                        <span>BFA Certify</span>
+                        <Logo className="h-8 w-8 text-primary" />
+                        <span className='text-xl'>BFA Certify</span>
                         </Link>
                     </SheetTitle>
                   </SheetHeader>
@@ -267,5 +267,3 @@ export default function DashboardClient() {
     </TooltipProvider>
   );
 }
-
-    

@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { ShieldCheck, Mail, KeyRound } from 'lucide-react';
+import { Mail, KeyRound } from 'lucide-react';
+import { Logo } from '@/components/logo';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +13,7 @@ export default function LoginPage() {
       <Card className="mx-auto w-full max-w-md shadow-xl">
         <CardHeader className="text-center">
           <div className="mb-4 flex justify-center">
-             <ShieldCheck className="h-12 w-12 text-primary" />
+             <Logo className="h-16 w-16" />
           </div>
           <CardTitle className="text-3xl font-bold">BFA Certify</CardTitle>
           <CardDescription>Accede de forma segura a tus mensajes certificados</CardDescription>
@@ -53,5 +54,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
-    
