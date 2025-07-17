@@ -9,6 +9,10 @@ import {
   Search,
   ShieldCheck,
   Menu,
+  Inbox,
+  Send,
+  FileEdit,
+  Trash2
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -35,17 +39,42 @@ import { ComposeMessageDialog } from './compose-message-dialog';
 import MessageView from './message-view';
 import { UserNav } from './user-nav';
 
-export default function DashboardClient() {
-  const [selectedMessage, setSelectedMessage] = useState<Mensaje | null>(
-    mockMessages[0] || null
-  );
-  const [isComposeOpen, setComposeOpen] = useState(false);
+type Folder = "inbox" | "sent" | "drafts" | "trash";
 
-  const sortedMessages = useMemo(() => {
-    return [...mockMessages].sort(
+export default function DashboardClient() {
+  const [selectedMessage, setSelectedMessage] = useState<Mensaje | null>(null);
+  const [isComposeOpen, setComposeOpen] = useState(false);
+  const [selectedFolder, setSelectedFolder] = useState<Folder>("inbox");
+
+  const filteredMessages = useMemo(() => {
+    const sorted = [...mockMessages].sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
-  }, []);
+
+    switch (selectedFolder) {
+      case 'inbox':
+        return sorted.filter(m => m.destinatario.uid === mockUser.uid);
+      case 'sent':
+        return sorted.filter(m => m.remitente.uid === mockUser.uid);
+      // Mock data doesn't have drafts or trash, so these will be empty for now.
+      case 'drafts':
+        return [];
+      case 'trash':
+        return [];
+      default:
+        return sorted;
+    }
+  }, [selectedFolder]);
+  
+  // Set the initial selected message from the filtered list
+  React.useEffect(() => {
+    if (filteredMessages.length > 0) {
+      setSelectedMessage(filteredMessages[0]);
+    } else {
+      setSelectedMessage(null);
+    }
+  }, [filteredMessages]);
+
 
   const getStatusInfo = (message: Mensaje) => {
     switch (message.estadoEnvio) {
@@ -67,6 +96,13 @@ export default function DashboardClient() {
         };
     }
   };
+  
+  const folders: { id: Folder; label: string; icon: React.ReactNode }[] = [
+      { id: 'inbox', label: 'Inbox', icon: <Inbox className="h-5 w-5" /> },
+      { id: 'sent', label: 'Sent', icon: <Send className="h-5 w-5" /> },
+      { id: 'drafts', label: 'Drafts', icon: <FileEdit className="h-5 w-5" /> },
+      { id: 'trash', label: 'Trash', icon: <Trash2 className="h-5 w-5" /> },
+  ];
 
   const messageList = (
     <div className="flex flex-col">
@@ -81,43 +117,73 @@ export default function DashboardClient() {
             </div>
       </div>
       <Separator />
-      <nav className="grid gap-1 p-2">
-        {sortedMessages.map((message) => (
-          <button
-            key={message.id}
-            onClick={() => setSelectedMessage(message)}
-            className={cn(
-              'flex flex-col items-start gap-2 rounded-lg p-3 text-left text-sm transition-all hover:bg-muted',
-              selectedMessage?.id === message.id && 'bg-primary/10'
-            )}
-          >
-            <div className="flex w-full items-center justify-between">
-              <div className="flex items-center gap-2">
-                {getStatusInfo(message).icon}
-                <div className="font-semibold">
-                  {message.remitente.uid === mockUser.uid
-                    ? message.destinatario.nombre
-                    : message.remitente.nombre}
-                </div>
-              </div>
-               <div className="text-xs text-muted-foreground">
-                  {format(new Date(message.timestamp), 'dd/MM/yyyy')}
-              </div>
-            </div>
-             <div className="line-clamp-2 text-xs text-muted-foreground">
-              {message.contenido.substring(0, 100)}...
-            </div>
-             {message.prioridad !== 'normal' && (
-               <Badge 
-                  variant={message.prioridad === 'urgente' ? 'destructive' : 'secondary'} 
-                  className="capitalize text-xs"
-                >
-                 {message.prioridad}
-               </Badge>
-             )}
-          </button>
+       <nav className="grid gap-1 p-2">
+        {folders.map((folder) => (
+          <Tooltip key={folder.id}>
+            <TooltipTrigger asChild>
+              <Button
+                variant={selectedFolder === folder.id ? 'secondary' : 'ghost'}
+                className="justify-start gap-2"
+                onClick={() => setSelectedFolder(folder.id)}
+              >
+                {folder.icon}
+                <span>{folder.label}</span>
+                 {folder.id === 'inbox' && <Badge className="ml-auto">{filteredMessages.filter(m => m.destinatario.uid === mockUser.uid).length}</Badge>}
+                 {folder.id === 'sent' && <Badge className="ml-auto">{filteredMessages.filter(m => m.remitente.uid === mockUser.uid).length}</Badge>}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right" sideOffset={5}>
+              {folder.label}
+            </TooltipContent>
+          </Tooltip>
         ))}
       </nav>
+      <Separator />
+      <div className="flex-1 overflow-y-auto">
+        <nav className="grid gap-1 p-2">
+          {filteredMessages.length > 0 ? (
+            filteredMessages.map((message) => (
+            <button
+              key={message.id}
+              onClick={() => setSelectedMessage(message)}
+              className={cn(
+                'flex flex-col items-start gap-2 rounded-lg p-3 text-left text-sm transition-all hover:bg-muted',
+                selectedMessage?.id === message.id && 'bg-primary/10'
+              )}
+            >
+              <div className="flex w-full items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {getStatusInfo(message).icon}
+                  <div className="font-semibold">
+                    {message.remitente.uid === mockUser.uid
+                      ? message.destinatario.nombre
+                      : message.remitente.nombre}
+                  </div>
+                </div>
+                 <div className="text-xs text-muted-foreground">
+                    {format(new Date(message.timestamp), 'dd/MM/yyyy')}
+                </div>
+              </div>
+               <div className="line-clamp-2 text-xs text-muted-foreground">
+                {message.contenido.substring(0, 100)}...
+              </div>
+               {message.prioridad !== 'normal' && (
+                 <Badge 
+                    variant={message.prioridad === 'urgente' ? 'destructive' : 'secondary'} 
+                    className="capitalize text-xs"
+                  >
+                   {message.prioridad}
+                 </Badge>
+               )}
+            </button>
+          ))
+          ) : (
+             <div className="p-4 text-center text-sm text-muted-foreground">
+                No messages in this folder.
+              </div>
+          )}
+        </nav>
+      </div>
     </div>
   );
 
