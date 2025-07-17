@@ -32,6 +32,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
+import { Card } from '@/components/ui/card';
 
 import {
   Table,
@@ -84,7 +85,7 @@ export default function DashboardClient() {
 
 
   const messageCountsByType = useMemo(() => {
-    const counts = {
+    const counts: Record<string, number> = {
         "Comunicación": 0,
         "Notificación": 0,
         "Contestación": 0,
@@ -93,10 +94,18 @@ export default function DashboardClient() {
         "Oficio Judicial": 0,
     };
     // This is a mock, in a real app this would be more complex
-    counts["Notificación"] = 84;
-    counts["Contestación"] = 2;
-    counts["Intimación"] = 118;
-    counts["Oficio Judicial"] = 1;
+    mockMessages.forEach(message => {
+        const type = message.prioridad === 'urgente' ? 'Notificación' : message.prioridad === 'alta' ? 'Intimación' : 'Comunicación';
+        if(type === 'Notificación') counts['Notificación']++;
+        if(type === 'Intimación') counts['Intimación']++;
+        // You can add more detailed logic here for other types
+    })
+    
+    // For demonstration, let's just set some mock values based on your description
+    counts["Notificación"] = mockMessages.filter(m => m.prioridad === 'urgente').length;
+    counts["Intimación"] = mockMessages.filter(m => m.prioridad === 'alta').length;
+    counts["Contestación"] = 2; // Mock
+    counts["Oficio Judicial"] = 1; // Mock
     return counts;
   }, [mockMessages]);
 
@@ -111,15 +120,31 @@ export default function DashboardClient() {
         messages = messages.filter(m => m.destinatario.uid === mockUser.uid);
     } else if (selectedFolder === 'sent') {
         messages = messages.filter(m => m.remitente.uid === mockUser.uid);
-    } else {
-        messages = [] // Drafts, Archive not implemented with mock data
+    } else if (selectedFolder === 'trash'){
+        messages = []; // Mock for now
+    } else if (selectedFolder === 'drafts'){
+        messages = []; // Mock for now
+    } else if (selectedFolder === 'archive'){
+        messages = []; // Mock for now
     }
 
+
     if (activeFilter !== "all") {
-       // This is a mock filter logic, since type is not in the model
-       if (activeFilter === 'Notificación') return messages.filter(m => m.id === 'msg-003' || m.id === 'msg-001' )
-       if (activeFilter === 'Intimación') return messages.filter(m => m.id === 'msg-002')
-       return []
+        messages = messages.filter(m => {
+             const typeMap: Record<Mensaje['prioridad'], MessageTypeFilter> = {
+                'normal': 'Comunicación',
+                'alta': 'Intimación',
+                'urgente': 'Notificación'
+             }
+             const messageType = typeMap[m.prioridad] || 'Comunicación';
+             // Simplified filter logic
+             if (activeFilter === 'Notificación' && messageType === 'Notificación') return true;
+             if (activeFilter === 'Intimación' && messageType === 'Intimación') return true;
+             if (activeFilter === 'Contestación' && messageType === 'Contestación') return true; // Will be empty with current mock
+             if (activeFilter === 'Oficio Judicial' && messageType === 'Oficio Judicial') return true; // will be empty
+             // Add more types if needed
+             return false;
+        });
     }
 
     if (searchQuery) {
@@ -140,6 +165,7 @@ export default function DashboardClient() {
       { id: 'sent', label: 'Enviados', icon: <Send className="mr-3 h-5 w-5" /> },
       { id: 'drafts', label: 'Borradores', icon: <FileEdit className="mr-3 h-5 w-5" /> },
       { id: 'archive', label: 'Archivo', icon: <Archive className="mr-3 h-5 w-5" /> },
+      { id: 'trash', label: 'Papelera', icon: <Trash2 className="mr-3 h-5 w-5" /> },
   ];
   
   const totalNotifications = filteredMessages.length;
@@ -222,7 +248,7 @@ export default function DashboardClient() {
           </header>
           <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
-                <h1 className="text-2xl font-semibold">Bandeja de Entrada <span className="text-muted-foreground">(Notificaciones Recientes)</span></h1>
+                <h1 className="text-2xl font-semibold">{folders.find(f => f.id === selectedFolder)?.label} <span className="text-muted-foreground">(Notificaciones Recientes)</span></h1>
             </div>
 
             <div className="relative">
