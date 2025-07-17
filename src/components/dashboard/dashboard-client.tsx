@@ -8,6 +8,7 @@ import {
   PlusCircle,
   Search,
   ShieldCheck,
+  Menu,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -24,6 +25,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from "@/components/ui/sheet"
+
 import { ComposeMessageDialog } from './compose-message-dialog';
 import MessageView from './message-view';
 import { UserNav } from './user-nav';
@@ -36,7 +43,7 @@ export default function DashboardClient() {
 
   const sortedMessages = useMemo(() => {
     return [...mockMessages].sort(
-      (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   }, []);
 
@@ -61,8 +68,65 @@ export default function DashboardClient() {
     }
   };
 
+  const messageList = (
+    <div className="flex flex-col">
+       <div className="p-4 space-y-4">
+           <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Search messages..."
+                className="pl-8 w-full"
+              />
+            </div>
+      </div>
+      <Separator />
+      <nav className="grid gap-1 p-2">
+        {sortedMessages.map((message) => (
+          <button
+            key={message.id}
+            onClick={() => setSelectedMessage(message)}
+            className={cn(
+              'flex flex-col items-start gap-2 rounded-lg p-3 text-left text-sm transition-all hover:bg-muted',
+              selectedMessage?.id === message.id && 'bg-primary/10'
+            )}
+          >
+            <div className="flex w-full items-center justify-between">
+              <div className="flex items-center gap-2">
+                {getStatusInfo(message).icon}
+                <div className="font-semibold">
+                  {message.remitente.uid === mockUser.uid
+                    ? message.destinatario.nombre
+                    : message.remitente.nombre}
+                </div>
+              </div>
+               <div className="text-xs text-muted-foreground">
+                  {format(new Date(message.timestamp), 'dd/MM/yyyy')}
+              </div>
+            </div>
+             <div className="line-clamp-2 text-xs text-muted-foreground">
+              {message.contenido.substring(0, 100)}...
+            </div>
+             {message.prioridad !== 'normal' && (
+               <Badge 
+                  variant={message.prioridad === 'urgente' ? 'destructive' : 'secondary'} 
+                  className="capitalize text-xs"
+                >
+                 {message.prioridad}
+               </Badge>
+             )}
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+
   return (
     <TooltipProvider delayDuration={0}>
+       <ComposeMessageDialog open={isComposeOpen} onOpenChange={setComposeOpen}>
+          {/* This empty div is a placeholder for the trigger which is now in the header */}
+          <div />
+        </ComposeMessageDialog>
       <div className="grid min-h-screen w-full lg:grid-cols-[280px_1fr]">
         <div className="hidden border-r bg-card lg:flex lg:flex-col">
           <div className="flex h-16 items-center border-b px-6">
@@ -72,74 +136,47 @@ export default function DashboardClient() {
             </Link>
           </div>
           <div className="flex-1 overflow-y-auto">
-            <div className="p-4 space-y-4">
-                 <div className="relative">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      type="search"
-                      placeholder="Search messages..."
-                      className="pl-8 w-full"
-                    />
-                  </div>
-                 <ComposeMessageDialog open={isComposeOpen} onOpenChange={setComposeOpen}>
-                    <Button className="w-full" onClick={() => setComposeOpen(true)}>
-                      <PlusCircle className="mr-2 h-4 w-4" />
-                      New Message
-                    </Button>
-                </ComposeMessageDialog>
-            </div>
-            <Separator />
-            <nav className="grid gap-1 p-2">
-              {sortedMessages.map((message) => (
-                <button
-                  key={message.id}
-                  onClick={() => setSelectedMessage(message)}
-                  className={cn(
-                    'flex flex-col items-start gap-2 rounded-lg p-3 text-left text-sm transition-all hover:bg-muted',
-                    selectedMessage?.id === message.id && 'bg-primary/10'
-                  )}
-                >
-                  <div className="flex w-full items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      {getStatusInfo(message).icon}
-                      <div className="font-semibold">
-                        {message.remitente.uid === mockUser.uid
-                          ? message.destinatario.nombre
-                          : message.remitente.nombre}
-                      </div>
-                    </div>
-                     <div className="text-xs text-muted-foreground">
-                        {format(message.timestamp, 'dd/MM/yyyy')}
-                    </div>
-                  </div>
-                   <div className="line-clamp-2 text-xs text-muted-foreground">
-                    {message.contenido.substring(0, 100)}...
-                  </div>
-                   {message.prioridad !== 'normal' && (
-                     <Badge 
-                        variant={message.prioridad === 'urgente' ? 'destructive' : 'secondary'} 
-                        className="capitalize text-xs"
-                      >
-                       {message.prioridad}
-                     </Badge>
-                   )}
-                </button>
-              ))}
-            </nav>
+            {messageList}
           </div>
         </div>
         <div className="flex flex-col">
           <header className="flex h-16 items-center gap-4 border-b bg-card px-6">
+            <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="icon" className="shrink-0 lg:hidden">
+                    <Menu className="h-5 w-5" />
+                    <span className="sr-only">Toggle navigation menu</span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="flex flex-col p-0">
+                  <div className="flex h-16 items-center border-b px-6">
+                    <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
+                      <ShieldCheck className="h-6 w-6 text-primary" />
+                      <span>BFA Certify</span>
+                    </Link>
+                  </div>
+                  <div className="overflow-y-auto">
+                    {messageList}
+                  </div>
+                </SheetContent>
+              </Sheet>
+
              <div className="flex-1">
                  {selectedMessage && (
-                    <h1 className="text-lg font-semibold">
+                    <h1 className="text-lg font-semibold md:text-xl hidden sm:block">
                        Conversation with {selectedMessage.remitente.uid === mockUser.uid
                           ? selectedMessage.destinatario.nombre
                           : selectedMessage.remitente.nombre}
                     </h1>
                  )}
             </div>
-             <UserNav user={mockUser} />
+             <div className="flex items-center gap-2">
+                <Button onClick={() => setComposeOpen(true)}>
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  New Message
+                </Button>
+                <UserNav user={mockUser} />
+             </div>
           </header>
           <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-background">
             {selectedMessage ? (

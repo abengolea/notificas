@@ -77,9 +77,9 @@ export default function BfaTraceability({ message }: BfaTraceabilityProps) {
       <CardContent>
         <div className="relative space-y-8">
             <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-border -z-10"></div>
-            <TraceabilityItem title="Sent" timestamp={message.bfaEnviado.timestamp} data={sentData} statusIcon={<CheckCircle2 className="h-5 w-5 text-primary" />} />
+            <TraceabilityItem title="Sent" timestamp={new Date(message.bfaEnviado.timestamp)} data={sentData} statusIcon={<CheckCircle2 className="h-5 w-5 text-primary" />} />
             {message.bfaLeido ? (
-                <TraceabilityItem title="Read" timestamp={message.bfaLeido.timestamp} data={readData} statusIcon={<CheckCircle2 className="h-5 w-5 text-accent" />} />
+                <TraceabilityItem title="Read" timestamp={new Date(message.bfaLeido.timestamp)} data={readData} statusIcon={<CheckCircle2 className="h-5 w-5 text-accent" />} />
             ) : (
                 <TraceabilityItem title="Pending Read" data={[]} statusIcon={<XCircle className="h-5 w-5 text-muted-foreground" />} />
             )}
