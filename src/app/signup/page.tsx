@@ -16,7 +16,7 @@ export default function SignupPage() {
                 <Logo className="h-16 w-16" />
             </div>
             <CardTitle className="text-3xl font-bold">Crear una Cuenta</CardTitle>
-            <CardDescription>Únete a BFA Certify para enviar y recibir mensajes con validez legal.</CardDescription>
+            <CardDescription>Únete a Notificas para enviar y recibir mensajes con validez legal.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4">

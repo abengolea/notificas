@@ -15,7 +15,7 @@ export default function LoginPage() {
           <div className="mb-4 flex justify-center">
              <Logo className="h-16 w-16" />
           </div>
-          <CardTitle className="text-3xl font-bold">BFA Certify</CardTitle>
+          <CardTitle className="text-3xl font-bold">Notificas</CardTitle>
           <CardDescription>Accede de forma segura a tus mensajes certificados</CardDescription>
         </CardHeader>
         <CardContent>

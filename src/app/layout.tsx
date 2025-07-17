@@ -3,7 +3,7 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster"
 
 export const metadata: Metadata = {
-  title: 'BFA Certify',
+  title: 'Notificas',
   description: 'Mensajería certificada con Blockchain Federal Argentina.',
 };
 
