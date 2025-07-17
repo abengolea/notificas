@@ -30,8 +30,8 @@ import { useToast } from "@/hooks/use-toast"
 import { useState } from "react"
 
 const messageSchema = z.object({
-  recipient: z.string().email({ message: "Invalid email address." }),
-  content: z.string().min(10, { message: "Message must be at least 10 characters." }),
+  recipient: z.string().email({ message: "Dirección de correo electrónico inválida." }),
+  content: z.string().min(10, { message: "El mensaje debe tener al menos 10 caracteres." }),
   priority: z.enum(["normal", "alta", "urgente"]),
   requireCertificate: z.boolean(),
 })
@@ -53,14 +53,14 @@ export function ComposeMessageDialog({ children, open, onOpenChange }: { childre
 
     const onSubmit = async (data: MessageFormValues) => {
         setIsSending(true);
-        console.log("Sending message:", data);
-        // Simulate API call
+        console.log("Enviando mensaje:", data);
+        // Simular llamada a la API
         await new Promise(resolve => setTimeout(resolve, 2000));
         setIsSending(false);
         onOpenChange(false);
         toast({
-            title: "Message Sent & Certified",
-            description: "Your message has been sent and certified on BFA.",
+            title: "Mensaje Enviado y Certificado",
+            description: "Tu mensaje ha sido enviado y certificado en BFA.",
             variant: "default",
         });
         form.reset();
@@ -73,34 +73,34 @@ export function ComposeMessageDialog({ children, open, onOpenChange }: { childre
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Compose New Certified Message</DialogTitle>
+          <DialogTitle>Redactar Nuevo Mensaje Certificado</DialogTitle>
           <DialogDescription>
-            This message will be encrypted and certified on Blockchain Federal Argentina.
+            Este mensaje será encriptado y certificado en Blockchain Federal Argentina.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <div className="grid gap-2">
-                <Label htmlFor="recipient">Recipient Email</Label>
-                <Input id="recipient" {...form.register("recipient")} placeholder="recipient@example.com" />
+                <Label htmlFor="recipient">Email del Destinatario</Label>
+                <Input id="recipient" {...form.register("recipient")} placeholder="destinatario@ejemplo.com" />
                 {form.formState.errors.recipient && <p className="text-sm text-destructive">{form.formState.errors.recipient.message}</p>}
             </div>
             <div className="grid gap-2">
-                <Label htmlFor="content">Message Content</Label>
-                <Textarea id="content" {...form.register("content")} placeholder="Type your certified message here." className="min-h-[150px]" />
+                <Label htmlFor="content">Contenido del Mensaje</Label>
+                <Textarea id="content" {...form.register("content")} placeholder="Escribe tu mensaje certificado aquí." className="min-h-[150px]" />
                 {form.formState.errors.content && <p className="text-sm text-destructive">{form.formState.errors.content.message}</p>}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                    <Label htmlFor="priority">Priority</Label>
+                    <Label htmlFor="priority">Prioridad</Label>
                      <Select onValueChange={(value) => form.setValue('priority', value as "normal" | "alta" | "urgente")} defaultValue="normal">
                         <SelectTrigger>
-                            <SelectValue placeholder="Select priority" />
+                            <SelectValue placeholder="Seleccionar prioridad" />
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="normal">Normal</SelectItem>
-                            <SelectItem value="alta">High</SelectItem>
-                            <SelectItem value="urgente">Urgent</SelectItem>
+                            <SelectItem value="alta">Alta</SelectItem>
+                            <SelectItem value="urgente">Urgente</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
@@ -108,24 +108,24 @@ export function ComposeMessageDialog({ children, open, onOpenChange }: { childre
                      <div className="flex items-center space-x-2">
                         <Checkbox id="require-certificate" {...form.register("requireCertificate")} defaultChecked={true} />
                         <Label htmlFor="require-certificate" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                            Require Certificate
+                            Requerir Certificado
                         </Label>
                     </div>
                 </div>
             </div>
 
             <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
             <Button type="submit" disabled={isSending}>
                 {isSending ? (
                     <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Sending...
+                        Enviando...
                     </>
                 ) : (
                     <>
                         <Send className="mr-2 h-4 w-4" />
-                        Send Certified Message
+                        Enviar Mensaje Certificado
                     </>
                 )}
             </Button>
@@ -135,3 +135,5 @@ export function ComposeMessageDialog({ children, open, onOpenChange }: { childre
     </Dialog>
   )
 }
+
+    

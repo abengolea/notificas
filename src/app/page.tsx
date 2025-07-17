@@ -15,22 +15,22 @@ export default function LoginPage() {
              <ShieldCheck className="h-12 w-12 text-primary" />
           </div>
           <CardTitle className="text-3xl font-bold">BFA Certify</CardTitle>
-          <CardDescription>Securely access your certified messages</CardDescription>
+          <CardDescription>Accede de forma segura a tus mensajes certificados</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Correo Electrónico</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <Input id="email" type="email" placeholder="name@example.com" required className="pl-10" />
+                <Input id="email" type="email" placeholder="nombre@ejemplo.com" required className="pl-10" />
               </div>
             </div>
             <div className="space-y-2">
                 <div className="flex items-center">
-                    <Label htmlFor="password">Password</Label>
+                    <Label htmlFor="password">Contraseña</Label>
                     <Link href="#" className="ml-auto inline-block text-sm underline" prefetch={false}>
-                        Forgot your password?
+                        ¿Olvidaste tu contraseña?
                     </Link>
                 </div>
               <div className="relative">
@@ -39,13 +39,13 @@ export default function LoginPage() {
               </div>
             </div>
             <Button type="submit" className="w-full" asChild>
-                <Link href="/dashboard">Login</Link>
+                <Link href="/dashboard">Iniciar Sesión</Link>
             </Button>
           </form>
           <div className="mt-6 text-center text-sm">
-            Don&apos;t have an account?{' '}
+            ¿No tienes una cuenta?{' '}
             <Link href="/signup" className="underline" prefetch={false}>
-              Sign up
+              Regístrate
             </Link>
           </div>
         </CardContent>
@@ -53,3 +53,5 @@ export default function LoginPage() {
     </div>
   );
 }
+
+    

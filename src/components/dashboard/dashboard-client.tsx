@@ -15,6 +15,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 import { mockMessages, mockUser } from '@/lib/mock-data';
 import type { Mensaje } from '@/lib/types';
@@ -83,27 +84,27 @@ export default function DashboardClient() {
       case 'leido':
         return {
           icon: <Badge className="w-2 h-2 p-0 bg-accent" />,
-          label: 'Read',
+          label: 'Leído',
         };
       case 'recibido':
         return {
           icon: <Badge className="w-2 h-2 p-0 bg-primary" />,
-          label: 'Received',
+          label: 'Recibido',
         };
       case 'enviado':
       default:
         return {
           icon: <Badge className="w-2 h-2 p-0 bg-muted-foreground/50" />,
-          label: 'Sent',
+          label: 'Enviado',
         };
     }
   };
   
   const folders: { id: Folder; label: string; icon: React.ReactNode }[] = [
-      { id: 'inbox', label: 'Inbox', icon: <Inbox className="h-5 w-5" /> },
-      { id: 'sent', label: 'Sent', icon: <Send className="h-5 w-5" /> },
-      { id: 'drafts', label: 'Drafts', icon: <FileEdit className="h-5 w-5" /> },
-      { id: 'trash', label: 'Trash', icon: <Trash2 className="h-5 w-5" /> },
+      { id: 'inbox', label: 'Recibidos', icon: <Inbox className="h-5 w-5" /> },
+      { id: 'sent', label: 'Enviados', icon: <Send className="h-5 w-5" /> },
+      { id: 'drafts', label: 'Borradores', icon: <FileEdit className="h-5 w-5" /> },
+      { id: 'trash', label: 'Papelera', icon: <Trash2 className="h-5 w-5" /> },
   ];
 
   const messageList = (
@@ -113,7 +114,7 @@ export default function DashboardClient() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
-                placeholder="Search messages..."
+                placeholder="Buscar mensajes..."
                 className="pl-8 w-full"
               />
             </div>
@@ -165,7 +166,7 @@ export default function DashboardClient() {
                   </div>
                 </div>
                  <div className="text-xs text-muted-foreground">
-                    {format(new Date(message.timestamp), 'dd/MM/yyyy')}
+                    {format(new Date(message.timestamp), 'dd/MM/yyyy', { locale: es })}
                 </div>
               </div>
                <div className="line-clamp-2 text-xs text-muted-foreground">
@@ -183,7 +184,7 @@ export default function DashboardClient() {
           ))
           ) : (
              <div className="p-4 text-center text-sm text-muted-foreground">
-                No messages in this folder.
+                No hay mensajes en esta carpeta.
               </div>
           )}
         </nav>
@@ -215,7 +216,7 @@ export default function DashboardClient() {
                 <SheetTrigger asChild>
                   <Button variant="outline" size="icon" className="shrink-0 lg:hidden">
                     <Menu className="h-5 w-5" />
-                    <span className="sr-only">Toggle navigation menu</span>
+                    <span className="sr-only">Alternar menú de navegación</span>
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="left" className="flex flex-col p-0">
@@ -236,7 +237,7 @@ export default function DashboardClient() {
              <div className="flex-1">
                  {selectedMessage && (
                     <h1 className="text-lg font-semibold md:text-xl hidden sm:block">
-                       Conversation with {selectedMessage.remitente.uid === mockUser.uid
+                       Conversación con {selectedMessage.remitente.uid === mockUser.uid
                           ? selectedMessage.destinatario.nombre
                           : selectedMessage.remitente.nombre}
                     </h1>
@@ -245,7 +246,7 @@ export default function DashboardClient() {
              <div className="flex items-center gap-2">
                 <Button onClick={() => setComposeOpen(true)}>
                   <PlusCircle className="mr-2 h-4 w-4" />
-                  New Message
+                  Nuevo Mensaje
                 </Button>
                 <UserNav user={mockUser} />
              </div>
@@ -256,8 +257,8 @@ export default function DashboardClient() {
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
                 <FileText className="h-16 w-16 mb-4" />
-                <h2 className="text-2xl font-semibold">No message selected</h2>
-                <p>Select a message from the list to view its details.</p>
+                <h2 className="text-2xl font-semibold">Ningún mensaje seleccionado</h2>
+                <p>Selecciona un mensaje de la lista para ver sus detalles.</p>
               </div>
             )}
           </main>
@@ -266,3 +267,5 @@ export default function DashboardClient() {
     </TooltipProvider>
   );
 }
+
+    

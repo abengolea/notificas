@@ -32,17 +32,17 @@ export default function MessageView({ message, currentUser }: MessageViewProps) 
 
   const handleGenerateCertificate = async () => {
     setIsGenerating(true);
-    // Simulate calling the generateCertificatePdf AI flow
+    // Simular llamada al flujo de IA generateCertificatePdf
     await new Promise(resolve => setTimeout(resolve, 2000));
     
-    // In a real app, this would be the URL from the flow's response
+    // En una aplicación real, esta sería la URL de la respuesta del flujo
     const fakePdfUrl = `/certs/certificado-${message.id}.pdf`;
     setGeneratedPdfUrl(fakePdfUrl);
     setIsGenerating(false);
 
     toast({
-      title: "Certificate Generated",
-      description: "The legal certificate has been successfully created and certified.",
+      title: "Certificado Generado",
+      description: "El certificado legal ha sido creado y certificado exitosamente.",
       variant: 'default',
     });
   };
@@ -58,14 +58,14 @@ export default function MessageView({ message, currentUser }: MessageViewProps) 
       <Card className="shadow-lg">
         <CardHeader className="flex flex-row items-start gap-4 space-y-0 bg-muted/20">
           <Avatar className="h-12 w-12 border">
-            <AvatarImage src={`https://placehold.co/100x100.png?text=${getInitials(otherParty.nombre)}`} alt={otherParty.nombre} data-ai-hint="profile picture" />
+            <AvatarImage src={`https://placehold.co/100x100.png?text=${getInitials(otherParty.nombre)}`} alt={otherParty.nombre} data-ai-hint="foto de perfil" />
             <AvatarFallback>{getInitials(otherParty.nombre)}</AvatarFallback>
           </Avatar>
           <div className="grid gap-1">
             <CardTitle>{otherParty.nombre}</CardTitle>
             <CardDescription>{otherParty.email}</CardDescription>
             <p className="text-sm text-muted-foreground">
-              Sent on: {new Date(message.timestamp).toLocaleString()}
+              Enviado el: {new Date(message.timestamp).toLocaleString('es-AR')}
             </p>
           </div>
         </CardHeader>
@@ -78,9 +78,9 @@ export default function MessageView({ message, currentUser }: MessageViewProps) 
 
       <Card>
         <CardHeader>
-          <CardTitle>Legal Certificate</CardTitle>
+          <CardTitle>Certificado Legal</CardTitle>
           <CardDescription>
-            Generate or download the legally binding PDF certificate for this message.
+            Genere o descargue el certificado PDF con validez legal para este mensaje.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -88,7 +88,7 @@ export default function MessageView({ message, currentUser }: MessageViewProps) 
              <Button asChild>
                 <a href={generatedPdfUrl} download>
                   <Download className="mr-2 h-4 w-4" />
-                  Download Certificate
+                  Descargar Certificado
                 </a>
              </Button>
           ) : (
@@ -96,23 +96,23 @@ export default function MessageView({ message, currentUser }: MessageViewProps) 
               <AlertDialogTrigger asChild>
                 <Button disabled={isGenerating}>
                   {isGenerating ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating...</>
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generando...</>
                   ) : (
-                    'Generate Certificate'
+                    'Generar Certificado'
                   )}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Confirm Certificate Generation</AlertDialogTitle>
+                  <AlertDialogTitle>Confirmar Generación de Certificado</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This will generate a legally binding PDF certificate and certify its creation on the Blockchain Federal Argentina. This action may incur costs. Are you sure you want to proceed?
+                    Esto generará un certificado PDF con validez legal y certificará su creación en la Blockchain Federal Argentina. Esta acción puede incurrir en costos. ¿Estás seguro de que quieres proceder?
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
                   <AlertDialogAction onClick={handleGenerateCertificate} className="bg-primary hover:bg-primary/90">
-                    Confirm & Generate
+                    Confirmar y Generar
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -123,3 +123,5 @@ export default function MessageView({ message, currentUser }: MessageViewProps) 
     </div>
   );
 }
+
+    

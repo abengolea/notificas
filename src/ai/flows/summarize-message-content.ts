@@ -11,12 +11,12 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const SummarizeMessageContentInputSchema = z.object({
-  messageContent: z.string().describe('The content of the message to summarize.'),
+  messageContent: z.string().describe('El contenido del mensaje a resumir.'),
 });
 export type SummarizeMessageContentInput = z.infer<typeof SummarizeMessageContentInputSchema>;
 
 const SummarizeMessageContentOutputSchema = z.object({
-  summary: z.string().describe('A brief summary of the message content.'),
+  summary: z.string().describe('Un breve resumen del contenido del mensaje.'),
 });
 export type SummarizeMessageContentOutput = z.infer<typeof SummarizeMessageContentOutputSchema>;
 
@@ -28,7 +28,7 @@ const prompt = ai.definePrompt({
   name: 'summarizeMessageContentPrompt',
   input: {schema: SummarizeMessageContentInputSchema},
   output: {schema: SummarizeMessageContentOutputSchema},
-  prompt: `Summarize the following message content in a single sentence:\n\n{{{messageContent}}}`,
+  prompt: `Resume el siguiente contenido del mensaje en una sola oración:\n\n{{{messageContent}}}`,
 });
 
 const summarizeMessageContentFlow = ai.defineFlow(
@@ -42,3 +42,5 @@ const summarizeMessageContentFlow = ai.defineFlow(
     return output!;
   }
 );
+
+    

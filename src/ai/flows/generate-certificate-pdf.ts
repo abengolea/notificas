@@ -35,7 +35,7 @@ const GenerateCertificatePdfInputSchema = z.object({
 export type GenerateCertificatePdfInput = z.infer<typeof GenerateCertificatePdfInputSchema>;
 
 const GenerateCertificatePdfOutputSchema = z.object({
-  certificatePdf: z.string().describe('The generated PDF certificate as a base64 encoded string.'),
+  certificatePdf: z.string().describe('El certificado PDF generado como una cadena codificada en base64.'),
 });
 export type GenerateCertificatePdfOutput = z.infer<typeof GenerateCertificatePdfOutputSchema>;
 
@@ -47,66 +47,66 @@ const prompt = ai.definePrompt({
   name: 'generateCertificatePdfPrompt',
   input: {schema: GenerateCertificatePdfInputSchema},
   output: {schema: GenerateCertificatePdfOutputSchema},
-  prompt: `You are an expert in generating legal documents, specifically PDF certificates for messages sent through a secure messaging platform.
+  prompt: `Eres un experto en generar documentos legales, específicamente certificados PDF para mensajes enviados a través de una plataforma de mensajería segura.
 
-  Given the following information about a message, generate a PDF certificate as a base64 encoded string that provides irrefutable proof of the message's delivery and content. The certificate should include details about the sender, recipient, timestamps, and Blockchain Federal Argentina (BFA) certification statuses.
+  Dada la siguiente información sobre un mensaje, genera un certificado PDF como una cadena codificada en base64 que proporcione una prueba irrefutable de la entrega y el contenido del mensaje. El certificado debe incluir detalles sobre el remitente, el destinatario, las marcas de tiempo y los estados de certificación de Blockchain Federal Argentina (BFA).
 
-  The certificate MUST include the following sections:
-  1.  Header: CERTIFICATE OF MESSAGING BLOCKCHAIN FEDERAL ARGENTINA
-  2.  Message ID: {{{mensajeId}}}
-  3.  Date of issue: Current date and time in ISO format
-  4.  Sender Information:
-      *   Name: {{{remitenteNombre}}}
+  El certificado DEBE incluir las siguientes secciones:
+  1.  Encabezado: CERTIFICADO DE MENSAJERÍA BLOCKCHAIN FEDERAL ARGENTINA
+  2.  ID del Mensaje: {{{mensajeId}}}
+  3.  Fecha de emisión: Fecha y hora actual en formato ISO
+  4.  Información del Remitente:
+      *   Nombre: {{{remitenteNombre}}}
       *   Email: {{{remitenteEmail}}}
-      *   Verification Status: Verified
-  5.  Recipient Information:
-      *   Name: {{{destinatarioNombre}}}
+      *   Estado de Verificación: Verificado
+  5.  Información del Destinatario:
+      *   Nombre: {{{destinatarioNombre}}}
       *   Email: {{{destinatarioEmail}}}
-      *   Verification Status: Verified
-  6.  Certified Traceability:
-      *   Sent: {{{bfaEnviadoTimestamp}}}
-          *   BFA Hash: {{{bfaEnviadoHashRegistrado}}}
+      *   Estado de Verificación: Verificado
+  6.  Trazabilidad Certificada:
+      *   Enviado: {{{bfaEnviadoTimestamp}}}
+          *   Hash BFA: {{{bfaEnviadoHashRegistrado}}}
           *   Stamp ID: {{{bfaEnviadoStampId}}}
-          *   Verify: {{{bfaEnviadoVerificacionUrl}}}
-      *   Read: IF the message has been read, include the following:
-          *   Read: {{{bfaLeidoTimestamp}}}
-              *   BFA Hash: {{{bfaLeidoHashRegistrado}}}
+          *   Verificar: {{{bfaEnviadoVerificacionUrl}}}
+      *   Leído: SI el mensaje ha sido leído, incluye lo siguiente:
+          *   Leído: {{{bfaLeidoTimestamp}}}
+              *   Hash BFA: {{{bfaLeidoHashRegistrado}}}
               *   Stamp ID: {{{bfaLeidoStampId}}}
               *   IP: {{{bfaLeidoIpLector}}}
-              *   Device: {{{bfaLeidoDispositivoLector}}}
-              *   Verify: {{{bfaLeidoVerificacionUrl}}}
-          *   Otherwise, indicate PENDING READ
-  7.  Original Content (SHA-256 Hash): {{{hashSHA256}}}
-  8.  Independent Verification: All records are independently verifiable at https://bfa.ar/verify
-  9.  Disclaimer: This certificate is valid and auditable in any court. Backed by Blockchain Federal Argentina.
+              *   Dispositivo: {{{bfaLeidoDispositivoLector}}}
+              *   Verificar: {{{bfaLeidoVerificacionUrl}}}
+          *   En caso contrario, indicar LECTURA PENDIENTE
+  7.  Contenido Original (Hash SHA-256): {{{hashSHA256}}}
+  8.  Verificación Independiente: Todos los registros son verificables de forma independiente en https://bfa.ar/verify
+  9.  Descargo de responsabilidad: Este certificado es válido y auditable en cualquier tribunal. Respaldado por Blockchain Federal Argentina.
 
-  Ensure the generated output is a base64 encoded PDF.
-  Consider using a library to construct the PDF and then encode it.
+  Asegúrate de que la salida generada sea un PDF codificado en base64.
+  Considera usar una librería para construir el PDF y luego codificarlo.
 
-  Output the PDF certificate as a base64 encoded string:
+  Genera el certificado PDF como una cadena codificada en base64:
   {
-    "certificatePdf": "...base64 encoded PDF..."
+    "certificatePdf": "...PDF codificado en base64..."
   }
 
-Message Details:
-Message ID: {{{mensajeId}}}
-Sender Name: {{{remitenteNombre}}}
-Sender Email: {{{remitenteEmail}}}
-Recipient Name: {{{destinatarioNombre}}}
-Recipient Email: {{{destinatarioEmail}}}
+Detalles del Mensaje:
+ID del Mensaje: {{{mensajeId}}}
+Nombre del Remitente: {{{remitenteNombre}}}
+Email del Remitente: {{{remitenteEmail}}}
+Nombre del Destinatario: {{{destinatarioNombre}}}
+Email del Destinatario: {{{destinatarioEmail}}}
 Timestamp: {{{timestamp}}}
-BFA Sent Timestamp: {{{bfaEnviadoTimestamp}}}
-BFA Sent Hash: {{{bfaEnviadoHashRegistrado}}}
-BFA Sent Stamp ID: {{{bfaEnviadoStampId}}}
-BFA Sent Verification URL: {{{bfaEnviadoVerificacionUrl}}}
-BFA Read Timestamp: {{{bfaLeidoTimestamp}}}
-BFA Read Hash: {{{bfaLeidoHashRegistrado}}}
-BFA Read Stamp ID: {{{bfaLeidoStampId}}}
-BFA Read IP: {{{bfaLeidoIpLector}}}
-BFA Read Device: {{{bfaLeidoDispositivoLector}}}
-BFA Read Verification URL: {{{bfaLeidoVerificacionUrl}}}
-Content: {{{contenido}}}
-SHA-256 Hash: {{{hashSHA256}}}
+Timestamp de Envío BFA: {{{bfaEnviadoTimestamp}}}
+Hash de Envío BFA: {{{bfaEnviadoHashRegistrado}}}
+Stamp ID de Envío BFA: {{{bfaEnviadoStampId}}}
+URL de Verificación de Envío BFA: {{{bfaEnviadoVerificacionUrl}}}
+Timestamp de Lectura BFA: {{{bfaLeidoTimestamp}}}
+Hash de Lectura BFA: {{{bfaLeidoHashRegistrado}}}
+Stamp ID de Lectura BFA: {{{bfaLeidoStampId}}}
+IP de Lectura BFA: {{{bfaLeidoIpLector}}}
+Dispositivo de Lectura BFA: {{{bfaLeidoDispositivoLector}}}
+URL de Verificación de Lectura BFA: {{{bfaLeidoVerificacionUrl}}}
+Contenido: {{{contenido}}}
+Hash SHA-256: {{{hashSHA256}}}
 `
 });
 
@@ -121,3 +121,5 @@ const generateCertificatePdfFlow = ai.defineFlow(
     return output!;
   }
 );
+
+    
