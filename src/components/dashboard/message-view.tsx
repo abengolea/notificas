@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 import type { Mensaje, User } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -65,7 +67,7 @@ export default function MessageView({ message, currentUser }: MessageViewProps) 
             <CardTitle>{otherParty.nombre}</CardTitle>
             <CardDescription>{otherParty.email}</CardDescription>
             <p className="text-sm text-muted-foreground">
-              Enviado el: {new Date(message.timestamp).toLocaleString('es-AR')}
+              Enviado el: {format(new Date(message.timestamp), "dd/MM/yyyy, HH:mm:ss", { locale: es })}
             </p>
           </div>
         </CardHeader>
@@ -123,5 +125,3 @@ export default function MessageView({ message, currentUser }: MessageViewProps) 
     </div>
   );
 }
-
-    
