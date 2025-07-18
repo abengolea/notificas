@@ -328,13 +328,37 @@ export default function DashboardClient() {
                     {filteredMessages.map((message) => {
                         const messageType = getMessageType(message);
                         return (
-                             <TableRow key={message.id}>
-                              <TableCell>{format(new Date(message.timestamp), 'dd/MM/yyyy HH:mm', { locale: es })}</TableCell>
-                              <TableCell>{messageType}</TableCell>
-                              <TableCell className="font-medium text-primary hover:underline cursor-pointer">{message.remitente.nombre}</TableCell>
-                              <TableCell>{message.destinatario.nombre}</TableCell>
-                              <TableCell>{`Notificación - ${message.contenido.substring(0, 20)}...`}</TableCell>
-                              <TableCell>{getUltimoEstado(message)}</TableCell>
+                             <TableRow key={message.id} className="cursor-pointer">
+                              <TableCell>
+                                <Link href={`/dashboard/mensaje/${message.id}`} className="block w-full h-full">
+                                    {format(new Date(message.timestamp), 'dd/MM/yyyy HH:mm', { locale: es })}
+                                </Link>
+                              </TableCell>
+                              <TableCell>
+                                <Link href={`/dashboard/mensaje/${message.id}`} className="block w-full h-full">
+                                    {messageType}
+                                </Link>
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                <Link href={`/dashboard/mensaje/${message.id}`} className="block w-full h-full text-primary hover:underline">
+                                    {message.remitente.nombre}
+                                </Link>
+                              </TableCell>
+                              <TableCell>
+                                <Link href={`/dashboard/mensaje/${message.id}`} className="block w-full h-full">
+                                    {message.destinatario.nombre}
+                                </Link>
+                              </TableCell>
+                              <TableCell>
+                                <Link href={`/dashboard/mensaje/${message.id}`} className="block w-full h-full">
+                                    {`Notificación - ${message.contenido.substring(0, 20)}...`}
+                                </Link>
+                              </TableCell>
+                              <TableCell>
+                                <Link href={`/dashboard/mensaje/${message.id}`} className="block w-full h-full">
+                                    {getUltimoEstado(message)}
+                                </Link>
+                              </TableCell>
                               <TableCell className="text-right">
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
@@ -343,7 +367,9 @@ export default function DashboardClient() {
                                         </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent>
-                                        <DropdownMenuItem>Ver Detalles</DropdownMenuItem>
+                                        <DropdownMenuItem asChild>
+                                          <Link href={`/dashboard/mensaje/${message.id}`}>Ver Detalles</Link>
+                                        </DropdownMenuItem>
                                         <DropdownMenuItem>Archivar</DropdownMenuItem>
                                         <DropdownMenuItem className="text-destructive">Eliminar</DropdownMenuItem>
                                     </DropdownMenuContent>
