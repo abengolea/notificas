@@ -4,7 +4,7 @@ import { Logo } from '@/components/logo';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { CheckCircle, ShieldCheck, Cpu, ArrowRight, Mail, Building, Send } from 'lucide-react';
+import { CheckCircle, ShieldCheck, Cpu, ArrowRight, Mail, Building, Send, Phone } from 'lucide-react';
 import Image from 'next/image';
 
 const features = [
