@@ -88,7 +88,7 @@ export default function SignupPage() {
           </form>
           <div className="mt-4 text-center text-sm">
             ¿Ya tienes una cuenta?{' '}
-            <Link href="/" className="underline" prefetch={false}>
+            <Link href="/login" className="underline" prefetch={false}>
               Iniciar Sesión
             </Link>
           </div>

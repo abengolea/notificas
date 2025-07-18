@@ -5,18 +5,17 @@ import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import {
   Archive,
-  ChevronDown,
   ChevronRight,
-  FileText,
+  FileEdit,
   Inbox,
   LogOut,
   PenSquare,
   Search,
   Send,
+  Trash2,
   User,
   Wallet,
-  FileEdit,
-  Trash2,
+  Menu,
   Mail,
   ReceiptText,
   MessageSquareReply,
@@ -33,6 +32,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Card } from '@/components/ui/card';
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 
 import {
   Table,
@@ -52,7 +58,6 @@ import {
 
 
 import { ComposeMessageDialog } from './compose-message-dialog';
-import MessageView from './message-view';
 import { UserNav } from './user-nav';
 import { Logo } from '../logo';
 import { format } from 'date-fns';
@@ -62,7 +67,7 @@ type Folder = "inbox" | "sent" | "drafts" | "archive" | "trash";
 type MessageTypeFilter = "all" | "Comunicación" | "Notificación" | "Contestación" | "Oferta" | "Intimación" | "Oficio Judicial";
 
 
-const messageTypeIcons = {
+const messageTypeIcons:  Record<string, React.ReactNode> = {
     "Comunicación": <Mail className="mr-2 h-4 w-4" />,
     "Notificación": <ReceiptText className="mr-2 h-4 w-4" />,
     "Contestación": <MessageSquareReply className="mr-2 h-4 w-4" />,
@@ -72,9 +77,18 @@ const messageTypeIcons = {
 };
 
 const getUltimoEstado = (message: Mensaje) => {
-    if (message.estadoEnvio === 'leido') return 'Apertura de email';
-    if (message.bfaLeido?.dispositivoLector) return 'Lectura de documento desde link del email';
+    if (message.estadoEnvio === 'leido') return 'Leído';
+    if (message.bfaLeido?.dispositivoLector) return 'Abierto';
     return 'Enviado';
+}
+
+const getMessageType = (message: Mensaje) => {
+    const typeMap: Record<Mensaje['prioridad'], MessageTypeFilter> = {
+       'normal': 'Comunicación',
+       'alta': 'Intimación',
+       'urgente': 'Notificación'
+    }
+    return typeMap[message.prioridad] || 'Comunicación';
 }
 
 export default function DashboardClient() {
@@ -92,22 +106,32 @@ export default function DashboardClient() {
         "Oferta": 0,
         "Intimación": 0,
         "Oficio Judicial": 0,
+        "all": 0,
     };
-    // This is a mock, in a real app this would be more complex
-    mockMessages.forEach(message => {
-        const type = message.prioridad === 'urgente' ? 'Notificación' : message.prioridad === 'alta' ? 'Intimación' : 'Comunicación';
-        if(type === 'Notificación') counts['Notificación']++;
-        if(type === 'Intimación') counts['Intimación']++;
-        // You can add more detailed logic here for other types
-    })
     
-    // For demonstration, let's just set some mock values based on your description
-    counts["Notificación"] = mockMessages.filter(m => m.prioridad === 'urgente').length;
-    counts["Intimación"] = mockMessages.filter(m => m.prioridad === 'alta').length;
-    counts["Contestación"] = 2; // Mock
-    counts["Oficio Judicial"] = 1; // Mock
+    let messagesToCount = [...mockMessages];
+    if (selectedFolder === 'inbox') {
+        messagesToCount = messagesToCount.filter(m => m.destinatario.uid === mockUser.uid);
+    } else if (selectedFolder === 'sent') {
+        messagesToCount = messagesToCount.filter(m => m.remitente.uid === mockUser.uid);
+    } // Add other folder logic if needed
+
+    messagesToCount.forEach(message => {
+        const type = getMessageType(message);
+        if (counts.hasOwnProperty(type)) {
+            counts[type]++;
+        }
+    });
+
+    // For demonstration, let's just set some mock values
+    counts["Contestación"] = 2; 
+    counts["Oferta"] = 1; 
+    counts["Oficio Judicial"] = 1;
+    
+    counts.all = Object.values(counts).reduce((sum, count) => sum + count, -counts.all);
+
     return counts;
-  }, [mockMessages]);
+  }, [mockMessages, selectedFolder]);
 
 
   const filteredMessages = useMemo(() => {
@@ -115,7 +139,6 @@ export default function DashboardClient() {
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
 
-    // This is a simplified filter logic based on mock data and selected folder
     if (selectedFolder === 'inbox') {
         messages = messages.filter(m => m.destinatario.uid === mockUser.uid);
     } else if (selectedFolder === 'sent') {
@@ -130,21 +153,7 @@ export default function DashboardClient() {
 
 
     if (activeFilter !== "all") {
-        messages = messages.filter(m => {
-             const typeMap: Record<Mensaje['prioridad'], MessageTypeFilter> = {
-                'normal': 'Comunicación',
-                'alta': 'Intimación',
-                'urgente': 'Notificación'
-             }
-             const messageType = typeMap[m.prioridad] || 'Comunicación';
-             // Simplified filter logic
-             if (activeFilter === 'Notificación' && messageType === 'Notificación') return true;
-             if (activeFilter === 'Intimación' && messageType === 'Intimación') return true;
-             if (activeFilter === 'Contestación' && messageType === 'Contestación') return true; // Will be empty with current mock
-             if (activeFilter === 'Oficio Judicial' && messageType === 'Oficio Judicial') return true; // will be empty
-             // Add more types if needed
-             return false;
-        });
+        messages = messages.filter(m => getMessageType(m) === activeFilter);
     }
 
     if (searchQuery) {
@@ -170,80 +179,99 @@ export default function DashboardClient() {
   
   const totalNotifications = filteredMessages.length;
 
-  const sidebar = (
-    <div className="flex flex-col h-full bg-card text-card-foreground">
-        <div className="flex items-center justify-center h-20 border-b px-6">
-            <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-              <Logo className="h-12 w-auto" />
-            </Link>
-        </div>
+  const sidebarContent = (
+    <>
+      <div className="flex items-center justify-center h-20 border-b px-6">
+          <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
+            <Logo className="h-12 w-auto" />
+          </Link>
+      </div>
 
-        <div className="p-4">
-             <ComposeMessageDialog open={isComposeOpen} onOpenChange={setComposeOpen}>
-                <Button className="w-full h-12 text-base" onClick={() => setComposeOpen(true)}>
-                    <PenSquare className="mr-2 h-5 w-5" />
-                    NUEVO ENVÍO
+      <div className="p-4">
+           <ComposeMessageDialog open={isComposeOpen} onOpenChange={setComposeOpen}>
+              <Button className="w-full h-12 text-base" onClick={() => setComposeOpen(true)}>
+                  <PenSquare className="mr-2 h-5 w-5" />
+                  NUEVO ENVÍO
+              </Button>
+          </ComposeMessageDialog>
+      </div>
+
+      <nav className="flex-1 px-4 space-y-2">
+          {folders.map(folder => (
+               <Button
+                  key={folder.id}
+                  variant={selectedFolder === folder.id ? 'secondary' : 'ghost'}
+                  className="w-full justify-start h-11 text-base"
+                  onClick={() => setSelectedFolder(folder.id)}
+                >
+                  {folder.icon}
+                  {folder.label}
                 </Button>
-            </ComposeMessageDialog>
-        </div>
+          ))}
+      </nav>
+      
+      <div className="mt-auto p-6 space-y-6">
+          <Separator />
 
-        <nav className="flex-1 px-4 space-y-2">
-            {folders.map(folder => (
-                 <Button
-                    key={folder.id}
-                    variant={selectedFolder === folder.id ? 'secondary' : 'ghost'}
-                    className="w-full justify-start h-11 text-base"
-                    onClick={() => setSelectedFolder(folder.id)}
-                  >
-                    {folder.icon}
-                    {folder.label}
-                  </Button>
-            ))}
-        </nav>
-        
-        <div className="mt-auto p-6 space-y-6">
-            <Separator />
+           <div>
+              <Link href="#" className="flex items-center text-base font-medium text-card-foreground/80 hover:text-primary">
+                  <User className="mr-3 h-5 w-5" />
+                  Mi Perfil
+              </Link>
+           </div>
+           <div>
+              <Link href="/login" className="flex items-center text-base font-medium text-card-foreground/80 hover:text-primary">
+                  <LogOut className="mr-3 h-5 w-5" />
+                  Cerrar sesión
+              </Link>
+           </div>
 
-             <div>
-                <Link href="#" className="flex items-center text-base font-medium text-card-foreground/80 hover:text-primary">
-                    <User className="mr-3 h-5 w-5" />
-                    Mi Perfil
-                </Link>
-             </div>
-             <div>
-                <Link href="/" className="flex items-center text-base font-medium text-card-foreground/80 hover:text-primary">
-                    <LogOut className="mr-3 h-5 w-5" />
-                    Cerrar sesión
-                </Link>
-             </div>
-
-            <Separator />
-            
-            <div className="space-y-2">
-                <div className="flex items-center text-lg font-semibold">
-                    <Wallet className="mr-2 h-6 w-6" />
-                    Billetera
-                </div>
-                <div className="flex justify-between items-center text-sm p-3 bg-muted rounded-lg">
-                    <span>Créditos</span>
-                    <span className="font-bold text-destructive">-5900</span>
-                </div>
-            </div>
-            
-            <div className="text-center">
-                <a href="mailto:info@ucu.org.ar" className="text-sm text-muted-foreground hover:underline">info@ucu.org.ar</a>
-            </div>
-        </div>
-    </div>
-  )
+          <Separator />
+          
+          <div className="space-y-2">
+              <div className="flex items-center text-lg font-semibold">
+                  <Wallet className="mr-2 h-6 w-6" />
+                  Billetera
+              </div>
+              <div className="flex justify-between items-center text-sm p-3 bg-muted rounded-lg">
+                  <span>Créditos</span>
+                  <span className="font-bold text-destructive">-5900</span>
+              </div>
+          </div>
+          
+          <div className="text-center">
+              <a href="mailto:info@ucu.org.ar" className="text-sm text-muted-foreground hover:underline">info@ucu.org.ar</a>
+          </div>
+      </div>
+    </>
+  );
 
   return (
       <div className="grid min-h-screen w-full lg:grid-cols-[280px_1fr]">
         <div className="hidden lg:block border-r">
-          {sidebar}
+          <div className="flex flex-col h-full bg-card text-card-foreground">
+            {sidebarContent}
+          </div>
         </div>
         <div className="flex flex-col bg-background">
-          <header className="flex h-16 items-center gap-4 border-b bg-card px-6 lg:hidden">
+          <header className="flex h-16 items-center gap-4 border-b bg-card px-6">
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="icon" className="lg:hidden">
+                    <Menu className="h-6 w-6" />
+                    <span className="sr-only">Abrir menú</span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="flex flex-col p-0 w-full max-w-sm">
+                   <SheetHeader className="p-4 border-b">
+                    <SheetTitle>Menú</SheetTitle>
+                  </SheetHeader>
+                  {sidebarContent}
+                </SheetContent>
+              </Sheet>
+              <div className="flex-1">
+                <h1 className="font-semibold text-lg">{folders.find(f => f.id === selectedFolder)?.label}</h1>
+              </div>
               <UserNav user={mockUser} />
           </header>
           <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
@@ -266,13 +294,20 @@ export default function DashboardClient() {
                  <p className="text-sm text-muted-foreground mb-2">Total de Notificaciones: {totalNotifications}</p>
                  <div className="flex flex-wrap gap-2">
                      <h3 className="text-lg font-semibold mr-4 self-center">Tipos</h3>
-                     {Object.entries(messageCountsByType).map(([type, count]) => (
-                        <Button key={type} variant={activeFilter === type ? 'default' : 'outline'} className="rounded-full" onClick={() => setActiveFilter(type as MessageTypeFilter)}>
-                             {messageTypeIcons[type as keyof typeof messageTypeIcons]}
-                             {type}
-                             <Badge variant="secondary" className="ml-2">{count}</Badge>
-                        </Button>
-                     ))}
+                      <Button variant={activeFilter === 'all' ? 'default' : 'outline'} className="rounded-full" onClick={() => setActiveFilter('all')}>
+                          Todos
+                          <Badge variant="secondary" className="ml-2">{messageCountsByType.all}</Badge>
+                      </Button>
+                     {Object.entries(messageCountsByType).map(([type, count]) => {
+                        if (type === 'all' || count === 0) return null;
+                        return (
+                          <Button key={type} variant={activeFilter === type ? 'default' : 'outline'} className="rounded-full" onClick={() => setActiveFilter(type as MessageTypeFilter)}>
+                               {messageTypeIcons[type as keyof typeof messageTypeIcons]}
+                               {type}
+                               <Badge variant="secondary" className="ml-2">{count}</Badge>
+                          </Button>
+                       )
+                     })}
                  </div>
             </div>
 
@@ -291,14 +326,14 @@ export default function DashboardClient() {
                   </TableHeader>
                   <TableBody>
                     {filteredMessages.map((message) => {
-                        const messageType = message.prioridad === 'urgente' ? 'Notificación' : 'Intimación';
+                        const messageType = getMessageType(message);
                         return (
                              <TableRow key={message.id}>
                               <TableCell>{format(new Date(message.timestamp), 'dd/MM/yyyy HH:mm', { locale: es })}</TableCell>
                               <TableCell>{messageType}</TableCell>
                               <TableCell className="font-medium text-primary hover:underline cursor-pointer">{message.remitente.nombre}</TableCell>
                               <TableCell>{message.destinatario.nombre}</TableCell>
-                              <TableCell>Notificación - </TableCell>
+                              <TableCell>{`Notificación - ${message.contenido.substring(0, 20)}...`}</TableCell>
                               <TableCell>{getUltimoEstado(message)}</TableCell>
                               <TableCell className="text-right">
                                 <DropdownMenu>
