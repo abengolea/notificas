@@ -7,12 +7,13 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useState, useEffect } from 'react';
 
 interface BfaTraceabilityProps {
   message: Mensaje;
 }
 
-const TraceabilityItem = ({ title, timestamp, data, statusIcon }: { title: string, timestamp?: Date, data: { label: string, value: string, icon: React.ReactNode }[], statusIcon: React.ReactNode }) => {
+const TraceabilityItem = ({ title, timestamp, data, statusIcon }: { title: string, timestamp?: string, data: { label: string, value: string, icon: React.ReactNode }[], statusIcon: React.ReactNode }) => {
   const { toast } = useToast();
 
   const handleCopy = (value: string) => {
@@ -25,7 +26,7 @@ const TraceabilityItem = ({ title, timestamp, data, statusIcon }: { title: strin
       <div className="absolute left-0 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-background">{statusIcon}</div>
       <div className="flex flex-col">
         <div className="font-semibold text-foreground">{title}</div>
-        {timestamp && <div className="text-sm text-muted-foreground">{format(new Date(timestamp), "dd/MM/yyyy, HH:mm:ss", { locale: es })}</div>}
+        {timestamp && <div className="text-sm text-muted-foreground">{timestamp}</div>}
         <div className="mt-2 space-y-2 text-sm">
           {data.map((item, index) => (
             <div key={index} className="flex items-center gap-2">
@@ -57,6 +58,16 @@ const TraceabilityItem = ({ title, timestamp, data, statusIcon }: { title: strin
 };
 
 export default function BfaTraceability({ message }: BfaTraceabilityProps) {
+  const [formattedSentTimestamp, setFormattedSentTimestamp] = useState<string | null>(null);
+  const [formattedReadTimestamp, setFormattedReadTimestamp] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFormattedSentTimestamp(format(new Date(message.bfaEnviado.timestamp), "dd/MM/yyyy, HH:mm:ss", { locale: es }));
+    if (message.bfaLeido) {
+      setFormattedReadTimestamp(format(new Date(message.bfaLeido.timestamp), "dd/MM/yyyy, HH:mm:ss", { locale: es }));
+    }
+  }, [message]);
+
   const sentData = [
     { label: 'Hash BFA', value: message.bfaEnviado.hashRegistrado, icon: <Fingerprint className="h-4 w-4" /> },
     { label: 'Stamp ID', value: message.bfaEnviado.stampId, icon: <Stamp className="h-4 w-4" /> },
@@ -79,9 +90,9 @@ export default function BfaTraceability({ message }: BfaTraceabilityProps) {
       <CardContent>
         <div className="relative space-y-8">
             <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-border -z-10"></div>
-            <TraceabilityItem title="Enviado" timestamp={new Date(message.bfaEnviado.timestamp)} data={sentData} statusIcon={<CheckCircle2 className="h-5 w-5 text-primary" />} />
+            <TraceabilityItem title="Enviado" timestamp={formattedSentTimestamp || 'Cargando fecha...'} data={sentData} statusIcon={<CheckCircle2 className="h-5 w-5 text-primary" />} />
             {message.bfaLeido ? (
-                <TraceabilityItem title="Leído" timestamp={new Date(message.bfaLeido.timestamp)} data={readData} statusIcon={<CheckCircle2 className="h-5 w-5 text-accent" />} />
+                <TraceabilityItem title="Leído" timestamp={formattedReadTimestamp || 'Cargando fecha...'} data={readData} statusIcon={<CheckCircle2 className="h-5 w-5 text-accent" />} />
             ) : (
                 <TraceabilityItem title="Lectura Pendiente" data={[]} statusIcon={<XCircle className="h-5 w-5 text-muted-foreground" />} />
             )}

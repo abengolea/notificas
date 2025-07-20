@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -30,7 +30,14 @@ interface MessageViewProps {
 export default function MessageView({ message, currentUser }: MessageViewProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedPdfUrl, setGeneratedPdfUrl] = useState(message.bfaCertificado?.certificadoPDF);
+  const [formattedTimestamp, setFormattedTimestamp] = useState<string | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Defer date formatting to the client to avoid hydration mismatch
+    setFormattedTimestamp(format(new Date(message.timestamp), "dd/MM/yyyy, HH:mm:ss", { locale: es }));
+  }, [message.timestamp]);
+
 
   const handleGenerateCertificate = async () => {
     setIsGenerating(true);
@@ -67,7 +74,7 @@ export default function MessageView({ message, currentUser }: MessageViewProps) 
             <CardTitle>{otherParty.nombre}</CardTitle>
             <CardDescription>{otherParty.email}</CardDescription>
             <p className="text-sm text-muted-foreground">
-              Enviado el: {format(new Date(message.timestamp), "dd/MM/yyyy, HH:mm:ss", { locale: es })}
+              Enviado el: {formattedTimestamp || 'Cargando fecha...'}
             </p>
           </div>
         </CardHeader>
