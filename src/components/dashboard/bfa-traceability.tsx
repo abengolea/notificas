@@ -5,6 +5,8 @@ import type { Mensaje } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 interface BfaTraceabilityProps {
   message: Mensaje;
@@ -23,7 +25,7 @@ const TraceabilityItem = ({ title, timestamp, data, statusIcon }: { title: strin
       <div className="absolute left-0 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-background">{statusIcon}</div>
       <div className="flex flex-col">
         <div className="font-semibold text-foreground">{title}</div>
-        {timestamp && <div className="text-sm text-muted-foreground">{new Date(timestamp).toLocaleString('es-AR')}</div>}
+        {timestamp && <div className="text-sm text-muted-foreground">{format(new Date(timestamp), "dd/MM/yyyy, HH:mm:ss", { locale: es })}</div>}
         <div className="mt-2 space-y-2 text-sm">
           {data.map((item, index) => (
             <div key={index} className="flex items-center gap-2">
@@ -88,5 +90,3 @@ export default function BfaTraceability({ message }: BfaTraceabilityProps) {
     </Card>
   );
 }
-
-    
