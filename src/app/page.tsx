@@ -204,6 +204,7 @@ export default function LandingPage() {
         <div className="border-t border-border/20">
             <div className="container py-4 text-center text-sm text-muted-foreground">
                 <p>Copyright © 2019-2025 | Desarrollado por Alberione Soluciones Integrales</p>
+                <Link href="/admin" className="text-xs hover:underline mt-2 inline-block">Admin Panel</Link>
             </div>
         </div>
       </footer>
