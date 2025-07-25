@@ -178,12 +178,14 @@ export default function LandingPage() {
             </div>
             <div>
                 <h3 className="font-bold text-lg mb-4">Contáctenos</h3>
-                 <form className="space-y-4">
+                 <div className="space-y-4">
                     <Input placeholder="Nombre" className="bg-background/20 border-border/50 text-foreground" />
                     <Input placeholder="Compañía" className="bg-background/20 border-border/50 text-foreground" />
                     <Input type="email" placeholder="Email" className="bg-background/20 border-border/50 text-foreground" />
-                    <Button type="submit" className="w-full">Enviar</Button>
-                </form>
+                    <Button asChild className="w-full">
+                      <a href="mailto:contacto@notificas.com">Enviar</a>
+                    </Button>
+                </div>
             </div>
              <div>
                 <h3 className="font-bold text-lg mb-4">Contacto Directo</h3>
