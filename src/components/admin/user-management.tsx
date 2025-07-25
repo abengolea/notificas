@@ -63,6 +63,10 @@ export default function UserManagement({ users: initialUsers }: UserManagementPr
                         title: `Usuario ${newStatus === 'activo' ? 'Reanudado' : 'Suspendido'}`,
                         description: `El usuario ${user.nombre} ha sido ${newStatus === 'activo' ? 'reanudado' : 'suspendido'}.`,
                     });
+
+                    // SIMULACIÓN: Aquí se llamaría a la función del backend para enviar el email.
+                    console.log(`Simulando envío de email a ${user.email}: Su cuenta ha sido ${newStatus}.`);
+
                     return { ...user, estado: newStatus };
                 }
                 return user;
@@ -99,6 +103,10 @@ export default function UserManagement({ users: initialUsers }: UserManagementPr
             title: '¡Envíos Regalados!',
             description: `Se han añadido ${giftAmount} envíos a ${selectedUser.nombre}.`,
         });
+
+        // SIMULACIÓN: Aquí se llamaría a la función del backend para enviar el email.
+        console.log(`Simulando envío de email a ${selectedUser.email}: Ha recibido ${giftAmount} envíos de regalo.`);
+
 
         setGiftDialogOpen(false);
         setSelectedUser(null);
