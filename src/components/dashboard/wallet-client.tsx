@@ -9,8 +9,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { DollarSign, Gift, Package, TrendingUp, CreditCard } from 'lucide-react';
+import { DollarSign, Gift, Package, TrendingUp, CreditCard, Loader2 } from 'lucide-react';
 import Image from 'next/image';
+import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface WalletClientProps {
   user: User;
@@ -37,11 +47,30 @@ const FormattedDateCell = ({ date }: { date: Date | string }) => {
 };
 
 export default function WalletClient({ user, transactions, planes }: WalletClientProps) {
+  const [loadingPlan, setLoadingPlan] = useState<Plan['id'] | null>(null);
+  const [showRedirectionAlert, setShowRedirectionAlert] = useState(false);
+  const { toast } = useToast();
   
   const formatCurrency = (amount: number) => {
     return amount.toLocaleString('es-AR', {
       style: 'currency',
       currency: 'ARS',
+    });
+  };
+
+  const handlePurchase = async (plan: Plan) => {
+    setLoadingPlan(plan.id);
+
+    // Simula una llamada a la API del backend para crear una preferencia de pago
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    setLoadingPlan(null);
+    setShowRedirectionAlert(true);
+    
+    toast({
+        title: "Preferencia de pago creada",
+        description: `Serás redirigido a Mercado Pago para completar la compra del plan: ${plan.nombre}.`,
+        variant: 'default',
     });
   };
 
@@ -85,8 +114,17 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
                     <p className="text-sm text-muted-foreground">{plan.descripcion}</p>
                  </CardContent>
                  <CardFooter className="flex flex-col">
-                    <Button className="w-full">
-                        <CreditCard className="mr-2 h-4 w-4" /> Comprar Ahora
+                    <Button className="w-full" onClick={() => handlePurchase(plan)} disabled={loadingPlan !== null}>
+                      {loadingPlan === plan.id ? (
+                        <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Procesando...
+                        </>
+                      ) : (
+                        <>
+                            <CreditCard className="mr-2 h-4 w-4" /> Comprar Ahora
+                        </>
+                      )}
                     </Button>
                  </CardFooter>
               </Card>
@@ -139,6 +177,20 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
           </Table>
         </CardContent>
       </Card>
+
+        <AlertDialog open={showRedirectionAlert} onOpenChange={setShowRedirectionAlert}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Redirección a Mercado Pago</AlertDialogTitle>
+                    <AlertDialogDescription>
+                       En una aplicación real, serías redirigido a la pasarela de pago de Mercado Pago para completar tu compra de forma segura.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogAction onClick={() => setShowRedirectionAlert(false)}>Entendido</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
     </div>
   );
 }
