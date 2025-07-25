@@ -4,6 +4,7 @@ export const mockUser: User = {
   uid: 'user-123',
   email: 'legal.rep@examplecorp.com',
   tipo: 'empresa',
+  estado: 'activo',
   perfil: {
     nombre: 'ExampleCorp S.A.',
     razonSocial: 'ExampleCorp S.A.',

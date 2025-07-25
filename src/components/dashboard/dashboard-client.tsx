@@ -22,6 +22,7 @@ import {
   Megaphone,
   Scale,
   Gavel,
+  AlertCircle,
 } from 'lucide-react';
 
 import { mockMessages, mockUser } from '@/lib/mock-data';
@@ -55,6 +56,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 
 import { ComposeMessageDialog } from './compose-message-dialog';
@@ -108,6 +116,7 @@ export default function DashboardClient() {
   const [selectedFolder, setSelectedFolder] = useState<Folder>("inbox");
   const [activeFilter, setActiveFilter] = useState<MessageTypeFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const isSuspended = mockUser.estado === 'suspendido';
 
 
   const messageCountsByType = useMemo(() => {
@@ -200,11 +209,24 @@ export default function DashboardClient() {
       </div>
 
       <div className="p-4">
-           <ComposeMessageDialog open={isComposeOpen} onOpenChange={setComposeOpen}>
-              <Button className="w-full h-12 text-base" onClick={() => setComposeOpen(true)}>
-                  <PenSquare className="mr-2 h-5 w-5" />
-                  NUEVO ENVÍO
-              </Button>
+           <ComposeMessageDialog open={isComposeOpen} onOpenChange={setComposeOpen} user={mockUser}>
+                <TooltipProvider>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                             <div className="w-full">
+                                <Button className="w-full h-12 text-base" onClick={() => setComposeOpen(true)} disabled={isSuspended}>
+                                    <PenSquare className="mr-2 h-5 w-5" />
+                                    NUEVO ENVÍO
+                                </Button>
+                             </div>
+                        </TooltipTrigger>
+                         {isSuspended && (
+                            <TooltipContent>
+                                <p>Tu cuenta está suspendida. Regulariza tu pago.</p>
+                            </TooltipContent>
+                        )}
+                    </Tooltip>
+                </TooltipProvider>
           </ComposeMessageDialog>
       </div>
 
@@ -287,6 +309,24 @@ export default function DashboardClient() {
               <UserNav user={mockUser} />
           </header>
           <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+            {isSuspended && (
+                 <div className="p-4 bg-yellow-100 dark:bg-yellow-900/30 border-l-4 border-yellow-500 rounded-r-lg">
+                    <div className="flex">
+                        <div className="flex-shrink-0">
+                            <AlertCircle className="h-5 w-5 text-yellow-500" />
+                        </div>
+                        <div className="ml-3">
+                            <p className="text-sm text-yellow-700 dark:text-yellow-200">
+                                Tu cuenta está suspendida debido a un problema con el pago. Puedes ver tus mensajes, pero no podrás enviar nuevos hasta que se resuelva.
+                                {' '}
+                                <Link href="/dashboard/billetera" className="font-medium underline hover:text-yellow-600 dark:hover:text-yellow-100">
+                                    Ir a la billetera para solucionarlo.
+                                </Link>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
             <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
                 <h1 className="text-2xl font-semibold">{folders.find(f => f.id === selectedFolder)?.label} <span className="text-muted-foreground">(Notificaciones Recientes)</span></h1>
             </div>

@@ -2,6 +2,7 @@ export type User = {
   uid: string;
   email: string;
   tipo: 'individual' | 'empresa';
+  estado: 'activo' | 'suspendido';
   perfil: {
     nombre: string;
     apellido?: string;
