@@ -17,7 +17,6 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
     Form,
     FormControl,
@@ -56,7 +55,7 @@ export default function PlanManagement({ planes }: PlanManagementProps) {
           description: "Los nuevos precios han sido guardados.",
           variant: "default",
         })
-        console.log(data)
+        console.log("Precios guardados:", data)
       }
 
 
@@ -78,7 +77,7 @@ export default function PlanManagement({ planes }: PlanManagementProps) {
                         <FormItem>
                             <FormLabel className="flex items-center"><DollarSign className="h-4 w-4 mr-2" />Envío Individual</FormLabel>
                             <FormControl>
-                                <Input type="number" placeholder="5.00" {...field} />
+                                <Input type="number" step="0.01" placeholder="500.00" {...field} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -91,7 +90,7 @@ export default function PlanManagement({ planes }: PlanManagementProps) {
                         <FormItem>
                             <FormLabel className="flex items-center"><Package className="h-4 w-4 mr-2" />Pack de 10 Envíos</FormLabel>
                             <FormControl>
-                                <Input type="number" placeholder="45.00" {...field} />
+                                <Input type="number" step="0.01" placeholder="4500.00" {...field} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -104,7 +103,7 @@ export default function PlanManagement({ planes }: PlanManagementProps) {
                         <FormItem>
                             <FormLabel className="flex items-center"><TrendingUp className="h-4 w-4 mr-2" />Plan Mensual Ilimitado</FormLabel>
                             <FormControl>
-                                <Input type="number" placeholder="300.00" {...field} />
+                                <Input type="number" step="0.01" placeholder="30000.00" {...field} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
