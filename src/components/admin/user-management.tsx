@@ -55,24 +55,25 @@ export default function UserManagement({ users: initialUsers }: UserManagementPr
     const { toast } = useToast();
 
     const handleToggleSuspend = (userId: string) => {
-        setUsers(prevUsers => {
-            const updatedUsers = prevUsers.map(user => {
+        setUsers(prevUsers => 
+            prevUsers.map(user => {
                 if (user.id === userId) {
                     const newStatus = user.estado === 'activo' ? 'suspendido' : 'activo';
-                    toast({
-                        title: `Usuario ${newStatus === 'activo' ? 'Reanudado' : 'Suspendido'}`,
-                        description: `El usuario ${user.nombre} ha sido ${newStatus === 'activo' ? 'reanudado' : 'suspendido'}.`,
-                    });
-
-                    // SIMULACIÓN: Aquí se llamaría a la función del backend para enviar el email.
-                    console.log(`Simulando envío de email a ${user.email}: Su cuenta ha sido ${newStatus}.`);
+                    
+                    // Use useEffect to show toast after state update
+                    setTimeout(() => {
+                        toast({
+                            title: `Usuario ${newStatus === 'activo' ? 'Reanudado' : 'Suspendido'}`,
+                            description: `El usuario ${user.nombre} ha sido ${newStatus === 'activo' ? 'reanudado' : 'suspendido'}.`,
+                        });
+                        console.log(`Simulando envío de email a ${user.email}: Su cuenta ha sido ${newStatus}.`);
+                    }, 0);
 
                     return { ...user, estado: newStatus };
                 }
                 return user;
-            });
-            return updatedUsers;
-        });
+            })
+        );
     };
 
     const handleOpenGiftDialog = (user: AdminUser) => {
