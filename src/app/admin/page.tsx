@@ -1,9 +1,13 @@
-import AdminDashboard from "@/components/admin/admin-dashboard";
+
+import StatsCards from "@/components/admin/stats-cards";
+import { mockAdminStats } from "@/lib/mock-data";
 
 export default function AdminPage() {
     return (
-        <div className="min-h-screen bg-muted/30">
-            <AdminDashboard />
-        </div>
+        <>
+            <StatsCards stats={mockAdminStats} />
+            {/* Future components for the overview page can go here */}
+            {/* For example, an activity chart */}
+        </>
     );
 }
