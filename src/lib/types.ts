@@ -77,7 +77,7 @@ export type AdminStats = {
 };
 
 export type Plan = {
-    id: 'individual' | 'pack10' | 'ilimitado';
+    id: string;
     nombre: string;
     descripcion: string;
     precio: number;
