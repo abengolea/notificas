@@ -1,4 +1,4 @@
-import type { User, Mensaje, Plan, AdminStats, AdminUser } from './types';
+import type { User, Mensaje, Plan, AdminStats, AdminUser, Transaccion } from './types';
 
 export const mockUser: User = {
   uid: 'user-123',
@@ -14,6 +14,7 @@ export const mockUser: User = {
   createdAt: new Date('2023-01-15T09:00:00Z'),
   lastLogin: new Date(),
   avatarUrl: 'https://placehold.co/100x100.png',
+  creditos: 15,
 };
 
 export const mockMessages: Mensaje[] = [
@@ -150,21 +151,66 @@ export const mockAdminUsers: AdminUser[] = [
           id: 'individual',
           nombre: 'Envío Individual',
           descripcion: 'Ideal para notificaciones puntuales.',
-          precio: 5.00,
+          precio: 500.00,
           type: 'unitario'
       },
       {
           id: 'pack10',
           nombre: 'Pack de 10 Envíos',
           descripcion: 'Ahorra con nuestro pack de 10 envíos.',
-          precio: 45.00,
+          precio: 4500.00,
           type: 'pack'
       },
       {
           id: 'ilimitado',
           nombre: 'Plan Mensual Ilimitado',
           descripcion: 'Envía todo lo que necesites por un precio fijo.',
-          precio: 300.00,
+          precio: 30000.00,
           type: 'suscripcion'
       }
+  ];
+
+  export const mockTransactions: Transaccion[] = [
+    {
+      id: 'txn-001',
+      fecha: new Date('2024-07-25T10:00:00Z'),
+      tipo: 'compra',
+      descripcion: 'Compra de Pack de 10 Envíos',
+      monto: 4500.00,
+      creditos: 10,
+      metodoPago: 'Mercado Pago',
+    },
+    {
+        id: 'txn-002',
+        fecha: new Date('2024-07-27T09:05:00Z'),
+        tipo: 'uso',
+        descripcion: 'Envío de mensaje a Asistente de Socio',
+        monto: 0,
+        creditos: -1,
+    },
+    {
+        id: 'txn-003',
+        fecha: new Date('2024-07-28T15:20:05Z'),
+        tipo: 'uso',
+        descripcion: 'Envío de mensaje a Servicios Digitales SRL',
+        monto: 0,
+        creditos: -1,
+    },
+    {
+        id: 'txn-004',
+        fecha: new Date('2024-07-29T10:00:05Z'),
+        tipo: 'uso',
+        descripcion: 'Envío de mensaje a ExampleCorp S.A.',
+        monto: 0,
+        creditos: -1,
+    },
+     {
+      id: 'txn-005',
+      fecha: new Date('2024-07-15T11:00:00Z'),
+      tipo: 'compra',
+      descripcion: 'Compra de 5 Envíos Individuales',
+      monto: 2500.00,
+      creditos: 5,
+      metodoPago: 'Mercado Pago',
+    },
   ];

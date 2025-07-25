@@ -91,11 +91,13 @@ const getMessageType = (message: Mensaje) => {
     return typeMap[message.prioridad] || 'Comunicación';
 }
 
-const FormattedDateCell = ({ date }: { date: Date }) => {
+const FormattedDateCell = ({ date }: { date: Date | string }) => {
     const [formattedDate, setFormattedDate] = useState('');
   
     useEffect(() => {
-      setFormattedDate(format(date, 'dd/MM/yyyy HH:mm', { locale: es }));
+        if (date) {
+            setFormattedDate(format(new Date(date), 'dd/MM/yyyy HH:mm', { locale: es }));
+        }
     }, [date]);
   
     return <span>{formattedDate || 'Cargando...'}</span>;
@@ -239,13 +241,13 @@ export default function DashboardClient() {
           <Separator />
           
           <div className="space-y-2">
-              <div className="flex items-center text-lg font-semibold">
+              <Link href="/dashboard/billetera" className="flex items-center text-lg font-semibold hover:text-primary">
                   <Wallet className="mr-2 h-6 w-6" />
                   Billetera
-              </div>
+              </Link>
               <div className="flex justify-between items-center text-sm p-3 bg-muted rounded-lg">
                   <span>Créditos</span>
-                  <span className="font-bold text-destructive">-5900</span>
+                  <span className="font-bold text-lg text-primary">15</span>
               </div>
           </div>
           

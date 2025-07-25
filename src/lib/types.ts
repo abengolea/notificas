@@ -14,6 +14,7 @@ export type User = {
   createdAt: Date;
   lastLogin: Date;
   avatarUrl?: string;
+  creditos: number;
 };
 
 type BfaStamp = {
@@ -81,4 +82,14 @@ export type Plan = {
     descripcion: string;
     precio: number;
     type: 'unitario' | 'pack' | 'suscripcion';
+};
+
+export type Transaccion = {
+    id: string;
+    fecha: Date;
+    tipo: 'compra' | 'uso';
+    descripcion: string;
+    monto: number;
+    creditos: number;
+    metodoPago?: 'Mercado Pago' | 'Crédito';
 };
