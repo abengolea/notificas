@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Archive,
@@ -90,6 +90,16 @@ const getMessageType = (message: Mensaje) => {
     }
     return typeMap[message.prioridad] || 'Comunicación';
 }
+
+const FormattedDateCell = ({ date }: { date: Date }) => {
+    const [formattedDate, setFormattedDate] = useState('');
+  
+    useEffect(() => {
+      setFormattedDate(format(date, 'dd/MM/yyyy HH:mm', { locale: es }));
+    }, [date]);
+  
+    return <span>{formattedDate || 'Cargando...'}</span>;
+};
 
 export default function DashboardClient() {
   const [isComposeOpen, setComposeOpen] = useState(false);
@@ -331,7 +341,7 @@ export default function DashboardClient() {
                              <TableRow key={message.id} className="cursor-pointer">
                               <TableCell>
                                 <Link href={`/dashboard/mensaje/${message.id}`} className="block w-full h-full">
-                                    {format(new Date(message.timestamp), 'dd/MM/yyyy HH:mm', { locale: es })}
+                                    <FormattedDateCell date={message.timestamp} />
                                 </Link>
                               </TableCell>
                               <TableCell>
