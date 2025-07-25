@@ -58,3 +58,27 @@ export type Mensaje = {
   prioridad: 'normal' | 'alta' | 'urgente';
   requiereCertificado: boolean;
 };
+
+// Admin Panel Types
+export type AdminUser = {
+    id: string;
+    nombre: string;
+    email: string;
+    estado: 'activo' | 'suspendido';
+    enviosDisponibles: number;
+    fechaRegistro: Date;
+};
+
+export type AdminStats = {
+    usuariosActivos: number;
+    mensajesMes: number;
+    ingresosEstimados: number;
+};
+
+export type Plan = {
+    id: 'individual' | 'pack10' | 'ilimitado';
+    nombre: string;
+    descripcion: string;
+    precio: number;
+    type: 'unitario' | 'pack' | 'suscripcion';
+};

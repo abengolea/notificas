@@ -1,4 +1,4 @@
-import type { User, Mensaje } from './types';
+import type { User, Mensaje, Plan, AdminStats, AdminUser } from './types';
 
 export const mockUser: User = {
   uid: 'user-123',
@@ -95,3 +95,76 @@ export const mockMessages: Mensaje[] = [
     requiereCertificado: false,
   },
 ];
+
+export const mockAdminUsers: AdminUser[] = [
+    {
+      id: 'user-123',
+      nombre: 'ExampleCorp S.A.',
+      email: 'legal.rep@examplecorp.com',
+      estado: 'activo',
+      enviosDisponibles: 15,
+      fechaRegistro: new Date('2023-01-15T09:00:00Z'),
+    },
+    {
+      id: 'user-456',
+      nombre: 'Juan Pérez',
+      email: 'juan.perez@individual.com',
+      estado: 'activo',
+      enviosDisponibles: 5,
+      fechaRegistro: new Date('2023-03-22T14:30:00Z'),
+    },
+    {
+      id: 'user-789',
+      nombre: 'Servicios Digitales SRL',
+      email: 'administracion@proveedor.com',
+      estado: 'suspendido',
+      enviosDisponibles: 0,
+      fechaRegistro: new Date('2023-05-10T18:00:00Z'),
+    },
+    {
+      id: 'user-101',
+      nombre: 'Estudio Jurídico & Asoc.',
+      email: 'contacto@juridico.com',
+      estado: 'activo',
+      enviosDisponibles: 150,
+      fechaRegistro: new Date('2023-02-01T11:00:00Z'),
+    },
+     {
+      id: 'user-112',
+      nombre: 'María Gonzalez',
+      email: 'maria.g@personal.com',
+      estado: 'activo',
+      enviosDisponibles: 2,
+      fechaRegistro: new Date('2024-06-18T10:20:00Z'),
+    }
+  ];
+  
+  export const mockAdminStats: AdminStats = {
+    usuariosActivos: mockAdminUsers.filter(u => u.estado === 'activo').length,
+    mensajesMes: 1250,
+    ingresosEstimados: 18500.50,
+  };
+  
+  export const mockPlanes: Plan[] = [
+      {
+          id: 'individual',
+          nombre: 'Envío Individual',
+          descripcion: 'Ideal para notificaciones puntuales.',
+          precio: 5.00,
+          type: 'unitario'
+      },
+      {
+          id: 'pack10',
+          nombre: 'Pack de 10 Envíos',
+          descripcion: 'Ahorra con nuestro pack de 10 envíos.',
+          precio: 45.00,
+          type: 'pack'
+      },
+      {
+          id: 'ilimitado',
+          nombre: 'Plan Mensual Ilimitado',
+          descripcion: 'Envía todo lo que necesites por un precio fijo.',
+          precio: 300.00,
+          type: 'suscripcion'
+      }
+  ];
