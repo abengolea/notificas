@@ -96,8 +96,8 @@ export default function LandingPage() {
         </section>
 
         <section id="blockchain" className="py-20 md:py-28">
-            <div className="container grid md:grid-cols-2 gap-12 items-center">
-                <div>
+            <div className="container flex justify-center">
+                <div className="max-w-3xl text-center md:text-left">
                     <h2 className="text-3xl md:text-4xl font-bold mb-4">¿QUÉ ES LA TECNOLOGÍA BLOCKCHAIN?</h2>
                     <p className="text-muted-foreground mb-4 leading-relaxed">
                         Blockchain -o cadena de bloques enlazados y cifrados- es un tipo de tecnología digital que funciona como una base de datos diseñada para evitar ser modificada una vez que la información se publica o envía.
@@ -106,9 +106,6 @@ export default function LandingPage() {
                         La información se enlaza al bloque anterior de forma cronológica, descentralizada, distribuida y auditable, asegurando su autenticidad, seguridad y estándares éticos.
                     </p>
                     <Button variant="link" className="px-0 mt-2">Leer más <ArrowRight className="ml-2 h-4 w-4" /></Button>
-                </div>
-                <div className="flex justify-center">
-                    <Image src="https://placehold.co/500x400.png" alt="Blockchain illustration" width={500} height={400} className="rounded-lg shadow-xl" data-ai-hint="tecnología blockchain" />
                 </div>
             </div>
         </section>
@@ -137,12 +134,9 @@ export default function LandingPage() {
         </section>
 
         <section id="casos-de-uso" className="py-20 md:py-28">
-            <div className="container grid md:grid-cols-2 gap-12 items-center">
-                 <div className="flex justify-center">
-                    <Image src="https://placehold.co/500x500.png" alt="Casos de uso" width={500} height={500} className="rounded-lg shadow-xl" data-ai-hint="documentos legales" />
-                </div>
-                <div>
-                    <h2 className="text-3xl md:text-4xl font-bold mb-6">CASOS DE USO</h2>
+            <div className="container flex justify-center">
+                <div className="max-w-3xl">
+                    <h2 className="text-3xl md:text-4xl font-bold mb-6 text-center md:text-left">CASOS DE USO</h2>
                     <ul className="space-y-3">
                         {useCases.map((useCase, index) => (
                              <li key={index} className="flex items-start">
