@@ -8,7 +8,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useState } from 'react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { doc, setDoc } from "firebase/firestore";
+import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Mail, KeyRound, User, Building, Phone, Loader2 } from 'lucide-react';
 
@@ -51,9 +52,27 @@ export default function SignupPage() {
   const onSubmit = async (data: SignupFormValues) => {
     setIsLoading(true);
     try {
-      await createUserWithEmailAndPassword(auth, data.email, data.password);
-      // Aquí podrías agregar lógica para guardar el resto de los datos (nombre, CUIT, etc.)
-      // en una base de datos como Firestore, asociándolos con el UID del usuario creado.
+      // 1. Create user in Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+      const user = userCredential.user;
+
+      // 2. Save additional user data to Firestore
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        email: data.email,
+        tipo: data.accountType,
+        perfil: {
+          nombre: data.name,
+          cuit: data.cuit,
+          telefono: data.phone,
+          verificado: false, // Start as unverified
+        },
+        creditos: 0, // Start with 0 credits
+        estado: 'activo',
+        createdAt: new Date(),
+        lastLogin: new Date(),
+      });
+
       toast({
         title: "¡Cuenta Creada!",
         description: "Tu cuenta ha sido creada exitosamente. Serás redirigido.",
