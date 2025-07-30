@@ -1,0 +1,24 @@
+name: Deploy to Firebase Hosting
+
+on:
+  push:
+    branches:
+      - main  # cambiá esto si usás otra rama
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Instalar Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Compilar proyecto (si usás Next.js o build necesario)
+        run: npm run build
+
+      - name: Deploy a Firebase
+        run: firebase deploy --token "${{ secrets.FIREBASE_TOKEN }}"
