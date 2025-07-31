@@ -1,17 +1,18 @@
 
 > nextn@0.1.0 dev
-> next dev --turbopack -p 9002
+> next dev --turbopack -p 9003
 
    ▲ Next.js 15.3.3 (Turbopack)
-   - Local:        http://localhost:9002
-   - Network:      http://172.30.0.2:9002
-   - Environments: .env.local
+   - Local:        http://localhost:9003
+   - Network:      http://172.30.0.2:9003
 
  ✓ Starting...
+ ⚠ Invalid next.config.ts options detected: 
+ ⚠     Unrecognized key(s) in object: 'allowedDevOrigins' at "experimental"
+ ⚠ See more info here: https://nextjs.org/docs/messages/invalid-next-config
 Attention: Next.js now collects completely anonymous telemetry regarding usage.
 This information is used to shape Next.js' roadmap and prioritize features.
 You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
 https://nextjs.org/telemetry
 
- ✓ Ready in 844ms
-[?25h
+ ✓ Ready in 828ms
