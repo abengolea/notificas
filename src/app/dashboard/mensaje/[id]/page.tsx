@@ -1,15 +1,31 @@
 
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { use } from 'react';
+import { use, Suspense } from 'react';
 import { mockMessages, mockUser } from '@/lib/mock-data';
 import MessageView from '@/components/dashboard/message-view';
 import { Button } from '@/components/ui/button';
 import { UserNav } from '@/components/dashboard/user-nav';
 import { Logo } from '@/components/logo';
 
-export default function MessageDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+// Componente wrapper para manejar el params de forma segura
+function MessageContent({ params }: { params: Promise<{ id: string }> | { id: string } }) {
+  let id: string;
+  
+  try {
+    // Intenta usar el nuevo método de Next.js 15
+    if (params instanceof Promise) {
+      const { id: paramId } = use(params);
+      id = paramId;
+    } else {
+      // Fallback para compatibilidad
+      id = params.id;
+    }
+  } catch (error) {
+    // Si hay error, intenta acceso directo como fallback
+    id = (params as any).id;
+  }
+
   const message = mockMessages.find((m) => m.id === id);
 
   if (!message) {
@@ -48,5 +64,20 @@ export default function MessageDetailPage({ params }: { params: Promise<{ id: st
             </div>
         </main>
     </div>
+  );
+}
+
+export default function MessageDetailPage({ params }: { params: Promise<{ id: string }> | { id: string } }) {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary mx-auto mb-4"></div>
+          <p>Cargando mensaje...</p>
+        </div>
+      </div>
+    }>
+      <MessageContent params={params} />
+    </Suspense>
   );
 }
