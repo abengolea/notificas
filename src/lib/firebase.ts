@@ -9,34 +9,35 @@ import { getAnalytics } from "firebase/analytics";
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCJmjAFcVQMNtTICexEHkzFwgUbGv2zctE",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "notificas-f9953.firebaseapp.com",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "notificas-f9953",
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "notificas-f9953.firebasestorage.app",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "367222498482",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:367222498482:web:770552748b0b7ab28ad5ab",
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-8JGSBZ7BE8"
 };
 
-// Validate that all required Firebase config values are present
-const requiredEnvVars = {
-  'NEXT_PUBLIC_FIREBASE_API_KEY': firebaseConfig.apiKey,
-  'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN': firebaseConfig.authDomain,
-  'NEXT_PUBLIC_FIREBASE_PROJECT_ID': firebaseConfig.projectId,
-  'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET': firebaseConfig.storageBucket,
-  'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID': firebaseConfig.messagingSenderId,
-  'NEXT_PUBLIC_FIREBASE_APP_ID': firebaseConfig.appId,
-};
+// Only validate in development
+if (process.env.NODE_ENV === 'development') {
+  const requiredEnvVars = {
+    'NEXT_PUBLIC_FIREBASE_API_KEY': process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN': process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    'NEXT_PUBLIC_FIREBASE_PROJECT_ID': process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET': process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID': process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    'NEXT_PUBLIC_FIREBASE_APP_ID': process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  };
 
-const missingEnvVars = Object.entries(requiredEnvVars)
-  .filter(([, value]) => !value)
-  .map(([key]) => key);
+  const missingEnvVars = Object.entries(requiredEnvVars)
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
 
-if (missingEnvVars.length > 0) {
-  throw new Error(
-    `Missing required Firebase environment variables: ${missingEnvVars.join(', ')}. ` +
-    'Please check your .env.local file and ensure all Firebase configuration values are set.'
-  );
+  if (missingEnvVars.length > 0) {
+    console.warn(
+      `Missing Firebase environment variables: ${missingEnvVars.join(', ')}. Using fallback values.`
+    );
+  }
 }
 
 // Initialize Firebase
