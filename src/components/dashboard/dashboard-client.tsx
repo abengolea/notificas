@@ -242,6 +242,16 @@ export default function DashboardClient() {
                   {folder.label}
                 </Button>
           ))}
+          
+          <Link href="/dashboard/chat">
+            <Button
+              variant="ghost"
+              className="w-full justify-start h-11 text-base bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 dark:from-blue-950 dark:to-indigo-950 border border-blue-200 dark:border-blue-800"
+            >
+              <MessageSquareReply className="mr-3 h-5 w-5 text-blue-600" />
+              Chat Interactivo
+            </Button>
+          </Link>
       </nav>
       
       <div className="mt-auto p-6 space-y-6">
