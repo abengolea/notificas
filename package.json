@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack -p 9002",
+    "dev": "next dev --turbopack -p 9003",
     "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
     "build": "next build",
@@ -13,7 +13,9 @@
     "firebase-studio-sync": "node scripts/sync-from-github.js",
     "firebase-studio-start": "concurrently \"npm run dev\" \"npm run firebase-studio-sync\"",
     "sync-manual": "git pull origin main && npm install",
-    "sync-status": "curl -s http://localhost:3001/status | jq ."
+    "sync-status": "curl -s http://localhost:3001/status | jq .",
+    "clean-ports": "bash scripts/clean-ports.sh",
+    "dev-clean": "npm run clean-ports && npm run dev"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.13.0",
