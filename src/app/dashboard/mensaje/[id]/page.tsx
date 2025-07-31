@@ -9,21 +9,35 @@ import { UserNav } from '@/components/dashboard/user-nav';
 import { Logo } from '@/components/logo';
 
 // Componente wrapper para manejar el params de forma segura
-function MessageContent({ params }: { params: Promise<{ id: string }> | { id: string } }) {
+function MessageContent({ params }: { params: any }) {
   let id: string;
   
   try {
-    // Intenta usar el nuevo método de Next.js 15
-    if (params instanceof Promise) {
-      const { id: paramId } = use(params);
-      id = paramId;
+    // Múltiples estrategias para obtener el ID
+    if (typeof params === 'object' && params !== null) {
+      if ('then' in params && typeof params.then === 'function') {
+        // Es una Promise (Next.js 15)
+        const { id: paramId } = use(params);
+        id = paramId;
+      } else if (params.id) {
+        // Es un objeto directo (Next.js 14)
+        id = params.id;
+      } else {
+        // Fallback: buscar en cualquier propiedad
+        id = Object.values(params)[0] as string;
+      }
     } else {
-      // Fallback para compatibilidad
-      id = params.id;
+      // Último recurso: extraer de URL
+      id = window?.location?.pathname?.split('/').pop() || '1';
     }
   } catch (error) {
-    // Si hay error, intenta acceso directo como fallback
-    id = (params as any).id;
+    console.warn('Error accessing params, using fallback:', error);
+    // Extrae el ID de la URL como último recurso
+    if (typeof window !== 'undefined') {
+      id = window.location.pathname.split('/').pop() || '1';
+    } else {
+      id = '1'; // Fallback final
+    }
   }
 
   const message = mockMessages.find((m) => m.id === id);

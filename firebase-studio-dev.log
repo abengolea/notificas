@@ -11,4 +11,4 @@
  [33m[1m⚠[22m[39m Invalid next.config.ts options detected: 
  [33m[1m⚠[22m[39m     Unrecognized key(s) in object: 'allowedDevOrigins' at "experimental"
  [33m[1m⚠[22m[39m See more info here: https://nextjs.org/docs/messages/invalid-next-config
- [32m[1m✓[22m[39m Ready in 740ms
+ [32m[1m✓[22m[39m Ready in 750ms
