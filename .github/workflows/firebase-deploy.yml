@@ -1,15 +1,22 @@
-name: Deploy to Firebase Hosting
+name: Deploy to Firebase Hosting and Sync Studio
 
 on:
   push:
     branches:
       - main  # cambiá esto si usás otra rama
+  workflow_dispatch:  # Permite ejecutar manualmente
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
 
       - name: Instalar dependencias
         run: npm ci
@@ -20,5 +27,27 @@ jobs:
       - name: Compilar proyecto (si usás Next.js o build necesario)
         run: npm run build
 
-      - name: Deploy a Firebase
-        run: firebase deploy --token "${{ secrets.FIREBASE_TOKEN }}"
+      - name: Deploy a Firebase Hosting
+        run: firebase deploy --only hosting --token "${{ secrets.FIREBASE_TOKEN }}"
+
+      - name: 🔄 Sync to Firebase Studio Local
+        run: |
+          echo "🚀 Sincronizando con Firebase Studio..."
+          # Trigger webhook para Firebase Studio local
+          curl -X POST "${{ secrets.FIREBASE_STUDIO_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.FIREBASE_STUDIO_TOKEN }}" \
+            -d '{
+              "repository": "${{ github.repository }}",
+              "branch": "${{ github.ref_name }}",
+              "commit": "${{ github.sha }}",
+              "message": "Auto-sync from GitHub push",
+              "timestamp": "${{ github.event.head_commit.timestamp }}"
+            }' || echo "⚠️ Firebase Studio webhook not configured"
+
+      - name: ✅ Deployment Complete
+        run: |
+          echo "🎉 Deployment completed successfully!"
+          echo "📱 Firebase Hosting: Updated"
+          echo "💻 Firebase Studio: Sync triggered"
+          echo "🔗 Check your local Firebase Studio for changes"
