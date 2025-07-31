@@ -1,14 +1,16 @@
 
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { use } from 'react';
 import { mockMessages, mockUser } from '@/lib/mock-data';
 import MessageView from '@/components/dashboard/message-view';
 import { Button } from '@/components/ui/button';
 import { UserNav } from '@/components/dashboard/user-nav';
 import { Logo } from '@/components/logo';
 
-export default function MessageDetailPage({ params }: { params: { id: string } }) {
-  const message = mockMessages.find((m) => m.id === params.id);
+export default function MessageDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const message = mockMessages.find((m) => m.id === id);
 
   if (!message) {
     return (
