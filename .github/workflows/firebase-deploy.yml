@@ -30,24 +30,26 @@ jobs:
       - name: Deploy a Firebase Hosting
         run: firebase deploy --only hosting --token "${{ secrets.FIREBASE_TOKEN }}"
 
-      - name: 🔄 Sync to Firebase Studio Local
+      - name: 🔄 Notify Firebase Studio Local
         run: |
-          echo "🚀 Sincronizando con Firebase Studio..."
-          # Trigger webhook para Firebase Studio local
-          curl -X POST "${{ secrets.FIREBASE_STUDIO_WEBHOOK_URL }}" \
+          echo "🚀 Notificando Firebase Studio local..."
+          curl -X POST "http://localhost:3001/webhook" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.FIREBASE_STUDIO_TOKEN }}" \
             -d '{
               "repository": "${{ github.repository }}",
               "branch": "${{ github.ref_name }}",
               "commit": "${{ github.sha }}",
               "message": "Auto-sync from GitHub push",
-              "timestamp": "${{ github.event.head_commit.timestamp }}"
-            }' || echo "⚠️ Firebase Studio webhook not configured"
+              "timestamp": "${{ github.event.head_commit.timestamp }}",
+              "pusher": "${{ github.actor }}"
+            }' || echo "⚠️ Firebase Studio no está ejecutándose localmente"
 
       - name: ✅ Deployment Complete
         run: |
-          echo "🎉 Deployment completed successfully!"
-          echo "📱 Firebase Hosting: Updated"
-          echo "💻 Firebase Studio: Sync triggered"
-          echo "🔗 Check your local Firebase Studio for changes"
+          echo ""
+          echo "🎉 ¡Deployment completado exitosamente!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📱 Firebase Hosting: ✅ Actualizado"
+          echo "💻 Firebase Studio: 🔄 Notificación enviada"
+          echo "🔗 Revisa tu Firebase Studio local para ver los cambios"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
