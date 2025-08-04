@@ -4,20 +4,12 @@ Sistema de mensajería certificada que utiliza tecnología blockchain para garan
 
 ## 🚀 Configuración del Proyecto
 
-### Para GitHub Codespaces (Recomendado)
+### Para GitHub Codespaces (Desarrollo)
 
-Si estás trabajando en **GitHub Codespaces**, usa el nuevo método que sincroniza con `apphosting.yaml`:
-
-```bash
-./setup-env-from-apphosting.sh
-npm install
-npm run dev
-```
-
-### Método Alternativo (Script tradicional)
+Si estás trabajando en **GitHub Codespaces**, usa el script de desarrollo:
 
 ```bash
-./setup-env.sh
+./setup-env-development.sh
 npm install
 npm run dev
 ```
@@ -35,17 +27,9 @@ cd notificas
 npm install
 ```
 
-3. Configura las variables de entorno (elige uno):
-
-**Opción A - Desde apphosting.yaml (Recomendado):**
+3. Configura las variables de entorno para desarrollo:
 ```bash
-./setup-env-from-apphosting.sh
-```
-
-**Opción B - Manual:**
-```bash
-cp .env.example .env.local
-# Edita .env.local con tus credenciales
+./setup-env-development.sh
 ```
 
 4. Inicia el servidor de desarrollo:
@@ -53,29 +37,52 @@ cp .env.example .env.local
 npm run dev
 ```
 
-## 🔧 Configuración de Variables de Entorno
+## 🔐 Configuración de Seguridad
 
-### Firebase App Hosting (`apphosting.yaml`)
+### 🏭 Producción - Firebase App Hosting
 
-Las variables de entorno están centralizadas en `apphosting.yaml` para:
-- ✅ **Consistencia** entre desarrollo y producción
-- ✅ **Single source of truth** para configuración
-- ✅ **Despliegue automático** en Firebase App Hosting
+Para **producción**, las credenciales se almacenan como **secretos seguros** en Firebase:
 
-### Variables Requeridas
+```bash
+# Solo necesario una vez por proyecto
+./setup-firebase-secrets.sh
+```
 
-- `NEXT_PUBLIC_FIREBASE_API_KEY`
-- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
-- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
-- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
-- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
-- `NEXT_PUBLIC_FIREBASE_APP_ID`
-- `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID`
+El archivo `apphosting.yaml` usa referencias seguras:
+```yaml
+env:
+  NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+  # ... más secretos
+```
+
+### 🛠️ Desarrollo - Variables Locales
+
+Para **desarrollo local**, usa valores reales en `.env.local`:
+- ✅ Archivo ignorado por Git (`.gitignore`)
+- ✅ Solo para entorno de desarrollo
+- ✅ Generado automáticamente por scripts
+
+## 🔧 Variables de Entorno
+
+### Secretos de Producción (Firebase)
+- `FIREBASE_API_KEY` - Secreto seguro
+- `FIREBASE_AUTH_DOMAIN` - Secreto seguro  
+- `FIREBASE_PROJECT_ID` - Secreto seguro
+- `FIREBASE_STORAGE_BUCKET` - Secreto seguro
+- `FIREBASE_MESSAGING_SENDER_ID` - Secreto seguro
+- `FIREBASE_APP_ID` - Secreto seguro
+- `FIREBASE_MEASUREMENT_ID` - Secreto seguro
+
+### Variables de Desarrollo (.env.local)
+- `NEXT_PUBLIC_FIREBASE_API_KEY` - Valor real para desarrollo
+- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` - Valor real para desarrollo
+- ... (generadas automáticamente)
 
 ## 🌐 Tecnologías
 
 - **Next.js 15** - Framework React con App Router
-- **Firebase App Hosting** - Deploy y configuración
+- **Firebase App Hosting** - Deploy seguro con secretos
 - **Firebase Auth & Firestore** - Autenticación y base de datos
 - **Tailwind CSS** - Estilos y componentes UI
 - **TypeScript** - Tipado estático
@@ -86,27 +93,68 @@ Las variables de entorno están centralizadas en `apphosting.yaml` para:
 ```
 src/
 ├── app/                 # Páginas (App Router)
-├── components/          # Componentes reutilizables
+├── components/          # Componentes reutilizables  
 ├── hooks/              # Custom hooks
 ├── lib/                # Configuraciones y utilidades
 └── ai/                 # Integración con IA
+
+Scripts/
+├── setup-env-development.sh      # Desarrollo local/Codespaces
+├── setup-firebase-secrets.sh     # Configurar secretos producción
+└── setup-env-from-apphosting.sh  # Script legacy (deprecated)
 ```
 
 ## 🚀 Despliegue
 
-### Firebase App Hosting
+### Firebase App Hosting (Recomendado)
 
-El proyecto está configurado para desplegarse automáticamente en Firebase App Hosting:
-
+1. **Configurar secretos** (solo una vez):
 ```bash
+./setup-firebase-secrets.sh
+```
+
+2. **Deploy**:
+```bash
+firebase deploy --only apphosting
+```
+
+### Deploy Tradicional
+```bash
+npm run build
 firebase deploy --only hosting
 ```
 
-Las variables de entorno se configuran automáticamente desde `apphosting.yaml`.
+## 🔐 Seguridad - Mejores Prácticas
 
-## 🔐 Seguridad
+### ✅ Producción
+- **Secretos en Firebase** - Nunca hardcodeados
+- **Variables con referencias** - `${{ secrets.NAME }}`
+- **Auditoría de acceso** - Firebase console
 
-- Las credenciales están en `apphosting.yaml` para producción
-- El archivo `.env.local` se genera automáticamente para desarrollo
-- Archivos `.env*` están en `.gitignore` por seguridad
-- Variables públicas (`NEXT_PUBLIC_*`) son seguras para el cliente
+### ✅ Desarrollo  
+- **Archivos `.env*` en `.gitignore`** - No se suben al repo
+- **Scripts locales únicamente** - Solo para desarrollo
+- **Separación clara** - Desarrollo ≠ Producción
+
+### ❌ Nunca Hagas
+- ❌ Hardcodear credenciales en código
+- ❌ Subir archivos `.env*` al repositorio
+- ❌ Usar credenciales de producción en desarrollo
+- ❌ Compartir secretos por medios inseguros
+
+## 🔧 Troubleshooting
+
+### Error: Variables de Firebase faltantes
+```bash
+# Para desarrollo
+./setup-env-development.sh
+
+# Para producción  
+./setup-firebase-secrets.sh
+```
+
+### Error: Firebase CLI no autenticado
+```bash
+firebase login
+firebase projects:list
+```

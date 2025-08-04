@@ -6,12 +6,12 @@ runConfig:
   # more instances in response to increased traffic.
   maxInstances: 1
   
-  # Firebase configuration environment variables
+  # Firebase configuration using secret references for security
   env:
-    NEXT_PUBLIC_FIREBASE_API_KEY: "AIzaSyCJmjAFcVQMNtTICexEHkzFwgUbGv2zctE"
-    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "notificas-f9953.firebaseapp.com"
-    NEXT_PUBLIC_FIREBASE_PROJECT_ID: "notificas-f9953"
-    NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "notificas-f9953.firebasestorage.app"
-    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "367222498482"
-    NEXT_PUBLIC_FIREBASE_APP_ID: "1:367222498482:web:770552748b0b7ab28ad5ab"
-    NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: "G-8JGSBZ7BE8"
+    NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+    NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+    NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+    NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+    NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
