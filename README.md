@@ -4,17 +4,20 @@ Sistema de mensajería certificada que utiliza tecnología blockchain para garan
 
 ## 🚀 Configuración del Proyecto
 
-### Para GitHub Codespaces
+### Para GitHub Codespaces (Recomendado)
 
-Si estás trabajando en **GitHub Codespaces**, ejecuta este comando para configurar automáticamente las variables de entorno de Firebase:
+Si estás trabajando en **GitHub Codespaces**, usa el nuevo método que sincroniza con `apphosting.yaml`:
+
+```bash
+./setup-env-from-apphosting.sh
+npm install
+npm run dev
+```
+
+### Método Alternativo (Script tradicional)
 
 ```bash
 ./setup-env.sh
-```
-
-Luego inicia el servidor de desarrollo:
-
-```bash
 npm install
 npm run dev
 ```
@@ -32,21 +35,34 @@ cd notificas
 npm install
 ```
 
-3. Configura las variables de entorno:
+3. Configura las variables de entorno (elige uno):
+
+**Opción A - Desde apphosting.yaml (Recomendado):**
 ```bash
-cp .env.example .env.local
+./setup-env-from-apphosting.sh
 ```
 
-4. Edita el archivo `.env.local` con tus credenciales de Firebase.
+**Opción B - Manual:**
+```bash
+cp .env.example .env.local
+# Edita .env.local con tus credenciales
+```
 
-5. Inicia el servidor de desarrollo:
+4. Inicia el servidor de desarrollo:
 ```bash
 npm run dev
 ```
 
-## 🔧 Variables de Entorno Requeridas
+## 🔧 Configuración de Variables de Entorno
 
-El proyecto requiere las siguientes variables de Firebase:
+### Firebase App Hosting (`apphosting.yaml`)
+
+Las variables de entorno están centralizadas en `apphosting.yaml` para:
+- ✅ **Consistencia** entre desarrollo y producción
+- ✅ **Single source of truth** para configuración
+- ✅ **Despliegue automático** en Firebase App Hosting
+
+### Variables Requeridas
 
 - `NEXT_PUBLIC_FIREBASE_API_KEY`
 - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
@@ -59,7 +75,8 @@ El proyecto requiere las siguientes variables de Firebase:
 ## 🌐 Tecnologías
 
 - **Next.js 15** - Framework React con App Router
-- **Firebase** - Autenticación y base de datos
+- **Firebase App Hosting** - Deploy y configuración
+- **Firebase Auth & Firestore** - Autenticación y base de datos
 - **Tailwind CSS** - Estilos y componentes UI
 - **TypeScript** - Tipado estático
 - **Blockchain** - Certificación inmutable de comunicaciones
@@ -75,8 +92,21 @@ src/
 └── ai/                 # Integración con IA
 ```
 
+## 🚀 Despliegue
+
+### Firebase App Hosting
+
+El proyecto está configurado para desplegarse automáticamente en Firebase App Hosting:
+
+```bash
+firebase deploy --only hosting
+```
+
+Las variables de entorno se configuran automáticamente desde `apphosting.yaml`.
+
 ## 🔐 Seguridad
 
-- Las credenciales de Firebase se mantienen en `.env.local`
-- El archivo `.env.local` está incluido en `.gitignore` por seguridad
-- Usa el script `setup-env.sh` solo en entornos de desarrollo
+- Las credenciales están en `apphosting.yaml` para producción
+- El archivo `.env.local` se genera automáticamente para desarrollo
+- Archivos `.env*` están en `.gitignore` por seguridad
+- Variables públicas (`NEXT_PUBLIC_*`) son seguras para el cliente

@@ -5,3 +5,13 @@ runConfig:
   # Increase this value if you'd like to automatically spin up
   # more instances in response to increased traffic.
   maxInstances: 1
+  
+  # Firebase configuration environment variables
+  env:
+    NEXT_PUBLIC_FIREBASE_API_KEY: "AIzaSyCJmjAFcVQMNtTICexEHkzFwgUbGv2zctE"
+    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "notificas-f9953.firebaseapp.com"
+    NEXT_PUBLIC_FIREBASE_PROJECT_ID: "notificas-f9953"
+    NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "notificas-f9953.firebasestorage.app"
+    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "367222498482"
+    NEXT_PUBLIC_FIREBASE_APP_ID: "1:367222498482:web:770552748b0b7ab28ad5ab"
+    NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: "G-8JGSBZ7BE8"
