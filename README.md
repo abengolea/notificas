@@ -6,13 +6,18 @@ Sistema de mensajería certificada que utiliza tecnología blockchain para garan
 
 ### Para GitHub Codespaces (Desarrollo)
 
-Si estás trabajando en **GitHub Codespaces**, usa el script de desarrollo:
+Si estás trabajando en **GitHub Codespaces**, usa el script todo-en-uno:
 
 ```bash
-./setup-env-development.sh
-npm install
-npm run dev
+./start-dev-clean.sh
 ```
+
+**Solución de problemas rápida:**
+Si tienes errores de variables de Firebase, este script:
+- ✅ Configura `.env.local` automáticamente  
+- ✅ Exporta variables al entorno
+- ✅ Limpia cachés de Next.js
+- ✅ Reinicia el servidor limpio
 
 ### Para Desarrollo Local
 
