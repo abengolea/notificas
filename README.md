@@ -84,17 +84,23 @@ Para **desarrollo local**, usa valores reales en `.env.local`:
 - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` - Valor real para desarrollo
 - ... (todas las variables Firebase)
 
-### Variables de Polygon Blockchain
-- `POLYGON_PRIVATE_KEY` - Clave privada para Mumbai Testnet
-- `POLYGON_PROVIDER_URL` - RPC de Mumbai testnet
+### Variables de Polygon Blockchain (2025)
+- `POLYGON_PRIVATE_KEY` - Clave privada para Amoy Testnet
+- `POLYGON_PROVIDER_URL` - RPC de Amoy testnet (https://rpc-amoy.polygon.technology/)
 - `POLYGON_WALLET_ADDRESS` - Dirección destino para transacciones
+
+**🚨 Actualización Crítica 2025:**
+- Mumbai Testnet fue **DEPRECADO** el 13 abril 2024
+- Amoy Testnet es el **reemplazo oficial**
+- Chain ID cambió: 80001 → **80002**
+- Moneda cambió: MATIC → **POL**
 
 ## 🌐 Tecnologías
 
 - **Next.js 15** - Framework React con App Router
 - **Firebase App Hosting** - Deploy seguro con secretos
 - **Firebase Auth & Firestore** - Autenticación y base de datos
-- **Polygon Blockchain** - Certificación inmutable en Mumbai Testnet
+- **Polygon Blockchain** - Certificación inmutable en Amoy Testnet (2025)
 - **Ethers.js** - Interacción con blockchain
 - **Tailwind CSS** - Estilos y componentes UI
 - **TypeScript** - Tipado estático
@@ -159,25 +165,38 @@ firebase deploy --only hosting
 - ❌ Usar credenciales de producción en desarrollo
 - ❌ Compartir secretos por medios inseguros
 
-## 🔗 Integración Polygon Blockchain
+## 🔗 Integración Polygon Blockchain (2025)
 
-### Configuración de Polygon
+### 🚨 Actualización Crítica - Mumbai → Amoy
+
+**Mumbai Testnet fue deprecado el 13 abril 2024.** Toda la configuración ha sido actualizada a **Amoy Testnet**.
+
+### Configuración de Polygon Amoy
 
 1. **Ejecutar script de desarrollo:**
 ```bash
 ./setup-env-development.sh
 ```
 
-2. **Configurar variables de Polygon en `.env.local`:**
+2. **Configurar variables de Polygon Amoy en `.env.local`:**
 ```bash
 POLYGON_PRIVATE_KEY="tu_clave_privada_sin_0x"
-POLYGON_PROVIDER_URL="https://rpc-mumbai.maticvigil.com"
+POLYGON_PROVIDER_URL="https://rpc-amoy.polygon.technology/"
 POLYGON_WALLET_ADDRESS="0xTU_DIRECCION_DESTINO"
 ```
 
-3. **Obtener MATIC para pruebas:**
-- Visita: https://mumbaifaucet.com
-- Solicita MATIC gratis para Mumbai Testnet
+3. **Obtener POL para pruebas (Faucets 2025):**
+- **Alchemy:** https://www.alchemy.com/faucets/polygon-amoy
+- **Chainlink:** https://faucets.chain.link/polygon-amoy  
+- **QuickNode:** https://faucet.quicknode.com/polygon/amoy
+- **GetBlock:** https://getblock.io/faucet/matic-amoy/
+
+### Especificaciones Técnicas Amoy
+- **Chain ID:** 80002 (antes 80001 en Mumbai)
+- **Moneda:** POL (antes MATIC)
+- **RPC Oficial:** https://rpc-amoy.polygon.technology/
+- **Explorer:** https://amoy.polygonscan.com
+- **Parent Chain:** Ethereum Sepolia
 
 ### Funciones de Certificación
 
@@ -198,10 +217,11 @@ await certificarUsuario('user-new', 'nuevo@ejemplo.com');
 ### Página de Pruebas
 
 Accede a `/test-polygon` para probar la integración:
-- Certificación de eventos
-- Consulta de balance MATIC
+- Certificación de eventos en Amoy Testnet
+- Consulta de balance POL
 - Verificación de transacciones
-- Enlaces a PolygonScan
+- Enlaces a Amoy PolygonScan
+- Información de red (Chain ID: 80002)
 
 ## 🔧 Troubleshooting
 
@@ -217,7 +237,8 @@ Accede a `/test-polygon` para probar la integración:
 ### Error: Variables de Polygon no configuradas
 ```bash
 # Editar .env.local con tus claves reales
-# Obtener MATIC en https://mumbaifaucet.com
+# Obtener POL en https://www.alchemy.com/faucets/polygon-amoy
+# Verificar que Chain ID sea 80002 (Amoy, no Mumbai)
 ```
 
 ### Error: Firebase CLI no autenticado
