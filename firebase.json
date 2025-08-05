@@ -13,10 +13,11 @@
       }
     ]
   },
-  "apphosting": {
-    "source": {
-      "projectId": "notificas-f9953",
-      "location": "us-central1"
+  "apphosting": [
+    {
+      "backendId": "notificas",
+      "source": ".",
+      "config": "apphosting.yaml"
     }
-  }
+  ]
 }
