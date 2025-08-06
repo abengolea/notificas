@@ -17,7 +17,8 @@
     {
       "backendId": "notificas",
       "source": ".",
-      "config": "apphosting.yaml"
+      "config": "apphosting.yaml",
+      "alwaysDeployFromSource": true
     }
   ]
 }
