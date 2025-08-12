@@ -29,6 +29,9 @@ import { Checkbox } from "../ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { useState } from "react"
 import { User } from "@/lib/types"
+import { scheduleEmail } from "@/lib/email";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 
 const messageSchema = z.object({
   recipient: z.string().email({ message: "Dirección de correo electrónico inválida." }),
@@ -65,17 +68,48 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user }: { c
         }
 
         setIsSending(true);
-        console.log("Enviando mensaje:", data);
-        // Simular llamada a la API
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        setIsSending(false);
-        onOpenChange(false);
-        toast({
-            title: "Mensaje Enviado y Certificado",
-            description: "Tu mensaje ha sido enviado y certificado en BFA.",
-            variant: "default",
-        });
-        form.reset();
+        try {
+            const sender = auth.currentUser?.email || user.email;
+            const subject = `Mensaje certificado de ${sender}`;
+            const html = `<h2>Mensaje certificado</h2><p>${data.content}</p>`;
+
+            // Programar email real (activará Cloud Function)
+            const mailId = await scheduleEmail({
+                to: data.recipient,
+                subject,
+                html,
+                from: sender,
+            });
+
+            // Registrar mensaje en colección 'messages' para UI
+            await addDoc(collection(db, 'messages'), {
+                mailId,
+                from: sender,
+                to: data.recipient,
+                subject,
+                content: data.content,
+                priority: data.priority,
+                requireCertificate: data.requireCertificate,
+                createdAt: serverTimestamp(),
+                status: 'SENT',
+            });
+
+            toast({
+                title: "Mensaje Enviado y Certificado",
+                description: "Tu mensaje ha sido enviado y certificado en BFA.",
+                variant: "default",
+            });
+            onOpenChange(false);
+            form.reset();
+        } catch (e:any) {
+            toast({
+                title: "Error al enviar",
+                description: e?.message || 'No se pudo enviar el mensaje',
+                variant: "destructive",
+            });
+        } finally {
+            setIsSending(false);
+        }
     }
 
   return (
