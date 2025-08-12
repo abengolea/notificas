@@ -1,6 +1,5 @@
 import { UserNav } from '@/components/dashboard/user-nav';
 import { Logo } from '@/components/logo';
-import { mockUser } from '@/lib/mock-data';
 import Link from 'next/link';
 
 export default function DashboardLayout({

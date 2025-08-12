@@ -4,11 +4,29 @@
 import { usePathname } from 'next/navigation'
 import { MainNav } from '@/components/admin/main-nav'
 import { UserNav } from '@/components/dashboard/user-nav'
-import { mockUser } from '@/lib/mock-data'
 import { Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Logo } from '@/components/logo'
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
+import { onAuthStateChanged } from 'firebase/auth'
+import { auth } from '@/lib/firebase'
+import type { User as AppUser } from '@/lib/types'
+
+function mapAuthUserToAppUser(u: any | null): AppUser | null {
+  if (!u) return null;
+  return {
+    uid: u.uid,
+    email: u.email || '',
+    tipo: 'individual',
+    estado: 'activo',
+    perfil: { nombre: u.displayName || u.email || 'Usuario', verificado: true },
+    createdAt: new Date(),
+    lastLogin: new Date(),
+    avatarUrl: u.photoURL || undefined,
+    creditos: 0,
+  };
+}
 
 export default function AdminLayout({
     children,
@@ -16,6 +34,12 @@ export default function AdminLayout({
     children: React.ReactNode;
 }) {
     const pathname = usePathname()
+    const [appUser, setAppUser] = useState<AppUser | null>(null)
+
+    useEffect(() => {
+      const unsub = onAuthStateChanged(auth, (u) => setAppUser(mapAuthUserToAppUser(u)))
+      return () => unsub()
+    }, [])
 
     const getPageTitle = () => {
         if (pathname === '/admin') return 'Resumen'
@@ -42,7 +66,7 @@ export default function AdminLayout({
                             className="pl-9"
                         />
                     </div>
-                    <UserNav user={mockUser} />
+                    {appUser && <UserNav user={appUser} />}
                 </div>
             </header>
             <div className="flex-1 space-y-4 p-8 pt-6">

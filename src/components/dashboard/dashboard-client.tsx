@@ -146,25 +146,27 @@ export default function DashboardClient() {
     const mailCol = collection(db, 'mail');
     let q;
     if (selectedFolder === 'inbox') {
-      q = query(mailCol, where('to', 'array-contains', appUser.email), orderBy('delivery.time', 'desc'));
+      q = query(mailCol, where('to', 'array-contains', appUser.email));
     } else if (selectedFolder === 'sent') {
-      q = query(mailCol, where('from', '==', appUser.email), orderBy('delivery.time', 'desc'));
+      q = query(mailCol, where('from', '==', appUser.email));
     } else {
       setMessages([]);
       return;
     }
 
     const unsub = onSnapshot(q, (snap) => {
-      const items: DisplayMessage[] = snap.docs.map((d) => {
-        const data = d.data() as any;
-        const sentAt = data?.delivery?.time?.toDate?.() ? data.delivery.time.toDate() : new Date();
-        const from = data?.from || 'contacto@notificas.com';
-        const to = Array.isArray(data?.to) ? data.to : data?.to ? [data.to] : [];
-        const subject = data?.message?.subject || 'Sin asunto';
-        const opened = data?.tracking?.readConfirmed || data?.tracking?.opened;
-        const lastStatus = opened ? 'Leído' : (data?.delivery?.state || 'PENDIENTE');
-        return { id: d.id, sentAt, from, to, subject, lastStatus };
-      });
+      const items: DisplayMessage[] = snap.docs
+        .map((d) => {
+          const data = d.data() as any;
+          const sentAt = data?.delivery?.time?.toDate?.() ? data.delivery.time.toDate() : new Date();
+          const from = data?.from || 'contacto@notificas.com';
+          const to = Array.isArray(data?.to) ? data.to : data?.to ? [data.to] : [];
+          const subject = data?.message?.subject || 'Sin asunto';
+          const opened = data?.tracking?.readConfirmed || data?.tracking?.opened;
+          const lastStatus = opened ? 'Leído' : (data?.delivery?.state || 'PENDIENTE');
+          return { id: d.id, sentAt, from, to, subject, lastStatus };
+        })
+        .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
       setMessages(items);
     });
 
