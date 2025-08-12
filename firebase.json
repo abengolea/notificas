@@ -20,5 +20,21 @@
       "config": "apphosting.yaml",
       "alwaysDeployFromSource": true
     }
+  ],
+  "extensions": {
+    "firestore-send-email": "firebase/firestore-send-email@0.2.4"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
   ]
 }

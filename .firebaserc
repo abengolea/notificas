@@ -1,0 +1,13 @@
+{
+  "projects": {
+    "default": "notificas-f9953"
+  },
+  "targets": {},
+  "etags": {
+    "notificas-f9953": {
+      "extensionInstances": {
+        "firestore-send-email": "7cf1ad3841ae14189c5935d5ccc8e283b89efbf6b06e430f1d422655ac9436c7"
+      }
+    }
+  }
+}

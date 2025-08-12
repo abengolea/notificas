@@ -1,0 +1,8 @@
+{
+  "to": ["abengolea1@gmail.com"],
+  "message": {
+    "subject": "🎉 Test Firebase Functions - Email desde Terminal",
+    "text": "¡Hola! Este email fue enviado automáticamente desde Firebase Functions usando la terminal. ¡Tu función está funcionando perfectamente!",
+    "html": "<h1>🎉 ¡Éxito!</h1><p>Este email fue enviado desde <strong>Firebase Functions</strong> usando la terminal.</p><p>Tu función de email está funcionando correctamente.</p><br><p>Saludos,<br>Tu función automática de emails</p>"
+  }
+}
