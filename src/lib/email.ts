@@ -15,18 +15,20 @@ export type ScheduleEmailParams = {
 export async function scheduleEmail(params: ScheduleEmailParams): Promise<string> {
   const { to, subject, html, text, from, replyTo, cc, bcc } = params;
 
-  const docRef = await addDoc(collection(db, 'mail'), {
+  const payload: any = {
     to: Array.isArray(to) ? to : [to],
-    from,
-    replyTo,
-    cc: cc ? (Array.isArray(cc) ? cc : [cc]) : undefined,
-    bcc: bcc ? (Array.isArray(bcc) ? bcc : [bcc]) : undefined,
     message: {
       subject,
       html,
-      text: text ?? html.replace(/<[^>]*>/g, '')
+      text: (text ?? html.replace(/<[^>]*>/g, '')) || ''
     }
-  });
+  };
 
+  if (from) payload.from = from;
+  if (replyTo) payload.replyTo = replyTo;
+  if (cc) payload.cc = Array.isArray(cc) ? cc : [cc];
+  if (bcc) payload.bcc = Array.isArray(bcc) ? bcc : [bcc];
+
+  const docRef = await addDoc(collection(db, 'mail'), payload);
   return docRef.id;
 }
