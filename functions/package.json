@@ -1,20 +1,23 @@
 {
   "name": "functions",
   "description": "Cloud Functions for Firebase - Email + Tracking",
+  "private": true,
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "build": "echo 'No build step'",
     "serve": "firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions"
   },
   "dependencies": {
     "cheerio": "^1.0.0",
     "firebase-admin": "^12.6.0",
-    "firebase-functions": "^6.1.0",
-    "nodemailer": "^6.9.15"
+    "firebase-functions": "^6.4.0",
+    "nodemailer": "^7.0.5"
+  },
+  "devDependencies": {
+    "firebase-functions-test": "^3.1.0"
   }
 }
