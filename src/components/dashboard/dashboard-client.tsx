@@ -227,25 +227,32 @@ export default function DashboardClient() {
       </div>
 
       <div className="p-4">
-        <ComposeMessageDialog open={isComposeOpen} onOpenChange={setComposeOpen} user={appUser as AppUser}>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="w-full">
-                  <Button className="w-full h-12 text-base" onClick={() => setComposeOpen(true)} disabled={!!isSuspended}>
-                    <PenSquare className="mr-2 h-5 w-5" />
-                    NUEVO ENVÍO
-                  </Button>
-                </div>
-              </TooltipTrigger>
-              {isSuspended && (
-                <TooltipContent>
-                  <p>Tu cuenta está suspendida. Regulariza tu pago.</p>
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </TooltipProvider>
-        </ComposeMessageDialog>
+        {appUser ? (
+          <ComposeMessageDialog open={isComposeOpen} onOpenChange={setComposeOpen} user={appUser}>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="w-full">
+                    <Button className="w-full h-12 text-base" onClick={() => setComposeOpen(true)} disabled={!!isSuspended}>
+                      <PenSquare className="mr-2 h-5 w-5" />
+                      NUEVO ENVÍO
+                    </Button>
+                  </div>
+                </TooltipTrigger>
+                {isSuspended && (
+                  <TooltipContent>
+                    <p>Tu cuenta está suspendida. Regulariza tu pago.</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          </ComposeMessageDialog>
+        ) : (
+          <Button className="w-full h-12 text-base" disabled>
+            <PenSquare className="mr-2 h-5 w-5" />
+            Inicia sesión para enviar
+          </Button>
+        )}
       </div>
 
       <nav className="flex-1 px-4 space-y-2">
@@ -324,7 +331,7 @@ export default function DashboardClient() {
           <div className="flex-1">
             <h1 className="font-semibold text-lg">{folders.find((f) => f.id === selectedFolder)?.label}</h1>
           </div>
-          {appUser && <UserNav user={appUser} />}
+          {appUser ? <UserNav user={appUser} /> : null}
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
           {isSuspended && (
