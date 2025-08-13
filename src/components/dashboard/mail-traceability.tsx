@@ -1,30 +1,52 @@
 "use client";
 
-import { CheckCircle2, ExternalLink, Link2, MousePointerClick, Stamp, Timer, XCircle } from "lucide-react";
+import { CheckCircle2, ExternalLink, Link2, Timer, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 function Row({ label, value, link }: { label: string; value: string; link?: boolean }) {
+  const display = value && value !== "false" && value !== "true" ? value : value || "—";
   return (
     <div className="flex items-center gap-2 text-sm">
-      <div className="w-32 text-muted-foreground">{label}</div>
+      <div className="w-40 text-muted-foreground">{label}</div>
       <div className="flex-1 font-mono text-xs bg-muted/50 px-2 py-1 rounded-md break-all">
         {link ? (
-          <a href={value} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
-            {value}
+          <a href={display} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
+            {display}
             <ExternalLink className="h-3 w-3" />
           </a>
         ) : (
-          value || "-"
+          display
         )}
       </div>
     </div>
   );
 }
 
+function BoolRow({ label, value }: { label: string; value: boolean }) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <div className="w-40 text-muted-foreground">{label}</div>
+      <div className="flex-1">
+        {value ? (
+          <Badge variant="default">Sí</Badge>
+        ) : (
+          <Badge variant="secondary">No</Badge>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatDate(d: any): string {
+  const date = d?.toDate?.() ? d.toDate() : d instanceof Date ? d : null;
+  return date ? date.toLocaleString() : "—";
+}
+
 export default function MailTraceability({ mail }: { mail: any }) {
-  const sentAt = mail?.delivery?.time?.toDate?.() ? mail.delivery.time.toDate() : null;
-  const openedAt = mail?.tracking?.openedAt?.toDate?.() ? mail.tracking.openedAt.toDate() : null;
-  const lastClickAt = mail?.tracking?.lastClickAt?.toDate?.() ? mail.tracking.lastClickAt.toDate() : null;
+  const sentAt = formatDate(mail?.delivery?.time);
+  const openedAt = formatDate(mail?.tracking?.openedAt);
+  const lastClickAt = formatDate(mail?.tracking?.lastClickAt);
 
   return (
     <Card>
@@ -38,8 +60,8 @@ export default function MailTraceability({ mail }: { mail: any }) {
           </div>
           <div className="space-y-2">
             <Row label="Estado" value={mail?.delivery?.state || "PENDIENTE"} />
-            <Row label="Fecha" value={sentAt ? sentAt.toLocaleString() : "-"} />
-            <Row label="Message ID" value={mail?.delivery?.info || "-"} />
+            <Row label="Fecha" value={sentAt} />
+            <Row label="Message ID" value={mail?.delivery?.info || "—"} />
           </div>
         </div>
 
@@ -53,9 +75,9 @@ export default function MailTraceability({ mail }: { mail: any }) {
             Apertura
           </div>
           <div className="space-y-2">
-            <Row label="Abierto" value={String(!!mail?.tracking?.opened)} />
-            <Row label="Aperturas" value={String(mail?.tracking?.openCount || 0)} />
-            <Row label="Fecha" value={openedAt ? openedAt.toLocaleString() : "-"} />
+            <BoolRow label="Abierto" value={!!mail?.tracking?.opened} />
+            <Row label="Aperturas" value={String(mail?.tracking?.openCount ?? 0)} />
+            <Row label="Fecha" value={openedAt} />
           </div>
         </div>
 
@@ -64,8 +86,8 @@ export default function MailTraceability({ mail }: { mail: any }) {
             <Link2 className="h-5 w-5 text-muted-foreground" /> Clics
           </div>
           <div className="space-y-2">
-            <Row label="Total" value={String(mail?.tracking?.clickCount || 0)} />
-            <Row label="Último clic" value={lastClickAt ? lastClickAt.toLocaleString() : "-"} />
+            <Row label="Total" value={String(mail?.tracking?.clickCount ?? 0)} />
+            <Row label="Último clic" value={lastClickAt} />
             {Array.isArray(mail?.tracking?.clicks) && mail.tracking.clicks.length > 0 && (
               <div className="space-y-1">
                 {mail.tracking.clicks.map((c: any, idx: number) => (
@@ -86,11 +108,8 @@ export default function MailTraceability({ mail }: { mail: any }) {
             Confirmación de lectura
           </div>
           <div className="space-y-2">
-            <Row label="Confirmado" value={String(!!mail?.tracking?.readConfirmed)} />
-            <Row
-              label="Fecha"
-              value={mail?.tracking?.readConfirmedAt?.toDate?.() ? mail.tracking.readConfirmedAt.toDate().toLocaleString() : "-"}
-            />
+            <BoolRow label="Confirmado" value={!!mail?.tracking?.readConfirmed} />
+            <Row label="Fecha" value={formatDate(mail?.tracking?.readConfirmedAt)} />
           </div>
         </div>
       </CardContent>
