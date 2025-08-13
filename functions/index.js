@@ -11,6 +11,7 @@ initializeApp();
 const REGION = 'us-central1';
 const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'notificas-f9953';
 const TRACKING_BASE_URL = `https://${REGION}-${PROJECT_ID}.cloudfunctions.net`;
+const APP_HOSTING_URL = `https://notificas--${PROJECT_ID}.us-central1.hosted.app`;
 
 const transporter = nodemailer.createTransport({
   host: 'vps-1711372-x.dattaweb.com',
@@ -63,6 +64,29 @@ function injectTrackingIntoHtml(html, docId, token) {
   return $.html();
 }
 
+function buildLinkOnlyEmailHtml(from, readerUrl) {
+  const safeFrom = from || 'Notificas';
+  return `
+  <div style="font-family: Arial, sans-serif; line-height:1.6; color:#111">
+    <p>Estimado/a,</p>
+    <p>Has recibido una comunicación fehaciente digital enviada por <strong>${safeFrom}</strong>. Para ver su contenido de forma online, haz clic en el siguiente botón:</p>
+    <p style="margin:24px 0">
+      <a href="${readerUrl}" target="_blank" rel="noopener" style="background:#111;color:#fff;padding:12px 18px;border-radius:6px;text-decoration:none;display:inline-block">
+        Leer Notificación
+      </a>
+    </p>
+    <p>Este correo electrónico no adjunta el contenido de la comunicación por razones de confidencialidad.</p>
+    <p>Si no puedes hacer clic, copia y pega esta URL en tu navegador:<br/>
+      <span style="font-family:monospace">${readerUrl}</span>
+    </p>
+    <hr style="border:none;border-top:1px solid #ddd;margin:24px 0"/>
+    <p style="font-size:12px;color:#555">
+      Información importante: La notificación enviada a través de Notificas puede tener efectos legales si dejas transcurrir tiempo sin responderla. Te aconsejamos reenviar a tu abogado de confianza para que de forma inmediata tenga la comunicación que te acaba de llegar.<br/>
+      El mensaje, su contenido, los archivos adjuntos, la fecha de envío y recepción, se encuentran certificados y guardados en la red Blockchain (inmutabilidad de los datos).
+    </p>
+  </div>`;
+}
+
 exports.sendEmail = onDocumentCreated(
   { document: 'mail/{docId}', region: REGION, concurrency: 10 },
   async (event) => {
@@ -80,14 +104,19 @@ exports.sendEmail = onDocumentCreated(
     const htmlOriginal = emailData.message?.html || '';
     const textOriginal = emailData.message?.text || htmlOriginal.replace(/<[^>]*>/g, '');
 
-    const htmlWithTracking = injectTrackingIntoHtml(htmlOriginal, docId, trackingToken);
+    // Build reader URL for explicit read and confidential viewing
+    const readerUrl = `${APP_HOSTING_URL}/reader/${encodeURIComponent(docId)}?k=${encodeURIComponent(trackingToken)}`;
+
+    // Build link-only email body and inject tracking
+    const linkOnlyHtml = buildLinkOnlyEmailHtml(from, readerUrl);
+    const htmlWithTracking = injectTrackingIntoHtml(linkOnlyHtml, docId, trackingToken);
 
     try {
       const mailOptions = {
         from,
         to,
         subject,
-        text: textOriginal,
+        text: `Has recibido una comunicación fehaciente digital enviada por ${from}. Para leerla, abre: ${readerUrl}`,
         html: htmlWithTracking,
         replyTo: emailData.replyTo,
         cc: emailData.cc,
@@ -113,7 +142,8 @@ exports.sendEmail = onDocumentCreated(
             readConfirmed: false,
             readConfirmedAt: null,
             messageId: result.messageId
-          }
+          },
+          readerUrl
         },
         { merge: true }
       );
