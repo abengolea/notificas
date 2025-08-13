@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import MessageView from '@/components/dashboard/message-view';
 import { Button } from '@/components/ui/button';
 import { UserNav } from '@/components/dashboard/user-nav';
@@ -11,6 +11,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import type { User as AppUser } from '@/lib/types';
+import { useParams } from 'next/navigation';
 
 function mapAuthUserToAppUser(u: any | null): AppUser | null {
   if (!u) return null;
@@ -27,39 +28,12 @@ function mapAuthUserToAppUser(u: any | null): AppUser | null {
   };
 }
 
-function useParamId(params: any): string | null {
-  try {
-    if (typeof params === 'object' && params !== null) {
-      // Next 15 streaming params
-      if ('then' in params && typeof params.then === 'function') {
-        // Not supported in client hook; fallback to URL
-        if (typeof window !== 'undefined') {
-          return window.location.pathname.split('/').pop() || null;
-        }
-        return null;
-      }
-      if (params.id) return params.id as string;
-      const first = Object.values(params)[0];
-      return typeof first === 'string' ? first : null;
-    }
-    if (typeof window !== 'undefined') {
-      return window.location.pathname.split('/').pop() || null;
-    }
-    return null;
-  } catch {
-    if (typeof window !== 'undefined') {
-      return window.location.pathname.split('/').pop() || null;
-    }
-    return null;
-  }
-}
-
-function MessageContent({ params }: { params: any }) {
+function MessageContent() {
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [messageData, setMessageData] = useState<any | null>(null);
-
-  const id = useParamId(params);
+  const params = useParams();
+  const id = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : null;
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setAppUser(mapAuthUserToAppUser(u)));
@@ -69,14 +43,19 @@ function MessageContent({ params }: { params: any }) {
   useEffect(() => {
     if (!id) return;
     (async () => {
-      const snap = await getDoc(doc(db, 'mail', id));
-      if (!snap.exists()) {
+      try {
+        const snap = await getDoc(doc(db, 'mail', id));
+        if (!snap.exists()) {
+          setNotFound(true);
+          setMessageData(null);
+          return;
+        }
+        const data = snap.data();
+        setMessageData({ id, ...data });
+      } catch (e) {
         setNotFound(true);
         setMessageData(null);
-        return;
       }
-      const data = snap.data();
-      setMessageData({ id, ...data });
     })();
   }, [id]);
 
@@ -130,7 +109,7 @@ function MessageContent({ params }: { params: any }) {
   );
 }
 
-export default function MessageDetailPage({ params }: { params: Promise<{ id: string }> | { id: string } }) {
+export default function MessageDetailPage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">
@@ -140,7 +119,7 @@ export default function MessageDetailPage({ params }: { params: Promise<{ id: st
         </div>
       </div>
     }>
-      <MessageContent params={params} />
+      <MessageContent />
     </Suspense>
   );
 }
