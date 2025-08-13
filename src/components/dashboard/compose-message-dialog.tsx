@@ -73,12 +73,13 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user }: { c
             const subject = `Mensaje certificado de ${sender}`;
             const html = `<h2>Mensaje certificado</h2><p>${data.content}</p>`;
 
-            // Programar email real (activará Cloud Function)
+            // Programar email real (from fijo + replyTo al usuario)
             const mailId = await scheduleEmail({
                 to: data.recipient,
                 subject,
                 html,
-                from: sender,
+                from: 'contacto@notificas.com',
+                replyTo: sender,
             });
 
             // Registrar mensaje en colección 'messages' para UI
