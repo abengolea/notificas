@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { Suspense, useEffect, useState } from 'react';
-import MessageView from '@/components/dashboard/message-view';
 import { Button } from '@/components/ui/button';
 import { UserNav } from '@/components/dashboard/user-nav';
 import { Logo } from '@/components/logo';
@@ -12,6 +11,7 @@ import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import type { User as AppUser } from '@/lib/types';
 import { useParams } from 'next/navigation';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 function mapAuthUserToAppUser(u: any | null): AppUser | null {
   if (!u) return null;
@@ -26,6 +26,30 @@ function mapAuthUserToAppUser(u: any | null): AppUser | null {
     avatarUrl: u.photoURL || undefined,
     creditos: 0,
   };
+}
+
+function MailMessageView({ data }: { data: any }) {
+  const sentAt = data?.delivery?.time?.toDate?.() ? data.delivery.time.toDate() : null;
+  const subject = data?.message?.subject || 'Sin asunto';
+  const from = data?.from || 'contacto@notificas.com';
+  const to = Array.isArray(data?.to) ? data.to.join(', ') : data?.to || '';
+  const state = data?.delivery?.state || 'PENDIENTE';
+  const html = data?.message?.html || '';
+
+  return (
+    <Card className="shadow-lg">
+      <CardHeader>
+        <CardTitle>{subject}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        <div><strong>De:</strong> {from}</div>
+        <div><strong>Para:</strong> {to}</div>
+        <div><strong>Estado:</strong> {state}</div>
+        <div><strong>Fecha:</strong> {sentAt ? sentAt.toLocaleString() : '-'}</div>
+        <div className="mt-4 prose max-w-none" dangerouslySetInnerHTML={{ __html: html }} />
+      </CardContent>
+    </Card>
+  );
 }
 
 function MessageContent() {
@@ -102,7 +126,11 @@ function MessageContent() {
 
       <main className="flex-1 p-4 md:p-8 lg:p-12">
         <div className="mx-auto max-w-4xl">
-          <MessageView message={messageData} currentUser={appUser as AppUser} />
+          {messageData?.message ? (
+            <MailMessageView data={messageData} />
+          ) : (
+            <Card><CardHeader><CardTitle>Mensaje no compatible</CardTitle></CardHeader><CardContent>El formato de este mensaje no es compatible.</CardContent></Card>
+          )}
         </div>
       </main>
     </div>
