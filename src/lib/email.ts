@@ -12,11 +12,16 @@ export type ScheduleEmailParams = {
   bcc?: string | string[];
 };
 
+function normalizeList(value?: string | string[]) {
+  const arr = Array.isArray(value) ? value : value ? [value] : [];
+  return arr.map(v => v.trim()).filter(Boolean);
+}
+
 export async function scheduleEmail(params: ScheduleEmailParams): Promise<string> {
   const { to, subject, html, text, from, replyTo, cc, bcc } = params;
 
   const payload: any = {
-    to: Array.isArray(to) ? to : [to],
+    to: normalizeList(to),
     message: {
       subject,
       html,
@@ -24,10 +29,15 @@ export async function scheduleEmail(params: ScheduleEmailParams): Promise<string
     }
   };
 
-  if (from) payload.from = from;
-  if (replyTo) payload.replyTo = replyTo;
-  if (cc) payload.cc = Array.isArray(cc) ? cc : [cc];
-  if (bcc) payload.bcc = Array.isArray(bcc) ? bcc : [bcc];
+  const fromNorm = from?.trim();
+  const replyToNorm = replyTo?.trim();
+  const ccNorm = normalizeList(cc);
+  const bccNorm = normalizeList(bcc);
+
+  if (fromNorm) payload.from = fromNorm;
+  if (replyToNorm) payload.replyTo = replyToNorm;
+  if (ccNorm.length) payload.cc = ccNorm;
+  if (bccNorm.length) payload.bcc = bccNorm;
 
   const docRef = await addDoc(collection(db, 'mail'), payload);
   return docRef.id;
