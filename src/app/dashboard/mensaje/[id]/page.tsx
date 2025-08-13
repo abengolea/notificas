@@ -12,6 +12,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import type { User as AppUser } from '@/lib/types';
 import { useParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import MailTraceability from '@/components/dashboard/mail-traceability';
 
 function mapAuthUserToAppUser(u: any | null): AppUser | null {
   if (!u) return null;
@@ -125,9 +126,12 @@ function MessageContent() {
       </header>
 
       <main className="flex-1 p-4 md:p-8 lg:p-12">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-4xl space-y-6">
           {messageData?.message ? (
-            <MailMessageView data={messageData} />
+            <>
+              <MailMessageView data={messageData} />
+              <MailTraceability mail={messageData} />
+            </>
           ) : (
             <Card><CardHeader><CardTitle>Mensaje no compatible</CardTitle></CardHeader><CardContent>El formato de este mensaje no es compatible.</CardContent></Card>
           )}
