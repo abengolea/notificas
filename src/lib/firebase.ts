@@ -11,8 +11,8 @@ const firebaseConfig = {
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "notificas-f9953",
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "notificas-f9953.firebasestorage.app",
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "367222498482",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:367222498482:web:770552748b0b7ab28ad5ab",
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-8JGSBZ7BE8"
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:367222498482:web:8d8f95b5d17af1008ad5ab",
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-TQLEG5ZXGE"
 };
 
 // Validate environment variables (warn only, don't throw)
