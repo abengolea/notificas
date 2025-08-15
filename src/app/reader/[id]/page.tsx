@@ -5,6 +5,8 @@ import { useParams, useSearchParams } from "next/navigation";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import MailTraceability from "@/components/dashboard/mail-traceability";
+import { Logo } from "@/components/logo";
 
 export default function ReaderPage() {
   const params = useParams();
@@ -34,7 +36,7 @@ export default function ReaderPage() {
           return;
         }
         setMail({ id, ...data });
-        // Confirmar lectura explícita si aún no está marcada
+        // Confirmar lectura explícita
         await setDoc(ref, { tracking: { readConfirmed: true, readConfirmedAt: new Date() } }, { merge: true });
       } catch (e: any) {
         setError(e?.message || 'Error al cargar el mensaje.');
@@ -44,44 +46,69 @@ export default function ReaderPage() {
 
   if (error) {
     return (
-      <div className="max-w-2xl mx-auto p-6">
-        <Card>
-          <CardHeader><CardTitle>Lectura</CardTitle></CardHeader>
-          <CardContent className="text-sm text-red-600">{error}</CardContent>
-        </Card>
+      <div className="min-h-screen bg-muted/30">
+        <header className="sticky top-0 z-10 flex h-16 items-center gap-3 border-b bg-background px-6">
+          <Logo className="h-8 w-auto" />
+          <span className="font-semibold">Notificas</span>
+        </header>
+        <div className="max-w-2xl mx-auto p-6">
+          <Card>
+            <CardHeader><CardTitle>Lectura</CardTitle></CardHeader>
+            <CardContent className="text-sm text-red-600">{error}</CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
 
   if (!mail) {
     return (
-      <div className="max-w-2xl mx-auto p-6">
-        <Card>
-          <CardHeader><CardTitle>Lectura</CardTitle></CardHeader>
-          <CardContent>Cargando…</CardContent>
-        </Card>
+      <div className="min-h-screen bg-muted/30">
+        <header className="sticky top-0 z-10 flex h-16 items-center gap-3 border-b bg-background px-6">
+          <Logo className="h-8 w-auto" />
+          <span className="font-semibold">Notificas</span>
+        </header>
+        <div className="max-w-2xl mx-auto p-6">
+          <Card>
+            <CardHeader><CardTitle>Lectura</CardTitle></CardHeader>
+            <CardContent>Cargando…</CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="max-w-3xl mx-auto p-6 space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>{mail?.message?.subject || 'Sin asunto'}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <div><strong>De:</strong> {mail.from || 'contacto@notificas.com'}</div>
-          <div><strong>Para:</strong> {Array.isArray(mail.to) ? mail.to.join(', ') : mail.to}</div>
-        </CardContent>
-      </Card>
+  const sentAt = mail?.delivery?.time?.toDate?.() ? mail.delivery.time.toDate().toLocaleString() : '—';
 
-      <Card>
-        <CardHeader><CardTitle>Contenido</CardTitle></CardHeader>
-        <CardContent>
-          <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: mail?.message?.html || '' }} />
-        </CardContent>
-      </Card>
+  return (
+    <div className="min-h-screen bg-muted/30">
+      <header className="sticky top-0 z-10 flex h-16 items-center gap-3 border-b bg-background px-6">
+        <Logo className="h-8 w-auto" />
+        <span className="font-semibold">Notificas</span>
+      </header>
+      <main className="p-4 md:p-8 lg:p-12">
+        <div className="mx-auto max-w-4xl space-y-6">
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle>{mail?.message?.subject || 'Sin asunto'}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div><strong>De:</strong> {mail.from || 'contacto@notificas.com'}</div>
+              <div><strong>Para:</strong> {Array.isArray(mail.to) ? mail.to.join(', ') : mail.to}</div>
+              <div><strong>Fecha enviado:</strong> {sentAt}</div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-lg">
+            <CardHeader><CardTitle>Contenido</CardTitle></CardHeader>
+            <CardContent>
+              <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: mail?.message?.html || '' }} />
+            </CardContent>
+          </Card>
+
+          <MailTraceability mail={mail} />
+        </div>
+      </main>
     </div>
   );
 }
