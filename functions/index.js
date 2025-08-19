@@ -5,6 +5,7 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const cheerio = require('cheerio');
+const { generateEmailWithTracking } = require('./email-template');
 
 initializeApp();
 
@@ -51,10 +52,8 @@ function injectTrackingIntoHtml(html, docId, token) {
     $(el).attr('href', redirectUrl);
   });
 
-  const pixelUrl = `${TRACKING_BASE_URL}/trackOpen?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(token)}`;
-  const pixelTag = `<img src="${pixelUrl}" alt="" width="1" height="1" style="display:none;" />`;
-  if ($('body').length > 0) $('body').append(pixelTag);
-  else $.root().append(pixelTag);
+  // Tracking pixel URL removed
+  // Tracking pixel tag removed
 
   const confirmUrl = `${TRACKING_BASE_URL}/confirmRead?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(token)}`;
   const confirmBlock = `<p style="margin-top:24px"><a href="${confirmUrl}" target="_blank" rel="noopener">Confirmar lectura</a></p>`;
@@ -64,28 +63,7 @@ function injectTrackingIntoHtml(html, docId, token) {
   return $.html();
 }
 
-function buildLinkOnlyEmailHtml(from, readerUrl) {
-  const safeFrom = from || 'Notificas';
-  return `
-  <div style="font-family: Arial, sans-serif; line-height:1.6; color:#111">
-    <p>Estimado/a,</p>
-    <p>Has recibido una comunicación fehaciente digital enviada por <strong>${safeFrom}</strong>. Para ver su contenido de forma online, haz clic en el siguiente botón:</p>
-    <p style="margin:24px 0">
-      <a href="${readerUrl}" target="_blank" rel="noopener" style="background:#111;color:#fff;padding:12px 18px;border-radius:6px;text-decoration:none;display:inline-block">
-        Leer Notificación
-      </a>
-    </p>
-    <p>Este correo electrónico no adjunta el contenido de la comunicación por razones de confidencialidad.</p>
-    <p>Si no puedes hacer clic, copia y pega esta URL en tu navegador:<br/>
-      <span style="font-family:monospace">${readerUrl}</span>
-    </p>
-    <hr style="border:none;border-top:1px solid #ddd;margin:24px 0"/>
-    <p style="font-size:12px;color:#555">
-      Información importante: La notificación enviada a través de Notificas puede tener efectos legales si dejas transcurrir tiempo sin responderla. Te aconsejamos reenviar a tu abogado de confianza para que de forma inmediata tenga la comunicación que te acaba de llegar.<br/>
-      El mensaje, su contenido, los archivos adjuntos, la fecha de envío y recepción, se encuentran certificados y guardados en la red Blockchain (inmutabilidad de los datos).
-    </p>
-  </div>`;
-}
+
 
 exports.sendEmail = onDocumentCreated(
   { document: 'mail/{docId}', region: REGION, concurrency: 10 },
@@ -107,16 +85,27 @@ exports.sendEmail = onDocumentCreated(
     // Build reader URL for explicit read and confidential viewing
     const readerUrl = `${APP_HOSTING_URL}/reader/${encodeURIComponent(docId)}?k=${encodeURIComponent(trackingToken)}`;
 
-    // Build link-only email body and inject tracking
-    const linkOnlyHtml = buildLinkOnlyEmailHtml(from, readerUrl);
-    const htmlWithTracking = injectTrackingIntoHtml(linkOnlyHtml, docId, trackingToken);
+    // Build email with new template and inject tracking
+    const htmlWithTracking = generateEmailWithTracking({
+      senderName: emailData.senderName || from || 'Notificas',
+      recipientName: emailData.recipientName || 'Usuario',
+      recipientEmail: emailData.recipientEmail || '',
+      readUrl: readerUrl,
+      fallbackUrl: readerUrl,
+      year: new Date().getFullYear(),
+      docId: docId,
+      trackingToken: trackingToken,
+      trackingBaseUrl: TRACKING_BASE_URL
+    });
+
+
 
     try {
       const mailOptions = {
         from,
         to,
         subject,
-        text: `Has recibido una comunicación fehaciente digital enviada por ${from}. Para leerla, abre: ${readerUrl}`,
+        text: `Has recibido una comunicación fehaciente digital enviada por ${emailData.senderName || from}. Para leerla, abre: ${readerUrl}`,
         html: htmlWithTracking,
         replyTo: emailData.replyTo,
         cc: emailData.cc,
@@ -143,7 +132,12 @@ exports.sendEmail = onDocumentCreated(
             readConfirmedAt: null,
             messageId: result.messageId
           },
-          readerUrl
+          readerUrl,
+          // Guardar el HTML ORIGINAL del mensaje para que el lector vea el contenido real
+          message: {
+            ...emailData.message,
+            html: htmlOriginal
+          }
         },
         { merge: true }
       );

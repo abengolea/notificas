@@ -71,7 +71,36 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user }: { c
         try {
             const sender = auth.currentUser?.email || user.email;
             const subject = `Mensaje certificado de ${sender}`;
-            const html = `<h2>Mensaje certificado</h2><p>${data.content}</p>`;
+            
+            // Crear HTML más rico para el mensaje
+            const html = `
+                <div style="font-family: 'Inter', -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0;">
+                    <div style="background: #0D9488; color: #ffffff; padding: 20px; border-radius: 8px 8px 0 0; margin: -20px -20px 20px -20px;">
+                        <h1 style="margin: 0; font-size: 24px; font-weight: 700;">Mensaje Certificado</h1>
+                        <p style="margin: 8px 0 0 0; opacity: 0.9; font-size: 14px;">Enviado por ${sender}</p>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <h2 style="color: #1e293b; margin: 0 0 16px 0; font-size: 18px; font-weight: 600;">Contenido del Mensaje:</h2>
+                        <div style="background: #f8fafc; padding: 16px; border-radius: 6px; border-left: 4px solid #0D9488;">
+                            ${data.content.split('\n').map(line => `<p style="margin: 0 0 8px 0; line-height: 1.6; color: #334155;">${line}</p>`).join('')}
+                        </div>
+                    </div>
+                    
+                    <div style="background: #f1f5f9; padding: 16px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <h3 style="margin: 0 0 8px 0; color: #475569; font-size: 14px; font-weight: 600;">Detalles del Envío:</h3>
+                        <ul style="margin: 0; padding-left: 20px; color: #64748b; font-size: 13px;">
+                            <li>Prioridad: <strong>${data.priority}</strong></li>
+                            <li>Certificado requerido: <strong>${data.requireCertificate ? 'Sí' : 'No'}</strong></li>
+                            <li>Fecha: <strong>${new Date().toLocaleDateString('es-ES')}</strong></li>
+                        </ul>
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; color: #64748b; font-size: 12px;">
+                        Este mensaje ha sido certificado y registrado en la red Blockchain a través de Notificas.com
+                    </div>
+                </div>
+            `;
 
             // Programar email real (from fijo + replyTo al usuario)
             const mailId = await scheduleEmail({
@@ -80,6 +109,9 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user }: { c
                 html,
                 from: 'contacto@notificas.com',
                 replyTo: sender,
+                senderName: user.name || user.email, // Usar nombre real del usuario
+                recipientName: data.recipient.split('@')[0], // Nombre del destinatario
+                recipientEmail: data.recipient
             });
 
             // Registrar mensaje en colección 'messages' para UI
