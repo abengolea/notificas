@@ -71,7 +71,7 @@ import { es } from 'date-fns/locale';
 
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, query, where, orderBy, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 
 type Folder = "inbox" | "sent" | "drafts" | "archive" | "trash";
 type MessageTypeFilter = "all" | "Comunicación" | "Notificación" | "Contestación" | "Oferta" | "Intimación" | "Oficio Judicial";
@@ -112,7 +112,7 @@ function mapAuthUserToAppUser(u: any | null): AppUser | null {
     createdAt: new Date(),
     lastLogin: new Date(),
     avatarUrl: u.photoURL || undefined,
-    creditos: 0, // Se actualizará desde Firestore
+    creditos: 0,
   };
 }
 
@@ -139,53 +139,6 @@ export default function DashboardClient() {
     const unsub = onAuthStateChanged(auth, (u) => setAppUser(mapAuthUserToAppUser(u)));
     return () => unsub();
   }, []);
-
-  // Obtener créditos del usuario desde Firestore
-  useEffect(() => {
-    if (!appUser?.uid) return;
-
-    const userDoc = doc(db, 'users', appUser.uid);
-    const unsub = onSnapshot(userDoc, (docSnap) => {
-      if (docSnap.exists()) {
-        const userData = docSnap.data();
-        setAppUser(prev => prev ? {
-          ...prev,
-          creditos: userData.creditos || 0,
-          estado: userData.estado || 'activo',
-          tipo: userData.tipo || 'individual'
-        } : null);
-      } else {
-        // Si el usuario no existe en Firestore, crear uno con datos por defecto
-        // Por ahora usamos datos mock, en producción se crearían desde el backend
-        const defaultUserData = {
-          uid: appUser.uid,
-          email: appUser.email,
-          tipo: 'individual',
-          estado: 'activo',
-          perfil: {
-            nombre: appUser.perfil.nombre,
-            verificado: true,
-          },
-          createdAt: new Date(),
-          lastLogin: new Date(),
-          avatarUrl: appUser.avatarUrl,
-          creditos: 15, // Créditos por defecto
-        };
-        
-        // Crear el usuario en Firestore
-        setDoc(userDoc, defaultUserData).then(() => {
-          setAppUser(prev => prev ? {
-            ...prev,
-            creditos: 15,
-            estado: 'activo',
-            tipo: 'individual'
-          } : null);
-        }).catch(console.error);
-      }
-    });
-
-    return () => unsub();
-  }, [appUser?.uid]);
 
   useEffect(() => {
     if (!appUser?.email) return;
