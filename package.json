@@ -51,6 +51,8 @@
     "firebase": "^11.9.1",
     "firebase-admin": "^13.4.0",
     "genkit": "^1.13.0",
+    "jspdf": "^3.0.1",
+    "jspdf-autotable": "^5.0.2",
     "lucide-react": "^0.475.0",
     "next": "15.3.3",
     "patch-package": "^8.0.0",
