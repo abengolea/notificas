@@ -107,23 +107,21 @@ export default function ReaderPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto px-4">
-        {/* Header del mensaje */}
+        {/* Contenido del mensaje - PRIMERO */}
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle className="text-xl">
-              Mensaje certificado de {mail.from}
-            </CardTitle>
+            <CardTitle className="text-xl">Contenido del Mensaje</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm text-gray-600">
-            <div><strong>De:</strong> {mail.from}</div>
-            <div><strong>Para:</strong> {mail.to}</div>
-            <div><strong>Asunto:</strong> {mail.message?.subject || 'Sin asunto'}</div>
-            <div><strong>Fecha:</strong> {formatDate(mail.createdAt)}</div>
+          <CardContent>
+            <div
+              className="prose max-w-none"
+              dangerouslySetInnerHTML={{ __html: mail?.message?.html || '' }}
+            />
           </CardContent>
         </Card>
 
-        {/* Estado del tracking en tiempo real */}
-        <Card className="mb-6">
+        {/* Estado del tracking en tiempo real - DEBAJO */}
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Eye className="h-5 w-5" />
@@ -231,18 +229,7 @@ export default function ReaderPage() {
           </CardContent>
         </Card>
 
-        {/* Contenido del mensaje */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Contenido del Mensaje</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div 
-              className="prose max-w-none" 
-              dangerouslySetInnerHTML={{ __html: mail?.message?.html || '' }}
-            />
-          </CardContent>
-        </Card>
+
       </div>
     </div>
   );
