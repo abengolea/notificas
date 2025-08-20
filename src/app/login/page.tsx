@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useState } from 'react';
 import { useFirebaseAuth } from '@/hooks/useFirebaseAuth';
-import { Mail, KeyRound, Loader2 } from 'lucide-react';
+import { Mail, KeyRound, Loader2, Eye, EyeOff } from 'lucide-react';
 
 import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,7 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const { signIn, loading, error } = useFirebaseAuth();
+  const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -89,8 +90,23 @@ export default function LoginPage() {
                     <div className="relative">
                       <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                       <FormControl>
-                        <Input type="password" {...field} className="pl-10" />
+                        <Input 
+                          type={showPassword ? "text" : "password"} 
+                          {...field} 
+                          className="pl-10 pr-10" 
+                        />
                       </FormControl>
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-5 w-5" />
+                        ) : (
+                          <Eye className="h-5 w-5" />
+                        )}
+                      </button>
                     </div>
                     <FormMessage />
                   </FormItem>
