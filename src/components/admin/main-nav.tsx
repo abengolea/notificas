@@ -14,6 +14,7 @@ export function MainNav({
 
   const links = [
     { href: "/admin", label: "Resumen" },
+    { href: "/admin/tickets", label: "Tickets" },
     { href: "/admin/users", label: "Usuarios" },
     { href: "/admin/plans", label: "Planes" },
     { href: "/admin/settings", label: "Configuración" },

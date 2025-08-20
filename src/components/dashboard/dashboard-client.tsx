@@ -71,7 +71,7 @@ import { es } from 'date-fns/locale';
 
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, doc, setDoc } from 'firebase/firestore';
 
 type Folder = "inbox" | "sent" | "drafts" | "archive" | "trash";
 type MessageTypeFilter = "all" | "Comunicación" | "Notificación" | "Contestación" | "Oferta" | "Intimación" | "Oficio Judicial";
@@ -112,7 +112,7 @@ function mapAuthUserToAppUser(u: any | null): AppUser | null {
     createdAt: new Date(),
     lastLogin: new Date(),
     avatarUrl: u.photoURL || undefined,
-    creditos: 0,
+    creditos: 0, // Se actualizará desde Firestore
   };
 }
 
@@ -139,6 +139,53 @@ export default function DashboardClient() {
     const unsub = onAuthStateChanged(auth, (u) => setAppUser(mapAuthUserToAppUser(u)));
     return () => unsub();
   }, []);
+
+  // Obtener créditos del usuario desde Firestore
+  useEffect(() => {
+    if (!appUser?.uid) return;
+
+    const userDoc = doc(db, 'users', appUser.uid);
+    const unsub = onSnapshot(userDoc, (docSnap) => {
+      if (docSnap.exists()) {
+        const userData = docSnap.data();
+        setAppUser(prev => prev ? {
+          ...prev,
+          creditos: userData.creditos || 0,
+          estado: userData.estado || 'activo',
+          tipo: userData.tipo || 'individual'
+        } : null);
+      } else {
+        // Si el usuario no existe en Firestore, crear uno con datos por defecto
+        // Por ahora usamos datos mock, en producción se crearían desde el backend
+        const defaultUserData = {
+          uid: appUser.uid,
+          email: appUser.email,
+          tipo: 'individual',
+          estado: 'activo',
+          perfil: {
+            nombre: appUser.perfil.nombre,
+            verificado: true,
+          },
+          createdAt: new Date(),
+          lastLogin: new Date(),
+          avatarUrl: appUser.avatarUrl,
+          creditos: 15, // Créditos por defecto
+        };
+        
+        // Crear el usuario en Firestore
+        setDoc(userDoc, defaultUserData).then(() => {
+          setAppUser(prev => prev ? {
+            ...prev,
+            creditos: 15,
+            estado: 'activo',
+            tipo: 'individual'
+          } : null);
+        }).catch(console.error);
+      }
+    });
+
+    return () => unsub();
+  }, [appUser?.uid]);
 
   useEffect(() => {
     if (!appUser?.email) return;
@@ -331,7 +378,23 @@ export default function DashboardClient() {
           <div className="flex-1">
             <h1 className="font-semibold text-lg">{folders.find((f) => f.id === selectedFolder)?.label}</h1>
           </div>
-          {appUser ? <UserNav user={appUser} /> : null}
+          
+          {/* Billetera en la parte superior derecha */}
+          <div className="flex items-center gap-4">
+            <div className="hidden md:flex items-center gap-3 p-3 bg-muted rounded-lg border">
+              <Wallet className="h-5 w-5 text-primary" />
+              <div className="text-right">
+                <div className="text-xs text-muted-foreground">Créditos</div>
+                <div className="font-bold text-lg text-primary">{appUser?.creditos || 0}</div>
+              </div>
+              <Link href="/dashboard/billetera">
+                <Button variant="outline" size="sm" className="ml-2">
+                  Ver Billetera
+                </Button>
+              </Link>
+            </div>
+            {appUser ? <UserNav user={appUser} /> : null}
+          </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
           {isSuspended && (
@@ -469,3 +532,23 @@ export default function DashboardClient() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
