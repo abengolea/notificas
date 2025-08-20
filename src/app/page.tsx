@@ -145,6 +145,23 @@ export default function LandingPage() {
                             </li>
                         ))}
                     </ul>
+                    
+                    {/* Link de Verificación */}
+                    <div className="mt-12 text-center">
+                        <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
+                            <h3 className="text-xl font-semibold text-blue-800 mb-3">
+                                🔍 ¿Necesitas verificar un documento?
+                            </h3>
+                            <p className="text-blue-700 mb-4">
+                                Verifica la autenticidad de cualquier constancia PDF emitida por Notificas.com
+                            </p>
+                            <Button asChild size="lg" className="bg-blue-600 hover:bg-blue-700">
+                                <Link href="/verify">
+                                    Verificar Documento
+                                </Link>
+                            </Button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
