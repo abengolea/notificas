@@ -4,9 +4,40 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { certificarLectura, certificarEnvio, certificarRecepcion, certificarUsuario } from '@/lib/certification';
-import { getWalletBalance, getTransactionInfo, getNetworkInfo } from '@/lib/blockchain';
-import { Loader2, CheckCircle, AlertCircle, ExternalLink, Info } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, ExternalLink, Info, ShieldCheck } from 'lucide-react';
+
+const POLYGON_EXPLORER = 'https://polygonscan.com';
+
+async function fetchCertify(type: string, params?: Record<string, string>) {
+  const res = await fetch('/api/polygon/certify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, ...params }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Error al certificar');
+  }
+  return res.json();
+}
+
+async function fetchTransactionInfo(txHash: string) {
+  const res = await fetch(`/api/polygon/transaction?txHash=${encodeURIComponent(txHash)}`);
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Error al obtener info');
+  }
+  return res.json();
+}
+
+async function fetchNetworkInfo() {
+  const res = await fetch('/api/polygon/network');
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Error al obtener info de red');
+  }
+  return res.json();
+}
 
 export default function BlockchainTest() {
   const [loading, setLoading] = useState(false);
@@ -24,68 +55,36 @@ export default function BlockchainTest() {
     }, ...prev]);
   };
 
-  const testCertificarLectura = async () => {
+  const runCertify = async (label: string, type: string, params?: Record<string, string>) => {
     setLoading(true);
     try {
-      const txHash = await certificarLectura('msg-123', 'user-abc');
-      addResult('Lectura Certificada', { txHash }, true);
+      const { txHash, explorerUrl } = await fetchCertify(type, params);
+      addResult(label, { txHash, explorerUrl }, true);
+      // Auto-fetch datos de certificación de la red
+      try {
+        const { data } = await fetchTransactionInfo(txHash);
+        addResult(`Datos certificación: ${label}`, data, true);
+      } catch {
+        // No fallar si falla el fetch de info
+      }
     } catch (error: any) {
-      addResult('Error Lectura', { error: error.message }, false);
+      addResult(`Error ${label}`, { error: error.message }, false);
     }
     setLoading(false);
   };
 
-  const testCertificarEnvio = async () => {
-    setLoading(true);
-    try {
-      const txHash = await certificarEnvio('msg-456', 'user-sender', 'destino@ejemplo.com');
-      addResult('Envío Certificado', { txHash }, true);
-    } catch (error: any) {
-      addResult('Error Envío', { error: error.message }, false);
-    }
-    setLoading(false);
-  };
-
-  const testCertificarRecepcion = async () => {
-    setLoading(true);
-    try {
-      const txHash = await certificarRecepcion('msg-789', 'user-receiver');
-      addResult('Recepción Certificada', { txHash }, true);
-    } catch (error: any) {
-      addResult('Error Recepción', { error: error.message }, false);
-    }
-    setLoading(false);
-  };
-
-  const testCertificarUsuario = async () => {
-    setLoading(true);
-    try {
-      const txHash = await certificarUsuario('user-new', 'nuevo@ejemplo.com');
-      addResult('Usuario Certificado', { txHash }, true);
-    } catch (error: any) {
-      addResult('Error Usuario', { error: error.message }, false);
-    }
-    setLoading(false);
-  };
-
-  const checkBalance = async () => {
-    setLoading(true);
-    try {
-      const bal = await getWalletBalance();
-      setBalance(bal);
-      addResult('Balance Consultado', { balance: `${bal} POL` }, true);
-    } catch (error: any) {
-      addResult('Error Balance', { error: error.message }, false);
-    }
-    setLoading(false);
-  };
+  const testCertificarLectura = () => runCertify('Lectura Certificada', 'read');
+  const testCertificarEnvio = () => runCertify('Envío Certificado', 'send');
+  const testCertificarRecepcion = () => runCertify('Recepción Certificada', 'receive');
+  const testCertificarUsuario = () => runCertify('Usuario Certificado', 'user');
 
   const checkNetworkInfo = async () => {
     setLoading(true);
     try {
-      const info = await getNetworkInfo();
-      setNetworkInfo(info);
-      addResult('Info de Red', info, true);
+      const { data } = await fetchNetworkInfo();
+      setNetworkInfo(data);
+      setBalance(data.balance || '');
+      addResult('Info de Red', data, true);
     } catch (error: any) {
       addResult('Error Red', { error: error.message }, false);
     }
@@ -95,23 +94,27 @@ export default function BlockchainTest() {
   const checkTransaction = async (txHash: string) => {
     setLoading(true);
     try {
-      const info = await getTransactionInfo(txHash);
-      addResult('Info Transacción', info, true);
+      const { data } = await fetchTransactionInfo(txHash);
+      addResult('Info Transacción', data, true);
     } catch (error: any) {
       addResult('Error Info TX', { error: error.message }, false);
     }
     setLoading(false);
   };
 
+  const openInExplorer = (txHash: string) => {
+    window.open(`${POLYGON_EXPLORER}/tx/${txHash}`, '_blank');
+  };
+
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            🔗 Test Polygon Amoy Testnet Integration (2025)
+          <CardTitle className="flex flex-wrap items-center gap-2">
+            🔗 Prueba Polygon Mainnet
             {balance && (
               <Badge variant="secondary">
-                Balance: {balance} POL
+                Balance: {balance}
               </Badge>
             )}
             {networkInfo && (
@@ -119,13 +122,18 @@ export default function BlockchainTest() {
                 Chain: {networkInfo.chainId}
               </Badge>
             )}
+            {networkInfo?.walletAddress && (
+              <Badge variant="outline" className="font-mono text-xs">
+                Wallet: {networkInfo.walletAddress.slice(0, 6)}...{networkInfo.walletAddress.slice(-4)}
+              </Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <div className="flex items-center gap-2 text-yellow-800 text-sm">
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center gap-2 text-blue-800 text-sm">
               <Info className="w-4 h-4" />
-              <span><strong>Actualización 2025:</strong> Mumbai deprecado → Usando Amoy Testnet (Chain ID: 80002)</span>
+              <span><strong>Polygon Mainnet</strong> (Chain ID: 137) - Usando POL real</span>
             </div>
           </div>
 
@@ -167,50 +175,22 @@ export default function BlockchainTest() {
             </Button>
 
             <Button 
-              onClick={checkBalance}
-              disabled={loading}
-              variant="outline"
-              className="flex items-center gap-2"
-            >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : '💰'}
-              Ver Balance POL
-            </Button>
-
-            <Button 
               onClick={checkNetworkInfo}
               disabled={loading}
               variant="outline"
               className="flex items-center gap-2"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : '📊'}
-              Info Red
+              Info Red + Balance
             </Button>
 
             <Button 
-              onClick={() => window.open('https://www.alchemy.com/faucets/polygon-amoy', '_blank')}
+              onClick={() => window.open(POLYGON_EXPLORER, '_blank')}
               variant="outline"
               className="flex items-center gap-2"
             >
               <ExternalLink className="w-4 h-4" />
-              Faucet POL (Alchemy)
-            </Button>
-
-            <Button 
-              onClick={() => window.open('https://faucets.chain.link/polygon-amoy', '_blank')}
-              variant="outline"
-              className="flex items-center gap-2"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Faucet POL (Chainlink)
-            </Button>
-
-            <Button 
-              onClick={() => window.open('https://amoy.polygonscan.com', '_blank')}
-              variant="outline"
-              className="flex items-center gap-2"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Amoy Explorer
+              Polygon Explorer
             </Button>
           </div>
         </CardContent>
@@ -219,10 +199,10 @@ export default function BlockchainTest() {
       {results.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>📊 Resultados de Pruebas - Polygon Amoy</CardTitle>
+            <CardTitle>📊 Datos de certificación en Polygon</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4 max-h-96 overflow-y-auto">
+            <div className="space-y-4 max-h-[28rem] overflow-y-auto">
               {results.map((result) => (
                 <div 
                   key={result.id}
@@ -240,28 +220,27 @@ export default function BlockchainTest() {
                     <span className="text-sm text-muted-foreground">{result.timestamp}</span>
                   </div>
                   
-                  <div className="text-sm space-y-1">
+                  <div className="text-sm space-y-2">
                     {result.data.txHash && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium">TX Hash:</span>
-                        <code className="text-xs bg-gray-100 px-2 py-1 rounded">
+                        <code className="text-xs bg-gray-100 px-2 py-1 rounded break-all">
                           {result.data.txHash}
                         </code>
                         <Button
                           size="sm"
-                          variant="outline"
-                          onClick={() => window.open(`https://amoy.polygonscan.com/tx/${result.data.txHash}`, '_blank')}
-                          className="h-6 px-2"
+                          className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                          onClick={() => openInExplorer(result.data.txHash)}
                         >
-                          <ExternalLink className="w-3 h-3" />
+                          <ShieldCheck className="w-4 h-4" />
+                          Verificar en PolygonScan
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => checkTransaction(result.data.txHash)}
-                          className="h-6 px-2"
                         >
-                          Info
+                          Más datos
                         </Button>
                       </div>
                     )}
@@ -278,21 +257,55 @@ export default function BlockchainTest() {
                       </div>
                     )}
 
-                    {result.data.chainId && (
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div><span className="font-medium">Chain ID:</span> {result.data.chainId}</div>
-                        <div><span className="font-medium">Network:</span> {result.data.name}</div>
-                        <div><span className="font-medium">Currency:</span> {result.data.currency}</div>
-                        <div><span className="font-medium">Block:</span> {result.data.blockNumber}</div>
+                    {result.data.walletAddress && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">Wallet usada:</span>
+                        <code className="text-xs bg-gray-100 px-2 py-1 rounded break-all">
+                          {result.data.walletAddress}
+                        </code>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => window.open(`${POLYGON_EXPLORER}/address/${result.data.walletAddress}`, '_blank')}
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Ver en PolygonScan
+                        </Button>
+                        <span className="text-xs text-muted-foreground">(compara con tu dirección)</span>
                       </div>
                     )}
 
-                    {result.data.blockNumber && !result.data.chainId && (
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div><span className="font-medium">Block:</span> {result.data.blockNumber}</div>
-                        <div><span className="font-medium">Gas:</span> {result.data.gasUsed?.toString()}</div>
-                        <div><span className="font-medium">Status:</span> {result.data.status}</div>
-                        <div><span className="font-medium">Network:</span> {result.data.network}</div>
+
+                    {/* Datos de la red y certificación */}
+                    {(result.data.chainId || result.data.blockNumber !== undefined) && (
+                      <div className="space-y-2 text-xs bg-white/50 p-2 rounded">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          {result.data.chainId && <div><span className="font-medium">Chain ID:</span> {result.data.chainId}</div>}
+                          <div><span className="font-medium">Red:</span> {result.data.name || result.data.network || 'Polygon Mainnet'}</div>
+                          {result.data.currency && <div><span className="font-medium">Moneda:</span> {result.data.currency}</div>}
+                          {result.data.blockNumber !== undefined && <div><span className="font-medium">Block:</span> {result.data.blockNumber}</div>}
+                          {result.data.gasUsed !== undefined && <div><span className="font-medium">Gas usado:</span> {result.data.gasUsed.toString()}</div>}
+                          {result.data.status !== undefined && <div><span className="font-medium">Status:</span> {result.data.status === 1 ? '✅ Confirmada' : '⏳ Pendiente'}</div>}
+                        </div>
+                        {result.data.data && (
+                          <div>
+                            <span className="font-medium">Payload certificado:</span>
+                            <pre className="mt-1 p-2 bg-gray-100 rounded text-[11px] break-all">
+                              {result.data.data}
+                            </pre>
+                          </div>
+                        )}
+                        {result.data.explorerUrl && (
+                          <Button
+                            size="sm"
+                            variant="link"
+                            className="h-auto p-0 text-emerald-600 font-semibold"
+                            onClick={() => window.open(result.data.explorerUrl, '_blank')}
+                          >
+                            🔗 Verificar en PolygonScan que quedó certificado en la blockchain
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>
