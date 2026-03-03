@@ -17,6 +17,7 @@ export function MainNav({
     { href: "/admin/tickets", label: "Tickets" },
     { href: "/admin/users", label: "Usuarios" },
     { href: "/admin/plans", label: "Planes" },
+    { href: "/admin/email-test", label: "Test Emails" },
     { href: "/admin/settings", label: "Configuración" },
   ]
 

@@ -47,6 +47,7 @@ export const mockMessages: Mensaje[] = [
       stampId: 'bfa-stamp-cert-001',
       timestamp: new Date('2024-07-29T14:00:00Z'),
       receipt: {},
+      hashRegistrado: 'hash-certificado-001',
       certificadoPDF: '/path/to/certificado-001.pdf',
       hashCertificado: 'hash-certificado-001',
       verificacionUrl: 'https://bfa.ar/verify/bfa-stamp-cert-001',

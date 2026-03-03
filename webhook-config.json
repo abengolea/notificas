@@ -1,0 +1,29 @@
+{
+  "webhook_url": "https://us-central1-notificas-f9953.cloudfunctions.net/processIncomingEmail",
+  "email_domain": "notificas.com",
+  "incoming_email": "contacto@notificas.com",
+  "instructions": {
+    "title": "Configuración de Webhook para Correos Entrantes",
+    "description": "Para que los correos enviados a contacto@notificas.com se procesen automáticamente:",
+    "steps": [
+      "1. Configurar el servidor de correo para recibir emails en contacto@notificas.com",
+      "2. Configurar un webhook que llame a la URL cuando llegue un correo",
+      "3. El webhook debe enviar un POST con los datos del correo en formato JSON",
+      "4. Formato del JSON: { from, to, subject, text, html, attachments }",
+      "5. La función processIncomingEmail procesará el correo automáticamente"
+    ],
+    "example_payload": {
+      "from": "usuario@email.com",
+      "to": "contacto@notificas.com",
+      "subject": "CERTIFICAR - destinatario@email.com - Asunto: Mi mensaje",
+      "text": "Contenido del mensaje",
+      "html": "<p>Contenido del mensaje</p>"
+    },
+    "supported_subject_formats": [
+      "CERTIFICAR - destinatario@email.com - Asunto: Mi mensaje",
+      "certificar - destinatario@email.com - asunto: mi mensaje",
+      "CERTIFICAR destinatario@email.com Mi mensaje",
+      "certificar-destinatario@email.com-mi mensaje"
+    ]
+  }
+}

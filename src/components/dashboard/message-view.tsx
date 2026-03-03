@@ -65,9 +65,9 @@ export default function MessageView({ message, currentUser }: MessageViewProps) 
       // Preparar datos para la constancia
       const certificationData: CertificationData = {
         messageId: message.id,
-        senderName: currentUser.nombre,
+        senderName: currentUser.perfil.nombre,
         recipientEmail: otherParty.email,
-        subject: `Mensaje de ${currentUser.nombre}`,
+        subject: `Mensaje de ${currentUser.perfil.nombre}`,
         content: message.contenido,
         sentAt: new Date(message.timestamp),
         deliveryState: 'SUCCESS', // Asumimos que si está en el dashboard, fue enviado exitosamente

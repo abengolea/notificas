@@ -44,21 +44,23 @@ npm run dev
 
 ## 🔐 Configuración de Seguridad
 
+> **📋 Ver [SECURITY.md](SECURITY.md)** para la guía completa de seguridad.
+
 ### 🏭 Producción - Firebase App Hosting
 
-Para **producción**, las credenciales se almacenan como **secretos seguros** en Firebase:
+Para **producción**, las credenciales se almacenan en **Cloud Secret Manager** (nunca en el código):
 
 ```bash
-# Solo necesario una vez por proyecto
+# 1. Configura .env.local con tus credenciales
+# 2. Sube secretos a Firebase (lee de .env.local)
 ./setup-firebase-secrets.sh
 ```
 
-El archivo `apphosting.yaml` usa referencias seguras:
+El archivo `apphosting.yaml` usa **solo referencias** a secretos:
 ```yaml
 env:
-  NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
-  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
-  # ... más secretos
+  POLYGON_PRIVATE_KEY: ${{ secrets.POLYGON_PRIVATE_KEY }}  # NUNCA hardcodear
+  # ...
 ```
 
 ### 🛠️ Desarrollo - Variables Locales
@@ -79,21 +81,22 @@ Para **desarrollo local**, usa valores reales en `.env.local`:
 - `FIREBASE_APP_ID` - Secreto seguro
 - `FIREBASE_MEASUREMENT_ID` - Secreto seguro
 
+### WhatsApp - Cloud Functions (Secret Manager)
+- `WHATSAPP_ACCESS_TOKEN` - Token de Meta Cloud API
+- `WHATSAPP_PHONE_NUMBER_ID` - Phone Number ID de tu app
+- Configurar con: `./scripts/setup-whatsapp-secrets.sh`
+
 ### Variables de Desarrollo (.env.local)
 - `NEXT_PUBLIC_FIREBASE_API_KEY` - Valor real para desarrollo
 - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` - Valor real para desarrollo
 - ... (todas las variables Firebase)
 
-### Variables de Polygon Blockchain (2025)
-- `POLYGON_PRIVATE_KEY` - Clave privada para Amoy Testnet
-- `POLYGON_PROVIDER_URL` - RPC de Amoy testnet (https://rpc-amoy.polygon.technology/)
+### Variables de Polygon Blockchain
+- `POLYGON_PRIVATE_KEY` - Clave privada (NUNCA hardcodear, usar secretos en producción)
+- `POLYGON_PROVIDER_URL` - RPC (https://polygon-bor-rpc.publicnode.com)
 - `POLYGON_WALLET_ADDRESS` - Dirección destino para transacciones
 
-**🚨 Actualización Crítica 2025:**
-- Mumbai Testnet fue **DEPRECADO** el 13 abril 2024
-- Amoy Testnet es el **reemplazo oficial**
-- Chain ID cambió: 80001 → **80002**
-- Moneda cambió: MATIC → **POL**
+**Red:** Polygon Mainnet (Chain ID: 137) | Moneda: POL
 
 ## 🌐 Tecnologías
 

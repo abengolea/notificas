@@ -8,7 +8,7 @@ export const emailTemplate = `<!doctype html>
     body, table, td, a { font-family: "Inter", -apple-system, Segoe UI, Roboto, Arial, sans-serif !important; }
     body { margin: 0; padding: 0; background-color: #F8FAFC; color: #1E293B; }
     .wrapper { width: 100%; table-layout: fixed; background-color: #F8FAFC; padding: 24px 0; }
-    .container { width: 100%; max-width: 640px; background: #ffffff; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid #E2E8F0; }
+    .container { width: 100%; max-width: 800px; background: #ffffff; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid #E2E8F0; }
     .header { background: #0D9488; color: #ffffff; padding: 20px 24px; }
     .badge { display: inline-block; background: #1E3A8A; color: #fff; font-size: 12px; letter-spacing: .4px; padding: 4px 8px; border-radius: 999px; }
     .title { margin: 10px 0 0 0; font-size: 20px; line-height: 1.3; font-weight: 700; }

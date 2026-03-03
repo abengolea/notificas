@@ -1,0 +1,21 @@
+# Plantilla de apphosting.yaml - COPIA A apphosting.yaml
+# NUNCA incluyas credenciales reales en archivos versionados
+# Las credenciales se configuran con: ./setup-firebase-secrets.sh
+
+runtime: nodejs22
+
+runConfig:
+  maxInstances: 1
+  env:
+    # Firebase - desde Cloud Secret Manager
+    NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+    NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+    NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+    NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+    NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
+    # Polygon - CRÍTICO: solo vía secretos
+    POLYGON_PRIVATE_KEY: ${{ secrets.POLYGON_PRIVATE_KEY }}
+    POLYGON_PROVIDER_URL: "https://polygon-bor-rpc.publicnode.com"
+    POLYGON_WALLET_ADDRESS: ${{ secrets.POLYGON_WALLET_ADDRESS }}

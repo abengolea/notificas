@@ -112,6 +112,11 @@ export default function LoginPage() {
                   </FormItem>
                 )}
               />
+              {error && (
+                <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                  {error}
+                </div>
+              )}
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? (
                   <>

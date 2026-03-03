@@ -20,7 +20,7 @@ function generateEmailHtml(params) {
     body, table, td, a { font-family: "Inter", -apple-system, Segoe UI, Roboto, Arial, sans-serif !important; }
     body { margin: 0; padding: 0; background-color: #F8FAFC; color: #1E293B; }
     .wrapper { width: 100%; table-layout: fixed; background-color: #F8FAFC; padding: 24px 0; }
-    .container { width: 100%; max-width: 640px; background: #ffffff; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid #E2E8F0; }
+    .container { width: 100%; max-width: 800px; background: #ffffff; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid #E2E8F0; }
     .header { background: #0D9488; color: #ffffff; padding: 20px 24px; }
     .badge { display: inline-block; background: #1E3A8A; color: #fff; font-size: 12px; letter-spacing: .4px; padding: 4px 8px; border-radius: 999px; }
     .title { margin: 10px 0 0 0; font-size: 20px; line-height: 1.3; font-weight: 700; }
@@ -112,8 +112,9 @@ function generateEmailWithTracking(params) {
     trackingBaseUrl
   } = params;
 
-  // Generar el HTML base usando el mismo sistema de reemplazo que el frontend
-  let html = `<!doctype html>
+  // Template PROFESIONAL que no active filtros de spam
+  let html = `
+<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
@@ -122,7 +123,7 @@ function generateEmailWithTracking(params) {
     body, table, td, a { font-family: "Inter", -apple-system, Segoe UI, Roboto, Arial, sans-serif !important; }
     body { margin: 0; padding: 0; background-color: #F8FAFC; color: #1E293B; }
     .wrapper { width: 100%; table-layout: fixed; background-color: #F8FAFC; padding: 24px 0; }
-    .container { width: 100%; max-width: 640px; background: #ffffff; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid #E2E8F0; }
+    .container { width: 100%; max-width: 800px; background: #ffffff; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid #E2E8F0; }
     .header { background: #0D9488; color: #ffffff; padding: 20px 24px; }
     .badge { display: inline-block; background: #1E3A8A; color: #fff; font-size: 12px; letter-spacing: .4px; padding: 4px 8px; border-radius: 999px; }
     .title { margin: 10px 0 0 0; font-size: 20px; line-height: 1.3; font-weight: 700; }
@@ -209,28 +210,46 @@ function generateEmailWithTracking(params) {
     .replace(/\{\{fallbackUrl\}\}/g, fallbackUrl)
     .replace(/\{\{year\}\}/g, year.toString());
 
+  // Función para codificar base64url (igual que en index.js)
+  const base64UrlEncode = (str) => {
+    return Buffer.from(str, 'utf8')
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
+  };
+
   // Inyectar tracking en los enlaces
   html = html.replace(
     /href="([^"]+)"/g,
     (match, url) => {
-      if (url.startsWith('http') && !url.includes('linkRedirect')) {
-        const encoded = Buffer.from(url).toString('base64')
-          .replace(/\+/g, '-')
-          .replace(/\//g, '_')
-          .replace(/=+$/g, '');
-        const redirectUrl = `${trackingBaseUrl}/linkRedirect?msg=${encodeURIComponent(docId)}&u=${encoded}&k=${encodeURIComponent(trackingToken)}`;
+      if (url.startsWith('http') && !url.includes('linkredirect')) {
+        const encoded = base64UrlEncode(url);
+        const redirectUrl = `https://linkredirect-ju7n3yysfq-uc.a.run.app?msg=${encodeURIComponent(docId)}&u=${encoded}&k=${encodeURIComponent(trackingToken)}`;
         return `href="${redirectUrl}"`;
       }
       return match;
     }
   );
 
-  // Agregar enlace de confirmación de lectura
-  const confirmUrl = `${trackingBaseUrl}/confirmRead?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}`;
-  const confirmBlock = `<p style="margin-top:24px;text-align:center;"><a href="${confirmUrl}" target="_blank" rel="noopener" style="color:#64748B;text-decoration:none;font-size:12px;">Confirmar lectura</a></p>`;
+  // Imagen de tracking integrada en el template - se ve profesional y trackea la apertura
+  const trackingImageUrl = `https://trackopen-ju7n3yysfq-uc.a.run.app?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}`;
+  
+  // Agregar imagen de tracking como parte del diseño del email
+  const trackingSection = `
+    <div class="divider"></div>
+    <div style="text-align: center; margin: 20px 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
+      <img src="${trackingImageUrl}" alt="Notificación Digital Certificada" style="display:block;margin:0 auto;max-width:600px;height:auto;border-radius:8px;" />
+    </div>`;
 
-  // Insertar antes del cierre del body
-  html = html.replace('</body>', `${confirmBlock}\n</body>`);
+  // Enlace de confirmación de lectura
+  const confirmUrl = `https://confirmread-ju7n3yysfq-uc.a.run.app?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}`;
+  const confirmBlock = `<p style="margin-top:20px;text-align:center;font-size:12px;color:#666;">
+    <a href="${confirmUrl}" style="color:#0D9488;text-decoration:none;">Confirmar que he leído este mensaje</a>
+  </p>`;
+
+  // Agregar tracking section y confirmación al final del HTML
+  html = html + trackingSection + confirmBlock;
 
   return html;
 }

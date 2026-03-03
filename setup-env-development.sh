@@ -19,12 +19,11 @@ NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=367222498482
 NEXT_PUBLIC_FIREBASE_APP_ID=1:367222498482:web:770552748b0b7ab28ad5ab
 NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-8JGSBZ7BE8
 
-# Polygon Amoy Testnet Configuration (2025) - REEMPLAZA MUMBAI DEPRECADO
-# Mumbai fue descontinuado el 13 abril 2024 - Amoy es el reemplazo oficial
-# Chain ID: 80002 | Currency: POL | Explorer: https://amoy.polygonscan.com
-# ⚠️  CONFIGURAR CON TUS PROPIAS CLAVES ANTES DE USAR
+# Polygon Mainnet - Red real con POL
+# Chain ID: 137 | Currency: POL | Explorer: https://polygonscan.com
+# Obtén POL en Binance u otros exchanges
 POLYGON_PRIVATE_KEY="tu_clave_privada_sin_0x"
-POLYGON_PROVIDER_URL="https://rpc-amoy.polygon.technology/"
+POLYGON_PROVIDER_URL="https://polygon-bor-rpc.publicnode.com"
 POLYGON_WALLET_ADDRESS="0xTU_DIRECCION_DESTINO"
 EOF
 
@@ -38,24 +37,18 @@ echo "   - NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID"
 echo "   - NEXT_PUBLIC_FIREBASE_APP_ID"
 echo "   - NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID"
 echo ""
-echo "🔗 Variables de Polygon Amoy Testnet (2025) agregadas:"
+echo "🔗 Variables de Polygon Mainnet agregadas:"
 echo "   - POLYGON_PRIVATE_KEY (⚠️  CONFIGURAR)"
-echo "   - POLYGON_PROVIDER_URL (Amoy Testnet oficial)"
+echo "   - POLYGON_PROVIDER_URL (Polygon Mainnet)"
 echo "   - POLYGON_WALLET_ADDRESS (⚠️  CONFIGURAR)"
 echo ""
-echo "🚨 CAMBIOS CRÍTICOS 2025:"
-echo "   - Mumbai Testnet DEPRECADO (13 abril 2024)"
-echo "   - Amoy Testnet es el reemplazo oficial"
-echo "   - Chain ID: 80002 (era 80001 en Mumbai)"
-echo "   - Moneda: POL (era MATIC)"
-echo ""
-echo "⚠️  IMPORTANTE: Configura tus claves de Polygon Amoy antes de usar blockchain:"
+echo "⚠️  IMPORTANTE: Configura tus claves de Polygon Mainnet antes de usar blockchain:"
 echo "   1. Edita .env.local con tu clave privada"
 echo "   2. Agrega tu dirección de wallet"
-echo "   3. Obtén POL gratis en: https://www.alchemy.com/faucets/polygon-amoy"
-echo "   4. Verifica transacciones en: https://amoy.polygonscan.com"
+echo "   3. Obtén POL (ej. desde Binance) y retira a tu wallet"
+echo "   4. Verifica transacciones en: https://polygonscan.com"
 echo ""
 echo "🚀 Puedes ejecutar 'npm run dev' para iniciar el servidor"
-echo "🔗 Prueba Polygon Amoy en: http://localhost:9003/test-polygon"
+echo "🔗 Prueba Polygon Mainnet en: http://localhost:9003/test-polygon"
 echo "🔐 En producción, Firebase App Hosting usa secretos seguros"
 echo "💡 El archivo .env.local no se sube al repositorio (.gitignore)"

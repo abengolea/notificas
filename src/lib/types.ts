@@ -94,3 +94,15 @@ export type Transaccion = {
     creditos: number;
     metodoPago?: 'Mercado Pago' | 'Crédito';
 };
+
+export type Contacto = {
+    id: string;
+    email: string;
+    nombre?: string;
+    cuit?: string; // CUIT opcional
+    telefono?: string; // Teléfono para WhatsApp
+    usuarioId: string; // ID del usuario que tiene este contacto
+    ultimoUso: Date;
+    vecesUsado: number;
+    createdAt: Date;
+};

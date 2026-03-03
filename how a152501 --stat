@@ -1,0 +1,7 @@
+[33mcommit a1525015b63ed3dcdaae15b0b6bfec3b522112fd[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: Adrian <abengolea1@gmail.com>
+Date:   Wed Aug 20 08:19:19 2025 -0300
+
+    feat: agregar link de verificación en portada debajo de CASOS DE USO
+
+src/app/page.tsx

@@ -74,3 +74,15 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Vista de mensaje certificado: diseño profesional sin bordes grises */
+.mensaje-html-view .wrapper {
+  background: #ffffff !important;
+  padding: 0 !important;
+}
+.mensaje-html-view .container {
+  max-width: min(100%, 900px) !important;
+  width: 100% !important;
+  border: none !important;
+  border-radius: 0 !important;
+}

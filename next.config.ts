@@ -5,12 +5,11 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   experimental: {
     // allowedDevOrigins is deprecated in Next.js 15
   },
+  // Configurar Turbopack vacío para usar webpack por defecto
+  turbopack: {},
   images: {
     remotePatterns: [
       {

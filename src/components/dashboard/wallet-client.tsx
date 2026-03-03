@@ -12,15 +12,6 @@ import { es } from 'date-fns/locale';
 import { DollarSign, Gift, Package, TrendingUp, CreditCard, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 
 interface WalletClientProps {
   user: User;
@@ -48,7 +39,6 @@ const FormattedDateCell = ({ date }: { date: Date | string }) => {
 
 export default function WalletClient({ user, transactions, planes }: WalletClientProps) {
   const [loadingPlan, setLoadingPlan] = useState<Plan['id'] | null>(null);
-  const [showRedirectionAlert, setShowRedirectionAlert] = useState(false);
   const { toast } = useToast();
   
   const formatCurrency = (amount: number) => {
@@ -61,17 +51,41 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
   const handlePurchase = async (plan: Plan) => {
     setLoadingPlan(plan.id);
 
-    // Simula una llamada a la API del backend para crear una preferencia de pago
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    setLoadingPlan(null);
-    setShowRedirectionAlert(true);
-    
-    toast({
-        title: "Preferencia de pago creada",
-        description: `Serás redirigido a Mercado Pago para completar la compra del plan: ${plan.nombre}.`,
-        variant: 'default',
-    });
+    try {
+      // Llamar a la API para crear preferencia de pago
+      const response = await fetch('/api/mercadopago/preference', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          planId: plan.id,
+          userId: user.uid,
+          userEmail: user.email
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al crear la preferencia de pago');
+      }
+
+      const data = await response.json();
+      
+      setLoadingPlan(null);
+      
+      // Redirigir a Mercado Pago
+      window.location.href = data.initPoint;
+      
+    } catch (error) {
+      console.error('Error al procesar el pago:', error);
+      setLoadingPlan(null);
+      
+      toast({
+        title: "Error al procesar el pago",
+        description: "Hubo un problema al crear la preferencia de pago. Inténtalo de nuevo.",
+        variant: 'destructive',
+      });
+    }
   };
 
   return (
@@ -122,7 +136,7 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
                         </>
                       ) : (
                         <>
-                            <CreditCard className="mr-2 h-4 w-4" /> Comprar Ahora
+                            <CreditCard className="mr-2 h-4 w-4" /> Pagar con Mercado Pago
                         </>
                       )}
                     </Button>
@@ -131,8 +145,11 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
             ))}
           </CardContent>
             <CardFooter className='flex-col items-start gap-2'>
-                 <p className="text-xs text-muted-foreground">Al hacer clic en "Comprar Ahora", serás redirigido a Mercado Pago para completar la transacción.</p>
-                 <Image src="https://placehold.co/200x40.png" alt="Powered by Mercado Pago" width={150} height={30} data-ai-hint="logo mercadopago" />
+                 <p className="text-xs text-muted-foreground">Al hacer clic en "Pagar con Mercado Pago", serás redirigido a la plataforma de pago segura para completar la transacción.</p>
+                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                   <span>🔒</span>
+                   <span>Pago seguro procesado por Mercado Pago</span>
+                 </div>
             </CardFooter>
         </Card>
       </div>
@@ -178,19 +195,6 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
         </CardContent>
       </Card>
 
-        <AlertDialog open={showRedirectionAlert} onOpenChange={setShowRedirectionAlert}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>Redirección a Mercado Pago</AlertDialogTitle>
-                    <AlertDialogDescription>
-                       En una aplicación real, serías redirigido a la pasarela de pago de Mercado Pago para completar tu compra de forma segura.
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                    <AlertDialogAction onClick={() => setShowRedirectionAlert(false)}>Entendido</AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
     </div>
   );
 }

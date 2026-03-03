@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Eye, MousePointer, CheckCircle, Clock, Mail } from "lucide-react";
+import { Mail, CheckCircle } from "lucide-react";
+
+const CONFIRM_READ_URL = "https://confirmread-ju7n3yysfq-uc.a.run.app";
 
 interface MailData {
   from?: string;
@@ -30,14 +30,97 @@ interface MailData {
     readConfirmed: boolean;
     readConfirmedAt: any;
     sentAt: any;
+    movements?: any[];
+    attachmentsOpened?: number;
   };
+  attachments?: Array<{
+    id: string;
+    fileName: string;
+    fileUrl: string;
+    fileSize: number;
+    uploadedAt: any;
+    hash?: string;
+    integrityCertificate?: any;
+    tracking?: any;
+  }>;
   createdAt?: any;
+}
+
+// Reemplaza el bloque redundante "Leer Notificación" / "[El enlace se agregará...]" con mensaje
+// adecuado para cuando ya estás en el reader, y convierte "Confirmar lectura" en enlace real
+function sanitizeHtmlForReader(
+  html: string,
+  messageId: string,
+  trackingToken?: string | null
+): string {
+  if (!html) return "";
+
+  let sanitized = html;
+
+  // 1. Reemplazar "Leer Notificación" por "Confirmar lectura" (el usuario YA está leyendo)
+  const confirmUrl = trackingToken
+    ? `${CONFIRM_READ_URL}?msg=${encodeURIComponent(messageId)}&k=${encodeURIComponent(trackingToken)}`
+    : "#";
+  const confirmButtonHtml = trackingToken
+    ? `<a class="btn" href="${confirmUrl}" target="_blank" rel="noopener" style="display:inline-block;background:#0D9488;color:#fff!important;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:700;">Confirmar lectura</a>`
+    : '<p style="margin:20px 0;padding:12px 16px;background:#dcfce7;border-radius:8px;color:#166534;font-weight:600;">✓ Ya está en la página de lectura certificada</p>';
+  // Regex: botón "Leer Notificación" con href="#" → reemplazar por "Confirmar lectura"
+  sanitized = sanitized.replace(
+    /<a(?=[^>]*href\s*=\s*["']#["'])[^>]*>[\s]*Leer\s+Notificaci[oó]n[\s]*<\/a>/gi,
+    confirmButtonHtml
+  );
+
+  // 2. Reemplazar el enlace "[El enlace se agregará al enviar el mensaje]" por mensaje útil
+  sanitized = sanitized.replace(
+    /<a[^>]*href\s*=\s*["']#["'][^>]*>\[El enlace se agregará al enviar el mensaje\]<\/a>/gi,
+    "Ya accedió mediante el enlace del correo."
+  );
+
+  // 3. Para "Confirmar lectura": si tenemos token, usar la URL real; si no, convertir en span
+  if (trackingToken) {
+    const confirmUrl = `${CONFIRM_READ_URL}?msg=${encodeURIComponent(messageId)}&k=${encodeURIComponent(trackingToken)}`;
+    sanitized = sanitized.replace(
+      /<a([^>]*)href\s*=\s*["']#confirm["']([^>]*)>\s*Confirmar lectura\s*<\/a>/gi,
+      `<a$1href="${confirmUrl}" target="_blank" rel="noopener"$2>Confirmar lectura</a>`
+    );
+  }
+
+  // 4. Cualquier otro enlace con href="#" o href="#algo" que aún quede → convertir en span
+  sanitized = sanitized.replace(
+    /<a\s+([^>]*)href\s*=\s*["']#["']([^>]*)>([^<]*)<\/a>/gi,
+    "<span $1$2>$3</span>"
+  );
+  sanitized = sanitized.replace(
+    /<a\s+([^>]*)href\s*=\s*["']#([^"'\s>]*)["']([^>]*)>([^<]*)<\/a>/gi,
+    "<span $1$3>$4</span>"
+  );
+
+  return sanitized;
 }
 
 export default function ReaderPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
+  const trackingToken = searchParams.get("k");
   const [mail, setMail] = useState<MailData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const handleAttachmentClick = async (attachment: any) => {
+    if (!mail || !params.id) return;
+    try {
+      await fetch('/api/track-attachment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageId: params.id,
+          attachmentId: attachment.id,
+          fileName: attachment.fileName,
+          action: 'opened'
+        })
+      });
+    } catch { /* ignore */ }
+    window.open(attachment.fileUrl, '_blank');
+  };
 
   useEffect(() => {
     if (!params.id) return;
@@ -46,15 +129,11 @@ export default function ReaderPage() {
       doc(db, 'mail', params.id as string),
       (doc) => {
         if (doc.exists()) {
-          const data = doc.data() as MailData;
-          setMail(data);
+          setMail(doc.data() as MailData);
         }
         setLoading(false);
       },
-      (error) => {
-        console.error('Error fetching mail:', error);
-        setLoading(false);
-      }
+      () => setLoading(false)
     );
 
     return () => unsubscribe();
@@ -83,153 +162,37 @@ export default function ReaderPage() {
     );
   }
 
-  const formatDate = (timestamp: any) => {
-    if (!timestamp) return 'No disponible';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return date.toLocaleString('es-ES', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const getStatusColor = (state: string) => {
-    switch (state) {
-      case 'SUCCESS': return 'bg-green-100 text-green-800';
-      case 'ERROR': return 'bg-red-100 text-red-800';
-      case 'PENDING': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-4xl mx-auto px-4">
-        {/* Contenido del mensaje - PRIMERO */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="text-xl">Contenido del Mensaje</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div
-              className="prose max-w-none"
-              dangerouslySetInnerHTML={{ __html: mail?.message?.html || '' }}
-            />
-          </CardContent>
+    <div className="min-h-screen bg-gray-50 py-8 px-4">
+      <div className="max-w-4xl mx-auto">
+        <Card className="p-6 md:p-8">
+          <div
+            className="prose prose-lg max-w-none [&_.container]:!max-w-none [&_.wrapper]:!max-w-none [&_table]:!max-w-full"
+            dangerouslySetInnerHTML={{
+              __html: sanitizeHtmlForReader(
+                mail?.message?.html || "",
+                params.id as string,
+                trackingToken
+              ),
+            }}
+          />
+          <div className="mt-8 pt-6 border-t flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            {trackingToken && !mail?.tracking?.readConfirmed ? (
+              <a
+                href={`${CONFIRM_READ_URL}?msg=${encodeURIComponent(params.id as string)}&k=${encodeURIComponent(trackingToken)}`}
+                target="_blank"
+                rel="noopener"
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-medium transition-colors w-fit"
+              >
+                <CheckCircle className="h-5 w-5" />
+                Confirmar que he leído
+              </a>
+            ) : null}
+            <p className="text-sm text-muted-foreground">
+              {mail.tracking?.readConfirmed ? "Lectura confirmada." : "Acceso registrado y certificado."}
+            </p>
+          </div>
         </Card>
-
-        {/* Estado del tracking en tiempo real - DEBAJO */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Eye className="h-5 w-5" />
-              Estado del Tracking en Tiempo Real
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Estado de entrega */}
-              <div className="space-y-3">
-                <h3 className="font-semibold text-gray-700 flex items-center gap-2">
-                  <Mail className="h-4 w-4" />
-                  Estado de Entrega
-                </h3>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Estado:</span>
-                    <Badge className={getStatusColor(mail.delivery?.state || 'PENDING')}>
-                      {mail.delivery?.state || 'PENDIENTE'}
-                    </Badge>
-                  </div>
-                  {mail.delivery?.time && (
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Enviado:</span>
-                      <span className="text-sm font-medium">{formatDate(mail.delivery.time)}</span>
-                    </div>
-                  )}
-                  {mail.delivery?.info && (
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">ID del mensaje:</span>
-                      <span className="text-sm font-mono bg-gray-100 px-2 py-1 rounded text-xs">
-                        {mail.delivery.info}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Métricas de tracking */}
-              <div className="space-y-3">
-                <h3 className="font-semibold text-gray-700 flex items-center gap-2">
-                  <MousePointer className="h-4 w-4" />
-                  Métricas de Interacción
-                </h3>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Abierto:</span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={mail.tracking?.opened ? "default" : "secondary"}>
-                        {mail.tracking?.opened ? 'SÍ' : 'NO'}
-                      </Badge>
-                      {mail.tracking?.opened && (
-                        <span className="text-xs text-gray-500">
-                          {formatDate(mail.tracking.openedAt)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Veces abierto:</span>
-                    <Badge variant="outline" className="font-mono">
-                      {mail.tracking?.openCount || 0}
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Clicks:</span>
-                    <Badge variant="outline" className="font-mono">
-                      {mail.tracking?.clickCount || 0}
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Lectura confirmada:</span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={mail.tracking?.readConfirmed ? "default" : "secondary"}>
-                        {mail.tracking?.readConfirmed ? 'SÍ' : 'NO'}
-                      </Badge>
-                      {mail.tracking?.readConfirmed && (
-                        <span className="text-xs text-gray-500">
-                          {formatDate(mail.tracking.readConfirmedAt)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Información adicional */}
-            <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="flex items-start gap-3">
-                <Clock className="h-5 w-5 text-blue-600 mt-0.5" />
-                <div className="text-sm text-blue-800">
-                  <p className="font-medium mb-1">¿Cómo funciona el tracking?</p>
-                  <ul className="space-y-1 text-xs">
-                    <li>• <strong>Abierto:</strong> Se marca cuando abres este mensaje</li>
-                    <li>• <strong>Clicks:</strong> Se incrementan cada vez que haces click en un enlace</li>
-                    <li>• <strong>Lectura confirmada:</strong> Se marca cuando confirmas que has leído el mensaje</li>
-                  </ul>
-                  <p className="mt-2 text-xs opacity-75">
-                    Todas las acciones se registran en tiempo real y quedan certificadas en la red Blockchain.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-
       </div>
     </div>
   );

@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useState } from 'react';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
@@ -50,13 +50,21 @@ export default function SignupPage() {
   });
 
   const onSubmit = async (data: SignupFormValues) => {
+    // Prevent double submission
+    if (isLoading) return;
+    
     setIsLoading(true);
     try {
       // 1. Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
       const user = userCredential.user;
 
-      // 2. Save additional user data to Firestore
+      // 2. Update user profile with display name
+      await updateProfile(user, {
+        displayName: data.name
+      });
+
+      // 3. Save additional user data to Firestore
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
         email: data.email,
@@ -65,7 +73,7 @@ export default function SignupPage() {
           nombre: data.name,
           cuit: data.cuit,
           telefono: data.phone,
-          verificado: false, // Start as unverified
+          verificado: true, // Mark as verified since we don't require email verification
         },
         creditos: 0, // Start with 0 credits
         estado: 'activo',

@@ -12,6 +12,7 @@ import {
   PenSquare,
   Search,
   Send,
+  Settings,
   Trash2,
   User as UserIcon,
   Wallet,
@@ -23,6 +24,7 @@ import {
   Scale,
   Gavel,
   AlertCircle,
+  Users,
 } from 'lucide-react';
 
 import type { User as AppUser } from '@/lib/types';
@@ -65,16 +67,19 @@ import {
 
 import { ComposeMessageDialog } from './compose-message-dialog';
 import { UserNav } from './user-nav';
+import { ContactosPageComponent } from './contactos-page';
+import { MovementsTracking } from './movements-tracking';
 import { Logo } from '../logo';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, limit, getDoc, doc } from 'firebase/firestore';
 
-type Folder = "inbox" | "sent" | "drafts" | "archive" | "trash";
+type Folder = "inbox" | "sent" | "drafts" | "archive" | "trash" | "contactos";
 type MessageTypeFilter = "all" | "Comunicación" | "Notificación" | "Contestación" | "Oferta" | "Intimación" | "Oficio Judicial";
+type SourceFilter = "all" | "app_web" | "external_email";
 
 const messageTypeIcons: Record<string, React.ReactNode> = {
   "Comunicación": <Mail className="mr-2 h-4 w-4" />,
@@ -119,21 +124,39 @@ function mapAuthUserToAppUser(u: any | null): AppUser | null {
 // Tipo simplificado para render de la tabla
 type DisplayMessage = {
   id: string;
+  mailId?: string;
   sentAt: Date | string;
   from: string;
   to: string[];
   subject: string;
   lastStatus: string;
+  source?: string;
+  sourceLabel?: string;
+  sourceIcon?: string;
+  movements?: any[];
 };
 
 export default function DashboardClient() {
   const [isComposeOpen, setComposeOpen] = useState(false);
   const [selectedFolder, setSelectedFolder] = useState<Folder>("inbox");
   const [activeFilter, setActiveFilter] = useState<MessageTypeFilter>("all");
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
 
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
+  const [showCleanupButton, setShowCleanupButton] = useState(false);
+
+  // Función para detectar mensajes duplicados
+  const detectDuplicates = (messages: DisplayMessage[]) => {
+    const duplicates = messages.filter(msg => 
+      msg.subject.includes('Mensaje certificado de abengolea1@gmail.com') ||
+      msg.subject === 'Mensaje de prueba desde la app' ||
+      !msg.from
+    );
+    setShowCleanupButton(duplicates.length > 0);
+    return duplicates;
+  };
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => setAppUser(mapAuthUserToAppUser(u)));
@@ -141,36 +164,188 @@ export default function DashboardClient() {
   }, []);
 
   useEffect(() => {
+    if (!appUser?.uid) return;
+
+    const userRef = doc(db, 'users', appUser.uid);
+
+    const unsubscribe = onSnapshot(
+      userRef,
+      (snapshot) => {
+        if (!snapshot.exists()) return;
+
+        const userData = snapshot.data() as any;
+
+        setAppUser((prev) => {
+          if (!prev) return prev;
+
+          return {
+            ...prev,
+            tipo: userData?.tipo || prev.tipo,
+            estado: userData?.estado || prev.estado,
+            creditos: typeof userData?.creditos === 'number' ? userData.creditos : prev.creditos,
+            perfil: {
+              ...prev.perfil,
+              ...(userData?.perfil || {}),
+              verificado: userData?.perfil?.verificado ?? prev.perfil.verificado,
+            },
+          };
+        });
+      },
+      (error) => {
+        console.error('Error cargando datos del usuario:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [appUser?.uid]);
+
+  useEffect(() => {
+    const timestamp = new Date().toISOString();
+    console.log(`🔥🔥🔥 NUEVO USEEFFECT EJECUTADO 🔥🔥🔥`);
+    console.log(`🔄 [${timestamp}] useEffect ejecutado para folder:`, selectedFolder, 'user:', appUser?.email);
+    console.log('🔐 User auth state:', { 
+      user: appUser, 
+      email: appUser?.email,
+      selectedFolder 
+    });
+    
     if (!appUser?.email) return;
 
+    // Consultar solo la colección 'mail' - fuente única de verdad
     const mailCol = collection(db, 'mail');
     let q;
     if (selectedFolder === 'inbox') {
+      // Bandeja de entrada: mensajes donde el usuario es destinatario
       q = query(mailCol, where('to', 'array-contains', appUser.email));
     } else if (selectedFolder === 'sent') {
-      q = query(mailCol, where('from', '==', appUser.email));
+      // Enviados: mensajes donde el usuario es remitente
+      q = query(mailCol, where('senderName', '==', appUser.email));
+    } else if (selectedFolder === 'contactos') {
+      // Para contactos, no cargar mensajes - se maneja en la página separada
+      setMessages([]);
+      return;
     } else {
+      // Para otras carpetas (drafts, archive, trash) - por ahora vacío
       setMessages([]);
       return;
     }
 
+    console.log(`📡 [${timestamp}] Creando onSnapshot listener para folder:`, selectedFolder);
+    
+    // Contador de listeners para debug
+    let listenerCallCount = 0;
+    let lastProcessedData = '';
+    
     const unsub = onSnapshot(q, (snap) => {
+      listenerCallCount++;
+      const listenerTimestamp = new Date().toISOString();
+      
+      // Crear un hash de los datos para detectar duplicados
+      const dataHash = JSON.stringify({
+        totalDocs: snap.docs.length,
+        docIds: snap.docs.map(d => d.id).sort(),
+        changes: snap.docChanges().map(change => ({ type: change.type, docId: change.doc.id }))
+      });
+      
+      console.log(`🔥🔥🔥 NUEVO LISTENER EJECUTADO #${listenerCallCount} 🔥🔥🔥`);
+      console.log(`📊 [${listenerTimestamp}] Query results (call #${listenerCallCount}):`, {
+        folder: selectedFolder,
+        userEmail: appUser.email,
+        totalDocs: snap.docs.length,
+        hasChanges: snap.docChanges().length,
+        changes: snap.docChanges().map(change => ({ type: change.type, docId: change.doc.id })),
+        isDuplicate: dataHash === lastProcessedData
+      });
+      
+      // Si los datos son idénticos, no procesar
+      if (dataHash === lastProcessedData) {
+        console.log('⚠️⚠️⚠️ DATOS DUPLICADOS DETECTADOS, SALTANDO PROCESAMIENTO ⚠️⚠️⚠️');
+        return;
+      }
+      
+      lastProcessedData = dataHash;
+      
       const items: DisplayMessage[] = snap.docs
-        .map((d) => {
+        .map((d, index) => {
           const data = d.data() as any;
-          const sentAt = data?.delivery?.time?.toDate?.() ? data.delivery.time.toDate() : new Date();
+          
+          // Debug: solo mostrar los primeros 3 correos para evitar spam en logs
+          if (process.env.NODE_ENV === 'development' && index < 3) {
+            console.log('Message data for ID:', d.id, {
+              from: data?.from,
+              to: data?.to,
+              subject: data?.message?.subject,
+              timestamp: data?.timestamp
+            });
+          }
+          
+          // Usar timestamp real del documento
+          const sentAt = data?.delivery?.time?.toDate?.() || 
+                        data?.tracking?.sentAt?.toDate?.() ||
+                        data?.createdAt?.toDate?.() || 
+                        new Date();
           const from = data?.from || 'contacto@notificas.com';
           const to = Array.isArray(data?.to) ? data.to : data?.to ? [data.to] : [];
           const subject = data?.message?.subject || 'Sin asunto';
-          const opened = data?.tracking?.readConfirmed || data?.tracking?.opened;
-          const lastStatus = opened ? 'Leído' : (data?.delivery?.state || 'PENDIENTE');
-          return { id: d.id, sentAt, from, to, subject, lastStatus };
+          
+          // Usar movimientos como fuente de verdad para el estado
+          const movements = data?.tracking?.movements || [];
+          const emailSentCount = movements.filter((m: any) => m.type === 'email_sent').length;
+          const emailOpenedCount = movements.filter((m: any) => m.type === 'email_opened').length;
+          const appOpenedCount = movements.filter((m: any) => m.type === 'app_opened').length;
+          const readConfirmedCount = movements.filter((m: any) => m.type === 'read_confirmed').length;
+          
+          // Lógica de estados basada en movimientos: Leído > Abierto (email o app) > Entregado > Pendiente
+          let lastStatus;
+          if (readConfirmedCount > 0) {
+            lastStatus = 'Leído';
+          } else if (emailOpenedCount > 0 || appOpenedCount > 0) {
+            lastStatus = 'Abierto';
+          } else if (emailSentCount > 0) {
+            lastStatus = 'Entregado';
+          } else {
+            lastStatus = 'Pendiente';
+          }
+          
+          return { 
+            id: d.id, 
+            mailId: d.id, 
+            sentAt, 
+            from, 
+            to, 
+            subject, 
+            lastStatus,
+            source: data?.source || 'app_web',
+            sourceLabel: data?.sourceLabel || 'Enviado desde la app',
+            sourceIcon: data?.sourceIcon || '💻',
+            movements: data?.tracking?.movements || []
+          };
+        })
+        .filter((message) => {
+          // Para bandeja de entrada: excluir mensajes donde el usuario es el remitente
+          if (selectedFolder === 'inbox') {
+            // Obtener el senderName del documento original
+            const doc = snap.docs.find(d => d.id === message.id);
+            const data = doc?.data() as any;
+            const senderName = data?.senderName;
+            
+            // Solo mostrar mensajes donde el usuario NO es el remitente
+            return senderName !== appUser?.email;
+          }
+          return true;
         })
         .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+      
       setMessages(items);
+      
+      // Detectar duplicados después de actualizar mensajes
+      detectDuplicates(items);
     });
 
-    return () => unsub();
+    return () => {
+      console.log(`🗑️ [${new Date().toISOString()}] Destruyendo listener para folder:`, selectedFolder);
+      unsub();
+    };
   }, [appUser?.email, selectedFolder]);
 
   const messageCountsByType = useMemo(() => {
@@ -195,6 +370,10 @@ export default function DashboardClient() {
       list = activeFilter === 'Comunicación' ? list : [];
     }
 
+    if (sourceFilter !== 'all') {
+      list = list.filter(msg => msg.source === sourceFilter);
+    }
+
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       list = list.filter((m) =>
@@ -205,7 +384,7 @@ export default function DashboardClient() {
     }
 
     return list;
-  }, [messages, activeFilter, searchQuery]);
+  }, [messages, activeFilter, sourceFilter, searchQuery]);
 
   const folders: { id: Folder; label: string; icon: React.ReactNode }[] = [
     { id: 'inbox', label: 'Bandeja de Entrada', icon: <Inbox className="mr-3 h-5 w-5" /> },
@@ -214,6 +393,8 @@ export default function DashboardClient() {
     { id: 'archive', label: 'Archivo', icon: <Archive className="mr-3 h-5 w-5" /> },
     { id: 'trash', label: 'Papelera', icon: <Trash2 className="mr-3 h-5 w-5" /> },
   ];
+
+  const contactosFolder = { id: 'contactos', label: 'Contactos', icon: <Users className="mr-3 h-5 w-5" /> };
 
   const isSuspended = appUser?.estado === 'suspendido';
   const totalNotifications = filteredMessages.length;
@@ -267,6 +448,22 @@ export default function DashboardClient() {
             {folder.label}
           </Button>
         ))}
+        
+        {/* Separador */}
+        <div className="my-4">
+          <Separator />
+        </div>
+        
+        {/* Botón de Contactos */}
+        <Link href="/dashboard/contactos" className="w-full">
+          <Button
+            variant="ghost"
+            className="w-full justify-start h-11 text-base"
+          >
+            {contactosFolder.icon}
+            {contactosFolder.label}
+          </Button>
+        </Link>
       </nav>
 
       <div className="mt-auto p-6 space-y-6">
@@ -330,6 +527,54 @@ export default function DashboardClient() {
           </Sheet>
           <div className="flex-1">
             <h1 className="font-semibold text-lg">{folders.find((f) => f.id === selectedFolder)?.label}</h1>
+            {showCleanupButton && (
+              <div className="mt-2 p-2 bg-yellow-100 border border-yellow-300 rounded-lg">
+                <p className="text-sm text-yellow-800 mb-2">
+                  ⚠️ Se detectaron mensajes duplicados o corruptos. 
+                  <button 
+                    onClick={async () => {
+                      if (confirm('¿Eliminar mensajes duplicados/corruptos? Esta acción no se puede deshacer.')) {
+                        console.log('🧹 Limpiando mensajes duplicados...');
+                        
+                        try {
+                          // Filtrar mensajes duplicados/corruptos
+                          const duplicates = messages.filter(msg => 
+                            msg.subject.includes('Mensaje certificado de abengolea1@gmail.com') ||
+                            msg.subject === 'Mensaje de prueba desde la app' ||
+                            !msg.from
+                          );
+                          
+                          console.log(`🗑️ Eliminando ${duplicates.length} mensajes duplicados...`);
+                          
+                          // Llamar al endpoint de limpieza
+                          const response = await fetch('/api/clean-duplicates', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                              messageIds: duplicates.map(msg => msg.id) 
+                            })
+                          });
+                          
+                          if (response.ok) {
+                            console.log('✅ Limpieza completada');
+                            setShowCleanupButton(false);
+                            // Recargar la página para ver los cambios
+                            window.location.reload();
+                          } else {
+                            console.error('❌ Error en limpieza:', await response.text());
+                          }
+                        } catch (error) {
+                          console.error('❌ Error:', error);
+                        }
+                      }
+                    }}
+                    className="ml-2 text-yellow-900 underline hover:text-yellow-700"
+                  >
+                    Limpiar ahora
+                  </button>
+                </p>
+              </div>
+            )}
           </div>
           
           {/* Billetera en la parte superior derecha */}
@@ -350,24 +595,29 @@ export default function DashboardClient() {
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
-          {isSuspended && (
-            <div className="p-4 bg-yellow-100 dark:bg-yellow-900/30 border-l-4 border-yellow-500 rounded-r-lg">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <AlertCircle className="h-5 w-5 text-yellow-500" />
+          {selectedFolder === 'contactos' ? (
+            <ContactosPageComponent />
+          ) : (
+            <>
+              {isSuspended && (
+                <div className="p-4 bg-yellow-100 dark:bg-yellow-900/30 border-l-4 border-yellow-500 rounded-r-lg">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <AlertCircle className="h-5 w-5 text-yellow-500" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm text-yellow-700 dark:text-yellow-200">
+                        Tu cuenta está suspendida debido a un problema con el pago. Puedes ver tus mensajes, pero no podrás enviar nuevos hasta que se resuelva.
+                        {' '}
+                        <Link href="/dashboard/billetera" className="font-medium underline hover:text-yellow-600 dark:hover:text-yellow-100">
+                          Ir a la billetera para solucionarlo.
+                        </Link>
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="ml-3">
-                  <p className="text-sm text-yellow-700 dark:text-yellow-200">
-                    Tu cuenta está suspendida debido a un problema con el pago. Puedes ver tus mensajes, pero no podrás enviar nuevos hasta que se resuelva.
-                    {' '}
-                    <Link href="/dashboard/billetera" className="font-medium underline hover:text-yellow-600 dark:hover:text-yellow-100">
-                      Ir a la billetera para solucionarlo.
-                    </Link>
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+              )}
+          
           <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
             <h1 className="text-2xl font-semibold">
               {folders.find((f) => f.id === selectedFolder)?.label} <span className="text-muted-foreground">(Notificaciones Recientes)</span>
@@ -414,12 +664,13 @@ export default function DashboardClient() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Fecha enviado</TableHead>
+                  <TableHead>Fecha</TableHead>
                   <TableHead>Tipo</TableHead>
-                  <TableHead>Emisor</TableHead>
-                  <TableHead>Destinatario</TableHead>
-                  <TableHead>Asunto</TableHead>
-                  <TableHead>Ult. estado</TableHead>
+                  <TableHead>{selectedFolder === 'inbox' ? 'De' : 'Para'}</TableHead>
+                  <TableHead>{selectedFolder === 'inbox' ? 'Asunto' : 'Asunto'}</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Movimientos</TableHead>
+                  <TableHead>Origen</TableHead>
                   <TableHead className="text-right"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -427,41 +678,57 @@ export default function DashboardClient() {
                 {filteredMessages.map((message) => {
                   const messageType = 'Comunicación';
                   return (
-                    <TableRow key={message.id} className="cursor-pointer">
+                    <TableRow 
+                      key={message.id} 
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => window.location.href = `/dashboard/mensaje/${message.id}`}
+                    >
                       <TableCell>
-                        <Link href={`/dashboard/mensaje/${message.id}`} className="block w-full h-full">
-                          <FormattedDateCell date={message.sentAt} />
-                        </Link>
+                        <FormattedDateCell date={message.sentAt} />
                       </TableCell>
                       <TableCell>
-                        <Link href={`/dashboard/mensaje/${message.id}`} className="block w-full h-full">
-                          {messageType}
-                        </Link>
+                        {messageType}
                       </TableCell>
-                      <TableCell className="font-medium">
-                        <Link href={`/dashboard/mensaje/${message.id}`} className="block w-full h-full text-primary hover:underline">
-                          {message.from}
-                        </Link>
+                      <TableCell className="font-medium text-primary">
+                        {selectedFolder === 'inbox' ? message.from : message.to.join(', ')}
                       </TableCell>
                       <TableCell>
-                        <Link href={`/dashboard/mensaje/${message.id}`} className="block w-full h-full">
-                          {message.to.join(', ')}
-                        </Link>
+                        {message.subject}
                       </TableCell>
                       <TableCell>
-                        <Link href={`/dashboard/mensaje/${message.id}`} className="block w-full h-full">
-                          {message.subject}
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        <Link href={`/dashboard/mensaje/${message.id}`} className="block w-full h-full">
+                        <Badge 
+                          variant={
+                            message.lastStatus === 'Leído' ? 'default' : 
+                            message.lastStatus === 'Abierto' ? 'secondary' :
+                            message.lastStatus === 'Entregado' ? 'outline' :
+                            message.lastStatus === 'Error' ? 'destructive' : 'secondary'
+                          }
+                        >
                           {message.lastStatus}
-                        </Link>
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            {message.movements?.length || 0} eventos
+                          </Badge>
+                          {message.movements && message.movements.length > 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              {message.movements.filter((m: any) => m.type === 'email_opened').length} aperturas
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span>{message.sourceIcon}</span>
+                          <span className="text-sm text-muted-foreground">{message.sourceLabel}</span>
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
+                            <Button variant="ghost" size="icon" onClick={(e) => e.stopPropagation()}>
                               <ChevronRight className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -480,8 +747,22 @@ export default function DashboardClient() {
               </TableBody>
             </Table>
           </Card>
+            </>
+          )}
         </main>
       </div>
+      
+      {/* Enlace pequeño al admin */}
+      <div className="fixed bottom-4 right-4">
+        <Link 
+          href="/admin/login" 
+          className="inline-flex items-center gap-2 px-3 py-2 text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors"
+        >
+          <Settings className="h-3 w-3" />
+          Admin
+        </Link>
+      </div>
+
     </div>
   );
 }

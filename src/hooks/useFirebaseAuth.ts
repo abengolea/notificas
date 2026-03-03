@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, AuthError } from 'firebase/auth';
+import { useState, useEffect } from 'react';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, AuthError, onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { useToast } from './use-toast';
 
 export interface AuthState {
-  user: any;
+  user: User | null;
   loading: boolean;
   error: string | null;
 }
@@ -12,10 +12,23 @@ export interface AuthState {
 export const useFirebaseAuth = () => {
   const [authState, setAuthState] = useState<AuthState>({
     user: null,
-    loading: false,
+    loading: true, // Iniciar como loading para detectar el estado inicial
     error: null
   });
   const { toast } = useToast();
+
+  // Escuchar cambios en el estado de autenticación
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setAuthState({
+        user,
+        loading: false,
+        error: null
+      });
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const getErrorMessage = (error: AuthError): string => {
     switch (error.code) {
