@@ -8,6 +8,12 @@
 #
 # CRÍTICO para firebase-admin: secretos FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL,
 # FIREBASE_PRIVATE_KEY desde la service account.
+#
+# Mercado Pago (Checkout Pro — /api/mercadopago/preference): sin MERCADOPAGO_ACCESS_TOKEN
+# el servidor responde 500 al crear preferencias. Crear secreto y grant al backend.
+#
+# URL pública de la app (back_urls y enlaces): debe coincidir con el dominio real.
+# Ajustá el value si usás www u otro dominio.
 
 runtime: nodejs22
 
@@ -82,6 +88,16 @@ env:
       - RUNTIME
   - variable: POLYGON_CERTIFY_SECRET
     secret: POLYGON_CERTIFY_SECRET
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_APP_URL
+    value: "https://notificas.com.ar"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: MERCADOPAGO_ACCESS_TOKEN
+    secret: MERCADOPAGO_ACCESS_TOKEN
     availability:
       - BUILD
       - RUNTIME

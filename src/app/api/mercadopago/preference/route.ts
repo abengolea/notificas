@@ -14,6 +14,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!process.env.MERCADOPAGO_ACCESS_TOKEN?.trim()) {
+      console.error(
+        'MERCADOPAGO_ACCESS_TOKEN ausente: definí el secreto MERCADOPAGO_ACCESS_TOKEN en App Hosting y redeploy.'
+      );
+      return NextResponse.json(
+        {
+          error:
+            'El servicio de pagos no está configurado en el servidor. Revisá Mercado Pago en App Hosting.',
+        },
+        { status: 503 }
+      );
+    }
+
     const db = getAdminDb();
 
     const planSnap = await db.collection('plans').doc(planId).get();

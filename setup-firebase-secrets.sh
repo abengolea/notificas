@@ -54,6 +54,8 @@ FIREBASE_PRIVATE_KEY=$(get_env "FIREBASE_PRIVATE_KEY")
 # Polygon (desde .env.local - NUNCA imprimir)
 POLYGON_PRIVATE_KEY=$(get_env "POLYGON_PRIVATE_KEY")
 POLYGON_WALLET_ADDRESS=$(get_env "POLYGON_WALLET_ADDRESS")
+MERCADOPAGO_ACCESS_TOKEN=$(get_env "MERCADOPAGO_ACCESS_TOKEN")
+NEXT_PUBLIC_APP_URL=$(get_env "NEXT_PUBLIC_APP_URL")
 
 # Validar que existan los valores críticos
 MISSING=""
@@ -62,6 +64,7 @@ MISSING=""
 [ -z "$POLYGON_WALLET_ADDRESS" ] && MISSING="$MISSING POLYGON_WALLET_ADDRESS"
 [ -z "$FIREBASE_CLIENT_EMAIL" ] && MISSING="$MISSING FIREBASE_CLIENT_EMAIL"
 [ -z "$FIREBASE_PRIVATE_KEY" ] && MISSING="$MISSING FIREBASE_PRIVATE_KEY"
+[ -z "$MERCADOPAGO_ACCESS_TOKEN" ] && MISSING="$MISSING MERCADOPAGO_ACCESS_TOKEN"
 
 if [ -n "$MISSING" ]; then
     echo "❌ Faltan variables en .env.local:$MISSING"
@@ -84,6 +87,7 @@ echo "$FIREBASE_MEASUREMENT_ID" | firebase apphosting:secrets:set FIREBASE_MEASU
 
 echo "$POLYGON_PRIVATE_KEY" | firebase apphosting:secrets:set POLYGON_PRIVATE_KEY
 echo "$POLYGON_WALLET_ADDRESS" | firebase apphosting:secrets:set POLYGON_WALLET_ADDRESS
+echo "$MERCADOPAGO_ACCESS_TOKEN" | firebase apphosting:secrets:set MERCADOPAGO_ACCESS_TOKEN
 
 # Opcional pero recomendado en prod: mismo valor en App Hosting y en Functions (trackOpen, linkRedirect, confirmRead)
 POLYGON_CERTIFY_SECRET=$(get_env "POLYGON_CERTIFY_SECRET")
@@ -98,7 +102,7 @@ fi
 echo ""
 # Permiso IAM: sin esto el build de App Hosting falla al resolver secretos (fah/misconfigured-secret).
 echo "🔑 Otorgando acceso Secret Manager al backend App Hosting (backendId: notificas)..."
-APP_HOSTING_SECRETS="FIREBASE_API_KEY,FIREBASE_AUTH_DOMAIN,FIREBASE_PROJECT_ID,FIREBASE_STORAGE_BUCKET,FIREBASE_MESSAGING_SENDER_ID,FIREBASE_APP_ID,FIREBASE_MEASUREMENT_ID,FIREBASE_CLIENT_EMAIL,FIREBASE_PRIVATE_KEY,POLYGON_PRIVATE_KEY,POLYGON_WALLET_ADDRESS"
+APP_HOSTING_SECRETS="FIREBASE_API_KEY,FIREBASE_AUTH_DOMAIN,FIREBASE_PROJECT_ID,FIREBASE_STORAGE_BUCKET,FIREBASE_MESSAGING_SENDER_ID,FIREBASE_APP_ID,FIREBASE_MEASUREMENT_ID,FIREBASE_CLIENT_EMAIL,FIREBASE_PRIVATE_KEY,POLYGON_PRIVATE_KEY,POLYGON_WALLET_ADDRESS,MERCADOPAGO_ACCESS_TOKEN"
 if [ -n "$POLYGON_CERTIFY_SECRET" ]; then
   APP_HOSTING_SECRETS="$APP_HOSTING_SECRETS,POLYGON_CERTIFY_SECRET"
 fi
@@ -114,6 +118,14 @@ echo "   - FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY (Admin SDK)"
 echo "   - FIREBASE_STORAGE_BUCKET, FIREBASE_MESSAGING_SENDER_ID"
 echo "   - FIREBASE_APP_ID, FIREBASE_MEASUREMENT_ID"
 echo "   - POLYGON_PRIVATE_KEY, POLYGON_WALLET_ADDRESS"
+echo "   - MERCADOPAGO_ACCESS_TOKEN (Checkout Pro / preferencias)"
 echo "   - POLYGON_CERTIFY_SECRET (si estaba en .env.local)"
+echo ""
+if [ -n "$NEXT_PUBLIC_APP_URL" ]; then
+  echo "📌 NEXT_PUBLIC_APP_URL en .env.local: $NEXT_PUBLIC_APP_URL"
+  echo "    Debe igualar tu dominio (apphosting.yaml usa por defecto https://notificas.com.ar)."
+else
+  echo "ℹ️ NEXT_PUBLIC_APP_URL vacío en .env.local — en App Hosting se usa \`value\` de apphosting.yaml si está definido."
+fi
 echo ""
 echo "🚀 Deploy: firebase deploy --only apphosting && firebase deploy --only functions"
