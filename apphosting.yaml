@@ -9,8 +9,10 @@
 # CRÍTICO para firebase-admin: secretos FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL,
 # FIREBASE_PRIVATE_KEY desde la service account.
 #
-# Mercado Pago (Checkout Pro — /api/mercadopago/preference): sin MERCADOPAGO_ACCESS_TOKEN
-# el servidor responde 500 al crear preferencias. Crear secreto y grant al backend.
+# Mercado Pago: definí MERCADOPAGO_ACCESS_TOKEN en la consola Firebase
+# (App Hosting > Config > Entorno > Variables) como variable o como referencia a un secreto.
+# No pongas aquí bloque secret:MERCADOPAGO_ACCESS_TOKEN si el secreto GCP no existe: el YAML
+# puede pisar/fallar ante la consola y el token llega vacío al contenedor.
 #
 # URL pública de la app (back_urls y enlaces): debe coincidir con el dominio real.
 # Ajustá el value si usás www u otro dominio.
@@ -93,11 +95,6 @@ env:
       - RUNTIME
   - variable: NEXT_PUBLIC_APP_URL
     value: "https://notificas.com.ar"
-    availability:
-      - BUILD
-      - RUNTIME
-  - variable: MERCADOPAGO_ACCESS_TOKEN
-    secret: MERCADOPAGO_ACCESS_TOKEN
     availability:
       - BUILD
       - RUNTIME
