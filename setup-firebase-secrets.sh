@@ -96,6 +96,15 @@ else
 fi
 
 echo ""
+# Permiso IAM: sin esto el build de App Hosting falla al resolver secretos (fah/misconfigured-secret).
+echo "🔑 Otorgando acceso Secret Manager al backend App Hosting (backendId: notificas)..."
+APP_HOSTING_SECRETS="FIREBASE_API_KEY,FIREBASE_AUTH_DOMAIN,FIREBASE_PROJECT_ID,FIREBASE_STORAGE_BUCKET,FIREBASE_MESSAGING_SENDER_ID,FIREBASE_APP_ID,FIREBASE_MEASUREMENT_ID,FIREBASE_CLIENT_EMAIL,FIREBASE_PRIVATE_KEY,POLYGON_PRIVATE_KEY,POLYGON_WALLET_ADDRESS"
+if [ -n "$POLYGON_CERTIFY_SECRET" ]; then
+  APP_HOSTING_SECRETS="$APP_HOSTING_SECRETS,POLYGON_CERTIFY_SECRET"
+fi
+firebase apphosting:secrets:grantaccess "$APP_HOSTING_SECRETS" --backend notificas
+
+echo ""
 echo "✅ Todos los secretos configurados correctamente"
 echo "🔐 Almacenados de forma segura en Cloud Secret Manager"
 echo ""
