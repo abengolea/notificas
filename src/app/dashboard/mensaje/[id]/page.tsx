@@ -19,6 +19,18 @@ import PolygonCertifications from '@/components/dashboard/polygon-certifications
 import { AttachmentsTracking } from '@/components/dashboard/attachments-tracking';
 import { DownloadCertificate } from '@/components/dashboard/download-certificate';
 
+/** Misma lógica que /api/track-app-open: destinatarios del documento mail. */
+function isAuthenticatedUserMailRecipient(mailData: Record<string, unknown>, userEmail: string | undefined) {
+  if (!userEmail) return false;
+  const normalizeEmail = (e: unknown) =>
+    typeof e === 'string' ? e.trim().toLowerCase() : '';
+  const recipientsRaw = Array.isArray(mailData.to) ? mailData.to : [mailData.to];
+  const fromTo = recipientsRaw.map(normalizeEmail).filter(Boolean);
+  const rec = normalizeEmail(mailData.recipientEmail);
+  const recipients = [...new Set([...fromTo, rec].filter(Boolean))];
+  return recipients.includes(userEmail.trim().toLowerCase());
+}
+
 function mapAuthUserToAppUser(u: any | null): AppUser | null {
   if (!u) return null;
   return {
@@ -156,11 +168,11 @@ function MessageContent() {
     })();
   }, [id]);
 
-  // Trackear apertura desde la app cuando el usuario está autenticado
+  // Trackear apertura solo si quien entra es destinatario (no el remitente en el panel).
   useEffect(() => {
-    if (!id || !appUser?.email || trackingStopped) return;
+    if (!id || !appUser?.email || trackingStopped || !messageData) return;
+    if (!isAuthenticatedUserMailRecipient(messageData, appUser.email)) return;
 
-    // Esperar un poco para asegurar que el mensaje se cargó
     const timer = setTimeout(async () => {
       // Verificar que estamos en el cliente
       if (typeof window === 'undefined') return;
@@ -244,7 +256,7 @@ function MessageContent() {
     }, 500); // Esperar 500ms para asegurar que el mensaje se cargó
 
     return () => clearTimeout(timer);
-  }, [id, appUser?.email, trackingStopped]);
+  }, [id, appUser?.email, trackingStopped, messageData]);
 
   if (notFound) {
     return (

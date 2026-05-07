@@ -91,7 +91,11 @@ export async function POST(request: NextRequest) {
       (Array.isArray(messageData.to) ? normalizeEmail(messageData.to[0]) : normalizeEmail(messageData.to));
 
     const recipientsRaw = Array.isArray(messageData.to) ? messageData.to : [messageData.to];
-    const recipients = recipientsRaw.map(normalizeEmail).filter(Boolean);
+    const recipientsFromTo = recipientsRaw.map(normalizeEmail).filter(Boolean);
+    const recipientDocEmail = normalizeEmail(messageData.recipientEmail);
+    const recipients = [
+      ...new Set([...recipientsFromTo, recipientDocEmail].filter(Boolean)),
+    ];
 
     const userNorm = normalizeEmail(userEmail);
     const isSender =
@@ -103,6 +107,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'No autorizado para trackear este mensaje' },
         { status: 403, headers: CORS_HEADERS }
+      );
+    }
+
+    /** Solo el destinatario genera lectura; el remitente al ver el panel no registra movimiento. */
+    if (isSender && !isRecipient) {
+      return NextResponse.json(
+        {
+          success: true,
+          skipped: true,
+          message: 'Consultas del remitente en el panel no se registran.',
+        },
+        { status: 200, headers: CORS_HEADERS }
       );
     }
 
@@ -125,63 +141,52 @@ export async function POST(request: NextRequest) {
     }
 
     const openedByEmail = userEmail || 'Unknown';
-    const isSenderOnlyView = isSender && !isRecipient;
 
     const appOpenMovement = {
       id: generateUUID(),
       type: 'app_opened',
-      description: isSenderOnlyView
-        ? 'El remitente consultó este envío en el panel (no indica que el destinatario haya leído el correo externo).'
-        : 'El destinatario abrió el mensaje desde la aplicación web.',
+      description: 'El destinatario abrió el mensaje desde la aplicación web.',
       timestamp: new Date().toISOString(),
       userAgent,
       clientIP,
       browser: extractBrowserInfo(userAgent),
       /** Buzón al que iba dirigido el envío (siempre el del documento). */
       mailRecipientEmail: mailboxRecipient || undefined,
-      /** Quien generó el evento (remitente o destinatario autenticado). */
+      /** Quien generó el evento (destinatario autenticado). */
       openedByEmail,
-      /** Compat UI antigua: solo el destinatario debe figurar como “recipient” del evento. */
-      recipientEmail: isRecipient ? openedByEmail : mailboxRecipient || undefined,
-      viewerIsSender: isSenderOnlyView,
+      recipientEmail: openedByEmail,
+      viewerIsSender: false,
       source: 'app_web',
     };
 
-    if (isRecipient) {
-      const wasFirstOpen = !messageData.tracking?.opened;
+    const wasFirstOpen = !messageData.tracking?.opened;
 
-      await messageRef.update({
-        'tracking.opened': true,
-        'tracking.openedAt': new Date(),
-        'tracking.openCount': (messageData.tracking?.openCount || 0) + 1,
-        'tracking.movements': FieldValue.arrayUnion(appOpenMovement),
-        'tracking.lastAppOpenAt': new Date(),
-      });
+    await messageRef.update({
+      'tracking.opened': true,
+      'tracking.openedAt': new Date(),
+      'tracking.openCount': (messageData.tracking?.openCount || 0) + 1,
+      'tracking.movements': FieldValue.arrayUnion(appOpenMovement),
+      'tracking.lastAppOpenAt': new Date(),
+    });
 
-      if (wasFirstOpen) {
-        try {
-          const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9006';
-          const certifyRes = await fetch(`${base}/api/polygon/certify-event`, {
-            method: 'POST',
-            headers: certifyEventHeaders(),
-            body: JSON.stringify({
-              docId: messageId,
-              type: 'receive',
-              userId: messageData.recipientEmail || messageData.to?.[0],
-            }),
-          });
-          if (!certifyRes.ok) {
-            console.warn('⚠️ Polygon certify receive (app-open):', await certifyRes.text());
-          }
-        } catch (e: any) {
-          console.warn('⚠️ Polygon certify receive failed:', e?.message);
+    if (wasFirstOpen) {
+      try {
+        const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9006';
+        const certifyRes = await fetch(`${base}/api/polygon/certify-event`, {
+          method: 'POST',
+          headers: certifyEventHeaders(),
+          body: JSON.stringify({
+            docId: messageId,
+            type: 'receive',
+            userId: messageData.recipientEmail || messageData.to?.[0],
+          }),
+        });
+        if (!certifyRes.ok) {
+          console.warn('⚠️ Polygon certify receive (app-open):', await certifyRes.text());
         }
+      } catch (e: any) {
+        console.warn('⚠️ Polygon certify receive failed:', e?.message);
       }
-    } else {
-      await messageRef.update({
-        'tracking.movements': FieldValue.arrayUnion(appOpenMovement),
-        'tracking.lastSenderPanelViewAt': new Date(),
-      });
     }
 
     return NextResponse.json(

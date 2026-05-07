@@ -9,9 +9,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { DollarSign, Gift, Package, TrendingUp, CreditCard, Loader2 } from 'lucide-react';
-import Image from 'next/image';
+import { Gift, Package, TrendingUp, CreditCard, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { auth } from '@/lib/firebase';
+import { Input } from '@/components/ui/input';
 
 interface WalletClientProps {
   user: User;
@@ -19,7 +20,7 @@ interface WalletClientProps {
   planes: Plan[];
 }
 
-const planIcons: Record<Plan['id'], React.ReactNode> = {
+const planIcons: Partial<Record<Plan['id'], React.ReactNode>> = {
     individual: <Gift className="h-8 w-8 text-primary" />,
     pack10: <Package className="h-8 w-8 text-primary" />,
     ilimitado: <TrendingUp className="h-8 w-8 text-primary" />,
@@ -39,44 +40,127 @@ const FormattedDateCell = ({ date }: { date: Date | string }) => {
 
 export default function WalletClient({ user, transactions, planes }: WalletClientProps) {
   const [loadingPlan, setLoadingPlan] = useState<Plan['id'] | null>(null);
+  const [syncOpId, setSyncOpId] = useState('');
+  const [syncLoading, setSyncLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const rawStatus =
-      params.get('status') || params.get('collection_status');
-    const paymentId = params.get('payment_id');
-    if (!rawStatus && !paymentId) return;
+    let cancelled = false;
 
-    const status = rawStatus?.toLowerCase();
-    const cleanPath = `${window.location.pathname}${window.location.hash}`;
+    async function settleOrNotify() {
+      if (typeof window === 'undefined') return;
+      const params = new URLSearchParams(window.location.search);
+      const paymentId = params.get('payment_id');
+      const rawStatus =
+        params.get('status') || params.get('collection_status');
+      const status = rawStatus?.toLowerCase();
+      const cleanPath = `${window.location.pathname}${window.location.hash}`;
 
-    if (status === 'approved' || status === 'success') {
-      toast({
-        title: 'Pago recibido',
-        description:
-          'Si los créditos no aparecen al instante, esperá unos segundos (se confirman por Mercado Pago).',
-      });
-    } else if (status === 'pending' || status === 'in_process') {
-      toast({
-        title: 'Pago pendiente',
-        description:
-          'Tu pago está en proceso. Los créditos se acreditarán cuando se apruebe.',
-      });
-    } else if (
-      status === 'rejected' ||
-      status === 'failure' ||
-      status === 'cancelled'
-    ) {
-      toast({
-        title: 'Pago no completado',
-        description: 'Si ya pagaste por error, revisá el estado en Mercado Pago o escribinos.',
-        variant: 'destructive',
-      });
+      const approved = status === 'approved' || status === 'success';
+      const pending = status === 'pending' || status === 'in_process';
+      const failed =
+        status === 'rejected' ||
+        status === 'failure' ||
+        status === 'cancelled';
+
+      const shouldTrySettle =
+        !!paymentId && (!rawStatus || approved);
+
+      if (shouldTrySettle) {
+        for (let i = 0; i < 25; i++) {
+          if (cancelled) return;
+          if (auth.currentUser) break;
+          await new Promise((r) => setTimeout(r, 200));
+        }
+
+        if (auth.currentUser) {
+          try {
+            const token = await auth.currentUser.getIdToken();
+            const res = await fetch('/api/process-payment', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ paymentId }),
+            });
+            const data = await res.json();
+            if (cancelled) return;
+            if (res.ok) {
+              toast({
+                title: data.alreadySettled
+                  ? 'Pago ya registrado'
+                  : 'Créditos acreditados',
+                description: data.alreadySettled
+                  ? 'Este cobro ya había sumado créditos a tu cuenta.'
+                  : `Se agregaron ${data.creditsAdded} créditos.`,
+              });
+            } else if (
+              typeof data.error === 'string' &&
+              data.error.includes('no aprobado')
+            ) {
+              toast({
+                title: 'Pago en proceso',
+                description:
+                  'Mercado Pago todavía no marca el cobro como aprobado. Recargá la billetera en unos minutos.',
+              });
+            } else {
+              toast({
+                title: 'No se sincronizó el pago',
+                description:
+                  data.error ??
+                  'Probá más tarde o escribínos con el número de operación de Mercado Pago.',
+                variant: 'destructive',
+              });
+            }
+          } catch {
+            if (!cancelled) {
+              toast({
+                title: 'Error de conexión',
+                description:
+                  'No pudimos sincronizar el pago. Volvé a intentar desde la página o recargá.',
+                variant: 'destructive',
+              });
+            }
+          }
+        } else if (!cancelled) {
+          toast({
+            title: 'Iniciá sesión',
+            description:
+              'Hay un cobro pendiente de sincronizar. Iniciá sesión para acreditar tus créditos.',
+            variant: 'destructive',
+          });
+        }
+      } else if (approved && !paymentId && !cancelled) {
+        toast({
+          title: 'Pago recibido',
+          description:
+            'Si los créditos no aparecen, esperá unos segundos o recargá la página.',
+        });
+      } else if (pending && !cancelled) {
+        toast({
+          title: 'Pago pendiente',
+          description:
+            'Tu pago está en proceso. Los créditos se verán cuando se apruebe.',
+        });
+      } else if (failed && !cancelled) {
+        toast({
+          title: 'Pago no completado',
+          description:
+            'Si ya pagaste por error, revisá el estado en Mercado Pago o escribínos.',
+          variant: 'destructive',
+        });
+      }
+
+      if (!cancelled) {
+        window.history.replaceState({}, '', cleanPath);
+      }
     }
 
-    window.history.replaceState({}, '', cleanPath);
+    settleOrNotify();
+    return () => {
+      cancelled = true;
+    };
   }, [toast]);
   
   const formatCurrency = (amount: number) => {
@@ -126,6 +210,69 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
     }
   };
 
+  const handleSyncOperation = async () => {
+    const paymentId = syncOpId.replace(/\s+/g, '').replace(/\D/g, '');
+    if (!paymentId) {
+      toast({
+        title: 'Número inválido',
+        description:
+          'Pegá el número de operación de Mercado Pago (solo los dígitos, por ejemplo 158096992744).',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const u = auth.currentUser;
+    if (!u) {
+      toast({
+        title: 'Sesión',
+        description: 'Iniciá sesión para sincronizar tu pago.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setSyncLoading(true);
+    try {
+      const token = await u.getIdToken();
+      const res = await fetch('/api/process-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ paymentId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast({
+          title: data.alreadySettled ? 'Ya estaba cargado' : 'Listo',
+          description: data.alreadySettled
+            ? 'Este número de operación ya había acreditado tus créditos.'
+            : `Se acreditaron ${data.creditsAdded} crédito(s).`,
+        });
+        setSyncOpId('');
+      } else {
+        toast({
+          title: 'No se pudo aplicar',
+          description:
+            typeof data.error === 'string'
+              ? data.error
+              : 'Reintentá más tarde o contactá soporte con el número de operación.',
+          variant: 'destructive',
+        });
+      }
+    } catch {
+      toast({
+        title: 'Error de red',
+        description: 'Probá de nuevo en un momento.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div>
@@ -157,7 +304,9 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
               <Card key={plan.id} className="flex flex-col text-center">
                  <CardHeader>
                     <div className="mx-auto bg-primary/10 p-4 rounded-full w-fit mb-2">
-                        {planIcons[plan.id]}
+                        {planIcons[plan.id as keyof typeof planIcons] ?? (
+                          <Package className="h-8 w-8 text-primary" />
+                        )}
                     </div>
                     <CardTitle className="text-xl">{plan.nombre}</CardTitle>
                  </CardHeader>
@@ -183,7 +332,9 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
             ))}
           </CardContent>
             <CardFooter className='flex-col items-start gap-2'>
-                 <p className="text-xs text-muted-foreground">Al hacer clic en "Pagar con Mercado Pago", serás redirigido a la plataforma de pago segura para completar la transacción.</p>
+                 <p className="text-xs text-muted-foreground">
+                   Al hacer clic en el botón Pagar con Mercado Pago, serás redirigido a la plataforma de pago segura para completar la transacción.
+                 </p>
                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
                    <span>🔒</span>
                    <span>Pago seguro procesado por Mercado Pago</span>
@@ -191,6 +342,48 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
             </CardFooter>
         </Card>
       </div>
+
+      <Card className="shadow-lg border-dashed">
+        <CardHeader>
+          <CardTitle className="text-lg">¿Pagaste y no ves los créditos?</CardTitle>
+          <CardDescription>
+            Pegá el número de operación que figura en el comprobante de Mercado Pago (sin el numeral #).
+            Tiene que ser la misma cuenta con la que iniciaste la compra.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="flex-1 space-y-2">
+            <label htmlFor="mp-op-id" className="text-sm font-medium">
+              Número de operación
+            </label>
+            <Input
+              id="mp-op-id"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="Ej: 158096992744"
+              value={syncOpId}
+              onChange={(e) => setSyncOpId(e.target.value)}
+              disabled={syncLoading}
+            />
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            className="sm:shrink-0"
+            onClick={handleSyncOperation}
+            disabled={syncLoading}
+          >
+            {syncLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Sincronizando…
+              </>
+            ) : (
+              'Sincronizar pago'
+            )}
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card className="shadow-lg">
         <CardHeader>

@@ -3,18 +3,18 @@
 import { UserNav } from '@/components/dashboard/user-nav';
 import WalletClient from '@/components/dashboard/wallet-client';
 import { Logo } from '@/components/logo';
-import { mockTransactions, mockUser } from '@/lib/mock-data';
+import { mockUser } from '@/lib/mock-data';
 import { getPlans } from '@/lib/plans';
 import { auth, db } from '@/lib/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { collection, query, where, orderBy, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { onAuthStateChanged, type User as FirebaseAuthUser } from 'firebase/auth';
+import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { useState, useEffect } from 'react';
 import type { User as AppUser, Plan, Transaccion } from '@/lib/types';
 
 // Adaptar Firebase Auth user al tipo de la app
-function mapAuthUserToAppUser(u: any | null): AppUser | null {
+function mapAuthUserToAppUser(u: FirebaseAuthUser | null): AppUser | null {
   if (!u) return null;
   return {
     uid: u.uid,
@@ -49,32 +49,34 @@ export default function BilleteraPage() {
         // Cargar planes
         getPlans().then(setPlanes);
 
-        // Cargar datos reales del usuario desde Firestore
-        const loadUserData = async () => {
-            try {
-                const userRef = doc(db, 'users', appUser.uid);
-                const userDoc = await getDoc(userRef);
-                
-                if (userDoc.exists()) {
-                    const userData = userDoc.data();
-                    setAppUser(prev => prev ? {
-                        ...prev,
-                        creditos: userData.creditos || 0,
-                        perfil: {
-                            ...prev.perfil,
-                            nombre: userData.perfil?.nombre || prev.perfil.nombre,
-                            telefono: userData.perfil?.telefono,
-                            cuit: userData.perfil?.cuit,
-                            verificado: userData.perfil?.verificado || false
-                        }
-                    } : prev);
+        const userRef = doc(db, 'users', appUser.uid);
+        const unsubUser = onSnapshot(
+            userRef,
+            (userSnap) => {
+                if (userSnap.exists()) {
+                    const userData = userSnap.data();
+                    setAppUser((prev) =>
+                        prev
+                            ? {
+                                  ...prev,
+                                  creditos: userData.creditos ?? 0,
+                                  perfil: {
+                                      ...prev.perfil,
+                                      nombre:
+                                          userData.perfil?.nombre || prev.perfil.nombre,
+                                      telefono: userData.perfil?.telefono,
+                                      cuit: userData.perfil?.cuit,
+                                      verificado: userData.perfil?.verificado || false,
+                                  },
+                              }
+                            : prev
+                    );
                 }
-            } catch (error) {
-                console.error('Error cargando datos del usuario:', error);
+            },
+            (error) => {
+                console.error('Error en snapshot de usuario:', error);
             }
-        };
-
-        loadUserData();
+        );
 
         // Cargar transacciones del usuario
         const transactionsRef = collection(db, 'user_transactions');
@@ -83,11 +85,11 @@ export default function BilleteraPage() {
             where('userId', '==', appUser.uid)
         );
 
-        const unsub = onSnapshot(q, (snap) => {
-            const userTransactions: Transaccion[] = snap.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data(),
-                fecha: doc.data().fecha?.toDate() || new Date()
+        const unsubTx = onSnapshot(q, (snap) => {
+            const userTransactions: Transaccion[] = snap.docs.map(txDoc => ({
+                id: txDoc.id,
+                ...txDoc.data(),
+                fecha: txDoc.data().fecha?.toDate() || new Date()
             } as Transaccion));
             
             // Ordenar localmente por fecha
@@ -101,7 +103,10 @@ export default function BilleteraPage() {
             setLoading(false);
         });
 
-        return () => unsub();
+        return () => {
+            unsubTx();
+            unsubUser();
+        };
     }, [appUser?.uid]);
 
     if (loading) {

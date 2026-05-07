@@ -113,7 +113,11 @@ const formatIPs = (clientIP: string, forwardedIPs: string[], realIP: string) => 
 };
 
 export function MovementsTracking({ movements }: MovementsTrackingProps) {
-  if (!movements || movements.length === 0) {
+  const visibleMovements = (movements || []).filter(
+    (m) => !(m.type === 'app_opened' && m.viewerIsSender),
+  );
+
+  if (!visibleMovements.length) {
     return (
       <Card>
         <CardHeader>
@@ -131,8 +135,7 @@ export function MovementsTracking({ movements }: MovementsTrackingProps) {
     );
   }
 
-  // Ordenar movimientos por timestamp (más recientes primero)
-  const sortedMovements = [...movements].sort((a, b) => {
+  const sortedMovements = [...visibleMovements].sort((a, b) => {
     const timeA = a.timestamp?.seconds ? a.timestamp.seconds : new Date(a.timestamp).getTime() / 1000;
     const timeB = b.timestamp?.seconds ? b.timestamp.seconds : new Date(b.timestamp).getTime() / 1000;
     return timeB - timeA;
@@ -143,7 +146,7 @@ export function MovementsTracking({ movements }: MovementsTrackingProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Clock className="h-5 w-5" />
-          Movimientos ({movements.length})
+          Movimientos ({visibleMovements.length})
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
