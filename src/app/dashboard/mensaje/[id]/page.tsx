@@ -14,6 +14,7 @@ import { useParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileText, CheckCircle } from 'lucide-react';
 import MailTraceability from '@/components/dashboard/mail-traceability';
+import { buildSenderViewHtml } from '@/lib/message-views';
 import PolygonCertifications from '@/components/dashboard/polygon-certifications';
 import { AttachmentsTracking } from '@/components/dashboard/attachments-tracking';
 import { DownloadCertificate } from '@/components/dashboard/download-certificate';
@@ -36,30 +37,33 @@ function mapAuthUserToAppUser(u: any | null): AppUser | null {
 function MailMessageView({ data }: { data: any }) {
   const sentAt = data?.delivery?.time?.toDate?.() || data?.tracking?.sentAt?.toDate?.() || null;
   const subject = data?.message?.subject || 'Sin asunto';
-  const from = data?.from || 'contacto@notificas.com';
-  const to = Array.isArray(data?.to) ? data.to.join(', ') : data?.to || '';
+  const from = data?.from || data?.senderName || 'contacto@notificas.com';
+  const to = Array.isArray(data?.to) ? data.to.join(', ') : data?.to || data?.recipientEmail || '';
   let state = data?.delivery?.state || 'PENDIENTE';
-  
+
   // Traducir estados al español
   if (state === 'DELIVERED') state = 'Entregado';
   if (state === 'SUCCESS') state = 'Entregado';
   if (state === 'ERROR') state = 'Error';
   if (state === 'PENDING') state = 'Pendiente';
-  
-  const content = data?.message?.html || '';
+
+  // Remitente y destinatario: mismo bloque (solo cuerpo, detalles y adjuntos), sin plantilla de email.
+  const bodyHtml = buildSenderViewHtml(data);
 
   return (
     <Card className="shadow-lg">
       <CardHeader>
         <CardTitle>{subject}</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2 text-sm">
-        <div><strong>De:</strong> {from}</div>
-        <div><strong>Para:</strong> {to}</div>
-        <div><strong>Estado:</strong> {state}</div>
-        <div><strong>Fecha:</strong> {sentAt ? sentAt.toLocaleString() : '-'}</div>
-        <div className="mt-4 prose max-w-none">
-          <div className="mensaje-html-view -mx-4 md:-mx-6" dangerouslySetInnerHTML={{ __html: content }} />
+      <CardContent className="space-y-4">
+        <div className="grid gap-2 text-sm text-muted-foreground">
+          <div><strong className="text-foreground">De:</strong> {from}</div>
+          <div><strong className="text-foreground">Para:</strong> {to}</div>
+          <div><strong className="text-foreground">Estado:</strong> {state}</div>
+          <div><strong className="text-foreground">Fecha:</strong> {sentAt ? sentAt.toLocaleString() : '-'}</div>
+        </div>
+        <div className="mt-4 prose prose-sm max-w-none [&_.mensaje-html-view]:space-y-4">
+          <div className="mensaje-html-view" dangerouslySetInnerHTML={{ __html: bodyHtml }} />
         </div>
       </CardContent>
     </Card>
@@ -79,10 +83,12 @@ function MessageContent() {
     if (!id) return;
 
     try {
+      const token = await auth.currentUser?.getIdToken();
       const response = await fetch('/api/download-certificate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           messageId: id
@@ -169,21 +175,20 @@ function MessageContent() {
         }, 10000); // 10 segundos timeout
         
         try {
-          // Construir la URL completa para evitar problemas de ruta relativa
           const apiUrl = `${window.location.origin}/api/track-app-open`;
-          
+          const token = await auth.currentUser?.getIdToken();
+
           const response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
             body: JSON.stringify({
               messageId: id,
               userEmail: appUser.email
             }),
             signal: controller.signal,
-            // Agregar credenciales para asegurar que las cookies se envíen
-            credentials: 'same-origin'
           });
 
           clearTimeout(timeoutId);
@@ -288,7 +293,7 @@ function MessageContent() {
             <>
               <MailMessageView data={messageData} />
               <MailTraceability mail={messageData} />
-              <PolygonCertifications certifications={messageData.polygonCertifications} />
+              <PolygonCertifications certifications={messageData.polygonCertifications} messageId={id ?? undefined} />
               
               {/* Botón de descarga de certificado - SIEMPRE DISPONIBLE */}
               <Card>

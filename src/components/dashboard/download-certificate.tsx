@@ -69,16 +69,16 @@ export function DownloadCertificate({ messageId, onDownload, disabled = false }:
       </AlertDialogTrigger>
       <AlertDialogContent className="max-w-md">
         <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-blue-600" />
+            <AlertDialogTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-primary" />
             Descargar Certificado de Lectura
           </AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3">
-              <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-amber-800">
-                  <p className="font-medium mb-1">⚠️ Importante:</p>
+              <div className="flex items-start gap-2 p-3 bg-warning/10 border border-warning/50 rounded-lg">
+                <AlertTriangle className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-warning-foreground">
+                  <p className="font-medium mb-1">Importante:</p>
                   <p>Al descargar el certificado, el sistema <strong>detendrá automáticamente</strong> la captura de nuevos movimientos de tracking para este mensaje.</p>
                 </div>
               </div>
@@ -94,9 +94,9 @@ export function DownloadCertificate({ messageId, onDownload, disabled = false }:
                 </ul>
               </div>
               
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm text-blue-800">
-                  <strong>💡 Uso legal:</strong> Este certificado puede ser presentado ante autoridades judiciales como prueba de notificación fehaciente.
+              <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                <p className="text-sm text-foreground">
+                  <strong>Uso legal:</strong> Este certificado puede ser presentado ante autoridades judiciales como prueba de notificación fehaciente.
                 </p>
               </div>
             </div>
@@ -106,7 +106,7 @@ export function DownloadCertificate({ messageId, onDownload, disabled = false }:
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
           <AlertDialogAction 
             onClick={handleDownload}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Download className="mr-2 h-4 w-4" />
             Generar y Descargar

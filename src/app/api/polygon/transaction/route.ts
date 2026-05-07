@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTransactionInfo } from '@/lib/blockchain';
+import { verifyAuthToken } from '@/lib/auth-helper';
 
 export async function GET(request: NextRequest) {
   try {
+    const { errorResponse } = await verifyAuthToken(request);
+    if (errorResponse) return errorResponse;
+
     const { searchParams } = new URL(request.url);
     const txHash = searchParams.get('txHash');
 

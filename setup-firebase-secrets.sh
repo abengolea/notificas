@@ -47,6 +47,9 @@ FIREBASE_STORAGE_BUCKET=$(get_env "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET")
 FIREBASE_MESSAGING_SENDER_ID=$(get_env "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID")
 FIREBASE_APP_ID=$(get_env "NEXT_PUBLIC_FIREBASE_APP_ID")
 FIREBASE_MEASUREMENT_ID=$(get_env "NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID")
+# Firebase Admin SDK (service account - para API routes)
+FIREBASE_CLIENT_EMAIL=$(get_env "FIREBASE_CLIENT_EMAIL")
+FIREBASE_PRIVATE_KEY=$(get_env "FIREBASE_PRIVATE_KEY")
 
 # Polygon (desde .env.local - NUNCA imprimir)
 POLYGON_PRIVATE_KEY=$(get_env "POLYGON_PRIVATE_KEY")
@@ -57,6 +60,8 @@ MISSING=""
 [ -z "$FIREBASE_API_KEY" ] && MISSING="$MISSING NEXT_PUBLIC_FIREBASE_API_KEY"
 [ -z "$POLYGON_PRIVATE_KEY" ] && MISSING="$MISSING POLYGON_PRIVATE_KEY"
 [ -z "$POLYGON_WALLET_ADDRESS" ] && MISSING="$MISSING POLYGON_WALLET_ADDRESS"
+[ -z "$FIREBASE_CLIENT_EMAIL" ] && MISSING="$MISSING FIREBASE_CLIENT_EMAIL"
+[ -z "$FIREBASE_PRIVATE_KEY" ] && MISSING="$MISSING FIREBASE_PRIVATE_KEY"
 
 if [ -n "$MISSING" ]; then
     echo "❌ Faltan variables en .env.local:$MISSING"
@@ -70,6 +75,8 @@ echo "📤 Subiendo secretos a Firebase App Hosting..."
 echo "$FIREBASE_API_KEY" | firebase apphosting:secrets:set FIREBASE_API_KEY
 echo "$FIREBASE_AUTH_DOMAIN" | firebase apphosting:secrets:set FIREBASE_AUTH_DOMAIN
 echo "$FIREBASE_PROJECT_ID" | firebase apphosting:secrets:set FIREBASE_PROJECT_ID
+echo "$FIREBASE_CLIENT_EMAIL" | firebase apphosting:secrets:set FIREBASE_CLIENT_EMAIL
+echo "$FIREBASE_PRIVATE_KEY" | firebase apphosting:secrets:set FIREBASE_PRIVATE_KEY
 echo "$FIREBASE_STORAGE_BUCKET" | firebase apphosting:secrets:set FIREBASE_STORAGE_BUCKET
 echo "$FIREBASE_MESSAGING_SENDER_ID" | firebase apphosting:secrets:set FIREBASE_MESSAGING_SENDER_ID
 echo "$FIREBASE_APP_ID" | firebase apphosting:secrets:set FIREBASE_APP_ID
@@ -78,14 +85,26 @@ echo "$FIREBASE_MEASUREMENT_ID" | firebase apphosting:secrets:set FIREBASE_MEASU
 echo "$POLYGON_PRIVATE_KEY" | firebase apphosting:secrets:set POLYGON_PRIVATE_KEY
 echo "$POLYGON_WALLET_ADDRESS" | firebase apphosting:secrets:set POLYGON_WALLET_ADDRESS
 
+# Opcional pero recomendado en prod: mismo valor en App Hosting y en Functions (trackOpen, linkRedirect, confirmRead)
+POLYGON_CERTIFY_SECRET=$(get_env "POLYGON_CERTIFY_SECRET")
+if [ -n "$POLYGON_CERTIFY_SECRET" ]; then
+  echo "$POLYGON_CERTIFY_SECRET" | firebase apphosting:secrets:set POLYGON_CERTIFY_SECRET
+  echo "$POLYGON_CERTIFY_SECRET" | firebase functions:secrets:set POLYGON_CERTIFY_SECRET
+  echo "🔐 POLYGON_CERTIFY_SECRET configurado (App Hosting + Cloud Functions)"
+else
+  echo "ℹ️ POLYGON_CERTIFY_SECRET vacío: omitido (en prod conviene generar uno: openssl rand -hex 32)"
+fi
+
 echo ""
 echo "✅ Todos los secretos configurados correctamente"
 echo "🔐 Almacenados de forma segura en Cloud Secret Manager"
 echo ""
 echo "📋 Secretos configurados:"
 echo "   - FIREBASE_API_KEY, FIREBASE_AUTH_DOMAIN, FIREBASE_PROJECT_ID"
+echo "   - FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY (Admin SDK)"
 echo "   - FIREBASE_STORAGE_BUCKET, FIREBASE_MESSAGING_SENDER_ID"
 echo "   - FIREBASE_APP_ID, FIREBASE_MEASUREMENT_ID"
 echo "   - POLYGON_PRIVATE_KEY, POLYGON_WALLET_ADDRESS"
+echo "   - POLYGON_CERTIFY_SECRET (si estaba en .env.local)"
 echo ""
-echo "🚀 Deploy: firebase deploy --only apphosting"
+echo "🚀 Deploy: firebase deploy --only apphosting && firebase deploy --only functions"

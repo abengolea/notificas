@@ -1,57 +1,79 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import { adminDb } from '@/lib/firebase-admin';
+import { verifyAuthToken } from '@/lib/auth-helper';
 import { generateCertificatePDF } from '@/lib/certificate-generator';
-import { certificarLectura } from '@/lib/certification';
+import { certificarLectura } from '@/lib/certification-polygon';
 
 export async function POST(request: NextRequest) {
   try {
+    // Verificar autenticación
+    const { decoded, errorResponse } = await verifyAuthToken(request);
+    if (errorResponse) return errorResponse;
+
     const { messageId } = await request.json();
 
     if (!messageId) {
       return NextResponse.json({ error: 'messageId es requerido' }, { status: 400 });
     }
 
-    // Obtener datos del mensaje
-    const messageRef = doc(db, 'mail', messageId);
-    const messageSnap = await getDoc(messageRef);
+    // Obtener datos del mensaje usando Admin SDK (ruta de servidor)
+    const messageRef = adminDb.collection('mail').doc(messageId);
+    const messageSnap = await messageRef.get();
 
-    if (!messageSnap.exists()) {
+    if (!messageSnap.exists) {
       return NextResponse.json({ error: 'Mensaje no encontrado' }, { status: 404 });
     }
 
     const mailData = messageSnap.data();
+    if (!mailData) {
+      return NextResponse.json({ error: 'Mensaje sin datos' }, { status: 404 });
+    }
+
+    // Verificar que el usuario es el remitente o destinatario
+    const isAuthorized =
+      mailData?.createdBy === decoded.uid ||
+      mailData?.recipientEmail === decoded.email ||
+      (Array.isArray(mailData?.to) && mailData.to.includes(decoded.email));
+
+    if (!isAuthorized) {
+      return NextResponse.json({ error: 'No autorizado para descargar este certificado' }, { status: 403 });
+    }
 
     // Certificar lectura en Polygon al descargar certificado (si no está ya certificada)
     if (!mailData?.polygonCertifications?.read) {
       try {
-        const recipientId = mailData.recipientEmail || mailData.to?.[0] || 'recipient';
+        const recipientId = mailData?.recipientEmail || mailData?.to?.[0] || 'recipient';
         const txHash = await certificarLectura(messageId, recipientId);
-        await adminDb.collection('mail').doc(messageId).update({
+        await messageRef.update({
           'polygonCertifications.read': txHash,
           'polygonCertifications.updatedAt': new Date(),
         });
-        console.log('🔗 Lectura certificada en Polygon al descargar certificado:', txHash);
       } catch (e: any) {
         console.warn('⚠️ Polygon certify read (download-certificate):', e?.message);
       }
     }
 
     // Detener el tracking - marcar como certificado
-    await updateDoc(messageRef, {
+    await messageRef.update({
       'tracking.certificateGenerated': true,
       'tracking.certificateGeneratedAt': new Date().toISOString(),
       'tracking.trackingStopped': true,
       'tracking.trackingStoppedAt': new Date().toISOString()
     });
 
+    // Datos frescos: la certificación de lectura (y otros campos) pueden haberse actualizado arriba
+    const refreshedSnap = await messageRef.get();
+    const mailDataFresh = refreshedSnap.data();
+    if (!mailDataFresh) {
+      return NextResponse.json({ error: 'Mensaje sin datos' }, { status: 404 });
+    }
+
     // Preparar datos para el certificado
     const certificateData = {
       messageId,
-      mailData,
-      movements: mailData.tracking?.movements || [],
-      attachments: mailData.attachments || []
+      mailData: mailDataFresh,
+      movements: mailDataFresh.tracking?.movements || [],
+      attachments: mailDataFresh.attachments || []
     };
 
     // Generar el certificado PDF

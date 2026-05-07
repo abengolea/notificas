@@ -1,9 +1,161 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Permitir acceso completo a todas las colecciones (para desarrollo)
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Email en JWT (Google puede usar mayúsculas distintas a lo guardado en documentos).
+    function callerEmailRaw() {
+      return signedIn() && request.auth.token.email is string ? request.auth.token.email : '';
+    }
+
+    function callerEmailLower() {
+      return callerEmailRaw() is string && callerEmailRaw() != ''
+        ? callerEmailRaw().lower()
+        : '';
+    }
+
+    function sameEmail(field) {
+      return field is string
+        && callerEmailLower() != ''
+        && field.lower() == callerEmailLower();
+    }
+
+    // Lectura de un mensaje: remitente (UID o campo senderName como email), o destinatario.
+    function mailReadable() {
+      let createdBy = resource.data.get('createdBy', '');
+      let recipientEmail = resource.data.get('recipientEmail', '');
+      let senderName = resource.data.get('senderName', '');
+      let toList = resource.data.get('to', []);
+      return signedIn() && (
+        createdBy == request.auth.uid ||
+        sameEmail(senderName) ||
+        sameEmail(recipientEmail) ||
+        (
+          toList is list &&
+          callerEmailLower() != '' &&
+          (
+            toList.hasAny([callerEmailRaw()]) ||
+            toList.hasAny([callerEmailLower()])
+          )
+        )
+      );
+    }
+
+    // Subconjuntos de mailReadable() alineados con las consultas del cliente.
+    // Firestore exige que las list queries puedan probarse frente a las reglas;
+    // un único `allow read` con OR grande suele hacer fallar onSnapshot/getDocs con filtros válidos.
+
+    function mailRecipientInToList() {
+      let toList = resource.data.get('to', []);
+      return signedIn() && callerEmailLower() != '' && toList is list && (
+        toList.hasAny([callerEmailRaw()]) ||
+        toList.hasAny([callerEmailLower()])
+      );
+    }
+
+    function mailSenderBySenderNameField() {
+      let senderName = resource.data.get('senderName', '');
+      return signedIn() && callerEmailLower() != '' && senderName is string
+        && senderName.lower() == callerEmailLower();
+    }
+
+    function mailByCreatedBy() {
+      return signedIn() && resource.data.get('createdBy', '') == request.auth.uid;
+    }
+
+    function mailByRecipientEmailField() {
+      let recipientEmail = resource.data.get('recipientEmail', '');
+      return signedIn() && callerEmailLower() != '' && recipientEmail is string
+        && recipientEmail.lower() == callerEmailLower();
+    }
+
+    // Quien puede leer no debe poder reescribir remitente/destinatario/contenido certificado.
+    function mailCoreUnchanged() {
+      let r = resource.data;
+      let n = request.resource.data;
+      return r.get('createdBy', '') == n.get('createdBy', '')
+        && r.get('to', []) == n.get('to', [])
+        && r.get('message', null) == n.get('message', null)
+        && r.get('from', '') == n.get('from', '')
+        && r.get('recipientEmail', '') == n.get('recipientEmail', '')
+        && r.get('senderName', '') == n.get('senderName', '');
+    }
+
+    function mailSenderCanUpdate() {
+      return resource.data.get('createdBy', '') == request.auth.uid;
+    }
+
+    function mailRecipientSafeUpdate() {
+      return mailReadable() && mailCoreUnchanged();
+    }
+
+    // tracking / certificaciones Polygon solo vía Admin SDK (API server-side).
+    function mailAuditFieldsUnchanged() {
+      let r = resource.data;
+      let n = request.resource.data;
+      return r.get('tracking', null) == n.get('tracking', null)
+        && r.get('polygonCertifications', null) == n.get('polygonCertifications', null);
+    }
+
+    match /mail/{mailId} {
+      // get = lectura por ID (sí se evalúa el documento concreto).
+      allow get: if mailReadable();
+      // list = consultas / onSnapshot: varias líneas OR (mejor para el chequeo de queries).
+      allow list: if mailRecipientInToList();
+      allow list: if mailSenderBySenderNameField();
+      allow list: if mailByCreatedBy();
+      allow list: if mailByRecipientEmailField();
+      allow create: if signedIn();
+      allow update: if signedIn()
+        && mailAuditFieldsUnchanged()
+        && (mailSenderCanUpdate() || mailRecipientSafeUpdate());
+      allow delete: if false;
+    }
+
+    match /users/{userId} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /user_transactions/{txId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Catálogo de planes (p. ej. billetera / getPlans).
+    match /plans/{planId} {
+      allow read: if resource.data.get('activo', false) == true;
+      allow write: if false;
+    }
+
+    // Contactos del usuario (colección real en la app: `contactos`, campo `usuarioId`).
+    match /contactos/{contactoId} {
+      allow read: if signedIn() && resource.data.usuarioId == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.usuarioId == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.usuarioId == request.auth.uid;
+    }
+
+    match /blockchain_movements/{docId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create, update, delete: if false;
+    }
+
+    match /contacts/{contactId} {
+      allow read, write: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

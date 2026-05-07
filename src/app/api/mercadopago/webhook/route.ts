@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentStatus } from '@/lib/mercadopago';
-import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, doc, updateDoc, increment } from 'firebase/firestore';
+import { getAdminDb } from '@/lib/firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,19 +29,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'External reference no encontrado' }, { status: 400 });
     }
 
-    // Extraer información del external_reference
-    const [planId, userId] = externalReference.replace('plan_', '').replace('_user_', '|').split('|');
+    // Extraer información del external_reference (formato: "plan_<planId>_user_<userId>")
+    const refMatch = externalReference.match(/^plan_(.+)_user_(.+)$/);
+    if (!refMatch) {
+      console.error('❌ external_reference con formato inválido:', externalReference);
+      return NextResponse.json({ error: 'external_reference inválido' }, { status: 400 });
+    }
+    const [, planId, userId] = refMatch;
     
-    // Buscar la transacción en Firestore
-    const transactionsRef = collection(db, 'transactions');
-    const q = query(
-      transactionsRef,
-      where('userId', '==', userId),
-      where('planId', '==', planId),
-      where('status', '==', 'pending')
-    );
-    
-    const querySnapshot = await getDocs(q);
+    const db = getAdminDb();
+
+    const querySnapshot = await db
+      .collection('transactions')
+      .where('userId', '==', userId)
+      .where('planId', '==', planId)
+      .where('status', '==', 'pending')
+      .limit(1)
+      .get();
+
     if (querySnapshot.empty) {
       console.error('❌ Transacción no encontrada');
       return NextResponse.json({ error: 'Transacción no encontrada' }, { status: 404 });
@@ -50,28 +55,26 @@ export async function POST(request: NextRequest) {
     const transactionDoc = querySnapshot.docs[0];
     const transactionData = transactionDoc.data();
 
-    // Actualizar la transacción con el estado del pago
-    await updateDoc(transactionDoc.ref, {
+    await transactionDoc.ref.update({
       paymentId,
       status: payment.status,
       paymentData: payment,
-      updatedAt: new Date()
+      updatedAt: FieldValue.serverTimestamp(),
     });
 
-    // Si el pago fue aprobado, actualizar los créditos del usuario
     if (payment.status === 'approved') {
       console.log('✅ Pago aprobado, actualizando créditos del usuario');
-      
-      // Actualizar créditos del usuario
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, {
-        creditos: increment(transactionData.credits),
-        updatedAt: new Date()
+
+      const credits = typeof transactionData.credits === 'number' ? transactionData.credits : 0;
+
+      const userRef = db.collection('users').doc(userId);
+      await userRef.update({
+        creditos: FieldValue.increment(credits),
+        updatedAt: FieldValue.serverTimestamp(),
       });
 
-      // Crear registro de transacción de compra
-      const purchaseTransactionRef = doc(collection(db, 'user_transactions'));
-      await updateDoc(purchaseTransactionRef, {
+      const purchaseTransactionRef = db.collection('user_transactions').doc();
+      await purchaseTransactionRef.set({
         id: purchaseTransactionRef.id,
         userId,
         tipo: 'compra',
@@ -79,9 +82,9 @@ export async function POST(request: NextRequest) {
         monto: transactionData.price,
         creditos: transactionData.credits,
         metodoPago: 'Mercado Pago',
-        fecha: new Date(),
+        fecha: FieldValue.serverTimestamp(),
         paymentId,
-        planId: transactionData.planId
+        planId: transactionData.planId,
       });
 
       console.log('✅ Créditos actualizados exitosamente');

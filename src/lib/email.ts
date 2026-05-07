@@ -1,5 +1,5 @@
 import { addDoc, collection, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { generateEmailHtml } from './email-template';
 
 export type ScheduleEmailParams = {
@@ -18,9 +18,17 @@ export type ScheduleEmailParams = {
   createdBy?: string; // UID del usuario que envía (para certificación Polygon)
 };
 
-function normalizeList(value?: string | string[]) {
+/** Lista de correos para `to`, `cc`, `bcc`: minúsculas + trim (alineado con queries y reglas). */
+function normalizeEmailList(value?: string | string[]) {
   const arr = Array.isArray(value) ? value : value ? [value] : [];
-  return arr.map(v => v.trim()).filter(Boolean);
+  return arr.map((v) => v.trim().toLowerCase()).filter(Boolean);
+}
+
+/** Campos opcionales que a veces son email y otras un nombre visible (p. ej. encabezado From). */
+function normalizedEmailIdentity(value?: string): string | undefined {
+  const t = value?.trim();
+  if (!t) return undefined;
+  return t.includes('@') ? t.toLowerCase() : t;
 }
 
 export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend?: boolean }): Promise<string> {
@@ -30,7 +38,7 @@ export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend
   console.log('📧 Stack trace:', new Error().stack);
 
   const payload: any = {
-    to: normalizeList(to),
+    to: normalizeEmailList(to),
     message: {
       subject,
       html,
@@ -45,19 +53,21 @@ export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend
 
   // Agregar campos para el template personalizado
   if (recipientName) payload.recipientName = recipientName;
-  if (recipientEmail) payload.recipientEmail = recipientEmail;
+  const recNorm = normalizedEmailIdentity(recipientEmail);
+  if (recNorm) payload.recipientEmail = recNorm;
   if (recipientPhone) payload.recipientPhone = recipientPhone;
-  if (senderName) payload.senderName = senderName;
+  const sendNorm = normalizedEmailIdentity(senderName);
+  if (sendNorm) payload.senderName = sendNorm;
   if (createdBy) payload.createdBy = createdBy;
 
   // 🚨 ID ÚNICO PARA EVITAR DUPLICADOS
   const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
   payload.uniqueId = uniqueId;
 
-  const fromNorm = from?.trim();
-  const replyToNorm = replyTo?.trim();
-  const ccNorm = normalizeList(cc);
-  const bccNorm = normalizeList(bcc);
+  const fromNorm = normalizedEmailIdentity(from);
+  const replyToNorm = normalizedEmailIdentity(replyTo);
+  const ccNorm = normalizeEmailList(cc);
+  const bccNorm = normalizeEmailList(bcc);
 
   if (fromNorm) payload.from = fromNorm;
   if (replyToNorm) payload.replyTo = replyToNorm;
@@ -108,23 +118,20 @@ export type SendEmailResult = { success: boolean; whatsappId?: string; whatsappE
 
 // Función helper para enviar el email manualmente después de actualizar el documento
 export async function sendEmailManually(docId: string): Promise<SendEmailResult> {
-  const timestamp = new Date().toISOString();
-  console.log(`🌐 [${timestamp}] Llamando manualmente a /api/sendEmail con docId:`, docId);
+  const token = await auth.currentUser?.getIdToken();
   const response = await fetch('/api/sendEmail', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ docId })
   });
-  console.log(`🌐 [${timestamp}] Respuesta de /api/sendEmail:`, response.status, response.statusText);
-  
+
   const result = await response.json();
   if (!response.ok) {
-    console.error('❌ Error al enviar email:', result);
     throw new Error(result?.error || `Error al enviar email: ${response.status}`);
   }
-  console.log('✅ Email enviado:', result);
   return result;
 }
 

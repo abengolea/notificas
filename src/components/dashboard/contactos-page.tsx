@@ -167,7 +167,7 @@ export function ContactosPageComponent() {
       {/* Header con navegación */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <Link href="/dashboard" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <Logo className="h-8 w-auto" />
           </Link>
           <div className="h-8 w-px bg-border"></div>

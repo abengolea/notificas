@@ -4,15 +4,31 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Loader2, CheckCircle, AlertCircle, ExternalLink, Info, ShieldCheck } from 'lucide-react';
+import { auth } from '@/lib/firebase';
 
 const POLYGON_EXPLORER = 'https://polygonscan.com';
 
-async function fetchCertify(type: string, params?: Record<string, string>) {
+async function fetchCertify(type: string, messageId: string, params?: Record<string, string>) {
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) {
+    throw new Error('Iniciá sesión para probar la certificación.');
+  }
+
+  const body: Record<string, string> = { type, ...params };
+  if (messageId.trim()) {
+    body.messageId = messageId.trim();
+  }
+
   const res = await fetch('/api/polygon/certify', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type, ...params }),
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.json();
@@ -44,6 +60,7 @@ export default function BlockchainTest() {
   const [results, setResults] = useState<any[]>([]);
   const [balance, setBalance] = useState<string>('');
   const [networkInfo, setNetworkInfo] = useState<any>(null);
+  const [testMessageId, setTestMessageId] = useState('');
 
   const addResult = (type: string, data: any, success: boolean = true) => {
     setResults(prev => [{
@@ -58,7 +75,7 @@ export default function BlockchainTest() {
   const runCertify = async (label: string, type: string, params?: Record<string, string>) => {
     setLoading(true);
     try {
-      const { txHash, explorerUrl } = await fetchCertify(type, params);
+      const { txHash, explorerUrl } = await fetchCertify(type, testMessageId, params);
       addResult(label, { txHash, explorerUrl }, true);
       // Auto-fetch datos de certificación de la red
       try {
@@ -77,6 +94,8 @@ export default function BlockchainTest() {
   const testCertificarEnvio = () => runCertify('Envío Certificado', 'send');
   const testCertificarRecepcion = () => runCertify('Recepción Certificada', 'receive');
   const testCertificarUsuario = () => runCertify('Usuario Certificado', 'user');
+
+  const mailTestsNeedId = !testMessageId.trim();
 
   const checkNetworkInfo = async () => {
     setLoading(true);
@@ -137,10 +156,21 @@ export default function BlockchainTest() {
             </div>
           </div>
 
+          <div className="mb-4 space-y-2">
+            <Label htmlFor="test-mail-id">ID de mensaje Firestore (mail) — lectura / envío / recepción</Label>
+            <Input
+              id="test-mail-id"
+              placeholder="ej. abc123… del documento en colección mail"
+              value={testMessageId}
+              onChange={(e) => setTestMessageId(e.target.value)}
+              className="font-mono text-sm"
+            />
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <Button 
               onClick={testCertificarLectura}
-              disabled={loading}
+              disabled={loading || mailTestsNeedId}
               className="flex items-center gap-2"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : '📖'}
@@ -149,7 +179,7 @@ export default function BlockchainTest() {
 
             <Button 
               onClick={testCertificarEnvio}
-              disabled={loading}
+              disabled={loading || mailTestsNeedId}
               className="flex items-center gap-2"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : '📤'}
@@ -158,7 +188,7 @@ export default function BlockchainTest() {
 
             <Button 
               onClick={testCertificarRecepcion}
-              disabled={loading}
+              disabled={loading || mailTestsNeedId}
               className="flex items-center gap-2"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : '📨'}

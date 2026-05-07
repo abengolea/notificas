@@ -64,8 +64,19 @@ export default function PDFViewerPage() {
           setLoading(false);
           return;
         }
-        
-        setAttachment(foundAttachment);
+
+        const raw = foundAttachment as Attachment & {
+          fileName?: string;
+          fileUrl?: string;
+        };
+        const normalized: Attachment = {
+          ...raw,
+          name: raw.name || raw.fileName || 'documento',
+          url: raw.url || raw.fileUrl || '',
+          size: raw.size ?? (raw as { fileSize?: number }).fileSize ?? 0,
+        };
+
+        setAttachment(normalized);
         console.log('✅ Adjunto encontrado:', foundAttachment);
         
       } catch (err: any) {

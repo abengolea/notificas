@@ -40,6 +40,44 @@ const FormattedDateCell = ({ date }: { date: Date | string }) => {
 export default function WalletClient({ user, transactions, planes }: WalletClientProps) {
   const [loadingPlan, setLoadingPlan] = useState<Plan['id'] | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const rawStatus =
+      params.get('status') || params.get('collection_status');
+    const paymentId = params.get('payment_id');
+    if (!rawStatus && !paymentId) return;
+
+    const status = rawStatus?.toLowerCase();
+    const cleanPath = `${window.location.pathname}${window.location.hash}`;
+
+    if (status === 'approved' || status === 'success') {
+      toast({
+        title: 'Pago recibido',
+        description:
+          'Si los créditos no aparecen al instante, esperá unos segundos (se confirman por Mercado Pago).',
+      });
+    } else if (status === 'pending' || status === 'in_process') {
+      toast({
+        title: 'Pago pendiente',
+        description:
+          'Tu pago está en proceso. Los créditos se acreditarán cuando se apruebe.',
+      });
+    } else if (
+      status === 'rejected' ||
+      status === 'failure' ||
+      status === 'cancelled'
+    ) {
+      toast({
+        title: 'Pago no completado',
+        description: 'Si ya pagaste por error, revisá el estado en Mercado Pago o escribinos.',
+        variant: 'destructive',
+      });
+    }
+
+    window.history.replaceState({}, '', cleanPath);
+  }, [toast]);
   
   const formatCurrency = (amount: number) => {
     return amount.toLocaleString('es-AR', {

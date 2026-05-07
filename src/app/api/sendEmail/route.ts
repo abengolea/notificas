@@ -1,33 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { certificarEnvio } from '@/lib/certification';
+import { verifyAuthToken } from '@/lib/auth-helper';
+import { computeContentHash } from '@/lib/certification';
+import { certificarEnvio } from '@/lib/certification-polygon';
 
 export async function POST(request: NextRequest) {
   try {
-    const timestamp = new Date().toISOString();
-    console.log(`🚀 [${timestamp}] Endpoint /api/sendEmail llamado`);
+    // Verificar autenticación
+    const { decoded, errorResponse } = await verifyAuthToken(request);
+    if (errorResponse) return errorResponse;
+
     const { docId } = await request.json();
-    console.log(`📋 [${timestamp}] docId recibido:`, docId);
-    
+
     if (!docId) {
-      console.log('❌ docId es requerido');
       return NextResponse.json({ error: 'docId es requerido' }, { status: 400 });
+    }
+
+    // Verificar que el documento pertenece al usuario autenticado
+    const mailSnap = await adminDb.collection('mail').doc(docId).get();
+    if (!mailSnap.exists) {
+      return NextResponse.json({ error: 'Mensaje no encontrado' }, { status: 404 });
+    }
+    if (mailSnap.data()?.createdBy !== decoded.uid) {
+      return NextResponse.json({ error: 'No autorizado para enviar este mensaje' }, { status: 403 });
     }
 
     // Llamar a la función de Firebase
     const functionUrl = 'https://sendemail-ju7n3yysfq-uc.a.run.app';
-    
-    console.log('🌐 Llamando a Firebase Function:', functionUrl);
-    
     const response = await fetch(functionUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ docId })
     });
-
-    console.log('📡 Respuesta de Firebase:', response.status, response.statusText);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -36,9 +40,8 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await response.json();
-    console.log('✅ Resultado exitoso:', result);
 
-    // Certificar en Polygon después de envío exitoso
+    // Certificar en Polygon después de envío exitoso (incluye hash del contenido para integridad)
     let polygonTxHash: string | undefined;
     try {
       const mailSnap = await adminDb.collection('mail').doc(docId).get();
@@ -46,12 +49,17 @@ export async function POST(request: NextRequest) {
       if (mailData) {
         const toEmail = Array.isArray(mailData.to) ? mailData.to[0] : mailData.recipientEmail || mailData.to || '';
         const fromUserId = mailData.createdBy || mailData.senderName || 'app';
-        polygonTxHash = await certificarEnvio(docId, fromUserId, toEmail);
+        const subject = mailData.message?.subject || '';
+        const html = mailData.message?.html;
+        const text = mailData.message?.text;
+        const contentHash = await computeContentHash(subject, html, text);
+        polygonTxHash = await certificarEnvio(docId, fromUserId, toEmail, contentHash);
         await adminDb.collection('mail').doc(docId).update({
           'polygonCertifications.send': polygonTxHash,
+          'polygonCertifications.contentHash': contentHash,
           'polygonCertifications.updatedAt': new Date()
         });
-        console.log('🔗 Envío certificado en Polygon:', polygonTxHash);
+        console.log('🔗 Envío certificado en Polygon (con contentHash):', polygonTxHash);
       }
     } catch (polygonError: any) {
       console.error('⚠️ Error certificando en Polygon (no bloquea el envío):', polygonError?.message);

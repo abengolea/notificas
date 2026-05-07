@@ -30,9 +30,12 @@ export interface CreatePreferenceData {
 // Función para crear preferencia de pago
 export async function createPaymentPreference(data: CreatePreferenceData): Promise<MercadoPagoPreference> {
   try {
-    console.log('🔑 MercadoPago Access Token:', process.env.MERCADOPAGO_ACCESS_TOKEN?.substring(0, 20) + '...');
-    console.log('🌍 Environment:', process.env.MERCADOPAGO_ENVIRONMENT);
+    console.log('🌍 Mercado Pago:', process.env.MERCADOPAGO_ENVIRONMENT ?? 'no MERCADOPAGO_ENVIRONMENT');
     console.log('📦 Data recibida:', data);
+
+    const appBase = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9006').replace(/\/$/, '');
+    const returnUrl = `${appBase}/dashboard/billetera`;
+
     const preferenceData = {
       items: [
         {
@@ -57,10 +60,11 @@ export async function createPaymentPreference(data: CreatePreferenceData): Promi
         installments: 12
       },
       back_urls: {
-        success: 'https://www.mercadopago.com.ar/checkout/confirmation',
-        failure: 'https://www.mercadopago.com.ar/checkout/confirmation',
-        pending: 'https://www.mercadopago.com.ar/checkout/confirmation'
+        success: returnUrl,
+        failure: returnUrl,
+        pending: returnUrl,
       },
+      auto_return: 'approved',
       external_reference: `plan_${data.planId}_user_${data.userId}`,
       metadata: {
         plan_id: data.planId,

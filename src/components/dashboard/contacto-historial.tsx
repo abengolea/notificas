@@ -62,14 +62,18 @@ export function ContactoHistorial({ contacto, isOpen, onClose, userEmail }: Cont
   useEffect(() => {
     if (!isOpen || !userEmail) return
 
+    const senderNorm = userEmail.trim().toLowerCase()
+    const destNorm = contacto.email.trim().toLowerCase()
+    if (!senderNorm || !destNorm) return
+
     setCargando(true)
     
     // Buscar mensajes enviados a este contacto
     const mailCol = collection(db, 'mail')
     const q = query(
       mailCol,
-      where('senderName', '==', userEmail),
-      where('to', 'array-contains', contacto.email),
+      where('senderName', '==', senderNorm),
+      where('to', 'array-contains', destNorm),
       orderBy('createdAt', 'desc')
     )
 

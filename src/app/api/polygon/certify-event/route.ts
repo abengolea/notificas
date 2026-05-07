@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { certificarRecepcion, certificarLectura } from '@/lib/certification';
+import { certificarRecepcion, certificarLectura } from '@/lib/certification-polygon';
 
 /**
  * Endpoint para que Firebase Functions certifique eventos (recepción, lectura) en Polygon.
@@ -8,9 +8,17 @@ import { certificarRecepcion, certificarLectura } from '@/lib/certification';
  */
 export async function POST(request: NextRequest) {
   try {
+    const expectedSecret = process.env.POLYGON_CERTIFY_SECRET?.trim();
+    if (!expectedSecret) {
+      console.error('POLYGON_CERTIFY_SECRET no está configurado');
+      return NextResponse.json(
+        { error: 'Configuración del servidor incompleta' },
+        { status: 503 }
+      );
+    }
+
     const secret = request.headers.get('X-Certify-Secret');
-    const expectedSecret = process.env.POLYGON_CERTIFY_SECRET;
-    if (expectedSecret && secret !== expectedSecret) {
+    if (secret !== expectedSecret) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 

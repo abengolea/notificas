@@ -28,7 +28,7 @@ export function PDFViewer({ messageId, attachmentId, fileName, fileUrl, fileSize
     startTracking,
     stopTracking,
     handleSignature
-  } = usePDFTracking(messageId, attachmentId);
+  } = usePDFTracking(messageId, attachmentId, fileName);
 
   // Iniciar tracking cuando se monta el componente
   useEffect(() => {

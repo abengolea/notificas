@@ -10,25 +10,40 @@ interface AdminAuthProps {
 
 export function AdminAuth({ children }: AdminAuthProps) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [configError, setConfigError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
-    // Verificar si está autenticado
-    const authStatus = sessionStorage.getItem("admin_authenticated");
-    const adminUser = sessionStorage.getItem("admin_user");
-    
-    if (authStatus === "true" && adminUser === "contacto@notificas.com") {
-      setIsAuthenticated(true);
-    } else {
-      setIsAuthenticated(false);
-      // Redirigir al login después de un breve delay
-      setTimeout(() => {
-        router.push("/admin/login");
-      }, 100);
-    }
+    let cancelled = false;
+
+    fetch("/api/admin/me", { credentials: "include" })
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.status === 503) {
+          setIsAuthenticated(false);
+          setConfigError(
+            "Falta configurar ADMIN_PANEL_EMAIL, ADMIN_PANEL_PASSWORD y ADMIN_SESSION_SECRET en el servidor (.env.local).",
+          );
+          return;
+        }
+        if (!res.ok) {
+          setIsAuthenticated(false);
+          setTimeout(() => {
+            router.push("/admin/login");
+          }, 100);
+          return;
+        }
+        setIsAuthenticated(true);
+      })
+      .catch(() => {
+        if (!cancelled) setIsAuthenticated(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
-  // Mostrar loading mientras verifica
   if (isAuthenticated === null) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -40,18 +55,25 @@ export function AdminAuth({ children }: AdminAuthProps) {
     );
   }
 
-  // Si no está autenticado, no mostrar nada (se redirige)
   if (!isAuthenticated) {
+    if (configError) {
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+          <p className="text-center text-gray-700 max-w-md">{configError}</p>
+        </div>
+      );
+    }
     return null;
   }
 
-  // Si está autenticado, mostrar el contenido
   return <>{children}</>;
 }
 
-// Función para cerrar sesión
-export function logoutAdmin() {
-  sessionStorage.removeItem("admin_authenticated");
-  sessionStorage.removeItem("admin_user");
+export async function logoutAdmin() {
+  try {
+    await fetch("/api/admin/logout", { method: "POST", credentials: "include" });
+  } catch {
+    /* ignore */
+  }
   window.location.href = "/admin/login";
 }

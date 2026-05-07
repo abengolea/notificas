@@ -45,7 +45,12 @@ function toIsoString(value: any): string | undefined {
   return undefined;
 }
 
-function buildResponsePayload(doc: MailDocument, attachment: any, hash: string) {
+function buildResponsePayload(
+  doc: MailDocument,
+  attachment: any | null,
+  hash: string | null,
+  options: { isCertificateVerification?: boolean } = {}
+) {
   const data = doc.data();
   const sentAt =
     toIsoString(data.sentAt) ||
@@ -59,7 +64,8 @@ function buildResponsePayload(doc: MailDocument, attachment: any, hash: string) 
   const blockchainVerified =
     Boolean(attachment?.integrityCertificate?.verified) ||
     Boolean(data.blockchainHash) ||
-    Boolean(data.bfaCertificado?.hashCertificado);
+    Boolean(data.bfaCertificado?.hashCertificado) ||
+    Boolean(data.polygonCertifications?.send || data.polygonCertifications?.read);
 
   return {
     docId: doc.id,
@@ -67,10 +73,11 @@ function buildResponsePayload(doc: MailDocument, attachment: any, hash: string) 
     senderName: data.senderName || data.message?.senderName || data.from,
     recipientEmail: data.recipientEmail || data.to?.[0],
     sentAt,
-    hash,
+    hash: hash ?? undefined,
     fileName: attachmentName,
     attachmentUrl,
     blockchainVerified,
+    isCertificate: options.isCertificateVerification ?? false,
   };
 }
 
@@ -128,21 +135,49 @@ async function scanMailCollection(hash: string) {
   return null;
 }
 
+/**
+ * Verifica un documento por hash (adjuntos) o por messageId (certificado de lectura).
+ * El certificado de lectura PDF se genera dinámicamente y su hash no se guarda,
+ * por eso se permite verificar ingresando el ID del mensaje que figura en el certificado.
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const hash = typeof body?.hash === "string" ? normalizeHash(body.hash) : null;
+    const messageId = typeof body?.messageId === "string" ? body.messageId.trim() : null;
 
+    // Verificación por messageId (certificado de lectura)
+    if (messageId) {
+      const docRef = adminDb.collection("mail").doc(messageId);
+      const docSnap = await docRef.get();
+
+      if (!docSnap.exists) {
+        return NextResponse.json(
+          { error: "Documento no encontrado", messageId },
+          { status: 404 }
+        );
+      }
+
+      const payload = buildResponsePayload(
+        docSnap as MailDocument,
+        null,
+        null,
+        { isCertificateVerification: true }
+      );
+      return NextResponse.json({ success: true, data: payload });
+    }
+
+    // Verificación por hash (adjuntos de correo)
     if (!hash) {
       return NextResponse.json(
-        { error: "hash es requerido" },
+        { error: "hash o messageId es requerido" },
         { status: 400 }
       );
     }
 
     if (hash.length !== 64) {
       return NextResponse.json(
-        { error: "hash inválido" },
+        { error: "hash inválido (debe ser SHA-256 en hexadecimal)" },
         { status: 400 }
       );
     }

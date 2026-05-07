@@ -55,16 +55,11 @@ function generateEmailHtml(params) {
             <td class="content">
               <p class="lead">Estimado/a {{recipientName}},</p>
               <p class="lead">
-                Ha recibido una <strong>comunicacion fehaciente digital</strong> remitida por <strong>{{senderName}}</strong>. 
-                Le recomendamos acceder a su contenido, ya que puede ser relevante para:
+                Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>{{senderName}}</strong>. 
+                <strong>Recomendamos leer el mensaje</strong> para evitar quedar notificado sin conocer su contenido.
               </p>
-              <ul class="list">
-                <li><strong>Responder en tiempo y forma</strong>.</li>
-                <li><strong>Ejercer sus derechos</strong> y dejar constancia tecnica de acceso.</li>
-                <li><strong>Conservar evidencia</strong> de recepcion y lectura.</li>
-              </ul>
               <p style="margin: 20px 0;">
-                <a class="btn" href="{{readUrl}}" target="_blank" rel="noopener">Leer Notificacion</a>
+                <a class="btn" href="{{readUrl}}" target="_blank" rel="noopener">Acceder a la notificación</a>
               </p>
               <p class="muted">
                 Si el boton no funciona, copie y pegue este enlace en su navegador:<br>
@@ -72,13 +67,9 @@ function generateEmailHtml(params) {
               </p>
               <div class="divider"></div>
               <p class="muted">
-                Este correo no incluye adjuntos por razones de confidencialidad. La notificacion, sus metadatos de envio, 
+                La notificacion, sus metadatos de envio, 
                 recepcion y lectura quedan <strong>certificados y registrados</strong> en la red Blockchain a traves de Notificas.com. 
                 Esta constancia tecnica no implica conformidad con el contenido.
-              </p>
-              <p class="muted" style="margin-top:12px;">
-                Para dejar constancia de que ha accedido al mensaje, puede utilizar el siguiente enlace:<br>
-                <a href="{{readUrl}}#confirm" target="_blank" rel="noopener" style="color:inherit;">Confirmar lectura</a>
               </p>
             </td>
           </tr>
@@ -158,16 +149,11 @@ function generateEmailWithTracking(params) {
             <td class="content">
               <p class="lead">Estimado/a {{recipientName}},</p>
               <p class="lead">
-                Ha recibido una <strong>comunicacion fehaciente digital</strong> remitida por <strong>{{senderName}}</strong>. 
-                Le recomendamos acceder a su contenido, ya que puede ser relevante para:
+                Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>{{senderName}}</strong>. 
+                <strong>Recomendamos leer el mensaje</strong> para evitar quedar notificado sin conocer su contenido.
               </p>
-              <ul class="list">
-                <li><strong>Responder en tiempo y forma</strong>.</li>
-                <li><strong>Ejercer sus derechos</strong> y dejar constancia tecnica de acceso.</li>
-                <li><strong>Conservar evidencia</strong> de recepcion y lectura.</li>
-              </ul>
               <p style="margin: 20px 0;">
-                <a class="btn" href="{{readUrl}}" target="_blank" rel="noopener">Leer Notificacion</a>
+                <a class="btn" href="{{readUrl}}" target="_blank" rel="noopener">Acceder a la notificación</a>
               </p>
               <p class="muted">
                 Si el boton no funciona, copie y pegue este enlace en su navegador:<br>
@@ -175,13 +161,9 @@ function generateEmailWithTracking(params) {
               </p>
               <div class="divider"></div>
               <p class="muted">
-                Este correo no incluye adjuntos por razones de confidencialidad. La notificacion, sus metadatos de envio, 
+                La notificacion, sus metadatos de envio, 
                 recepcion y lectura quedan <strong>certificados y registrados</strong> en la red Blockchain a traves de Notificas.com. 
                 Esta constancia tecnica no implica conformidad con el contenido.
-              </p>
-              <p class="muted" style="margin-top:12px;">
-                Para dejar constancia de que ha accedido al mensaje, puede utilizar el siguiente enlace:<br>
-                <a href="{{readUrl}}#confirm" target="_blank" rel="noopener" style="color:inherit;">Confirmar lectura</a>
               </p>
             </td>
           </tr>
@@ -242,14 +224,10 @@ function generateEmailWithTracking(params) {
       <img src="${trackingImageUrl}" alt="Notificación Digital Certificada" style="display:block;margin:0 auto;max-width:600px;height:auto;border-radius:8px;" />
     </div>`;
 
-  // Enlace de confirmación de lectura
-  const confirmUrl = `https://confirmread-ju7n3yysfq-uc.a.run.app?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}`;
-  const confirmBlock = `<p style="margin-top:20px;text-align:center;font-size:12px;color:#666;">
-    <a href="${confirmUrl}" style="color:#0D9488;text-decoration:none;">Confirmar que he leído este mensaje</a>
-  </p>`;
+  // No agregar "Confirmar lectura" en el email: el usuario lo ve en el reader al acceder
 
-  // Agregar tracking section y confirmación al final del HTML
-  html = html + trackingSection + confirmBlock;
+  // Agregar tracking section al final del HTML
+  html = html + trackingSection;
 
   return html;
 }

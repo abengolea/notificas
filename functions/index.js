@@ -12,6 +12,10 @@ initializeApp();
 // Secrets de WhatsApp en Secret Manager (firebase functions:secrets:set)
 const whatsappAccessToken = defineSecret('WHATSAPP_ACCESS_TOKEN');
 const whatsappPhoneNumberId = defineSecret('WHATSAPP_PHONE_NUMBER_ID');
+// Secret SMTP (firebase functions:secrets:set SMTP_PASS)
+const smtpPass = defineSecret('SMTP_PASS');
+// Mismo valor que App Hosting POLYGON_CERTIFY_SECRET — protege /api/polygon/certify-event
+const polygonCertifySecret = defineSecret('POLYGON_CERTIFY_SECRET');
 // Template aprobado en Meta (requerido para contactar usuarios fuera de ventana 24h)
 const whatsappTemplateName = defineString('WHATSAPP_TEMPLATE_NAME', { default: '' });
 const whatsappTemplateLanguage = defineString('WHATSAPP_TEMPLATE_LANGUAGE', { default: 'es_AR' });
@@ -126,6 +130,14 @@ const APP_HOSTING_URL = (() => {
   return url;
 })();
 
+/** Init para fetch a App Hosting /api/polygon/certify-event (X-Certify-Secret si está definido el secret). */
+function certifyEventFetchInit(body) {
+  const headers = { 'Content-Type': 'application/json' };
+  const secret = polygonCertifySecret.value();
+  if (secret) headers['X-Certify-Secret'] = secret;
+  return { method: 'POST', headers, body: JSON.stringify(body) };
+}
+
 // Función para extraer información del navegador del User-Agent
 function extractBrowserInfo(userAgent) {
   if (!userAgent) return 'Unknown';
@@ -155,15 +167,20 @@ function extractBrowserInfo(userAgent) {
   return 'Unknown Browser';
 }
 
-const transporter = nodemailer.createTransport({
-  host: 'vps-1711372-x.dattaweb.com',
-  port: 587,
-  secure: false,
-  auth: {
-    user: 'contacto@notificas.com',
-    pass: '3JF9x*a2xS'
-  }
-});
+// El transporter se crea de forma lazy para acceder al secret en runtime
+function getTransporter() {
+  const pass = smtpPass.value();
+  if (!pass) throw new Error('SMTP_PASS secret no configurado. Ejecutar: firebase functions:secrets:set SMTP_PASS');
+  return nodemailer.createTransport({
+    host: 'vps-1711372-x.dattaweb.com',
+    port: 587,
+    secure: false,
+    auth: {
+      user: 'contacto@notificas.com',
+      pass,
+    },
+  });
+}
 
 function generateToken() {
   return crypto.randomBytes(16).toString('hex');
@@ -225,8 +242,17 @@ function injectTrackingIntoHtml(html, docId, token) {
       replacedCount++;
       return;
     }
+
+    // El botón "Acceder a la notificación" va DIRECTO al reader (sin linkRedirect) para máxima compatibilidad
+    // con clientes de email que pueden bloquear o alterar URLs largas/encoded
+    const isReaderUrl = cleanHref.includes('/reader/') && cleanHref.includes(`?k=`);
+    if (isReaderUrl) {
+      $(el).attr('href', readerUrl);
+      processedCount++;
+      return;
+    }
     
-    // Procesar solo URLs HTTP/HTTPS válidas con tracking
+    // Otras URLs HTTP válidas: usar linkRedirect para tracking de clicks
     const encoded = base64UrlEncode(cleanHref);
     const redirectUrl = `${LINK_REDIRECT_URL}?msg=${encodeURIComponent(docId)}&u=${encoded}&k=${encodeURIComponent(token)}`;
     $(el).attr('href', redirectUrl);
@@ -238,10 +264,7 @@ function injectTrackingIntoHtml(html, docId, token) {
   // Tracking pixel URL removed
   // Tracking pixel tag removed
 
-  const confirmUrl = `${CONFIRM_READ_URL}?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(token)}`;
-  const confirmBlock = `<p style="margin-top:24px"><a href="${confirmUrl}" target="_blank" rel="noopener">Confirmar lectura</a></p>`;
-  if ($('body').length > 0) $('body').append(confirmBlock);
-  else $.root().append(confirmBlock);
+  // No agregar "Confirmar lectura" en el email: el usuario lo ve en el reader al acceder
 
   return $.html();
 }
@@ -251,7 +274,7 @@ function injectTrackingIntoHtml(html, docId, token) {
 
 
 exports.sendEmail = onRequest(
-  { region: REGION, concurrency: 1, secrets: [whatsappAccessToken, whatsappPhoneNumberId] },
+  { region: REGION, concurrency: 1, secrets: [whatsappAccessToken, whatsappPhoneNumberId, smtpPass] },
   async (req, res) => {
     const timestamp = new Date().toISOString();
     console.log(`🔥 [${timestamp}] Firebase Function sendEmail ejecutada`);
@@ -301,16 +324,20 @@ exports.sendEmail = onRequest(
     let htmlWithTracking;
     if (htmlOriginal && htmlOriginal.trim()) {
       // Usar el HTML original que incluye los archivos adjuntos
-      // Reemplazar TODOS los placeholders de enlaces con el readerUrl real usando cheerio
       const $ = cheerio.load(htmlOriginal, { decodeEntities: false });
-      
-      // Reemplazar TODOS los href="#" con readerUrl
+
+      // Opción A: Quitar contenido y adjuntos del email (solo link de acceso). El reader mostrará todo.
+      $('[data-email-hide]').remove();
+      $('.email-hide-content').remove(); // retrocompatibilidad
+      $('[class*="email-hide-content"]').remove();
+
+      // Reemplazar TODOS los placeholders de enlaces con el readerUrl real
       $('a[href="#"]').each((_, el) => {
         const $el = $(el);
         const text = $el.text().trim();
         
-        // Si es un botón "Leer Notificacion", mantener la clase btn
-        if (text.toLowerCase().includes('leer notificacion')) {
+        // Botón "Acceder a la notificación" o "Leer Notificacion" (retrocompat)
+        if (text.toLowerCase().includes('notificacion')) {
           $el.attr('href', readerUrl);
           $el.attr('target', '_blank');
           $el.attr('rel', 'noopener');
@@ -346,6 +373,18 @@ exports.sendEmail = onRequest(
       });
       
       let htmlToProcess = $.html();
+      // Quitar placeholder de contenido (comentario HTML - no se muestra en email, pero lo eliminamos por limpieza)
+      htmlToProcess = htmlToProcess.replace(/<!--\s*CONTENT_PLACEHOLDER[^>]*-->/gi, '');
+
+      // CRÍTICO: Reemplazo explícito del botón "Acceder a la notificación" y enlace fallback
+      htmlToProcess = htmlToProcess.replace(
+        /<a([^>]*)\s+href\s*=\s*["']#["']([^>]*)>[\s]*Acceder\s+a\s+la\s+notificaci[oó]n[\s]*<\/a>/gi,
+        `<a$1 href="${readerUrl}"$2>Acceder a la notificación</a>`
+      );
+      htmlToProcess = htmlToProcess.replace(
+        /<a([^>]*)href\s*=\s*["']#["']([^>]*)>\[El enlace se agregar[^\]]*\]<\/a>/gi,
+        `<a$1 href="${readerUrl}"$2>${readerUrl}</a>`
+      );
       
       // Verificar que no queden enlaces con href="#" usando múltiples métodos
       const $check = cheerio.load(htmlToProcess);
@@ -424,7 +463,7 @@ Leer Notificacion: ${readerUrl}
 Si el boton no funciona, copie y pegue este enlace en su navegador:
 ${readerUrl}
 
-Este correo no incluye adjuntos por razones de confidencialidad. La notificacion, sus metadatos de envio, recepcion y lectura quedan certificados y registrados en la red Blockchain a traves de Notificas.com. Esta constancia tecnica no implica conformidad con el contenido.
+La notificacion, sus metadatos de envio, recepcion y lectura quedan certificados y registrados en la red Blockchain a traves de Notificas.com. Esta constancia tecnica no implica conformidad con el contenido.
 
 Para dejar constancia de que ha accedido al mensaje, puede utilizar el siguiente enlace:
 Confirmar lectura: ${readerUrl}
@@ -445,9 +484,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
 
       console.log('📧 Enviando email a:', to);
       console.log('📧 Asunto:', subject);
-      console.log('📧 Configuración SMTP:', { host: transporter.options.host, port: transporter.options.port });
-      
-      const result = await transporter.sendMail(mailOptions);
+      const result = await getTransporter().sendMail(mailOptions);
       
       console.log('📧 Resultado del envío:', result);
       
@@ -458,19 +495,26 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
       }
 
       // Crear movimiento inicial de envío
+      const destinatarioEtiqueta =
+        (emailData.recipientEmail && String(emailData.recipientEmail).trim()) ||
+        (Array.isArray(toRaw) ? toRaw[0] : toRaw) ||
+        String(to);
+
       const initialMovement = {
         id: crypto.randomUUID(),
         type: 'email_sent',
-        description: `Notificar vía e-mail: ${to}`,
+        description: `Envío certificado exclusivo para destinatario: ${destinatarioEtiqueta}`,
         timestamp: new Date().toISOString(),
         userAgent: 'Server',
         clientIP: 'Server',
         forwardedIPs: [],
         realIP: 'Server',
         browser: 'Server',
-        recipientEmail: to
+        recipientEmail: destinatarioEtiqueta
       };
 
+      // CRÍTICO: NO actualizar el campo message - preservar message.content y attachments
+      // que el compose guardó para que el reader muestre el contenido real al destinatario
       await docRef.update({
         delivery: {
           state: 'DELIVERED',
@@ -490,11 +534,6 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
           movements: [initialMovement]
         },
         readerUrl,
-        // Guardar el HTML ORIGINAL del mensaje para que el lector vea el contenido real
-        message: {
-          ...emailData.message,
-          html: htmlOriginal
-        },
         source: 'app_web', // Marcar como correo enviado desde la aplicación web
         sourceLabel: 'Enviado desde la app',
         sourceIcon: '💻'
@@ -517,13 +556,22 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
           } else {
             const templateName = whatsappTemplateName.value()?.trim() || '';
             const templateLang = whatsappTemplateLanguage.value()?.trim() || 'es_AR';
+            const encodedReader = base64UrlEncode(readerUrl);
+            const whatsappLink = (() => {
+              const waDigits = formatPhoneForWhatsApp(recipientPhone);
+              const rParam =
+                waDigits && waDigits.length >= 10
+                  ? `&r=${encodeURIComponent(base64UrlEncode(waDigits))}`
+                  : '';
+              return `${LINK_REDIRECT_URL}?msg=${encodeURIComponent(docId)}&u=${encodeURIComponent(encodedReader)}&k=${encodeURIComponent(trackingToken)}&src=whatsapp${rParam}`;
+            })();
             const resultWA = await sendWhatsAppNotification(
               token,
               phoneId,
               templateName || null,
               templateLang,
               recipientPhone,
-              readerUrl,
+              whatsappLink,
               emailData.senderName || from,
               emailData.recipientName || 'Usuario'
             );
@@ -581,7 +629,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
   }
 );
 
-exports.trackOpen = onRequest({ region: REGION }, async (req, res) => {
+exports.trackOpen = onRequest({ region: REGION, secrets: [polygonCertifySecret] }, async (req, res) => {
   try {
     const { msg, k } = req.query;
     if (!msg || !k) return res.status(400).send('Missing params');
@@ -635,11 +683,11 @@ exports.trackOpen = onRequest({ region: REGION }, async (req, res) => {
     if (wasFirstOpen) {
       try {
         const certifyUrl = `${APP_HOSTING_URL}/api/polygon/certify-event`;
-        const certifyRes = await fetch(certifyUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ docId: String(msg), type: 'receive', userId: data?.recipientEmail })
-        });
+        const certifyRes = await fetch(certifyUrl, certifyEventFetchInit({
+          docId: String(msg),
+          type: 'receive',
+          userId: data?.recipientEmail,
+        }));
         if (!certifyRes.ok) console.warn('⚠️ Polygon certify receive:', await certifyRes.text());
       } catch (e) {
         console.warn('⚠️ Polygon certify receive failed:', e?.message);
@@ -678,10 +726,10 @@ exports.trackOpen = onRequest({ region: REGION }, async (req, res) => {
   }
 });
 
-exports.linkRedirect = onRequest({ region: REGION }, async (req, res) => {
+exports.linkRedirect = onRequest({ region: REGION, secrets: [polygonCertifySecret] }, async (req, res) => {
   try {
-    const { msg, u, k } = req.query;
-    console.log('🔗 linkRedirect called with:', { msg, u, k });
+    const { msg, u, k, src, r } = req.query;
+    console.log('🔗 linkRedirect called with:', { msg, u, k, src, r: r ? '(set)' : '' });
     
     if (!msg || !u || !k) return res.status(400).send('Missing params');
 
@@ -773,7 +821,11 @@ exports.linkRedirect = onRequest({ region: REGION }, async (req, res) => {
       const fiveSecondsAgo = now - 5000;
       
       const recentDuplicate = existingMovements
-        .filter(m => m.type === 'link_clicked' && m.description && m.description.includes(decodedUrl))
+        .filter(m => {
+          const isLinkType = m.type === 'link_clicked' || m.type === 'whatsapp_link_clicked';
+          const matchesUrl = m.type === 'whatsapp_link_clicked' || (m.description && m.description.includes(decodedUrl));
+          return isLinkType && matchesUrl;
+        })
         .find(m => {
           const movementTime = new Date(m.timestamp).getTime();
           const sameIP = m.clientIP === clientIP || m.realIP === clientIP;
@@ -794,25 +846,61 @@ exports.linkRedirect = onRequest({ region: REGION }, async (req, res) => {
       // Generar UUID único para este movimiento
       const movementId = crypto.randomUUID();
       
-      // Crear movimiento detallado usando la URL original decodificada (no la reemplazada)
+      let recipientPhoneFromLink = null;
+      let recipientPhoneVerified = false;
+      if (r) {
+        try {
+          const decodedPhone = base64UrlDecode(String(r));
+          const expected = data.recipientPhone ? formatPhoneForWhatsApp(data.recipientPhone) : null;
+          recipientPhoneFromLink = decodedPhone;
+          recipientPhoneVerified = Boolean(expected && decodedPhone === expected);
+        } catch (decodePhoneErr) {
+          console.warn('⚠️ No se pudo decodificar r (teléfono en enlace):', decodePhoneErr?.message);
+        }
+      }
+
+      const isWhatsApp = src === 'whatsapp';
       const movement = {
         id: movementId,
-        type: 'link_clicked',
-        description: `Click en enlace: ${decodedUrl}`,
+        type: isWhatsApp ? 'whatsapp_link_clicked' : 'link_clicked',
+        description: isWhatsApp
+          ? recipientPhoneVerified && recipientPhoneFromLink
+            ? `Click en WhatsApp (enlace generado para +${recipientPhoneFromLink})`
+            : 'Click en el mensaje de WhatsApp para acceder a la notificación'
+          : `Click en enlace del correo: ${decodedUrl}`,
+        source: src || 'email',
         timestamp: new Date().toISOString(),
         userAgent: userAgent,
         clientIP: clientIP,
         forwardedIPs: forwardedIPs,
         realIP: realIP,
         browser: extractBrowserInfo(userAgent),
-        recipientEmail: data.recipientEmail || 'Unknown'
+        recipientEmail: data.recipientEmail || 'Unknown',
+        recipientPhone: recipientPhoneFromLink || undefined,
+        recipientPhoneVerified: recipientPhoneVerified
       };
-      
-      await docRef.update({
+      const updateData = {
         'tracking.clickCount': FieldValue.increment(1),
         'tracking.lastClickAt': FieldValue.serverTimestamp(),
         'tracking.movements': [...existingMovements, movement]
-      });
+      };
+      if (isWhatsApp && !data?.tracking?.opened) {
+        updateData['tracking.opened'] = true;
+        updateData['tracking.openedAt'] = FieldValue.serverTimestamp();
+        updateData['tracking.openCount'] = FieldValue.increment(1);
+        try {
+          const certifyUrl = `${APP_HOSTING_URL}/api/polygon/certify-event`;
+          const certifyRes = await fetch(certifyUrl, certifyEventFetchInit({
+            docId: String(msg),
+            type: 'receive',
+            userId: data?.recipientEmail,
+          }));
+          if (!certifyRes.ok) console.warn('⚠️ Polygon certify receive (WhatsApp):', await certifyRes.text());
+        } catch (e) {
+          console.warn('⚠️ Polygon certify receive failed:', e?.message);
+        }
+      }
+      await docRef.update(updateData);
       
       console.log('✅ Tracking updated successfully');
     } else {
@@ -832,7 +920,7 @@ exports.linkRedirect = onRequest({ region: REGION }, async (req, res) => {
   }
 });
 
-exports.confirmRead = onRequest({ region: REGION }, async (req, res) => {
+exports.confirmRead = onRequest({ region: REGION, secrets: [polygonCertifySecret] }, async (req, res) => {
   try {
     console.log('🔍 confirmRead called with params:', req.query);
     const { msg, k } = req.query;
@@ -887,11 +975,11 @@ exports.confirmRead = onRequest({ region: REGION }, async (req, res) => {
     // Certificar lectura en Polygon
     try {
       const certifyUrl = `${APP_HOSTING_URL}/api/polygon/certify-event`;
-      const certifyRes = await fetch(certifyUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ docId: String(msg), type: 'read', userId: data?.recipientEmail })
-      });
+      const certifyRes = await fetch(certifyUrl, certifyEventFetchInit({
+        docId: String(msg),
+        type: 'read',
+        userId: data?.recipientEmail,
+      }));
       if (!certifyRes.ok) console.warn('⚠️ Polygon certify read:', await certifyRes.text());
     } catch (e) {
       console.warn('⚠️ Polygon certify read failed:', e?.message);
@@ -935,7 +1023,7 @@ function parseCertifySubject(subject) {
 }
 
 // Función para procesar correos entrantes desde clientes de email externos
-exports.processIncomingEmail = onRequest({ region: REGION }, async (req, res) => {
+exports.processIncomingEmail = onRequest({ region: REGION, secrets: [smtpPass] }, async (req, res) => {
   try {
     console.log('📧 Procesando correo entrante:', req.body);
     
@@ -1037,7 +1125,7 @@ Leer Notificacion: ${readerUrl}
 Si el boton no funciona, copie y pegue este enlace en su navegador:
 ${readerUrl}
 
-Este correo no incluye adjuntos por razones de confidencialidad. La notificacion, sus metadatos de envio, recepcion y lectura quedan certificados y registrados en la red Blockchain a traves de Notificas.com. Esta constancia tecnica no implica conformidad con el contenido.
+La notificacion, sus metadatos de envio, recepcion y lectura quedan certificados y registrados en la red Blockchain a traves de Notificas.com. Esta constancia tecnica no implica conformidad con el contenido.
 
 Para dejar constancia de que ha accedido al mensaje, puede utilizar el siguiente enlace:
 Confirmar lectura: ${readerUrl}
@@ -1056,8 +1144,8 @@ Este mensaje fue destinado a ${parsed.recipient}. Si no reconoce esta notificaci
     };
     
     console.log('📧 Enviando correo certificado a:', parsed.recipient);
-    const result = await transporter.sendMail(mailOptions);
-    
+    const result = await getTransporter().sendMail(mailOptions);
+
     if (!result.messageId) {
       throw new Error('No se recibió messageId del servidor de correo');
     }

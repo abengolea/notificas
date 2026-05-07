@@ -32,6 +32,10 @@
     --input: 210 20% 91%;
     --ring: 186 78% 37%;
 
+    --warning: 48 96% 53%;
+    --warning-foreground: 0 0% 10%;
+    --warning-muted: 48 96% 93%;
+
     --radius: 0.5rem;
   }
 
@@ -63,6 +67,10 @@
     --border: 215 28% 24%;
     --input: 215 28% 24%;
     --ring: 186 78% 37%;
+
+    --warning: 48 70% 45%;
+    --warning-foreground: 48 20% 98%;
+    --warning-muted: 48 30% 25%;
   }
 }
 
@@ -73,11 +81,21 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
 /* Vista de mensaje certificado: diseño profesional sin bordes grises */
 .mensaje-html-view .wrapper {
-  background: #ffffff !important;
+  background: hsl(var(--card)) !important;
   padding: 0 !important;
 }
 .mensaje-html-view .container {

@@ -4,8 +4,8 @@ import { Logo } from '@/components/logo';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { CheckCircle, ShieldCheck, Cpu, ArrowRight, Mail, Building, Send, Phone } from 'lucide-react';
-import Image from 'next/image';
+import { CheckCircle, ShieldCheck, Cpu, ArrowRight, Mail, Building, Send, Phone, Search } from 'lucide-react';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 const features = [
   {
@@ -69,9 +69,11 @@ export default function LandingPage() {
           </Link>
           <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
             <Link href="#ventajas" className="text-muted-foreground transition-colors hover:text-foreground">Ventajas</Link>
+            <Link href="/verify" className="text-muted-foreground transition-colors hover:text-foreground">Verificar certificado</Link>
             <Link href="#faq" className="text-muted-foreground transition-colors hover:text-foreground">Preguntas frecuentes</Link>
           </nav>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <Button variant="outline" asChild>
               <Link href="/login">Iniciar sesión</Link>
             </Button>
@@ -148,14 +150,15 @@ export default function LandingPage() {
                     
                     {/* Link de Verificación */}
                     <div className="mt-12 text-center">
-                        <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
-                            <h3 className="text-xl font-semibold text-blue-800 mb-3">
-                                🔍 ¿Necesitas verificar un documento?
+                        <div className="bg-muted/30 p-6 rounded-lg border border-border">
+                            <h3 className="text-xl font-semibold text-foreground mb-3 flex items-center justify-center gap-2">
+                                <Search className="h-5 w-5 text-primary" aria-hidden />
+                                ¿Necesitas verificar un documento?
                             </h3>
-                            <p className="text-blue-700 mb-4">
+                            <p className="text-muted-foreground mb-4">
                                 Verifica la autenticidad de cualquier constancia PDF emitida por Notificas.com
                             </p>
-                            <Button asChild size="lg" className="bg-blue-600 hover:bg-blue-700">
+                            <Button asChild size="lg">
                                 <Link href="/verify">
                                     Verificar Documento
                                 </Link>
@@ -169,30 +172,41 @@ export default function LandingPage() {
         <section id="faq" className="py-20 md:py-28 bg-muted/20">
             <div className="container text-center">
                 <h2 className="text-3xl md:text-4xl font-bold mb-4">Resolvé tus dudas leyendo nuestras preguntas frecuentes</h2>
-                <Button>Preguntas frecuentes</Button>
+                <Button asChild>
+                  <Link href="#faq">Preguntas frecuentes</Link>
+                </Button>
             </div>
         </section>
       </main>
 
       <footer className="bg-foreground text-background">
-        <div className="container py-12 grid md:grid-cols-3 gap-8">
+        <div className="container py-12 grid grid-cols-1 md:grid-cols-3 gap-8">
             <div>
                 <h3 className="font-bold text-lg mb-4">MegaOne</h3>
-                <p className="text-sm text-muted-foreground">Colon 12, primer piso - San Nicolás de los Arroyos</p>
-                <p className="text-sm text-muted-foreground">Buenos Aires - Argentina</p>
+                <p className="text-sm text-background/80">Colon 12, primer piso - San Nicolás de los Arroyos</p>
+                <p className="text-sm text-background/80">Buenos Aires - Argentina</p>
                 <div className="mt-4 space-y-2 text-sm">
-                    <Link href="#" className="block hover:underline text-muted-foreground">Defensa de las y los consumidores (Hacé el reclamo aquí)</Link>
-                    <Link href="#" className="block hover:underline text-muted-foreground">Terminos y Condiciones (click aquí)</Link>
-                    <Link href="#" className="block hover:underline text-muted-foreground">Politica de privacidad (click aquí)</Link>
-                    <Link href="#" className="block hover:underline text-muted-foreground">Derecho de arrepentimiento</Link>
+                    <Link href="#" className="block hover:underline text-background/80 hover:text-background">Defensa de las y los consumidores (Hacé el reclamo aquí)</Link>
+                    <Link href="#" className="block hover:underline text-background/80 hover:text-background">Términos y Condiciones (click aquí)</Link>
+                    <Link href="#" className="block hover:underline text-background/80 hover:text-background">Política de privacidad (click aquí)</Link>
+                    <Link href="#" className="block hover:underline text-background/80 hover:text-background">Derecho de arrepentimiento</Link>
                 </div>
             </div>
             <div>
                 <h3 className="font-bold text-lg mb-4">Contáctenos</h3>
                  <div className="space-y-4">
-                    <Input placeholder="Nombre" className="bg-background/20 border-border/50 text-foreground" />
-                    <Input placeholder="Compañía" className="bg-background/20 border-border/50 text-foreground" />
-                    <Input type="email" placeholder="Email" className="bg-background/20 border-border/50 text-foreground" />
+                    <div>
+                      <Label htmlFor="footer-nombre" className="sr-only">Nombre</Label>
+                      <Input id="footer-nombre" placeholder="Nombre" aria-label="Nombre" className="bg-background/20 border-border/50 text-foreground" />
+                    </div>
+                    <div>
+                      <Label htmlFor="footer-compania" className="sr-only">Compañía</Label>
+                      <Input id="footer-compania" placeholder="Compañía" aria-label="Compañía" className="bg-background/20 border-border/50 text-foreground" />
+                    </div>
+                    <div>
+                      <Label htmlFor="footer-email" className="sr-only">Email</Label>
+                      <Input id="footer-email" type="email" placeholder="Email" aria-label="Correo electrónico" className="bg-background/20 border-border/50 text-foreground" />
+                    </div>
                     <Button asChild className="w-full">
                       <a href="mailto:contacto@notificas.com">Enviar</a>
                     </Button>
@@ -201,19 +215,19 @@ export default function LandingPage() {
              <div>
                 <h3 className="font-bold text-lg mb-4">Contacto Directo</h3>
                 <div className="space-y-2 text-sm">
-                    <p className="flex items-center gap-2 text-muted-foreground">
-                        <Mail className="h-4 w-4"/>
+                    <p className="flex items-center gap-2 text-background/80">
+                        <Mail className="h-4 w-4" aria-hidden />
                         <span>contacto@notificas.com</span>
                     </p>
-                    <p className="flex items-center gap-2 text-muted-foreground">
-                        <Phone className="h-4 w-4"/>
+                    <p className="flex items-center gap-2 text-background/80">
+                        <Phone className="h-4 w-4" aria-hidden />
                         <span>+54 93364645357</span>
                     </p>
                 </div>
             </div>
         </div>
-        <div className="border-t border-border/20">
-            <div className="container py-4 text-center text-sm text-muted-foreground">
+        <div className="border-t border-background/20">
+            <div className="container py-4 text-center text-sm text-background/80">
                 <p>Copyright © 2019-2025 | Desarrollado por Alberione Soluciones Integrales</p>
                 <Link href="/admin" className="text-xs hover:underline mt-2 inline-block">Admin Panel</Link>
             </div>

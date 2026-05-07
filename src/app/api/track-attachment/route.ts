@@ -1,120 +1,98 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { doc, updateDoc, getDoc, arrayUnion } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { FieldValue } from 'firebase-admin/firestore';
+import { adminDb, adminAuth } from '@/lib/firebase-admin';
 
-// Función para extraer información del navegador del User-Agent
 function extractBrowserInfo(userAgent: string) {
-  if (!userAgent) return 'Unknown';
-  
-  // Detectar navegadores comunes
-  if (userAgent.includes('Chrome/')) {
-    const match = userAgent.match(/Chrome\/(\d+\.\d+\.\d+\.\d+)/);
-    return match ? `Chrome v${match[1]}` : 'Chrome';
-  }
-  if (userAgent.includes('Firefox/')) {
-    const match = userAgent.match(/Firefox\/(\d+\.\d+)/);
-    return match ? `Firefox v${match[1]}` : 'Firefox';
-  }
-  if (userAgent.includes('Safari/') && !userAgent.includes('Chrome')) {
-    const match = userAgent.match(/Version\/(\d+\.\d+)/);
-    return match ? `Safari v${match[1]}` : 'Safari';
-  }
-  if (userAgent.includes('Edge/')) {
-    const match = userAgent.match(/Edge\/(\d+\.\d+\.\d+\.\d+)/);
-    return match ? `Edge v${match[1]}` : 'Edge';
-  }
-  if (userAgent.includes('Opera/')) {
-    const match = userAgent.match(/Opera\/(\d+\.\d+)/);
-    return match ? `Opera v${match[1]}` : 'Opera';
-  }
-  
-  return 'Unknown Browser';
+  const match = userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)\/(\d+)/);
+  return match ? `${match[1]} ${match[2]}` : 'Unknown';
 }
 
-// Función para generar UUID (versión simple)
 function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
   });
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { messageId, attachmentId, fileName, action } = await request.json();
+    const { messageId, attachmentId, fileName, action, k } = await request.json();
 
     if (!messageId || !attachmentId) {
-      return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
+      return NextResponse.json({ error: 'messageId y attachmentId son requeridos' }, { status: 400 });
     }
 
-    console.log('📎 Tracking attachment click:', { messageId, attachmentId, fileName, action });
+    // Obtener el documento primero para poder validar el tracking key
+    const messageRef = adminDb.collection('mail').doc(messageId);
+    const messageDoc = await messageRef.get();
 
-    // Obtener información del request
+    if (!messageDoc.exists) {
+      return NextResponse.json({ error: 'Mensaje no encontrado' }, { status: 404 });
+    }
+
+    const messageData = messageDoc.data()!;
+
+    // Estrategia de autenticación dual:
+    // 1. Firebase ID token (usuarios logueados)
+    // 2. Tracking key `k` (destinatarios externos vía magic link del reader)
+    let recipientEmail: string | null = null;
+
+    const authHeader = request.headers.get('Authorization');
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+    if (bearerToken) {
+      try {
+        const decoded = await adminAuth.verifyIdToken(bearerToken);
+        recipientEmail = decoded.email ?? null;
+      } catch {
+        return NextResponse.json({ error: 'Token inválido o expirado.' }, { status: 401 });
+      }
+    } else if (k && typeof k === 'string') {
+      const stored =
+        typeof messageData.tracking?.token === 'string'
+          ? messageData.tracking.token
+          : typeof messageData.trackingToken === 'string'
+            ? messageData.trackingToken
+            : undefined;
+      if (!stored || stored !== k) {
+        return NextResponse.json({ error: 'Tracking key inválido.' }, { status: 401 });
+      }
+      recipientEmail = messageData.recipientEmail || null;
+    } else {
+      return NextResponse.json({ error: 'Se requiere autenticación o tracking key.' }, { status: 401 });
+    }
+
     const userAgent = request.headers.get('User-Agent') || 'Unknown';
-    const clientIP = request.headers.get('X-Forwarded-For') || 
-                     request.headers.get('X-Real-IP') || 
-                     'Unknown';
-    const forwardedIPs = request.headers.get('X-Forwarded-For') ? 
-                        request.headers.get('X-Forwarded-For')!.split(',').map(ip => ip.trim()) : [];
-    const realIP = request.headers.get('X-Real-IP') || 'Unknown';
+    const clientIP =
+      request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
+      request.headers.get('X-Real-IP') ||
+      'Unknown';
 
-    // Obtener el documento del mensaje
-    const messageRef = doc(db, 'mail', messageId);
-    const messageDoc = await getDoc(messageRef);
-
-    if (!messageDoc.exists()) {
-      return NextResponse.json({ error: 'Message not found' }, { status: 404 });
-    }
-
-    const messageData = messageDoc.data();
-
-    // Crear movimiento para apertura de archivo adjunto
     const attachmentMovement = {
       id: generateUUID(),
       type: 'attachment_opened',
-      description: `Apertura de archivo adjunto: ${fileName}`,
+      description: `Apertura de archivo adjunto: ${fileName || attachmentId}`,
       timestamp: new Date().toISOString(),
-      userAgent: userAgent,
-      clientIP: clientIP,
-      forwardedIPs: forwardedIPs,
-      realIP: realIP,
+      userAgent,
+      clientIP,
       browser: extractBrowserInfo(userAgent),
-      recipientEmail: messageData.recipientEmail || 'Unknown',
-      attachmentId: attachmentId,
-      fileName: fileName
+      recipientEmail: recipientEmail || messageData.recipientEmail || 'Unknown',
+      attachmentId,
+      fileName: fileName || null,
+      action: action || 'open',
     };
 
-    // Obtener movimientos existentes
-    const existingMovements = messageData.tracking?.movements || [];
-    console.log('📊 Movimientos existentes:', existingMovements.length);
-
-    // Actualizar el documento con el nuevo movimiento
     const currentAttachmentsOpened = messageData.tracking?.attachmentsOpened || 0;
-    const newMovements = [...existingMovements, attachmentMovement];
-    
-    console.log('📊 Nuevos movimientos:', newMovements.length);
-    console.log('📊 Nuevo movimiento:', attachmentMovement);
-    
-    // Usar arrayUnion para agregar el movimiento (más confiable)
-    await updateDoc(messageRef, {
+
+    await messageRef.update({
       'tracking.attachmentsOpened': currentAttachmentsOpened + 1,
       'tracking.lastAttachmentActivity': new Date(),
-      'tracking.movements': arrayUnion(attachmentMovement)
+      'tracking.movements': FieldValue.arrayUnion(attachmentMovement),
     });
 
-    console.log('✅ Attachment tracking movement added:', attachmentMovement);
-
-    return NextResponse.json({ 
-      success: true, 
-      movementId: attachmentMovement.id 
-    });
-
-  } catch (error) {
-    console.error('❌ Error tracking attachment:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' }, 
-      { status: 500 }
-    );
+    return NextResponse.json({ success: true, movementId: attachmentMovement.id });
+  } catch (error: any) {
+    console.error('❌ Error tracking attachment:', error?.message);
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
   }
 }

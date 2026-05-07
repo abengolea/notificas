@@ -1,149 +1,38 @@
-import { sendPolygonTransaction } from './blockchain';
-import { db } from './firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 
 /**
- * Certifica la lectura de un mensaje en la blockchain
- * @param messageId - ID del mensaje leído
- * @param userId - ID del usuario que leyó
- * @returns Promise<string> - Hash de la transacción
+ * Normaliza el contenido del mensaje para calcular un hash consistente.
+ * Usa la misma lógica que el certificado PDF (sin HTML, solo texto).
  */
-export async function certificarLectura(messageId: string, userId: string): Promise<string> {
-  try {
-    const timestamp = new Date().toISOString();
-    const payload = `READ|${messageId}|${userId}|${timestamp}`;
-    
-    console.log('📖 Certificando lectura de mensaje:', { messageId, userId });
-    
-    // Enviar transacción a Polygon
-    const txHash = await sendPolygonTransaction(payload);
-    
-    // Guardar en Firestore para trazabilidad
-    await addDoc(collection(db, 'blockchain_movements'), {
-      type: 'read',
-      userId,
-      messageId,
-      timestamp: serverTimestamp(),
-      txHash,
-      payload,
-      status: 'confirmed'
-    });
-
-    console.log('✅ Lectura certificada en Polygon:', txHash);
-    return txHash;
-  } catch (error) {
-    console.error('❌ Error al certificar lectura:', error);
-    throw error;
-  }
+function normalizeContentForHash(html?: string, text?: string): string {
+  const raw = html || text || '';
+  return raw
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
- * Certifica el envío de un mensaje en la blockchain
- * @param messageId - ID del mensaje enviado
- * @param fromUserId - ID del remitente
- * @param toEmail - Email del destinatario
- * @returns Promise<string> - Hash de la transacción
+ * Calcula el hash SHA-256 del contenido del mensaje (asunto + cuerpo).
+ * Usa Web Crypto API (compatible con Node y navegador).
+ * Vincula criptográficamente el contenido con la certificación en blockchain.
  */
-export async function certificarEnvio(messageId: string, fromUserId: string, toEmail: string): Promise<string> {
-  try {
-    const timestamp = new Date().toISOString();
-    const payload = `SEND|${messageId}|${fromUserId}|${toEmail}|${timestamp}`;
-    
-    console.log('📤 Certificando envío de mensaje:', { messageId, fromUserId, toEmail });
-    
-    // Enviar transacción a Polygon
-    const txHash = await sendPolygonTransaction(payload);
-    
-    // Guardar en Firestore
-    await addDoc(collection(db, 'blockchain_movements'), {
-      type: 'send',
-      userId: fromUserId,
-      messageId,
-      toEmail,
-      timestamp: serverTimestamp(),
-      txHash,
-      payload,
-      status: 'confirmed'
-    });
-
-    console.log('✅ Envío certificado en Polygon:', txHash);
-    return txHash;
-  } catch (error) {
-    console.error('❌ Error al certificar envío:', error);
-    throw error;
-  }
-}
-
-/**
- * Certifica la recepción de un mensaje en la blockchain
- * @param messageId - ID del mensaje recibido
- * @param userId - ID del usuario que recibió
- * @returns Promise<string> - Hash de la transacción
- */
-export async function certificarRecepcion(messageId: string, userId: string): Promise<string> {
-  try {
-    const timestamp = new Date().toISOString();
-    const payload = `RECEIVE|${messageId}|${userId}|${timestamp}`;
-    
-    console.log('📨 Certificando recepción de mensaje:', { messageId, userId });
-    
-    // Enviar transacción a Polygon
-    const txHash = await sendPolygonTransaction(payload);
-    
-    // Guardar en Firestore
-    await addDoc(collection(db, 'blockchain_movements'), {
-      type: 'receive',
-      userId,
-      messageId,
-      timestamp: serverTimestamp(),
-      txHash,
-      payload,
-      status: 'confirmed'
-    });
-
-    console.log('✅ Recepción certificada en Polygon:', txHash);
-    return txHash;
-  } catch (error) {
-    console.error('❌ Error al certificar recepción:', error);
-    throw error;
-  }
-}
-
-/**
- * Certifica la creación de un usuario en la blockchain
- * @param userId - ID del usuario creado
- * @param email - Email del usuario
- * @returns Promise<string> - Hash de la transacción
- */
-export async function certificarUsuario(userId: string, email: string): Promise<string> {
-  try {
-    const timestamp = new Date().toISOString();
-    const payload = `USER_CREATED|${userId}|${email}|${timestamp}`;
-    
-    console.log('👤 Certificando creación de usuario:', { userId, email });
-    
-    // Enviar transacción a Polygon
-    const txHash = await sendPolygonTransaction(payload);
-    
-    // Guardar en Firestore
-    await addDoc(collection(db, 'blockchain_movements'), {
-      type: 'user_created',
-      userId,
-      email,
-      timestamp: serverTimestamp(),
-      txHash,
-      payload,
-      status: 'confirmed'
-    });
-
-    console.log('✅ Usuario certificado en Polygon:', txHash);
-    return txHash;
-  } catch (error) {
-    console.error('❌ Error al certificar usuario:', error);
-    throw error;
-  }
+export async function computeContentHash(
+  subject: string,
+  html?: string,
+  text?: string
+): Promise<string> {
+  const content = normalizeContentForHash(html, text);
+  const normalized = `${subject || ''}|${content}`;
+  const encoder = new TextEncoder();
+  const data = encoder.encode(normalized);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 export interface CertificationData {
@@ -163,6 +52,8 @@ export interface CertificationData {
     readConfirmedAt?: Date;
   };
   blockchainHash: string;
+  /** Hash SHA-256 del contenido (asunto + cuerpo) certificado en blockchain. Vincula el contenido con la certificación. */
+  contentHash?: string;
 }
 
 export async function generateCertificationPDF(data: CertificationData): Promise<{ pdf: Blob; hash: string }> {
@@ -258,14 +149,19 @@ export async function generateCertificationPDF(data: CertificationData): Promise
   doc.setFontSize(10);
   doc.setTextColor(71, 85, 105);
   doc.text(`Hash de Verificación: ${data.blockchainHash}`, 20, (doc as any).lastAutoTable.finalY + 30);
-  
+  const certBaseY = (doc as any).lastAutoTable.finalY;
+  if (data.contentHash) {
+    doc.text(`Hash de Integridad del Contenido: ${data.contentHash}`, 20, certBaseY + 42);
+  }
+
   // Instrucciones de verificación
+  const instructionsY = data.contentHash ? 60 : 45;
   doc.setFontSize(12);
   doc.setTextColor(100, 116, 139);
-  doc.text('Para verificar la autenticidad de este documento:', 20, (doc as any).lastAutoTable.finalY + 45);
-  doc.text('1. Ve a: https://notificas.com/verify', 20, (doc as any).lastAutoTable.finalY + 55);
-  doc.text('2. Sube este PDF o ingresa el hash', 20, (doc as any).lastAutoTable.finalY + 65);
-  doc.text('3. Confirma que fue emitido por Notificas.com', 20, (doc as any).lastAutoTable.finalY + 75);
+  doc.text('Para verificar la autenticidad de este documento:', 20, certBaseY + instructionsY);
+  doc.text('1. Ve a: https://notificas.com/verify', 20, certBaseY + instructionsY + 10);
+  doc.text('2. Sube este PDF o ingresa el hash', 20, certBaseY + instructionsY + 20);
+  doc.text('3. Confirma que fue emitido por Notificas.com', 20, certBaseY + instructionsY + 30);
   
   // Pie de página
   doc.setFontSize(8);

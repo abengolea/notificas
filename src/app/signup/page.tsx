@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Logo } from '@/components/logo';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 
 const signupSchema = z.object({
@@ -103,7 +104,10 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
+      <div className="absolute right-4 top-4 md:right-8 md:top-8">
+        <ThemeToggle />
+      </div>
       <Card className="mx-auto w-full max-w-lg shadow-xl">
         <CardHeader className="text-center">
           <div className="mb-4 flex justify-center">

@@ -177,7 +177,7 @@ export default function MessageView({ message, currentUser }: MessageViewProps) 
                   <AlertDialogHeader>
                     <AlertDialogTitle>Confirmar Generación de Certificado</AlertDialogTitle>
                     <AlertDialogDescription>
-                      Esto generará un certificado PDF con validez legal y certificará su creación en la Blockchain Federal Argentina. Esta acción puede incurrir en costos. ¿Estás seguro de que quieres proceder?
+                      Esto generará un certificado PDF con validez legal y certificará su creación en la blockchain de Polygon. Esta acción puede incurrir en costos. ¿Estás seguro de que quieres proceder?
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>

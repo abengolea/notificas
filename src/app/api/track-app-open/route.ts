@@ -1,247 +1,201 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { FieldValue } from 'firebase-admin/firestore';
+import { adminDb } from '@/lib/firebase-admin';
+import { verifyAuthToken } from '@/lib/auth-helper';
 
 function extractBrowserInfo(userAgent: string) {
-  const browserMatch = userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)\/(\d+)/);
-  if (browserMatch) {
-    return `${browserMatch[1]} ${browserMatch[2]}`;
-  }
-  return 'Unknown';
+  const match = userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)\/(\d+)/);
+  return match ? `${match[1]} ${match[2]}` : 'Unknown';
 }
 
 function generateUUID() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
   });
 }
 
-// Manejar OPTIONS para CORS
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+function certifyEventHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const secret = process.env.POLYGON_CERTIFY_SECRET?.trim();
+  if (secret) headers['X-Certify-Secret'] = secret;
+  return headers;
+}
+
 export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
-  });
+  return new NextResponse(null, { status: 200, headers: CORS_HEADERS });
 }
 
-// Endpoint GET para verificar que la ruta funciona
 export async function GET() {
   return NextResponse.json(
-    { 
-      success: true, 
-      message: 'Ruta /api/track-app-open está funcionando',
-      timestamp: new Date().toISOString(),
-      dbInitialized: !!db
-    },
-    { 
-      status: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json',
-      }
-    }
+    { success: true, message: 'Ruta /api/track-app-open está funcionando' },
+    { status: 200, headers: CORS_HEADERS }
   );
 }
 
 export async function POST(request: NextRequest) {
-  // Headers CORS
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Content-Type': 'application/json',
-  };
-
   try {
-    // Validar que db esté inicializado
-    if (!db) {
-      console.error('❌ Firebase db no está inicializado');
-      return NextResponse.json(
-        { error: 'Error de configuración del servidor' },
-        { status: 500, headers }
-      );
-    }
+    // Verificar autenticación
+    const { decoded, errorResponse } = await verifyAuthToken(request);
+    if (errorResponse) return errorResponse;
 
-    let body;
+    let body: { messageId?: unknown; userEmail?: unknown };
     try {
       body = await request.json();
-    } catch (parseError: any) {
-      console.error('❌ Error parseando JSON:', parseError);
+    } catch {
       return NextResponse.json(
-        { error: 'JSON inválido en el body', details: parseError?.message },
-        { status: 400, headers }
+        { error: 'JSON inválido en el body' },
+        { status: 400, headers: CORS_HEADERS }
       );
     }
 
-    const { messageId, userEmail } = body || {};
-
+    const { messageId } = body;
     if (!messageId || typeof messageId !== 'string') {
       return NextResponse.json(
         { error: 'messageId es requerido y debe ser un string' },
-        { status: 400, headers }
+        { status: 400, headers: CORS_HEADERS }
       );
     }
 
-    console.log('📱 Tracking apertura desde app:', { messageId, userEmail });
+    // Usar email del token autenticado (más confiable que el body)
+    const userEmail = decoded.email;
 
-    // Obtener información del request
     const userAgent = request.headers.get('User-Agent') || 'Unknown';
-    const clientIP = request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() || 
-                     request.headers.get('X-Real-IP') || 
-                     'Unknown';
-    const forwardedIPs = request.headers.get('X-Forwarded-For') ? 
-                        request.headers.get('X-Forwarded-For')!.split(',').map(ip => ip.trim()) : [];
-    const realIP = request.headers.get('X-Real-IP') || 'Unknown';
+    const clientIP =
+      request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
+      request.headers.get('X-Real-IP') ||
+      'Unknown';
 
-    // Obtener el documento del mensaje
-    let messageRef;
-    let messageDoc;
-    
-    try {
-      messageRef = doc(db, 'mail', messageId);
-      messageDoc = await getDoc(messageRef);
-    } catch (firestoreError: any) {
-      console.error('❌ Error accediendo a Firestore:', firestoreError);
-      return NextResponse.json(
-        { 
-          error: 'Error accediendo a la base de datos',
-          details: process.env.NODE_ENV === 'development' ? firestoreError?.message : undefined
-        },
-        { status: 500, headers }
-      );
-    }
+    const messageRef = adminDb.collection('mail').doc(messageId);
+    const messageDoc = await messageRef.get();
 
-    if (!messageDoc.exists()) {
+    if (!messageDoc.exists) {
       return NextResponse.json(
         { error: 'Mensaje no encontrado' },
-        { status: 404, headers }
+        { status: 404, headers: CORS_HEADERS }
       );
     }
 
-    const messageData = messageDoc.data();
+    const messageData = messageDoc.data()!;
 
-    // Verificar que el usuario es destinatario del mensaje
-    const recipients = Array.isArray(messageData.to) ? messageData.to : [messageData.to];
-    if (userEmail && !recipients.includes(userEmail)) {
-      console.log('⚠️ Usuario no es destinatario del mensaje');
-      // No retornar error, solo no trackear
-    }
+    const normalizeEmail = (e: unknown) =>
+      typeof e === 'string' ? e.trim().toLowerCase() : '';
+    const mailboxRecipient =
+      normalizeEmail(messageData.recipientEmail) ||
+      (Array.isArray(messageData.to) ? normalizeEmail(messageData.to[0]) : normalizeEmail(messageData.to));
 
-    // Obtener movimientos existentes
-    const existingMovements = messageData.tracking?.movements || [];
-    
-    // Verificar si ya hay un movimiento de apertura desde app reciente (últimos 5 segundos)
-    const now = Date.now();
-    const fiveSecondsAgo = now - 5000;
-    
-    const recentAppOpen = existingMovements
-      .filter((m: any) => m.type === 'app_opened')
-      .find((m: any) => {
-        const movementTime = new Date(m.timestamp).getTime();
-        return movementTime > fiveSecondsAgo;
-      });
-    
-    if (recentAppOpen) {
-      console.log('⚠️ Apertura desde app ya registrada recientemente, omitiendo duplicado');
+    const recipientsRaw = Array.isArray(messageData.to) ? messageData.to : [messageData.to];
+    const recipients = recipientsRaw.map(normalizeEmail).filter(Boolean);
+
+    const userNorm = normalizeEmail(userEmail);
+    const isSender =
+      messageData.createdBy === decoded.uid ||
+      normalizeEmail(messageData.senderName) === userNorm;
+    const isRecipient = Boolean(userNorm && recipients.includes(userNorm));
+
+    if (!isSender && !isRecipient) {
       return NextResponse.json(
-        { 
-          success: true, 
-          message: 'Apertura ya registrada',
-          skipped: true 
-        },
-        { status: 200, headers }
+        { error: 'No autorizado para trackear este mensaje' },
+        { status: 403, headers: CORS_HEADERS }
       );
     }
 
-    // Crear movimiento para apertura desde app
+    const existingMovements: any[] = messageData.tracking?.movements || [];
+    const fiveSecondsAgo = Date.now() - 5000;
+    const recentAppOpen = existingMovements
+      .filter((m) => m.type === 'app_opened')
+      .find((m) => {
+        const t = new Date(m.timestamp).getTime();
+        if (t <= fiveSecondsAgo) return false;
+        const by = normalizeEmail((m as { openedByEmail?: string }).openedByEmail);
+        return by === userNorm || (!by && t > fiveSecondsAgo);
+      });
+
+    if (recentAppOpen) {
+      return NextResponse.json(
+        { success: true, message: 'Apertura ya registrada', skipped: true },
+        { status: 200, headers: CORS_HEADERS }
+      );
+    }
+
+    const openedByEmail = userEmail || 'Unknown';
+    const isSenderOnlyView = isSender && !isRecipient;
+
     const appOpenMovement = {
       id: generateUUID(),
       type: 'app_opened',
-      description: 'Apertura de mensaje desde la aplicación web',
+      description: isSenderOnlyView
+        ? 'El remitente consultó este envío en el panel (no indica que el destinatario haya leído el correo externo).'
+        : 'El destinatario abrió el mensaje desde la aplicación web.',
       timestamp: new Date().toISOString(),
-      userAgent: userAgent,
-      clientIP: clientIP,
-      forwardedIPs: forwardedIPs,
-      realIP: realIP,
+      userAgent,
+      clientIP,
       browser: extractBrowserInfo(userAgent),
-      recipientEmail: userEmail || messageData.recipientEmail || 'Unknown',
-      source: 'app_web'
+      /** Buzón al que iba dirigido el envío (siempre el del documento). */
+      mailRecipientEmail: mailboxRecipient || undefined,
+      /** Quien generó el evento (remitente o destinatario autenticado). */
+      openedByEmail,
+      /** Compat UI antigua: solo el destinatario debe figurar como “recipient” del evento. */
+      recipientEmail: isRecipient ? openedByEmail : mailboxRecipient || undefined,
+      viewerIsSender: isSenderOnlyView,
+      source: 'app_web',
     };
 
-    // Actualizar el documento con el nuevo movimiento
-    try {
+    if (isRecipient) {
       const wasFirstOpen = !messageData.tracking?.opened;
 
-      await updateDoc(messageRef, {
+      await messageRef.update({
         'tracking.opened': true,
         'tracking.openedAt': new Date(),
         'tracking.openCount': (messageData.tracking?.openCount || 0) + 1,
-        'tracking.movements': arrayUnion(appOpenMovement),
-        'tracking.lastAppOpenAt': new Date()
+        'tracking.movements': FieldValue.arrayUnion(appOpenMovement),
+        'tracking.lastAppOpenAt': new Date(),
       });
 
-      // Certificar recepción en Polygon (primera vez que se abre, desde app o email)
       if (wasFirstOpen) {
         try {
-          const host = request.headers.get('host') || 'localhost:9006';
-          const proto = request.headers.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https');
-          const base = `${proto}://${host}`;
+          const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9006';
           const certifyRes = await fetch(`${base}/api/polygon/certify-event`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: certifyEventHeaders(),
             body: JSON.stringify({
               docId: messageId,
               type: 'receive',
               userId: messageData.recipientEmail || messageData.to?.[0],
             }),
           });
-          if (!certifyRes.ok) console.warn('⚠️ Polygon certify receive (app-open):', await certifyRes.text());
-          else console.log('🔗 Recepción certificada en Polygon desde app');
+          if (!certifyRes.ok) {
+            console.warn('⚠️ Polygon certify receive (app-open):', await certifyRes.text());
+          }
         } catch (e: any) {
           console.warn('⚠️ Polygon certify receive failed:', e?.message);
         }
       }
-
-      console.log('✅ Tracking de apertura desde app registrado:', appOpenMovement.id);
-
-      return NextResponse.json(
-        { 
-          success: true, 
-          movementId: appOpenMovement.id 
-        },
-        { status: 200, headers }
-      );
-    } catch (updateError: any) {
-      console.error('❌ Error actualizando documento:', updateError);
-      return NextResponse.json(
-        { 
-          error: 'Error al actualizar el tracking',
-          details: process.env.NODE_ENV === 'development' ? updateError?.message : undefined
-        },
-        { status: 500, headers }
-      );
+    } else {
+      await messageRef.update({
+        'tracking.movements': FieldValue.arrayUnion(appOpenMovement),
+        'tracking.lastSenderPanelViewAt': new Date(),
+      });
     }
 
-  } catch (error: any) {
-    console.error('❌ Error inesperado al trackear apertura desde app:', error);
-    console.error('❌ Stack trace:', error?.stack);
-    console.error('❌ Error name:', error?.name);
-    console.error('❌ Error message:', error?.message);
-    
-    // Asegurar que siempre se retorna una respuesta
     return NextResponse.json(
-      { 
-        error: error?.message || 'Error al trackear apertura',
-        details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+      { success: true, movementId: appOpenMovement.id },
+      { status: 200, headers: CORS_HEADERS }
+    );
+  } catch (error: any) {
+    console.error('❌ Error al trackear apertura desde app:', error?.message);
+    return NextResponse.json(
+      {
+        error: 'Error al trackear apertura',
+        details: process.env.NODE_ENV === 'development' ? error?.message : undefined,
       },
-      { status: 500, headers }
+      { status: 500, headers: CORS_HEADERS }
     );
   }
 }
-

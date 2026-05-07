@@ -7,6 +7,7 @@ import { UserNav } from '@/components/dashboard/user-nav'
 import { Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Logo } from '@/components/logo'
+import { AdminPolBalance } from '@/components/admin/admin-pol-balance'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
@@ -58,6 +59,7 @@ export default function AdminLayout({
                 </Link>
                 <MainNav className="hidden md:flex" />
                 <div className="ml-auto flex items-center space-x-4">
+                    <AdminPolBalance />
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input

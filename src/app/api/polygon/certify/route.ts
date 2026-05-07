@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { certificarLectura, certificarEnvio, certificarRecepcion, certificarUsuario } from '@/lib/certification';
+import {
+  certificarLectura,
+  certificarEnvio,
+  certificarRecepcion,
+  certificarUsuario,
+} from '@/lib/certification-polygon';
+import { verifyAuthToken } from '@/lib/auth-helper';
+import { adminDb } from '@/lib/firebase-admin';
+import { computeContentHash } from '@/lib/certification';
+import {
+  userHasMailDocumentAccess,
+  isMailSenderForCertify,
+  isMailRecipientForCertify,
+  recipientIdentifierForPolygon,
+} from '@/lib/mail-access-server';
 
 export async function POST(request: NextRequest) {
   try {
+    const { decoded, errorResponse } = await verifyAuthToken(request);
+    if (errorResponse) return errorResponse;
+
     const body = await request.json();
     const { type } = body;
 
@@ -17,21 +34,68 @@ export async function POST(request: NextRequest) {
 
     switch (type) {
       case 'read':
-        txHash = await certificarLectura(body.messageId || 'msg-123', body.userId || 'user-abc');
-        break;
       case 'send':
-        txHash = await certificarEnvio(
-          body.messageId || 'msg-456',
-          body.fromUserId || 'user-sender',
-          body.toEmail || 'destino@ejemplo.com'
-        );
+      case 'receive': {
+        const messageId = body.messageId;
+        if (!messageId || typeof messageId !== 'string') {
+          return NextResponse.json({ error: 'messageId es requerido' }, { status: 400 });
+        }
+
+        const snap = await adminDb.collection('mail').doc(messageId).get();
+        if (!snap.exists) {
+          return NextResponse.json({ error: 'Mensaje no encontrado' }, { status: 404 });
+        }
+
+        const mailData = snap.data() as Record<string, unknown>;
+
+        if (type === 'send') {
+          if (!isMailSenderForCertify(mailData, decoded)) {
+            return NextResponse.json({ error: 'No autorizado para certificar el envío' }, { status: 403 });
+          }
+          const toEmail = Array.isArray(mailData.to)
+            ? String(mailData.to[0] ?? '')
+            : String(mailData.recipientEmail ?? mailData.to ?? '');
+          const subject = String((mailData.message as Record<string, unknown> | undefined)?.subject ?? '');
+          const html = (mailData.message as Record<string, unknown> | undefined)?.html as string | undefined;
+          const text = (mailData.message as Record<string, unknown> | undefined)?.text as string | undefined;
+          const contentHash = await computeContentHash(subject, html, text);
+          txHash = await certificarEnvio(messageId, decoded.uid, toEmail, contentHash);
+          break;
+        }
+
+        if (type === 'receive') {
+          if (!isMailRecipientForCertify(mailData, decoded)) {
+            return NextResponse.json(
+              { error: 'No autorizado para certificar la recepción' },
+              { status: 403 }
+            );
+          }
+          const recipientId = recipientIdentifierForPolygon(mailData);
+          txHash = await certificarRecepcion(messageId, recipientId);
+          break;
+        }
+
+        // read
+        if (!userHasMailDocumentAccess(mailData, decoded)) {
+          return NextResponse.json({ error: 'No autorizado para certificar la lectura' }, { status: 403 });
+        }
+        const recipientId = recipientIdentifierForPolygon(mailData);
+        txHash = await certificarLectura(messageId, recipientId);
         break;
-      case 'receive':
-        txHash = await certificarRecepcion(body.messageId || 'msg-789', body.userId || 'user-receiver');
+      }
+
+      case 'user': {
+        const email = decoded.email;
+        if (!email) {
+          return NextResponse.json(
+            { error: 'El token no incluye email; no se puede certificar el usuario' },
+            { status: 400 }
+          );
+        }
+        txHash = await certificarUsuario(decoded.uid, email);
         break;
-      case 'user':
-        txHash = await certificarUsuario(body.userId || 'user-new', body.email || 'nuevo@ejemplo.com');
-        break;
+      }
+
       default:
         return NextResponse.json(
           { error: 'Tipo inválido. Usar: send, read, receive, user' },

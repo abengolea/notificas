@@ -16,9 +16,9 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['var(--font-inter)', 'sans-serif'],
-        body: ['var(--font-inter)', 'sans-serif'],
-        headline: ['var(--font-inter)', 'sans-serif'],
+        sans: ['var(--font-sans)', 'Plus Jakarta Sans', 'sans-serif'],
+        body: ['var(--font-sans)', 'Plus Jakarta Sans', 'sans-serif'],
+        headline: ['var(--font-sans)', 'Plus Jakarta Sans', 'sans-serif'],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -53,6 +53,10 @@ export default {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
         },
       },
       borderRadius: {

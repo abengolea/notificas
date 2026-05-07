@@ -1,7 +1,19 @@
 import { useState, useEffect } from 'react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, AuthError, onAuthStateChanged, User } from 'firebase/auth';
+import {
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
+  createUserWithEmailAndPassword,
+  signOut,
+  AuthError,
+  onAuthStateChanged,
+  User,
+} from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { useToast } from './use-toast';
+
+const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export interface AuthState {
   user: User | null;
@@ -48,6 +60,15 @@ export const useFirebaseAuth = () => {
         return 'Error de conexión. Verifica tu conexión a internet.';
       case 'auth/configuration-not-found':
         return 'Error de configuración de Firebase. Contacta al administrador.';
+      case 'auth/popup-closed-by-user':
+      case 'auth/cancelled-popup-request':
+        return 'Inicio con Google cancelado. Inténtalo de nuevo si quieres continuar.';
+      case 'auth/popup-blocked':
+        return 'El navegador bloqueó la ventana emergente. Permite ventanas para este sitio e inténtalo de nuevo.';
+      case 'auth/account-exists-with-different-credential':
+        return 'Ya existe una cuenta con este correo usando otro método de inicio de sesión.';
+      case 'auth/unauthorized-domain':
+        return 'Este dominio no está autorizado para iniciar sesión. Revisa la configuración de Firebase.';
       default:
         return error.message || 'Ha ocurrido un error desconocido.';
     }
@@ -84,6 +105,46 @@ export const useFirebaseAuth = () => {
         variant: "destructive",
       });
       
+      throw error;
+    }
+  };
+
+  const signInWithGoogle = async () => {
+    setAuthState((prev) => ({ ...prev, loading: true, error: null }));
+
+    try {
+      const userCredential = await signInWithPopup(auth, googleProvider);
+      setAuthState({
+        user: userCredential.user,
+        loading: false,
+        error: null,
+      });
+
+      toast({
+        title: '¡Bienvenido de nuevo!',
+        description: 'Has iniciado sesión con Google correctamente.',
+      });
+
+      return userCredential.user;
+    } catch (error) {
+      const err = error as AuthError;
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+        setAuthState((prev) => ({ ...prev, loading: false, error: null }));
+        return;
+      }
+      const errorMessage = getErrorMessage(err);
+      setAuthState({
+        user: null,
+        loading: false,
+        error: errorMessage,
+      });
+
+      toast({
+        title: 'Error al iniciar sesión con Google',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+
       throw error;
     }
   };
@@ -153,6 +214,7 @@ export const useFirebaseAuth = () => {
   return {
     ...authState,
     signIn,
+    signInWithGoogle,
     signUp,
     logout
   };
