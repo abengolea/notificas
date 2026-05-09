@@ -12,6 +12,7 @@
  *   npm run check:app-env
  *   node scripts/check-app-env.js
  *   node scripts/check-app-env.js --for-prod --file .env.production.local
+ *   (En --for-prod, http://localhost… en NEXT_PUBLIC_APP_URL es solo aviso.)
  */
 
 const fs = require("fs");
@@ -82,6 +83,18 @@ function formatIssue(value, opts) {
   return null;
 }
 
+/** @returns {boolean} */
+function isLocalHttpPublicAppUrl(trimmed) {
+  try {
+    const u = new URL(trimmed);
+    if (u.protocol !== "http:") return false;
+    const h = u.hostname.toLowerCase();
+    return h === "localhost" || h === "127.0.0.1" || h === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
 /** @returns {string | null} */
 function validateUrl(value) {
   try {
@@ -149,7 +162,16 @@ function checkGroup(title, defs, vars) {
           ? `${v.trim().slice(0, 24)}… (${v.length} chars)`
           : v.trim();
 
-    if (issue) {
+    if (
+      issue &&
+      forProd &&
+      def.key === "NEXT_PUBLIC_APP_URL" &&
+      isLocalHttpPublicAppUrl(v.trim())
+    ) {
+      console.log(
+        `  ⚠️  ${def.key}: ${v.trim()} (dev local; en App Hosting/GCP debe ser https://tu-dominio)`,
+      );
+    } else if (issue) {
       console.log(`  ❌ ${def.key}: ${issue}`);
       if (!def.key.includes("PRIVATE_KEY")) console.log(`     valor (recortado para debug): ${display}`);
       bad = true;
@@ -164,7 +186,7 @@ function checkGroup(title, defs, vars) {
 function main() {
   const envAbs = path.join(process.cwd(), dotenvPath);
   console.log("Notificas — chequeo de entorno (local)");
-  console.log(`Archivo: ${envAbs}${forProd ? "  (--for-prod: exige https en URL pública)\n" : "\n"}`);
+  console.log(`Archivo: ${envAbs}${forProd ? "  (--for-prod: URLs públicas MP/Hub en https; localhost en APP_URL = aviso)\n" : "\n"}`);
 
   if (!fs.existsSync(envAbs)) {
     console.error(`❌ No existe ${dotenvPath}. Copiá .env.example → .env.local y completalo.\n`);
