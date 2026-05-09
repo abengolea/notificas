@@ -104,14 +104,15 @@ export interface CreatePreferenceData {
  * 2) MERCADOPAGO_WEBHOOK_PUBLIC_BASE_URL + /api/mercadopago/webhook
  * 3) NEXT_PUBLIC_APP_URL + /api/... si es https
  */
-function resolveMpNotificationUrl(appBase: string): string | undefined {
+function resolveMpNotificationUrl(appBaseUntrimmed: string): string | undefined {
+  const appBase = appBaseUntrimmed.trim().replace(/\/+$/, '');
   const full = process.env.MERCADOPAGO_NOTIFICATION_URL?.trim();
   if (full?.startsWith('https://')) {
     let url = normalizeHttpsWebhookUrl(full);
     url = mergeNotificationUrlQuery(url, process.env.MERCADOPAGO_NOTIFICATION_URL_QUERY);
     return url;
   }
-  const explicit = process.env.MERCADOPAGO_WEBHOOK_PUBLIC_BASE_URL?.trim().replace(/\/$/, '');
+  const explicit = process.env.MERCADOPAGO_WEBHOOK_PUBLIC_BASE_URL?.trim().replace(/\/+$/, '');
   if (explicit?.startsWith('https://')) {
     return `${explicit}/api/mercadopago/webhook`;
   }
@@ -121,13 +122,20 @@ function resolveMpNotificationUrl(appBase: string): string | undefined {
   return undefined;
 }
 
+/** Evita URLs inválidas si NEXT_PUBLIC_* trae espacios desde la consola Firebase. */
+function publicAppBaseUrl(): string {
+  return String(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9006')
+    .trim()
+    .replace(/\/+$/, '');
+}
+
 // Función para crear preferencia de pago
 export async function createPaymentPreference(data: CreatePreferenceData): Promise<MercadoPagoPreference> {
   try {
-    console.log('🌍 Mercado Pago:', process.env.MERCADOPAGO_ENVIRONMENT ?? 'no MERCADOPAGO_ENVIRONMENT');
+    console.log('🌍 Mercado Pago env:', process.env.MERCADOPAGO_ENVIRONMENT?.trim() || 'default');
     console.log('📦 Data recibida:', data);
 
-    const appBase = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9006').replace(/\/$/, '');
+    const appBase = publicAppBaseUrl();
     const returnUrl = `${appBase}/dashboard/billetera`;
     // Producción de MP exige HTTPS para back_urls cuando se usa auto_return; con http:// (p. ej. local) falla con invalid_auto_return.
     const canAutoReturn = returnUrl.startsWith('https://');
