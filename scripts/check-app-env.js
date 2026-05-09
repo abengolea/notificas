@@ -169,7 +169,7 @@ function checkGroup(title, defs, vars) {
       isLocalHttpPublicAppUrl(v.trim())
     ) {
       console.log(
-        `  ⚠️  ${def.key}: ${v.trim()} (dev local; en App Hosting/GCP debe ser https://tu-dominio)`,
+        `  ⚠️  ${def.key}: ${v.trim()} (OK en desarrollo local; en App Hosting/GCP usá HTTPS en una línea, p. ej. https://notificas.com.ar)`,
       );
     } else if (issue) {
       console.log(`  ❌ ${def.key}: ${issue}`);
