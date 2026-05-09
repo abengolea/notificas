@@ -38,6 +38,33 @@ function formatPhoneForWhatsApp(phone) {
   return result.length >= 10 ? result : null;
 }
 
+/** Nombre para saludo WA: evita "Hola usuario123" cuando solo hay handle o email. */
+function formatWhatsAppRecipientDisplay(recipientName) {
+  const r = (recipientName || '').trim();
+  if (!r || r.toLowerCase() === 'usuario') return 'destinatario/a';
+  if (r.includes('@')) return 'destinatario/a';
+  if (/\s/.test(r)) return r.substring(0, 50);
+  return 'destinatario/a';
+}
+
+/** Si solo hay correo, redactar en tercera persona; si hay nombre, usarlo. Límite 50 por variable Meta. */
+function formatWhatsAppSenderDisplay(senderName, fromEmail) {
+  const s = (senderName || '').trim();
+  const from = (fromEmail || '').trim();
+  const email = s.includes('@') ? s : from;
+  if (s && !s.includes('@')) return s.substring(0, 50);
+  if (email) {
+    const label = `el remitente (${email})`;
+    return label.length <= 50 ? label : email.substring(0, 50);
+  }
+  return 'Notificas.com';
+}
+
+/**
+ * Plantilla Meta (3 variables): {{1}} destinatario, {{2}} remitente, {{3}} URL.
+ * Sugerencia de cuerpo para alinear con el mensaje libre:
+ * "Estimado/a {{1}},\n\nLe informamos que {{2}} le ha enviado una notificación digital certificada a través de Notificas.com.\n\nAcceda al contenido aquí:\n{{3}}\n\nSi no reconoce este envío, ignore este mensaje. Consultas: contacto@notificas.com\n\n— Notificas.com"
+ */
 async function sendWhatsAppNotification(accessToken, phoneNumberId, templateName, templateLang, toPhone, readerUrl, senderName, recipientName) {
   if (!accessToken || !phoneNumberId) {
     console.warn('⚠️ WhatsApp: secrets no configurados en Secret Manager');
@@ -53,7 +80,7 @@ async function sendWhatsAppNotification(accessToken, phoneNumberId, templateName
   const url = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
   let payload;
   if (templateName) {
-    // Template con 3 variables: {{1}}=nombre, {{2}}=remitente, {{3}}=url
+    // Parámetros ya formateados: {{1}} destinatario, {{2}} remitente, {{3}} url
     payload = {
       messaging_product: 'whatsapp',
       to,
@@ -64,19 +91,22 @@ async function sendWhatsAppNotification(accessToken, phoneNumberId, templateName
         components: [{
           type: 'body',
           parameters: [
-            { type: 'text', text: (recipientName || 'estimado/a').substring(0, 50) },
-            { type: 'text', text: (senderName || 'Notificas.com').substring(0, 50) },
+            { type: 'text', text: recipientName.substring(0, 50) },
+            { type: 'text', text: senderName.substring(0, 50) },
             { type: 'text', text: readerUrl }
           ]
         }]
       }
     };
   } else {
-    const body = `Hola ${recipientName || 'estimado/a'},
+    const body = `Estimado/a ${recipientName},
 
-${senderName || 'Notificas.com'} te ha enviado una notificación digital certificada.
+Le informamos que ${senderName} le ha enviado una notificación digital certificada a través de Notificas.com.
 
-Accede aquí: ${readerUrl}
+Acceda al contenido desde el siguiente enlace:
+${readerUrl}
+
+Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@notificas.com
 
 — Notificas.com`;
     payload = {
@@ -173,8 +203,8 @@ function getTransporter() {
   if (!pass) throw new Error('SMTP_PASS secret no configurado. Ejecutar: firebase functions:secrets:set SMTP_PASS');
   return nodemailer.createTransport({
     host: 'vps-1711372-x.dattaweb.com',
-    port: 587,
-    secure: false,
+    port: 465,
+    secure: true,
     auth: {
       user: 'contacto@notificas.com',
       pass,
@@ -305,6 +335,40 @@ exports.sendEmail = onRequest(
           state: emailData.delivery.state 
         });
       }
+
+    /* Formulario Contáctenos: un solo correo simple por SMTP (sin plantilla certificada). */
+    if (emailData.contactRequest === true) {
+      const toRawCf = emailData.to;
+      const toCf = Array.isArray(toRawCf) ? toRawCf.join(',') : toRawCf;
+      const fromCf = emailData.from || 'contacto@notificas.com';
+      const subjectCf = emailData.message?.subject || 'Consulta';
+      const htmlCf = emailData.message?.html || '';
+      const textCf =
+        emailData.message?.text || String(htmlCf).replace(/<[^>]*>/g, '');
+      const resultCf = await getTransporter().sendMail({
+        from: fromCf,
+        to: toCf,
+        replyTo: emailData.replyTo,
+        subject: subjectCf,
+        html: htmlCf,
+        text: textCf,
+      });
+      if (!resultCf.messageId) {
+        throw new Error('No se recibió messageId del servidor de correo (contacto)');
+      }
+      await docRef.update({
+        delivery: {
+          state: 'DELIVERED',
+          time: FieldValue.serverTimestamp(),
+          info: resultCf.messageId
+        },
+        source: 'contact_form',
+        sourceLabel: 'Formulario Contáctenos',
+        sourceIcon: '📝'
+      });
+      console.log('📧 Contacto web enviado:', resultCf.messageId);
+      return res.status(200).json({ success: true, messageId: resultCf.messageId });
+    }
 
     const toRaw = emailData.to;
     const to = Array.isArray(toRaw) ? toRaw.join(',') : toRaw;
@@ -565,6 +629,8 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
                   : '';
               return `${LINK_REDIRECT_URL}?msg=${encodeURIComponent(docId)}&u=${encodeURIComponent(encodedReader)}&k=${encodeURIComponent(trackingToken)}&src=whatsapp${rParam}`;
             })();
+            const waRecipient = formatWhatsAppRecipientDisplay(emailData.recipientName);
+            const waSender = formatWhatsAppSenderDisplay(emailData.senderName || from, from);
             const resultWA = await sendWhatsAppNotification(
               token,
               phoneId,
@@ -572,8 +638,8 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
               templateLang,
               recipientPhone,
               whatsappLink,
-              emailData.senderName || from,
-              emailData.recipientName || 'Usuario'
+              waSender,
+              waRecipient
             );
             if (resultWA && typeof resultWA === 'string') {
               whatsappId = resultWA;
@@ -1058,14 +1124,17 @@ exports.processIncomingEmail = onRequest({ region: REGION, secrets: [smtpPass] }
         message: 'Formato de asunto no válido. Use: CERTIFICAR - destinatario@email.com - Asunto' 
       });
     }
+
+    /** Alineado con la app (`scheduleEmail`): destinatarios en minúsculas para `array-contains` en bandeja. */
+    const recipientNorm = parsed.recipient.trim().toLowerCase();
     
-    console.log('✅ Asunto parseado:', parsed);
+    console.log('✅ Asunto parseado:', parsed, '→ recipientNorm:', recipientNorm);
     
     // Verificar si ya existe un correo similar para evitar duplicados
     const existingQuery = await db.collection('mail')
       .where('senderName', '==', user.email)
       .where('message.subject', '==', parsed.actualSubject)
-      .where('recipientEmail', '==', parsed.recipient)
+      .where('recipientEmail', '==', recipientNorm)
       .limit(1)
       .get();
     
@@ -1076,7 +1145,7 @@ exports.processIncomingEmail = onRequest({ region: REGION, secrets: [smtpPass] }
         success: true, 
         messageId: existingDoc.data().delivery?.info,
         docId: existingDoc.id,
-        recipient: parsed.recipient,
+        recipient: recipientNorm,
         subject: parsed.actualSubject,
         duplicate: true
       });
@@ -1096,8 +1165,8 @@ exports.processIncomingEmail = onRequest({ region: REGION, secrets: [smtpPass] }
     // Build email with template
     const htmlWithTracking = generateEmailWithTracking({
       senderName: user.email,
-      recipientName: parsed.recipient.split('@')[0],
-      recipientEmail: parsed.recipient,
+      recipientName: recipientNorm.split('@')[0],
+      recipientEmail: recipientNorm,
       readUrl: readerUrl,
       fallbackUrl: readerUrl,
       year: new Date().getFullYear(),
@@ -1107,7 +1176,7 @@ exports.processIncomingEmail = onRequest({ region: REGION, secrets: [smtpPass] }
     });
     
     // Generar versión de texto plano completa con toda la información
-    const recipientName = parsed.recipient.split('@')[0];
+    const recipientName = recipientNorm.split('@')[0];
     const textVersion = `NOTIFICACION
 Nueva comunicacion para usted
 Enviada por ${user.email} mediante Notificas.com
@@ -1131,52 +1200,36 @@ Para dejar constancia de que ha accedido al mensaje, puede utilizar el siguiente
 Confirmar lectura: ${readerUrl}
 
 ${new Date().getFullYear()} Notificas.com
-Este mensaje fue destinado a ${parsed.recipient}. Si no reconoce esta notificacion, ignore este correo o responda a contacto@notificas.com.`;
+Este mensaje fue destinado a ${recipientNorm}. Si no reconoce esta notificacion, ignore este correo o responda a contacto@notificas.com.`;
     
-    // Enviar el correo certificado
-    const mailOptions = {
-      from: 'contacto@notificas.com',
-      to: parsed.recipient,
-      subject: parsed.actualSubject,
-      text: textVersion,
-      html: htmlWithTracking,
-      replyTo: user.email
-    };
-    
-    console.log('📧 Enviando correo certificado a:', parsed.recipient);
-    const result = await getTransporter().sendMail(mailOptions);
-
-    if (!result.messageId) {
-      throw new Error('No se recibió messageId del servidor de correo');
-    }
-    
-    // Guardar en Firestore
+    // Persistir antes del SMTP para que el enlace del reader nunca apunte a un doc inexistente
+    // si Firestore falla, el usuario no recibe correo con URL rota.
     await docRef.set({
-      to: [parsed.recipient],
+      to: [recipientNorm],
       from: 'contacto@notificas.com',
       senderName: user.email,
-      recipientName: parsed.recipient.split('@')[0],
-      recipientEmail: parsed.recipient,
+      recipientName: recipientNorm.split('@')[0],
+      recipientEmail: recipientNorm,
       message: {
         subject: parsed.actualSubject,
         html: htmlContent,
         text: text || htmlContent.replace(/<[^>]*>/g, '')
       },
       delivery: {
-        state: 'DELIVERED',
+        state: 'SENDING',
         time: FieldValue.serverTimestamp(),
-        info: result.messageId
+        info: null
       },
       tracking: {
         token: trackingToken,
-        sentAt: FieldValue.serverTimestamp(),
+        sentAt: null,
         openCount: 0,
         clickCount: 0,
         opened: false,
         openedAt: null,
         readConfirmed: false,
         readConfirmedAt: null,
-        messageId: result.messageId
+        messageId: null
       },
       readerUrl,
       createdAt: FieldValue.serverTimestamp(),
@@ -1185,6 +1238,31 @@ Este mensaje fue destinado a ${parsed.recipient}. Si no reconoce esta notificaci
       sourceLabel: 'Enviado desde Gmail',
       sourceIcon: '📧'
     });
+
+    // Enviar el correo certificado
+    const mailOptions = {
+      from: 'contacto@notificas.com',
+      to: recipientNorm,
+      subject: parsed.actualSubject,
+      text: textVersion,
+      html: htmlWithTracking,
+      replyTo: user.email
+    };
+    
+    console.log('📧 Enviando correo certificado a:', recipientNorm);
+    const result = await getTransporter().sendMail(mailOptions);
+
+    if (!result.messageId) {
+      throw new Error('No se recibió messageId del servidor de correo');
+    }
+
+    await docRef.update({
+      'delivery.state': 'DELIVERED',
+      'delivery.time': FieldValue.serverTimestamp(),
+      'delivery.info': result.messageId,
+      'tracking.sentAt': FieldValue.serverTimestamp(),
+      'tracking.messageId': result.messageId
+    });
     
     console.log('✅ Correo certificado enviado:', result.messageId);
     
@@ -1192,7 +1270,7 @@ Este mensaje fue destinado a ${parsed.recipient}. Si no reconoce esta notificaci
       success: true, 
       messageId: result.messageId,
       docId: docId,
-      recipient: parsed.recipient,
+      recipient: recipientNorm,
       subject: parsed.actualSubject
     });
     

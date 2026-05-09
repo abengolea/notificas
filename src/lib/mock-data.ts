@@ -148,28 +148,48 @@ export const mockAdminUsers: AdminUser[] = [
     ingresosEstimados: 18500.50,
   };
   
+  /** Deprecado para el panel: los planes viven en Firestore y el admin usa `/api/admin/plans`. */
   export const mockPlanes: Plan[] = [
       {
           id: 'individual',
-          nombre: 'Envío Individual',
-          descripcion: 'Ideal para notificaciones puntuales.',
-          precio: 500.00,
-          type: 'unitario'
+          nombre: 'Individual',
+          descripcion: '1 crédito para notificación certificada',
+          precio: 500,
+          creditos: 1,
+          type: 'unitario',
+          activo: true,
+          orden: 1,
       },
       {
           id: 'pack10',
-          nombre: 'Pack de 10 Envíos',
-          descripcion: 'Ahorra con nuestro pack de 10 envíos.',
-          precio: 4500.00,
-          type: 'pack'
+          nombre: 'Pack 10',
+          descripcion: '10 créditos con descuento del 20%',
+          precio: 4000,
+          creditos: 10,
+          type: 'pack',
+          activo: true,
+          orden: 2,
       },
       {
-          id: 'ilimitado',
-          nombre: 'Plan Mensual Ilimitado',
-          descripcion: 'Envía todo lo que necesites por un precio fijo.',
-          precio: 30000.00,
-          type: 'suscripcion'
-      }
+          id: 'pack50',
+          nombre: 'Pack 50',
+          descripcion: '50 créditos con descuento del 30%',
+          precio: 17500,
+          creditos: 50,
+          type: 'pack',
+          activo: true,
+          orden: 3,
+      },
+      {
+          id: 'pack100',
+          nombre: 'Pack 100',
+          descripcion: '100 créditos con descuento del 40%',
+          precio: 30000,
+          creditos: 100,
+          type: 'pack',
+          activo: true,
+          orden: 4,
+      },
   ];
 
   export const mockTransactions: Transaccion[] = [

@@ -45,7 +45,11 @@ export const useFirebaseAuth = () => {
   const getErrorMessage = (error: AuthError): string => {
     switch (error.code) {
       case 'auth/invalid-credential':
-        return 'Las credenciales son incorrectas. Por favor, verifica tu email y contraseña.';
+        return (
+          'No se pudo iniciar sesión con email y contraseña. Comprueba que el usuario exista en Firebase Authentication ' +
+          '(consola del proyecto), que la contraseña sea la correcta y que no hayas creado la cuenta solo con Google ' +
+          '(en ese caso usa “Continuar con Google” o restablece contraseña si el correo tiene método Email/contraseña).'
+        );
       case 'auth/user-not-found':
         return 'No se encontró una cuenta con este email.';
       case 'auth/wrong-password':

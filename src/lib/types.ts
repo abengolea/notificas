@@ -82,7 +82,10 @@ export type Plan = {
     nombre: string;
     descripcion: string;
     precio: number;
+    creditos?: number;
     type: 'unitario' | 'pack' | 'suscripcion';
+    activo?: boolean;
+    orden?: number;
 };
 
 export type Transaccion = {
@@ -106,3 +109,89 @@ export type Contacto = {
     vecesUsado: number;
     createdAt: Date;
 };
+
+// —— Módulo B2B Empresas ——
+export interface Organization {
+  id: string;
+  nombre: string;
+  cuit: string;
+  tipo: 'empresa' | 'estudio_juridico' | 'consumidores' | 'otro';
+  adminUserId: string;
+  /** Denormalizado (alta vía admin) para listados en panel. */
+  adminUserEmail?: string;
+  members: string[];
+  plan: 'starter' | 'business' | 'enterprise';
+  logoUrl?: string;
+  createdAt: unknown;
+}
+
+export interface RecipientEntry {
+  email: string;
+  nombre: string;
+  dni?: string;
+  legajo?: string;
+  telefono?: string;
+  area?: string;
+}
+
+export interface RecipientList {
+  id: string;
+  orgId: string;
+  nombre: string;
+  recipients: RecipientEntry[];
+  count: number;
+  createdAt: unknown;
+  updatedAt: unknown;
+}
+
+export interface CampaignAttachment {
+  nombre: string;
+  url: string;
+  hash: string;
+  size: number;
+}
+
+export interface Campaign {
+  id: string;
+  orgId: string;
+  createdBy: string;
+  nombre: string;
+  asunto: string;
+  cuerpo: string;
+  adjuntos: CampaignAttachment[];
+  /** Adjuntos sólo para ese correo (keys en minúsculas). Compatible con adjuntos globales. */
+  adjuntosPorDestinatario?: Record<string, CampaignAttachment[]>;
+  recipientListId?: string;
+  recipientEmails: string[];
+  recipientData: RecipientEntry[];
+  recipientCount: number;
+  estado: 'borrador' | 'enviando' | 'completada' | 'cancelada';
+  stats: {
+    total: number;
+    enviados: number;
+    leidos: number;
+    pendientes: number;
+    errores: number;
+  };
+  createdAt: unknown;
+  scheduledAt?: unknown;
+  startedAt?: unknown;
+  completedAt?: unknown;
+}
+
+export interface CampaignMessage {
+  id: string;
+  campaignId: string;
+  orgId: string;
+  mailId: string;
+  recipientEmail: string;
+  recipientNombre: string;
+  recipientDni?: string;
+  recipientLegajo?: string;
+  estado: 'pendiente' | 'enviado' | 'leido' | 'error';
+  enviadoAt?: unknown;
+  leidoAt?: unknown;
+  txHashEnvio?: string;
+  txHashLectura?: string;
+  errorMsg?: string;
+}

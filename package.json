@@ -17,7 +17,10 @@
     "sync-status": "curl -s http://localhost:3001/status | jq .",
     "clean-ports": "bash scripts/clean-ports.sh",
     "dev-clean": "npm run clean-ports && npm run dev",
-    "test:polygon": "node scripts/test-polygon-connection.js"
+    "test:polygon": "node scripts/test-polygon-connection.js",
+    "normalize-mail": "node scripts/normalize-mail-recipient-fields.js",
+    "check:admin-env": "node scripts/check-admin-env.js",
+    "seed:demo-empresa": "node scripts/seed-demo-empresa.js"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.13.0",
@@ -70,6 +73,7 @@
     "resend": "^6.0.1",
     "tailwind-merge": "^3.0.1",
     "tailwindcss-animate": "^1.0.7",
+    "xlsx": "^0.18.5",
     "zod": "^3.24.2"
   },
   "devDependencies": {

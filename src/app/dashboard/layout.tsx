@@ -1,6 +1,4 @@
-import { UserNav } from '@/components/dashboard/user-nav';
-import { Logo } from '@/components/logo';
-import Link from 'next/link';
+import { MailActivityToasts } from '@/components/dashboard/mail-activity-toasts';
 
 export default function DashboardLayout({
     children,
@@ -9,6 +7,7 @@ export default function DashboardLayout({
 }) {
     return (
         <div className="grid min-h-screen w-full lg:grid-cols-1">
+            <MailActivityToasts />
             <div className="flex flex-col">
                 {children}
             </div>

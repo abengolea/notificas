@@ -17,6 +17,7 @@ import {
   Hash,
   MessageCircle
 } from 'lucide-react';
+import { filterRecipientVisibleMovements } from '@/lib/tracking-movements';
 
 interface Movement {
   id: string;
@@ -113,9 +114,7 @@ const formatIPs = (clientIP: string, forwardedIPs: string[], realIP: string) => 
 };
 
 export function MovementsTracking({ movements }: MovementsTrackingProps) {
-  const visibleMovements = (movements || []).filter(
-    (m) => !(m.type === 'app_opened' && m.viewerIsSender),
-  );
+  const visibleMovements = filterRecipientVisibleMovements(movements);
 
   if (!visibleMovements.length) {
     return (

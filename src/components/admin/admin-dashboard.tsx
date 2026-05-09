@@ -1,7 +1,7 @@
 
 "use client"
 
-import { mockAdminStats, mockAdminUsers, mockPlanes } from '@/lib/mock-data'
+import { mockAdminStats } from '@/lib/mock-data'
 import StatsCards from './stats-cards'
 import UserManagement from './user-management'
 import PlanManagement from './plan-management'
@@ -20,10 +20,10 @@ export default function AdminDashboard() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
           <div className="col-span-4">
-              <UserManagement users={mockAdminUsers} />
+              <UserManagement />
           </div>
           <div className="col-span-3">
-              <PlanManagement planes={mockPlanes} />
+              <PlanManagement />
           </div>
       </div>
     </>

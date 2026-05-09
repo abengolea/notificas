@@ -37,7 +37,26 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ mail: data });
   } catch (e: unknown) {
-    console.error("for-reader GET:", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    const code =
+      typeof e === "object" && e !== null && "code" in e
+        ? String((e as { code?: unknown }).code ?? "")
+        : "";
+    console.error("for-reader GET error:", msg, "| code:", code);
+    if (
+      msg.includes("credential") ||
+      msg.includes("UNAUTHENTICATED") ||
+      code === "16"
+    ) {
+      console.error(
+        "for-reader: posible problema de credenciales Admin SDK — verificar FIREBASE_CLIENT_EMAIL y FIREBASE_PRIVATE_KEY en Secret Manager"
+      );
+    }
+    if (msg.includes("DEADLINE_EXCEEDED") || msg.includes("timeout")) {
+      console.error(
+        "for-reader: timeout de conexión a Firestore — posible problema de red o permisos IAM"
+      );
+    }
     return NextResponse.json(
       { error: "Error al cargar el mensaje" },
       { status: 500 }

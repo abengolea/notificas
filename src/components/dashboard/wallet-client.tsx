@@ -9,8 +9,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Gift, Package, TrendingUp, CreditCard, Loader2 } from 'lucide-react';
+import { Gift, Package, TrendingUp, CreditCard, Loader2, History, RefreshCw } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import { clienteDescuentoLista, COLEGIO_NOMBRE_FALLBACK_CLIENT } from '@/lib/colegio-discount-client';
 import { auth } from '@/lib/firebase';
 import { Input } from '@/components/ui/input';
 
@@ -42,6 +44,10 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
   const [loadingPlan, setLoadingPlan] = useState<Plan['id'] | null>(null);
   const [syncOpId, setSyncOpId] = useState('');
   const [syncLoading, setSyncLoading] = useState(false);
+  const [colegioPct, setColegioPct] = useState(0);
+  const [colegioEligible, setColegioEligible] = useState(false);
+  const [colegioNombre, setColegioNombre] = useState(COLEGIO_NOMBRE_FALLBACK_CLIENT);
+  const [colegioBannerLoading, setColegioBannerLoading] = useState(true);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -162,6 +168,58 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
       cancelled = true;
     };
   }, [toast]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadColegio() {
+      if (!user?.email) {
+        setColegioBannerLoading(false);
+        setColegioEligible(false);
+        setColegioPct(0);
+        setColegioNombre(COLEGIO_NOMBRE_FALLBACK_CLIENT);
+        return;
+      }
+      try {
+        const u = auth.currentUser;
+        if (!u) {
+          setColegioBannerLoading(false);
+          setColegioNombre(COLEGIO_NOMBRE_FALLBACK_CLIENT);
+          return;
+        }
+        const token = await u.getIdToken();
+        const res = await fetch('/api/user/colegio-discount', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const j = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        const nom =
+          typeof j.nombreColegio === 'string' && j.nombreColegio.trim()
+            ? j.nombreColegio.trim()
+            : COLEGIO_NOMBRE_FALLBACK_CLIENT;
+        if (res.ok) {
+          setColegioEligible(Boolean(j.eligible));
+          setColegioPct(typeof j.discountPercent === 'number' ? j.discountPercent : 0);
+          setColegioNombre(nom);
+        } else {
+          setColegioEligible(false);
+          setColegioPct(0);
+          setColegioNombre(nom);
+        }
+      } catch {
+        if (!cancelled) {
+          setColegioEligible(false);
+          setColegioPct(0);
+          setColegioNombre(COLEGIO_NOMBRE_FALLBACK_CLIENT);
+        }
+      } finally {
+        if (!cancelled) setColegioBannerLoading(false);
+      }
+    }
+    void loadColegio();
+    return () => {
+      cancelled = true;
+    };
+  }, [user.email]);
   
   const formatCurrency = (amount: number) => {
     return amount.toLocaleString('es-AR', {
@@ -174,37 +232,45 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
     setLoadingPlan(plan.id);
 
     try {
-      // Llamar a la API para crear preferencia de pago
+      const token = auth.currentUser ? await auth.currentUser.getIdToken() : null;
+      if (!token) {
+        throw new Error('Iniciá sesión para pagar.');
+      }
+
       const response = await fetch('/api/mercadopago/preference', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           planId: plan.id,
-          userId: user.uid,
-          userEmail: user.email
-        })
+        }),
       });
 
       if (!response.ok) {
-        throw new Error('Error al crear la preferencia de pago');
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(
+          typeof errBody?.error === 'string' ? errBody.error : 'Error al crear la preferencia de pago',
+        );
       }
 
       const data = await response.json();
-      
+
       setLoadingPlan(null);
-      
-      // Redirigir a Mercado Pago
+
       window.location.href = data.initPoint;
       
     } catch (error) {
       console.error('Error al procesar el pago:', error);
       setLoadingPlan(null);
-      
+
       toast({
         title: "Error al procesar el pago",
-        description: "Hubo un problema al crear la preferencia de pago. Inténtalo de nuevo.",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Hubo un problema al crear la preferencia de pago. Inténtalo de nuevo.",
         variant: 'destructive',
       });
     }
@@ -273,159 +339,236 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
     }
   };
 
+  const sortedTx = [...transactions].sort(
+    (a, b) => b.fecha.getTime() - a.fecha.getTime(),
+  );
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Billetera</h1>
-        <p className="text-muted-foreground">Gestiona tus créditos y revisa tu historial de transacciones.</p>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Billetera</h1>
+        <p className="text-sm text-muted-foreground sm:text-base">
+          Saldo siempre arriba; elegí una sección para comprar, ver movimientos o sincronizar un pago.
+        </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-1 flex flex-col justify-between shadow-lg">
-          <CardHeader>
-            <CardTitle className="text-lg">Créditos Disponibles</CardTitle>
-            <CardDescription>Esta es la cantidad de envíos certificados que puedes realizar.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex items-center justify-center py-10">
-            <div className="text-7xl font-bold text-primary">{user.creditos}</div>
-          </CardContent>
-          <CardFooter>
-             <p className="text-xs text-muted-foreground">Los créditos no tienen vencimiento.</p>
-          </CardFooter>
-        </Card>
+      <div className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">Créditos disponibles</p>
+            <p className="text-4xl font-bold tabular-nums text-primary sm:text-5xl">{user.creditos}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Equivale a envíos certificados que podés usar. Sin vencimiento.
+            </p>
+          </div>
+        </div>
+      </div>
 
-        <Card className="lg:col-span-2 shadow-lg">
-          <CardHeader>
-            <CardTitle>Comprar Créditos</CardTitle>
-            <CardDescription>Selecciona un plan para recargar tus créditos. El pago se procesa de forma segura a través de Mercado Pago.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {planes.map((plan) => (
-              <Card key={plan.id} className="flex flex-col text-center">
-                 <CardHeader>
-                    <div className="mx-auto bg-primary/10 p-4 rounded-full w-fit mb-2">
+      <Tabs defaultValue="comprar" className="w-full">
+        <div className="sticky top-16 z-10 -mx-4 border-b bg-muted/30 px-4 py-2 backdrop-blur-sm sm:-mx-6 sm:px-6">
+          <TabsList className="grid h-auto w-full grid-cols-3 gap-1 sm:inline-flex sm:w-auto">
+            <TabsTrigger value="comprar" className="gap-1.5 px-2 sm:px-3">
+              <CreditCard className="hidden h-4 w-4 sm:inline" aria-hidden />
+              <span className="text-xs sm:text-sm">Comprar</span>
+            </TabsTrigger>
+            <TabsTrigger value="movimientos" className="gap-1.5 px-2 sm:px-3">
+              <History className="hidden h-4 w-4 sm:inline" aria-hidden />
+              <span className="text-xs sm:text-sm">Historial</span>
+            </TabsTrigger>
+            <TabsTrigger value="sincronizar" className="gap-1.5 px-2 sm:px-3">
+              <RefreshCw className="hidden h-4 w-4 sm:inline" aria-hidden />
+              <span className="text-xs sm:text-sm">Sincronizar</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="comprar" className="mt-4 space-y-0 focus-visible:outline-none">
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle>Comprar créditos</CardTitle>
+              <CardDescription>
+                Elegí un plan; el cobro es seguro con Mercado Pago.
+              </CardDescription>
+              {!colegioBannerLoading && colegioEligible && colegioPct > 0 ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+                  <Badge variant="secondary" className="bg-primary/15 text-primary hover:bg-primary/20">
+                    {colegioNombre}
+                  </Badge>
+                  <span className="text-muted-foreground">
+                    Tu cuenta tiene un <strong className="text-foreground">{colegioPct}%</strong> de descuento sobre el
+                    precio de lista en todos los planes.
+                  </span>
+                </div>
+              ) : null}
+              {!colegioBannerLoading && !colegioEligible ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  El descuento para matriculados de{' '}
+                  <strong className="text-foreground">{colegioNombre}</strong> se reconoce si el correo de tu sesión está
+                  en la nómina que carga el administrador.
+                </p>
+              ) : null}
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {planes.map((plan) => {
+                const list = plan.precio;
+                const effective =
+                  colegioEligible && colegioPct > 0
+                    ? clienteDescuentoLista(list, colegioPct)
+                    : list;
+                const showStrike = colegioEligible && colegioPct > 0 && effective < list;
+
+                return (
+                  <Card key={plan.id} className="flex flex-col text-center">
+                    <CardHeader className="pb-2 pt-4">
+                      <div className="mx-auto mb-2 w-fit rounded-full bg-primary/10 p-3">
                         {planIcons[plan.id as keyof typeof planIcons] ?? (
-                          <Package className="h-8 w-8 text-primary" />
+                          <Package className="h-7 w-7 text-primary sm:h-8 sm:w-8" />
                         )}
-                    </div>
-                    <CardTitle className="text-xl">{plan.nombre}</CardTitle>
-                 </CardHeader>
-                 <CardContent className="flex-1">
-                    <p className="text-3xl font-bold mb-2">{formatCurrency(plan.precio)}</p>
-                    <p className="text-sm text-muted-foreground">{plan.descripcion}</p>
-                 </CardContent>
-                 <CardFooter className="flex flex-col">
-                    <Button className="w-full" onClick={() => handlePurchase(plan)} disabled={loadingPlan !== null}>
-                      {loadingPlan === plan.id ? (
-                        <>
+                      </div>
+                      <CardTitle className="text-lg sm:text-xl">{plan.nombre}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex-1 pb-2">
+                      <p className="mb-2 text-2xl font-bold sm:text-3xl">
+                        {showStrike ? (
+                          <span className="inline-flex flex-col items-center gap-0.5 sm:inline-flex sm:flex-row sm:items-baseline sm:justify-center sm:gap-2">
+                            <span className="text-base line-through text-muted-foreground font-semibold sm:text-lg">
+                              {formatCurrency(list)}
+                            </span>
+                            <span>{formatCurrency(effective)}</span>
+                          </span>
+                        ) : (
+                          formatCurrency(list)
+                        )}
+                      </p>
+                      <p className="text-sm text-muted-foreground">{plan.descripcion}</p>
+                    </CardContent>
+                    <CardFooter className="flex flex-col pt-2">
+                      <Button className="w-full" onClick={() => handlePurchase(plan)} disabled={loadingPlan !== null}>
+                        {loadingPlan === plan.id ? (
+                          <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             Procesando...
-                        </>
-                      ) : (
-                        <>
+                          </>
+                        ) : (
+                          <>
                             <CreditCard className="mr-2 h-4 w-4" /> Pagar con Mercado Pago
-                        </>
-                      )}
-                    </Button>
-                 </CardFooter>
-              </Card>
-            ))}
-          </CardContent>
-            <CardFooter className='flex-col items-start gap-2'>
-                 <p className="text-xs text-muted-foreground">
-                   Al hacer clic en el botón Pagar con Mercado Pago, serás redirigido a la plataforma de pago segura para completar la transacción.
-                 </p>
-                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                   <span>🔒</span>
-                   <span>Pago seguro procesado por Mercado Pago</span>
-                 </div>
+                          </>
+                        )}
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                );
+              })}
+            </CardContent>
+            <CardFooter className="flex-col items-start gap-2 border-t pt-6">
+              <p className="text-xs text-muted-foreground">
+                Al hacer clic en «Pagar con Mercado Pago», te redirigimos al checkout seguro para completar el pago.
+              </p>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span aria-hidden>🔒</span>
+                <span>Pago seguro procesado por Mercado Pago</span>
+              </div>
             </CardFooter>
-        </Card>
-      </div>
+          </Card>
+        </TabsContent>
 
-      <Card className="shadow-lg border-dashed">
-        <CardHeader>
-          <CardTitle className="text-lg">¿Pagaste y no ves los créditos?</CardTitle>
-          <CardDescription>
-            Pegá el número de operación que figura en el comprobante de Mercado Pago (sin el numeral #).
-            Tiene que ser la misma cuenta con la que iniciaste la compra.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="flex-1 space-y-2">
-            <label htmlFor="mp-op-id" className="text-sm font-medium">
-              Número de operación
-            </label>
-            <Input
-              id="mp-op-id"
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder="Ej: 158096992744"
-              value={syncOpId}
-              onChange={(e) => setSyncOpId(e.target.value)}
-              disabled={syncLoading}
-            />
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            className="sm:shrink-0"
-            onClick={handleSyncOperation}
-            disabled={syncLoading}
-          >
-            {syncLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Sincronizando…
-              </>
-            ) : (
-              'Sincronizar pago'
-            )}
-          </Button>
-        </CardContent>
-      </Card>
+        <TabsContent value="movimientos" className="mt-4 focus-visible:outline-none">
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle>Historial de transacciones</CardTitle>
+              <CardDescription>Compras y uso de créditos. Podés desplazarte dentro de la tabla si hay muchos movimientos.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0 sm:p-6 sm:pt-0">
+              <div className="max-h-[min(65vh,560px)] overflow-auto rounded-md border sm:border-0">
+                <Table>
+                  <TableHeader className="sticky top-0 z-[1] bg-background shadow-[0_1px_0_hsl(var(--border))]">
+                    <TableRow>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Descripción</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Créditos</TableHead>
+                      <TableHead className="text-right">Monto</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sortedTx.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                          Todavía no hay movimientos en tu cuenta.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      sortedTx.map((tx) => (
+                        <TableRow key={tx.id}>
+                          <TableCell>
+                            <FormattedDateCell date={tx.fecha} />
+                          </TableCell>
+                          <TableCell className="font-medium">{tx.descripcion}</TableCell>
+                          <TableCell>
+                            <Badge variant={tx.tipo === 'compra' ? 'default' : 'secondary'}>
+                              {tx.tipo.charAt(0).toUpperCase() + tx.tipo.slice(1)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className={`font-bold ${tx.tipo === 'compra' ? 'text-green-600' : 'text-destructive'}`}>
+                            {tx.tipo === 'compra' ? `+${tx.creditos}` : tx.creditos}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {tx.monto > 0 ? formatCurrency(tx.monto) : '-'}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle>Historial de Transacciones</CardTitle>
-          <CardDescription>Aquí puedes ver todas tus compras y el uso de créditos.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Descripción</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Créditos</TableHead>
-                <TableHead className="text-right">Monto</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {transactions.sort((a,b) => b.fecha.getTime() - a.fecha.getTime()).map((tx) => (
-                <TableRow key={tx.id}>
-                  <TableCell>
-                    <FormattedDateCell date={tx.fecha} />
-                  </TableCell>
-                  <TableCell className="font-medium">{tx.descripcion}</TableCell>
-                  <TableCell>
-                    <Badge variant={tx.tipo === 'compra' ? 'default' : 'secondary'}>
-                      {tx.tipo.charAt(0).toUpperCase() + tx.tipo.slice(1)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className={`font-bold ${tx.tipo === 'compra' ? 'text-green-600' : 'text-destructive'}`}>
-                    {tx.tipo === 'compra' ? `+${tx.creditos}` : tx.creditos}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {tx.monto > 0 ? formatCurrency(tx.monto) : '-'}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
+        <TabsContent value="sincronizar" className="mt-4 focus-visible:outline-none">
+          <Card className="border-dashed shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-lg">¿Pagaste y no ves los créditos?</CardTitle>
+              <CardDescription>
+                Pegá el número de operación del comprobante de Mercado Pago (sin el numeral #). Tiene que ser la misma
+                cuenta con la que hiciste la compra.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex-1 space-y-2">
+                <label htmlFor="mp-op-id" className="text-sm font-medium">
+                  Número de operación
+                </label>
+                <Input
+                  id="mp-op-id"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="Ej: 158096992744"
+                  value={syncOpId}
+                  onChange={(e) => setSyncOpId(e.target.value)}
+                  disabled={syncLoading}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                className="sm:shrink-0"
+                onClick={handleSyncOperation}
+                disabled={syncLoading}
+              >
+                {syncLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Sincronizando…
+                  </>
+                ) : (
+                  'Sincronizar pago'
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

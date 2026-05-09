@@ -1,5 +1,5 @@
-import { ContactosPageComponent } from "@/components/dashboard/contactos-page"
+import { ContactosDashboardRoute } from "@/components/dashboard/contactos-dashboard-route";
 
 export default function ContactosPage() {
-  return <ContactosPageComponent />
+  return <ContactosDashboardRoute />;
 }

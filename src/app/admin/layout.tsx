@@ -45,6 +45,7 @@ export default function AdminLayout({
     const getPageTitle = () => {
         if (pathname === '/admin') return 'Resumen'
         if (pathname.startsWith('/admin/users')) return 'Gestión de Usuarios'
+        if (pathname.startsWith('/admin/empresas')) return 'Empresa (B2B)'
         if (pathname.startsWith('/admin/plans')) return 'Gestión de Planes y Precios'
         if (pathname.startsWith('/admin/settings')) return 'Configuración'
         return 'Panel de Administración'
@@ -53,11 +54,11 @@ export default function AdminLayout({
     return (
         <div className="flex-col md:flex min-h-screen bg-muted/30">
              <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b bg-background px-4">
-                <Link href="/admin" className="hidden items-center gap-2 font-semibold md:flex">
-                    <Logo className="h-8 w-auto" />
-                    <span className="font-bold">Notificas Admin</span>
+                <Link href="/admin" className="flex min-w-0 items-center gap-2 font-semibold shrink-0">
+                    <Logo className="h-8 w-auto shrink-0" />
+                    <span className="font-bold hidden sm:inline truncate">Notificas Admin</span>
                 </Link>
-                <MainNav className="hidden md:flex" />
+                <MainNav />
                 <div className="ml-auto flex items-center space-x-4">
                     <AdminPolBalance />
                     <div className="relative">

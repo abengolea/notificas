@@ -22,8 +22,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  const email = typeof body.email === "string" ? body.email.trim() : "";
-  const password = typeof body.password === "string" ? body.password : "";
+  const email =
+    typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const password =
+    typeof body.password === "string" ? body.password.trim() : "";
 
   if (!email || !password || email !== cfg.email || password !== cfg.password) {
     return NextResponse.json({ error: "Credenciales incorrectas" }, { status: 401 });

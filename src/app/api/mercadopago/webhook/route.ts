@@ -3,24 +3,39 @@ import { settleMercadoPagoPayment } from '@/lib/mercado-pago-settle';
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    console.log('🔔 Webhook MercadoPago recibido:', body);
+    const body = await request.json().catch(() => ({}));
+    const sp = request.nextUrl.searchParams;
+    const qsPaymentId = sp.get('data.id') ?? sp.get('id');
+
+    console.log('🔔 Webhook MercadoPago recibido:', {
+      body,
+      query: Object.fromEntries(sp.entries()),
+    });
+
+    const topicPayment =
+      body.topic === 'payment' ||
+      sp.get('topic') === 'payment' ||
+      sp.get('type') === 'payment';
 
     const isPayment =
       body.type === 'payment' ||
-      (typeof body.action === 'string' && body.action.startsWith('payment.'));
+      (typeof body.action === 'string' && body.action.startsWith('payment.')) ||
+      topicPayment;
 
     if (!isPayment) {
       return NextResponse.json({ received: true });
     }
 
-    const paymentId = body.data?.id;
+    const rawId = body.data?.id ?? body.id ?? qsPaymentId;
+    const paymentId =
+      rawId != null && String(rawId).trim() !== '' ? String(rawId).trim() : null;
+
     if (paymentId == null) {
       return NextResponse.json({ error: 'Payment ID no encontrado' }, { status: 400 });
     }
 
     const result = await settleMercadoPagoPayment({
-      paymentId: String(paymentId),
+      paymentId,
       actorUserId: null,
     });
 
@@ -28,8 +43,13 @@ export async function POST(request: NextRequest) {
       if (result.error === 'Pago no aprobado') {
         return NextResponse.json({ received: true, pending: true });
       }
-      console.error('❌ Webhook: no se pudo acreditar:', result.error);
-      return NextResponse.json({ error: result.error }, { status: result.status });
+      // Mercado Pago marca fallo ante 5xx; la simulación usa IDs ficticios sin recurso en la API MP.
+      // Respondemos siempre 2xx para el notificador; el detalle queda en logs.
+      console.error('❌ Webhook: liquidación omitida:', {
+        paymentId,
+        error: result.error,
+      });
+      return NextResponse.json({ received: true, settled: false });
     }
 
     console.log(

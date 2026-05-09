@@ -14,7 +14,8 @@ import {
   History, 
   UserPlus,
   MoreVertical,
-  Filter
+  Filter,
+  Pencil,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -29,13 +30,14 @@ import { useFirebaseAuth } from "@/hooks/useFirebaseAuth"
 import { ComposeMessageDialog } from "@/components/dashboard/compose-message-dialog"
 import { ContactoHistorial } from "@/components/dashboard/contacto-historial"
 import { NuevoContactoDialog } from "@/components/dashboard/nuevo-contacto-dialog"
+import { EditarContactoNombreDialog } from "@/components/dashboard/editar-contacto-nombre-dialog"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import Link from "next/link"
 import { Logo } from "@/components/logo"
 import { ChevronLeft, Home } from "lucide-react"
 
-export function ContactosPageComponent() {
+export function ContactosPageComponent({ layout = "standalone" }: { layout?: "standalone" | "shell" }) {
   const [contactos, setContactos] = useState<Contacto[]>([])
   const [contactosFiltrados, setContactosFiltrados] = useState<Contacto[]>([])
   const [busqueda, setBusqueda] = useState("")
@@ -45,6 +47,7 @@ export function ContactosPageComponent() {
   const [isHistorialOpen, setIsHistorialOpen] = useState(false)
   const [contactoHistorial, setContactoHistorial] = useState<Contacto | null>(null)
   const [isNuevoContactoOpen, setIsNuevoContactoOpen] = useState(false)
+  const [contactoEditando, setContactoEditando] = useState<Contacto | null>(null)
   const { toast } = useToast()
   const { user } = useFirebaseAuth()
 
@@ -134,10 +137,10 @@ export function ContactosPageComponent() {
   }
 
   const getFrecuenciaColor = (vecesUsado: number) => {
-    if (vecesUsado === 1) return "bg-gray-100 text-gray-600"
-    if (vecesUsado < 5) return "bg-blue-100 text-blue-600"
-    if (vecesUsado < 10) return "bg-orange-100 text-orange-600"
-    return "bg-green-100 text-green-600"
+    if (vecesUsado === 1) return "bg-muted text-muted-foreground hover:bg-muted"
+    if (vecesUsado < 5) return "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/20"
+    if (vecesUsado < 10) return "bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/25"
+    return "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/25"
   }
 
   useEffect(() => {
@@ -163,189 +166,211 @@ export function ContactosPageComponent() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header con navegación */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <Logo className="h-8 w-auto" />
-          </Link>
-          <div className="h-8 w-px bg-border"></div>
-          <div>
-            <div className="flex items-center space-x-2 text-sm text-muted-foreground mb-1">
-              <Link href="/dashboard" className="flex items-center gap-1 hover:text-foreground transition-colors">
-                <Home className="h-3 w-3" />
-                Dashboard
+    <div className="mx-auto max-w-5xl space-y-6">
+      {/* Encabezado */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          {layout === "shell" ? (
+            <>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                <Link href="/dashboard" className="flex items-center gap-1 hover:text-foreground transition-colors">
+                  <Home className="h-3.5 w-3.5" />
+                  Dashboard
+                </Link>
+                <ChevronLeft className="h-3 w-3 rotate-180 opacity-60" aria-hidden />
+                <span className="font-medium text-foreground">Contactos</span>
+              </div>
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">Contactos</h1>
+              <p className="text-sm text-muted-foreground">
+                Gestiona tus contactos y envía mensajes certificados
+              </p>
+            </>
+          ) : (
+            <div className="flex items-start gap-4">
+              <Link href="/" className="flex shrink-0 items-center gap-2 hover:opacity-80 transition-opacity">
+                <Logo className="h-8 w-auto" />
               </Link>
-              <ChevronLeft className="h-3 w-3 rotate-180" />
-              <span className="text-foreground font-medium">Contactos</span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground mb-1">
+                  <Link href="/dashboard" className="flex items-center gap-1 hover:text-foreground transition-colors">
+                    <Home className="h-3 w-3" />
+                    Dashboard
+                  </Link>
+                  <ChevronLeft className="h-3 w-3 rotate-180 opacity-60" aria-hidden />
+                  <span className="font-medium text-foreground">Contactos</span>
+                </div>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground">Contactos</h1>
+                <p className="text-muted-foreground">
+                  Gestiona tus contactos y envía mensajes certificados
+                </p>
+              </div>
             </div>
-            <h1 className="text-3xl font-bold tracking-tight">Contactos</h1>
-            <p className="text-muted-foreground">
-              Gestiona tus contactos y envía mensajes certificados
-            </p>
-          </div>
+          )}
         </div>
-        <Button onClick={abrirNuevoContacto}>
+        <Button onClick={abrirNuevoContacto} className="shrink-0 w-full sm:w-auto">
           <UserPlus className="mr-2 h-4 w-4" />
           Nuevo Contacto
         </Button>
       </div>
 
-      {/* Barra de búsqueda y filtros */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center space-x-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <Input
-                placeholder="Buscar por email o nombre..."
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Button variant="outline" onClick={cargarContactos} disabled={cargando}>
-              <Filter className="mr-2 h-4 w-4" />
-              Actualizar
-            </Button>
+      {/* Métricas rápidas */}
+      {contactos.length > 0 && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Card className="border-border/80 shadow-sm">
+            <CardContent className="flex items-center justify-between gap-3 pt-4 pb-4">
+              <span className="text-sm font-medium text-muted-foreground">Total</span>
+              <span className="text-2xl font-bold tabular-nums text-primary">{contactos.length}</span>
+            </CardContent>
+          </Card>
+          <Card className="border-border/80 shadow-sm">
+            <CardContent className="flex items-center justify-between gap-3 pt-4 pb-4">
+              <span className="text-sm font-medium text-muted-foreground">Activos</span>
+              <span className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                {contactos.filter((c) => c.vecesUsado > 1).length}
+              </span>
+            </CardContent>
+          </Card>
+          <Card className="border-border/80 shadow-sm">
+            <CardContent className="flex items-center justify-between gap-3 pt-4 pb-4">
+              <span className="text-sm font-medium text-muted-foreground">Envíos registrados</span>
+              <span className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
+                {contactos.reduce((sum, c) => sum + c.vecesUsado, 0)}
+              </span>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Búsqueda */}
+      <Card className="border-border/80 shadow-sm">
+        <CardContent className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por email o nombre..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              className="pl-10"
+              aria-label="Buscar contactos"
+            />
           </div>
+          <Button variant="outline" onClick={cargarContactos} disabled={cargando} className="shrink-0">
+            <Filter className="mr-2 h-4 w-4" />
+            Actualizar
+          </Button>
         </CardContent>
       </Card>
 
-      {/* Lista de contactos */}
-      <div className="grid gap-4">
-        {cargando ? (
-          <div className="flex items-center justify-center h-32">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          </div>
-        ) : contactosFiltrados.length === 0 ? (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center py-8">
-                <Mail className="mx-auto h-12 w-12 text-gray-400" />
-                <h3 className="mt-2 text-sm font-medium text-gray-900">
-                  {busqueda ? 'No se encontraron contactos' : 'No tienes contactos aún'}
-                </h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  {busqueda 
-                    ? 'Intenta con otros términos de búsqueda'
-                    : 'Envía tu primer mensaje para comenzar a crear contactos'
-                  }
-                </p>
-                {!busqueda && (
-                  <div className="mt-6 space-x-2">
-                    <Button onClick={abrirNuevoContacto}>
-                      <UserPlus className="mr-2 h-4 w-4" />
-                      Agregar Contacto
-                    </Button>
-                    <Button variant="outline" onClick={() => abrirCompose()}>
-                      <Send className="mr-2 h-4 w-4" />
-                      Enviar Mensaje
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          contactosFiltrados.map((contacto) => (
-            <Card key={contacto.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <Avatar className="h-12 w-12">
-                      <AvatarFallback className="bg-primary text-primary-foreground">
+      {/* Lista */}
+      {cargando ? (
+        <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-border bg-muted/20">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" aria-hidden />
+        </div>
+      ) : contactosFiltrados.length === 0 ? (
+        <Card className="border-border/80">
+          <CardContent className="py-12">
+            <div className="text-center">
+              <Mail className="mx-auto h-12 w-12 text-muted-foreground opacity-60" />
+              <h3 className="mt-3 text-sm font-semibold text-foreground">
+                {busqueda ? "No se encontraron contactos" : "No tienes contactos aún"}
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {busqueda
+                  ? "Probá con otro término de búsqueda"
+                  : "Enviá tu primer mensaje para comenzar a crear contactos"}
+              </p>
+              {!busqueda && (
+                <div className="mt-6 flex flex-wrap justify-center gap-2">
+                  <Button onClick={abrirNuevoContacto}>
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Agregar contacto
+                  </Button>
+                  <Button variant="outline" onClick={() => abrirCompose()}>
+                    <Send className="mr-2 h-4 w-4" />
+                    Enviar mensaje
+                  </Button>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="overflow-hidden border-border/80 shadow-sm">
+          <CardHeader className="border-b bg-muted/30 py-3">
+            <CardTitle className="text-base font-semibold">Lista de contactos</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ul className="divide-y divide-border">
+              {contactosFiltrados.map((contacto) => (
+                <li
+                  key={contacto.id}
+                  className="flex flex-col gap-4 p-4 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between sm:gap-6"
+                >
+                  <div className="flex min-w-0 flex-1 items-start gap-3">
+                    <Avatar className="h-11 w-11 shrink-0">
+                      <AvatarFallback className="bg-primary text-primary-foreground text-sm">
                         {getIniciales(contacto.email, contacto.nombre)}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-2">
-                        <h3 className="text-lg font-medium text-gray-900 truncate">
-                          {contacto.nombre && contacto.nombre !== contacto.email.split('@')[0] 
-                            ? contacto.nombre 
-                            : contacto.email.split('@')[0]
-                          }
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="truncate text-base font-medium text-foreground">
+                          {contacto.nombre && contacto.nombre !== contacto.email.split("@")[0]
+                            ? contacto.nombre
+                            : contacto.email.split("@")[0]}
                         </h3>
-                        <Badge className={getFrecuenciaColor(contacto.vecesUsado)}>
+                        <Badge variant="outline" className={getFrecuenciaColor(contacto.vecesUsado)}>
                           {getFrecuenciaTexto(contacto.vecesUsado)}
                         </Badge>
                       </div>
-                      <p className="text-sm text-gray-500 truncate">{contacto.email}</p>
-                      {contacto.cuit && (
-                        <p className="text-xs text-gray-400">CUIT: {contacto.cuit}</p>
-                      )}
-                      <div className="flex items-center space-x-4 mt-1">
-                        <div className="flex items-center text-xs text-gray-400">
-                          <Clock className="mr-1 h-3 w-3" />
-                          Último uso: {format(contacto.ultimoUso, 'dd/MM/yyyy', { locale: es })}
-                        </div>
-                        <div className="flex items-center text-xs text-gray-400">
-                          <Mail className="mr-1 h-3 w-3" />
-                          Creado: {format(contacto.createdAt, 'dd/MM/yyyy', { locale: es })}
-                        </div>
+                      <p className="truncate text-sm text-muted-foreground">{contacto.email}</p>
+                      {contacto.cuit ? (
+                        <p className="text-xs text-muted-foreground">CUIT: {contacto.cuit}</p>
+                      ) : null}
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 pt-0.5 text-xs text-muted-foreground">
+                        <span className="inline-flex items-center gap-1">
+                          <Clock className="h-3 w-3 shrink-0" />
+                          Último uso: {format(contacto.ultimoUso, "dd/MM/yyyy", { locale: es })}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <Mail className="h-3 w-3 shrink-0" />
+                          Creado: {format(contacto.createdAt, "dd/MM/yyyy", { locale: es })}
+                        </span>
                       </div>
                     </div>
                   </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <Button 
-                      size="sm" 
-                      onClick={() => abrirCompose(contacto)}
-                    >
+                  <div className="flex shrink-0 items-center justify-end gap-2 sm:pl-2">
+                    <Button size="sm" onClick={() => abrirCompose(contacto)}>
                       <Send className="mr-2 h-4 w-4" />
                       Enviar
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
+                        <Button variant="outline" size="icon" className="h-9 w-9" aria-label="Más opciones">
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => setContactoEditando(contacto)}
+                        >
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Editar nombre
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => abrirCompose(contacto)}>
                           <Send className="mr-2 h-4 w-4" />
-                          Enviar Mensaje
+                          Enviar mensaje
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => abrirHistorial(contacto)}>
                           <History className="mr-2 h-4 w-4" />
-                          Ver Historial
+                          Ver historial
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </div>
-
-      {/* Estadísticas */}
-      {contactos.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Estadísticas</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-primary">{contactos.length}</div>
-                <div className="text-sm text-gray-500">Total Contactos</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">
-                  {contactos.filter(c => c.vecesUsado > 1).length}
-                </div>
-                <div className="text-sm text-gray-500">Contactos Activos</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-orange-600">
-                  {contactos.reduce((sum, c) => sum + c.vecesUsado, 0)}
-                </div>
-                <div className="text-sm text-gray-500">Mensajes Enviados</div>
-              </div>
-            </div>
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       )}
@@ -398,6 +423,17 @@ export function ContactosPageComponent() {
               creditos: 0,
             }}
             onContactoAgregado={handleContactoAgregado}
+          />
+
+          <EditarContactoNombreDialog
+            open={contactoEditando !== null}
+            onOpenChange={(open) => {
+              if (!open) setContactoEditando(null)
+            }}
+            contacto={contactoEditando}
+            onActualizado={() => {
+              void cargarContactos()
+            }}
           />
         </>
       )}

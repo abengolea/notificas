@@ -186,6 +186,34 @@ export default function ReaderPage() {
     };
   }, [params.id, trackingToken]);
 
+  useEffect(() => {
+    if (!params.id || !trackingToken || mail?.tracking?.readConfirmed) return;
+    const id = params.id as string;
+    const k = trackingToken;
+    const t = window.setInterval(() => {
+      fetch(`/api/mail/for-reader?id=${encodeURIComponent(id)}&k=${encodeURIComponent(k)}`)
+        .then(async (res) => {
+          if (!res.ok) return;
+          const payload = await res.json();
+          if (payload.mail?.tracking?.readConfirmed) {
+            setMail(payload.mail as MailData);
+          }
+        })
+        .catch(() => {});
+    }, 6000);
+    return () => window.clearInterval(t);
+  }, [params.id, trackingToken, mail?.tracking?.readConfirmed]);
+
+  useEffect(() => {
+    if (!params.id || !trackingToken || !mail?.tracking?.readConfirmed) return;
+    const id = params.id as string;
+    fetch('/api/campaigns/sync-read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mailId: id, k: trackingToken }),
+    }).catch(() => {});
+  }, [params.id, trackingToken, mail?.tracking?.readConfirmed]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">

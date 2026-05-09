@@ -44,9 +44,9 @@ export type AdminPanelConfig = { email: string; password: string; secret: string
 
 /** Credenciales del panel + secreto para firmar cookies (solo servidor). */
 export function getAdminPanelConfig(): AdminPanelConfig | null {
-  const email = process.env.ADMIN_PANEL_EMAIL?.trim();
-  const password = process.env.ADMIN_PANEL_PASSWORD;
-  const secret = process.env.ADMIN_SESSION_SECRET;
+  const email = process.env.ADMIN_PANEL_EMAIL?.trim().toLowerCase();
+  const password = process.env.ADMIN_PANEL_PASSWORD?.trim();
+  const secret = process.env.ADMIN_SESSION_SECRET?.trim();
   if (!email || !password || !secret) return null;
   return { email, password, secret };
 }

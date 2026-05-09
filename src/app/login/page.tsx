@@ -1,22 +1,22 @@
+"use client";
 
-"use client"
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Suspense, useState } from "react";
+import { useFirebaseAuth } from "@/hooks/useFirebaseAuth";
+import { Mail, KeyRound, Loader2, Eye, EyeOff } from "lucide-react";
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { useState } from 'react';
-import { useFirebaseAuth } from '@/hooks/useFirebaseAuth';
-import { Mail, KeyRound, Loader2, Eye, EyeOff } from 'lucide-react';
-
-import { Logo } from '@/components/logo';
-import { ThemeToggle } from '@/components/theme-toggle';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Logo } from "@/components/logo";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { z } from "zod";
+import { safeNextPath } from "@/lib/safe-next-path";
+import { resolvePostLoginHref } from "@/lib/resolve-post-login-href";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Por favor, introduce un correo electrónico válido." }),
@@ -25,8 +25,13 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawNext = searchParams.get("next");
+  const nextHref = safeNextPath(rawNext) ?? "/dashboard";
+  const defaultConsumerEntry = rawNext === null || rawNext === "";
+
   const { signIn, signInWithGoogle, loading, error } = useFirebaseAuth();
   const [showPassword, setShowPassword] = useState(false);
 
@@ -40,18 +45,21 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginFormValues) => {
     try {
-      await signIn(data.email, data.password);
-      router.push('/dashboard');
-    } catch (error) {
-      console.error("Error al iniciar sesión:", error);
-      // El error ya está siendo manejado por el hook useFirebaseAuth
+      const user = await signIn(data.email.trim(), data.password);
+      if (!user) return;
+      const dest = await resolvePostLoginHref(user, { requested: nextHref, defaultConsumerEntry });
+      router.push(dest);
+    } catch (err) {
+      console.error("Error al iniciar sesión:", err);
     }
   };
 
   const onGoogleSignIn = async () => {
     try {
       const user = await signInWithGoogle();
-      if (user) router.push('/dashboard');
+      if (!user) return;
+      const dest = await resolvePostLoginHref(user, { requested: nextHref, defaultConsumerEntry });
+      router.push(dest);
     } catch {
       // Errores ya manejados en useFirebaseAuth
     }
@@ -65,7 +73,7 @@ export default function LoginPage() {
       <Card className="mx-auto w-full max-w-md shadow-xl">
         <CardHeader className="text-center">
           <div className="mb-4 flex justify-center">
-             <Logo className="h-16 w-16" />
+            <Logo className="h-16 w-16" />
           </div>
           <CardTitle className="text-3xl font-bold">Notificas</CardTitle>
           <CardDescription>Accede de forma segura a tus mensajes certificados</CardDescription>
@@ -97,16 +105,16 @@ export default function LoginPage() {
                     <div className="flex items-center">
                       <FormLabel>Contraseña</FormLabel>
                       <Link href="#" className="ml-auto inline-block text-sm underline" prefetch={false}>
-                          ¿Olvidaste tu contraseña?
+                        ¿Olvidaste tu contraseña?
                       </Link>
                     </div>
                     <div className="relative">
                       <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                       <FormControl>
-                        <Input 
-                          type={showPassword ? "text" : "password"} 
-                          {...field} 
-                          className="pl-10 pr-10" 
+                        <Input
+                          type={showPassword ? "text" : "password"}
+                          {...field}
+                          className="pl-10 pr-10"
                         />
                       </FormControl>
                       <button
@@ -115,11 +123,7 @@ export default function LoginPage() {
                         aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                       >
-                        {showPassword ? (
-                          <EyeOff className="h-5 w-5" />
-                        ) : (
-                          <Eye className="h-5 w-5" />
-                        )}
+                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                       </button>
                     </div>
                     <FormMessage />
@@ -127,9 +131,7 @@ export default function LoginPage() {
                 )}
               />
               {error && (
-                <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                  {error}
-                </div>
+                <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
               )}
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? (
@@ -182,7 +184,7 @@ export default function LoginPage() {
             Continuar con Google
           </Button>
           <div className="mt-6 text-center text-sm">
-            ¿No tienes una cuenta?{' '}
+            ¿No tienes una cuenta?{" "}
             <Link href="/signup" className="underline" prefetch={false}>
               Regístrate
             </Link>
@@ -190,5 +192,28 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function LoginFallback() {
+  return (
+    <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
+      <div className="absolute right-4 top-4 md:right-8 md:top-8">
+        <ThemeToggle />
+      </div>
+      <Card className="mx-auto w-full max-w-md shadow-xl">
+        <CardContent className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-label="Cargando" />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginForm />
+    </Suspense>
   );
 }

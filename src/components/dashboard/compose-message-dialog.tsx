@@ -102,6 +102,13 @@ function buildComposeMailHtml(params: {
       : "";
 
   const year = new Date().getFullYear();
+  const hasInlineBody = !!(content?.trim());
+  const leadSecondParagraph = hasInlineBody
+    ? `Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>${escapeHtmlText(sender)}</strong>.
+                Puede leer el texto en este mismo correo; para la <strong>constancia fehaciente de lectura</strong> en la plataforma, use el enlace siguiente.`
+    : `Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>${escapeHtmlText(sender)}</strong>.
+                <strong>Le recomendamos abrir el mensaje</strong> mediante el enlace para conocer el contenido y dejar constancia certificada de lectura.`;
+
   return `<!doctype html>
 <html lang="es">
 <head>
@@ -146,8 +153,7 @@ function buildComposeMailHtml(params: {
             <td class="content">
               <p class="lead">Estimado/a ${escapeHtmlText(recipientName)},</p>
               <p class="lead">
-                Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>${escapeHtmlText(sender)}</strong>. 
-                <strong>Recomendamos leer el mensaje</strong> para evitar quedar notificado sin conocer su contenido.
+                ${leadSecondParagraph}
               </p>
               
               ${contentSection}

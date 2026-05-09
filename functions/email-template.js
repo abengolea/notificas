@@ -55,8 +55,8 @@ function generateEmailHtml(params) {
             <td class="content">
               <p class="lead">Estimado/a {{recipientName}},</p>
               <p class="lead">
-                Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>{{senderName}}</strong>. 
-                <strong>Recomendamos leer el mensaje</strong> para evitar quedar notificado sin conocer su contenido.
+                Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>{{senderName}}</strong>.
+                <strong>Le recomendamos abrir el mensaje</strong> mediante el enlace para conocer el contenido y dejar constancia certificada de lectura.
               </p>
               <p style="margin: 20px 0;">
                 <a class="btn" href="{{readUrl}}" target="_blank" rel="noopener">Acceder a la notificación</a>
@@ -149,8 +149,8 @@ function generateEmailWithTracking(params) {
             <td class="content">
               <p class="lead">Estimado/a {{recipientName}},</p>
               <p class="lead">
-                Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>{{senderName}}</strong>. 
-                <strong>Recomendamos leer el mensaje</strong> para evitar quedar notificado sin conocer su contenido.
+                Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>{{senderName}}</strong>.
+                <strong>Le recomendamos abrir el mensaje</strong> mediante el enlace para conocer el contenido y dejar constancia certificada de lectura.
               </p>
               <p style="margin: 20px 0;">
                 <a class="btn" href="{{readUrl}}" target="_blank" rel="noopener">Acceder a la notificación</a>

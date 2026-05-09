@@ -1,6 +1,9 @@
 import { FieldValue, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { getPaymentStatus } from '@/lib/mercadopago';
+import {
+  getPaymentStatus,
+  parseHubTransactionIdFromExternalReference,
+} from '@/lib/mercadopago';
 
 /** Respuesta mínima de GET /v1/payments/:id que usamos para conciliar */
 export type MpPaymentResource = {
@@ -61,6 +64,19 @@ export async function findPendingTransactionForPayment(
 
   const ref = payment.external_reference;
   if (!ref || typeof ref !== 'string') return null;
+
+  const hubTxnId = parseHubTransactionIdFromExternalReference(ref);
+  if (hubTxnId) {
+    const txnSnap = await db.collection('transactions').doc(hubTxnId).get();
+    if (
+      txnSnap.exists &&
+      (txnSnap.data() as { status?: string } | undefined)?.status === 'pending'
+    ) {
+      return txnSnap as QueryDocumentSnapshot;
+    }
+    return null;
+  }
+
   const parsed = parseExternalReference(ref);
   if (!parsed) return null;
 
@@ -131,13 +147,17 @@ async function settleApprovedFromMpMetadata(opts: {
     typeof creditsRaw === 'number' && Number.isFinite(creditsRaw)
       ? Math.floor(creditsRaw)
       : NaN;
-  let monto = typeof payment.transaction_amount === 'number' ? payment.transaction_amount : 0;
+  const paidAmount =
+    typeof payment.transaction_amount === 'number' && Number.isFinite(payment.transaction_amount)
+      ? payment.transaction_amount
+      : 0;
+  let monto = paidAmount;
   let planName = `Plan ${metaPlanId}`;
 
   if (planSnap.exists) {
     const p = planSnap.data()!;
     if (typeof p.creditos === 'number') addCredits = p.creditos;
-    if (typeof p.precio === 'number') monto = p.precio;
+    if (!monto && typeof p.precio === 'number') monto = p.precio;
     if (typeof p.nombre === 'string') planName = p.nombre;
   }
 

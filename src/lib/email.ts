@@ -53,7 +53,9 @@ export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend
 
   // Agregar campos para el template personalizado
   if (recipientName) payload.recipientName = recipientName;
-  const recNorm = normalizedEmailIdentity(recipientEmail);
+  // recipientEmail siempre se guarda — es el campo que usa el inbox para query ==.
+  // Si no se pasa explícitamente, se deriva del primer email del campo `to`.
+  const recNorm = normalizedEmailIdentity(recipientEmail) ?? payload.to[0] ?? '';
   if (recNorm) payload.recipientEmail = recNorm;
   if (recipientPhone) payload.recipientPhone = recipientPhone;
   const sendNorm = normalizedEmailIdentity(senderName);

@@ -3,6 +3,7 @@ import { adminDb } from '@/lib/firebase-admin';
 import { verifyAuthToken } from '@/lib/auth-helper';
 import { computeContentHash } from '@/lib/certification';
 import { certificarEnvio } from '@/lib/certification-polygon';
+import { getFirebaseSendEmailUrl } from '@/lib/mail-defaults';
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,8 +26,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No autorizado para enviar este mensaje' }, { status: 403 });
     }
 
-    // Llamar a la función de Firebase
-    const functionUrl = 'https://sendemail-ju7n3yysfq-uc.a.run.app';
+    const functionUrl = getFirebaseSendEmailUrl();
     const response = await fetch(functionUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

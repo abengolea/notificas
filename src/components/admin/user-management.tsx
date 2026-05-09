@@ -38,42 +38,80 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { AdminUser } from "@/lib/types"
-import { MoreHorizontal, ToggleLeft, Gift, XCircle, CheckCircle } from "lucide-react"
+import { MoreHorizontal, ToggleLeft, Gift, XCircle, CheckCircle, Loader2 } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { useToast } from "@/hooks/use-toast"
 
-interface UserManagementProps {
-  users: AdminUser[]
-}
-
-export default function UserManagement({ users: initialUsers }: UserManagementProps) {
-    const [users, setUsers] = React.useState<AdminUser[]>(initialUsers);
+export default function UserManagement() {
+    const [users, setUsers] = React.useState<AdminUser[]>([]);
+    const [loading, setLoading] = React.useState(true);
+    const [listError, setListError] = React.useState<string | null>(null);
     const [selectedUser, setSelectedUser] = React.useState<AdminUser | null>(null);
     const [isGiftDialogOpen, setGiftDialogOpen] = React.useState(false);
     const [giftAmount, setGiftAmount] = React.useState(0);
+    const [actionBusyId, setActionBusyId] = React.useState<string | null>(null);
     const { toast } = useToast();
 
-    const handleToggleSuspend = (userId: string) => {
-        setUsers(prevUsers => 
-            prevUsers.map(user => {
-                if (user.id === userId) {
-                    const newStatus = user.estado === 'activo' ? 'suspendido' : 'activo';
-                    
-                    // Use useEffect to show toast after state update
-                    setTimeout(() => {
-                        toast({
-                            title: `Usuario ${newStatus === 'activo' ? 'Reanudado' : 'Suspendido'}`,
-                            description: `El usuario ${user.nombre} ha sido ${newStatus === 'activo' ? 'reanudado' : 'suspendido'}.`,
-                        });
-                        console.log(`Simulando envío de email a ${user.email}: Su cuenta ha sido ${newStatus}.`);
-                    }, 0);
+    const loadUsers = React.useCallback(async () => {
+        setListError(null);
+        try {
+            const res = await fetch("/api/admin/users", { credentials: "include" });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setListError(typeof data.error === "string" ? data.error : "No se pudo cargar la lista");
+                setUsers([]);
+                return;
+            }
+            const raw = Array.isArray(data.users) ? data.users : [];
+            const mapped: AdminUser[] = raw.map((u: Record<string, unknown>) => ({
+                id: String(u.id ?? ""),
+                nombre: String(u.nombre ?? ""),
+                email: String(u.email ?? ""),
+                estado: u.estado === "suspendido" ? "suspendido" : "activo",
+                enviosDisponibles: typeof u.enviosDisponibles === "number" ? u.enviosDisponibles : 0,
+                fechaRegistro: new Date(typeof u.fechaRegistro === "string" ? u.fechaRegistro : 0),
+            }));
+            setUsers(mapped);
+        } catch {
+            setListError("Error de red al cargar usuarios");
+            setUsers([]);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
 
-                    return { ...user, estado: newStatus };
-                }
-                return user;
-            })
-        );
+    React.useEffect(() => {
+        void loadUsers();
+    }, [loadUsers]);
+
+    const handleToggleSuspend = async (user: AdminUser) => {
+        const newStatus = user.estado === "activo" ? "suspendido" : "activo";
+        setActionBusyId(user.id);
+        try {
+            const res = await fetch("/api/admin/users", {
+                method: "PATCH",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ uid: user.id, estado: newStatus }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                toast({
+                    title: "No se pudo actualizar",
+                    description: typeof data.error === "string" ? data.error : "Intentá de nuevo",
+                    variant: "destructive",
+                });
+                return;
+            }
+            toast({
+                title: newStatus === "activo" ? "Usuario reanudado" : "Usuario suspendido",
+                description: `${user.nombre}: cuenta ${newStatus}.`,
+            });
+            await loadUsers();
+        } finally {
+            setActionBusyId(null);
+        }
     };
 
     const handleOpenGiftDialog = (user: AdminUser) => {
@@ -82,7 +120,7 @@ export default function UserManagement({ users: initialUsers }: UserManagementPr
         setGiftDialogOpen(true);
     };
 
-    const handleConfirmGift = () => {
+    const handleConfirmGift = async () => {
         if (!selectedUser || giftAmount <= 0) {
             toast({
                 title: 'Error',
@@ -92,25 +130,33 @@ export default function UserManagement({ users: initialUsers }: UserManagementPr
             return;
         }
 
-        setUsers(prevUsers => 
-            prevUsers.map(user => 
-                user.id === selectedUser.id 
-                    ? { ...user, enviosDisponibles: user.enviosDisponibles + giftAmount }
-                    : user
-            )
-        );
-
-        toast({
-            title: '¡Envíos Regalados!',
-            description: `Se han añadido ${giftAmount} envíos a ${selectedUser.nombre}.`,
-        });
-
-        // SIMULACIÓN: Aquí se llamaría a la función del backend para enviar el email.
-        console.log(`Simulando envío de email a ${selectedUser.email}: Ha recibido ${giftAmount} envíos de regalo.`);
-
-
-        setGiftDialogOpen(false);
-        setSelectedUser(null);
+        setActionBusyId(selectedUser.id);
+        try {
+            const res = await fetch("/api/admin/users", {
+                method: "PATCH",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ uid: selectedUser.id, addCreditos: giftAmount }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                toast({
+                    title: "No se pudo regalar envíos",
+                    description: typeof data.error === "string" ? data.error : "Intentá de nuevo",
+                    variant: "destructive",
+                });
+                return;
+            }
+            toast({
+                title: '¡Envíos regalados!',
+                description: `Se sumaron ${giftAmount} envíos (créditos) a ${selectedUser.nombre}.`,
+            });
+            setGiftDialogOpen(false);
+            setSelectedUser(null);
+            await loadUsers();
+        } finally {
+            setActionBusyId(null);
+        }
     };
 
 
@@ -120,10 +166,27 @@ export default function UserManagement({ users: initialUsers }: UserManagementPr
       <CardHeader>
         <CardTitle>Usuarios</CardTitle>
         <CardDescription>
-          Gestiona los usuarios de la plataforma.
+          Usuarios con perfil en Firestore (colección <code className="text-xs">users</code>). Quienes solo existan en Auth sin documento no aparecen.
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Cargando usuarios…
+          </div>
+        ) : listError ? (
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+            {listError}
+            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => { setLoading(true); void loadUsers(); }}>
+              Reintentar
+            </Button>
+          </div>
+        ) : users.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            No hay documentos en <code className="text-xs">users</code>. Los registros por signup crean el perfil aquí.
+          </p>
+        ) : (
         <Table>
           <TableHeader>
             <TableRow>
@@ -167,17 +230,24 @@ export default function UserManagement({ users: initialUsers }: UserManagementPr
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Acciones</DropdownMenuLabel>
-                      <DropdownMenuItem onClick={() => handleOpenGiftDialog(user)}>
+                      <DropdownMenuItem
+                        disabled={actionBusyId === user.id}
+                        onClick={() => handleOpenGiftDialog(user)}>
                         <Gift className="mr-2 h-4 w-4" />
                         Regalar Envíos
                       </DropdownMenuItem>
                       {user.estado === 'activo' ? (
-                         <DropdownMenuItem className="text-destructive" onClick={() => handleToggleSuspend(user.id)}>
+                         <DropdownMenuItem
+                           className="text-destructive"
+                           disabled={actionBusyId === user.id}
+                           onClick={() => void handleToggleSuspend(user)}>
                             <XCircle className="mr-2 h-4 w-4" />
                             Suspender
                          </DropdownMenuItem>
                       ) : (
-                        <DropdownMenuItem onClick={() => handleToggleSuspend(user.id)}>
+                        <DropdownMenuItem
+                          disabled={actionBusyId === user.id}
+                          onClick={() => void handleToggleSuspend(user)}>
                             <ToggleLeft className="mr-2 h-4 w-4" />
                             Reanudar
                         </DropdownMenuItem>
@@ -189,6 +259,7 @@ export default function UserManagement({ users: initialUsers }: UserManagementPr
             ))}
           </TableBody>
         </Table>
+        )}
       </CardContent>
     </Card>
 
@@ -214,7 +285,16 @@ export default function UserManagement({ users: initialUsers }: UserManagementPr
             </div>
             <DialogFooter>
                 <Button type="button" variant="ghost" onClick={() => setGiftDialogOpen(false)}>Cancelar</Button>
-                <Button type="button" onClick={handleConfirmGift}>Confirmar Regalo</Button>
+                <Button type="button" disabled={actionBusyId === selectedUser?.id} onClick={() => void handleConfirmGift()}>
+                  {actionBusyId === selectedUser?.id ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Guardando…
+                    </>
+                  ) : (
+                    "Confirmar regalo"
+                  )}
+                </Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>

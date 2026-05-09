@@ -1,9 +1,8 @@
 "use client";
 
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, X, Eye, Download } from 'lucide-react';
+import { Upload, FileText, X, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -31,29 +30,27 @@ export function PDFUpload({ onFileSelect, maxFiles = 3, maxSizeMB = 10, accepted
 
   const maxSizeBytes = maxSizeMB * 1024 * 1024;
 
-  const validateFile = (file: File): string | null => {
-    if (!acceptedTypes.includes(file.type)) {
-      return 'Tipo de archivo no permitido. Formatos aceptados: PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, GIF';
-    }
-    if (file.size > maxSizeBytes) {
-      return `El archivo es muy grande. Máximo ${maxSizeMB}MB`;
-    }
-    if (selectedFiles.length >= maxFiles) {
-      return `Máximo ${maxFiles} archivos permitidos`;
-    }
-    return null;
-  };
-
   const handleFileSelect = (files: FileList | null) => {
     if (!files) return;
 
     const newFiles: PDFFile[] = [];
     const errors: string[] = [];
+    let runningCount = selectedFiles.length;
 
     Array.from(files).forEach((file) => {
-      const error = validateFile(file);
-      if (error) {
-        errors.push(`${file.name}: ${error}`);
+      if (runningCount >= maxFiles) {
+        errors.push(`${file.name}: Máximo ${maxFiles} archivos permitidos`);
+        return;
+      }
+      const typeOk = acceptedTypes.includes(file.type);
+      if (!typeOk) {
+        errors.push(
+          `${file.name}: tipo no permitido. Formatos aceptados: PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, GIF`
+        );
+        return;
+      }
+      if (file.size > maxSizeBytes) {
+        errors.push(`${file.name}: el archivo es muy grande (máx. ${maxSizeMB} MB)`);
         return;
       }
 
@@ -64,6 +61,7 @@ export function PDFUpload({ onFileSelect, maxFiles = 3, maxSizeMB = 10, accepted
       };
 
       newFiles.push(pdfFile);
+      runningCount += 1;
     });
 
     if (errors.length > 0) {

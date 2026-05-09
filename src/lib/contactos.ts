@@ -8,8 +8,7 @@ import {
   getDocs, 
   doc, 
   updateDoc, 
-  serverTimestamp,
-  getDoc
+  serverTimestamp
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Contacto } from './types';
@@ -131,4 +130,17 @@ export async function buscarContactos(
     console.error('❌ Error al buscar contactos:', error);
     return [];
   }
+}
+
+/**
+ * Actualiza el nombre mostrado de un contacto (el dueño ya está validado por reglas Firestore).
+ */
+export async function actualizarNombreContacto(contactoId: string, nombre: string): Promise<void> {
+  const trimmed = nombre.trim();
+  if (trimmed.length < 2) {
+    throw new Error('El nombre debe tener al menos 2 caracteres.');
+  }
+  await updateDoc(doc(db, 'contactos', contactoId), {
+    nombre: trimmed,
+  });
 }

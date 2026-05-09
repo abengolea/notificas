@@ -1,11 +1,10 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Logo } from '@/components/logo';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { CheckCircle, ShieldCheck, Cpu, ArrowRight, Mail, Building, Send, Phone, Search } from 'lucide-react';
-import { ThemeToggle } from '@/components/theme-toggle';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CheckCircle, ShieldCheck, Cpu, ArrowRight, Mail, Send, Phone, Search } from 'lucide-react';
+import { FaqSection } from '@/components/faq-section';
+import { FooterContactForm } from '@/components/footer-contact-form';
+import { LandingHeader } from '@/components/landing-header';
 
 const features = [
   {
@@ -61,43 +60,24 @@ const useCases = [
 export default function LandingPage() {
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <Logo className="h-10 w-auto" />
-            <span className="font-bold text-xl">Notificas</span>
-          </Link>
-          <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
-            <Link href="#ventajas" className="text-muted-foreground transition-colors hover:text-foreground">Ventajas</Link>
-            <Link href="/verify" className="text-muted-foreground transition-colors hover:text-foreground">Verificar certificado</Link>
-            <Link href="#faq" className="text-muted-foreground transition-colors hover:text-foreground">Preguntas frecuentes</Link>
-          </nav>
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <Button variant="outline" asChild>
-              <Link href="/login">Iniciar sesión</Link>
-            </Button>
-            <Button asChild>
-              <Link href="/signup">Registrate</Link>
-            </Button>
-          </div>
-        </div>
-      </header>
+      <LandingHeader />
 
       <main className="flex-1">
-        <section className="py-20 md:py-32 bg-muted/20">
+        <section className="bg-muted/20 px-4 py-14 sm:py-20 md:py-32">
           <div className="container text-center">
-            <h1 className="text-4xl md:text-6xl font-bold tracking-tighter mb-6">Comunicaciones fehacientes, con respaldo blockchain.</h1>
-            <p className="max-w-3xl mx-auto text-lg md:text-xl text-muted-foreground mb-8">
+            <h1 className="mb-6 text-balance text-3xl font-bold tracking-tighter sm:text-4xl md:text-6xl">
+              Comunicaciones fehacientes, con respaldo blockchain.
+            </h1>
+            <p className="mx-auto mb-8 max-w-3xl text-pretty text-base text-muted-foreground sm:text-lg md:text-xl">
               El contenido, envío, recepción y lectura de la comunicación quedará registrado de forma inmutable en blockchain.
             </p>
-            <Button size="lg" asChild>
+            <Button size="lg" className="w-full sm:w-auto" asChild>
               <Link href="/signup">Empezá Ahora</Link>
             </Button>
           </div>
         </section>
 
-        <section id="blockchain" className="py-20 md:py-28">
+        <section id="blockchain" className="px-4 py-16 sm:py-20 md:py-28">
             <div className="container flex justify-center">
                 <div className="max-w-3xl text-center md:text-left">
                     <h2 className="text-3xl md:text-4xl font-bold mb-4">¿QUÉ ES LA TECNOLOGÍA BLOCKCHAIN?</h2>
@@ -112,7 +92,7 @@ export default function LandingPage() {
             </div>
         </section>
         
-        <section id="ventajas" className="py-20 md:py-28 bg-muted/20">
+        <section id="ventajas" className="bg-muted/20 px-4 py-16 sm:py-20 md:py-28">
           <div className="container">
             <div className="text-center mb-12">
               <h2 className="text-3xl md:text-4xl font-bold">CONOCÉ LAS VENTAJAS DE NUESTRO SERVICIO</h2>
@@ -135,7 +115,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="casos-de-uso" className="py-20 md:py-28">
+        <section id="casos-de-uso" className="px-4 py-16 sm:py-20 md:py-28">
             <div className="container flex justify-center">
                 <div className="max-w-3xl">
                     <h2 className="text-3xl md:text-4xl font-bold mb-6 text-center md:text-left">CASOS DE USO</h2>
@@ -169,18 +149,11 @@ export default function LandingPage() {
             </div>
         </section>
 
-        <section id="faq" className="py-20 md:py-28 bg-muted/20">
-            <div className="container text-center">
-                <h2 className="text-3xl md:text-4xl font-bold mb-4">Resolvé tus dudas leyendo nuestras preguntas frecuentes</h2>
-                <Button asChild>
-                  <Link href="#faq">Preguntas frecuentes</Link>
-                </Button>
-            </div>
-        </section>
+        <FaqSection />
       </main>
 
       <footer className="bg-foreground text-background">
-        <div className="container py-12 grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="container grid grid-cols-1 gap-8 px-4 py-10 md:grid-cols-3 md:py-12 md:px-6">
             <div>
                 <h3 className="font-bold text-lg mb-4">MegaOne</h3>
                 <p className="text-sm text-background/80">Colon 12, primer piso - San Nicolás de los Arroyos</p>
@@ -194,23 +167,7 @@ export default function LandingPage() {
             </div>
             <div>
                 <h3 className="font-bold text-lg mb-4">Contáctenos</h3>
-                 <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="footer-nombre" className="sr-only">Nombre</Label>
-                      <Input id="footer-nombre" placeholder="Nombre" aria-label="Nombre" className="bg-background/20 border-border/50 text-foreground" />
-                    </div>
-                    <div>
-                      <Label htmlFor="footer-compania" className="sr-only">Compañía</Label>
-                      <Input id="footer-compania" placeholder="Compañía" aria-label="Compañía" className="bg-background/20 border-border/50 text-foreground" />
-                    </div>
-                    <div>
-                      <Label htmlFor="footer-email" className="sr-only">Email</Label>
-                      <Input id="footer-email" type="email" placeholder="Email" aria-label="Correo electrónico" className="bg-background/20 border-border/50 text-foreground" />
-                    </div>
-                    <Button asChild className="w-full">
-                      <a href="mailto:contacto@notificas.com">Enviar</a>
-                    </Button>
-                </div>
+                <FooterContactForm />
             </div>
              <div>
                 <h3 className="font-bold text-lg mb-4">Contacto Directo</h3>
@@ -227,9 +184,17 @@ export default function LandingPage() {
             </div>
         </div>
         <div className="border-t border-background/20">
-            <div className="container py-4 text-center text-sm text-background/80">
-                <p>Copyright © 2019-2025 | Desarrollado por Alberione Soluciones Integrales</p>
-                <Link href="/admin" className="text-xs hover:underline mt-2 inline-block">Admin Panel</Link>
+            <div className="container px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-center text-sm text-background/80 space-y-2 md:px-6">
+                <p>Copyright © 2019-2025 | Desarrollado por Notificas SRL</p>
+                <p>
+                  <Link
+                    href="/login?next=/empresa"
+                    className="text-[10px] leading-tight text-background/45 hover:text-background/65 transition-colors"
+                  >
+                    Acceso empresas
+                  </Link>
+                </p>
+                <Link href="/admin" className="text-xs hover:underline inline-block">Admin Panel</Link>
             </div>
         </div>
       </footer>

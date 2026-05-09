@@ -1,11 +1,5 @@
-
-import PlanManagement from "@/components/admin/plan-management";
-import { mockPlanes } from "@/lib/mock-data";
+import { AdminPlansTabs } from "@/components/admin/admin-plans-tabs";
 
 export default function PlansPage() {
-    return (
-        <div className="grid gap-4">
-            <PlanManagement planes={mockPlanes} />
-        </div>
-    );
+  return <AdminPlansTabs />;
 }
