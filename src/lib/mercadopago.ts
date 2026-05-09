@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 
 /** Identificador Notificas Hub para esta aplicación (“Notificas Pagos”); solo strings ASCII en MP. */
@@ -48,16 +49,21 @@ function mergeNotificationUrlQuery(baseUrl: string, queryFragment: string | unde
   return `${baseUrl}${sep}${q}`;
 }
 
-// Configuración de Mercado Pago
-const client = new MercadoPagoConfig({
-  accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN!,
-  options: {
-    timeout: 5000,
-    idempotencyKey: 'abc'
+/** Cliente por request: token en runtime (App Hosting) y clave de idempotencia única (MP rechaza duplicados). */
+function createPreferenceClient(): Preference {
+  const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
+  if (!accessToken) {
+    throw new Error('MERCADOPAGO_ACCESS_TOKEN ausente');
   }
-});
-
-export const preference = new Preference(client);
+  const client = new MercadoPagoConfig({
+    accessToken,
+    options: {
+      timeout: 15000,
+      idempotencyKey: randomUUID(),
+    },
+  });
+  return new Preference(client);
+}
 
 // Tipos para la integración
 export interface MercadoPagoPreference {
@@ -217,6 +223,7 @@ export async function createPaymentPreference(data: CreatePreferenceData): Promi
       }
     };
 
+    const preference = createPreferenceClient();
     const response = await preference.create({ body: preferenceData });
     
     return {
@@ -225,8 +232,12 @@ export async function createPaymentPreference(data: CreatePreferenceData): Promi
       sandbox_init_point: response.sandbox_init_point!
     };
   } catch (error) {
-    console.error('Error creating MercadoPago preference:', error);
-    throw new Error('Error al crear la preferencia de pago');
+    const detail =
+      error && typeof error === 'object' && 'message' in error
+        ? String((error as { message: unknown }).message)
+        : String(error);
+    console.error('Error creating MercadoPago preference:', detail, error);
+    throw new Error(`Error al crear la preferencia de pago: ${detail}`);
   }
 }
 

@@ -173,7 +173,8 @@ export async function POST(request: NextRequest) {
       finalPrice,
     });
   } catch (error) {
-    console.error('Error creating payment preference:', error);
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('[mercadopago/preference]', msg, error);
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
   }
 }
