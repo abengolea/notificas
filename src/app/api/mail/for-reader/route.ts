@@ -1,5 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { DocumentReference, DocumentData } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
+
+const READER_OPEN_DEDUPE_MS = 30_000; // 30 s — evita duplicados por polling o recarga rápida
+
+async function recordReaderOpen(
+  docRef: DocumentReference,
+  data: DocumentData,
+  request: NextRequest
+): Promise<void> {
+  const clientIP =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    "Unknown";
+  const userAgent = request.headers.get("user-agent") || "Unknown";
+
+  const existing: any[] = data.tracking?.movements || [];
+  const now = Date.now();
+  const recent = existing.find(
+    (m) =>
+      m.type === "reader_magic_open" &&
+      m.clientIP === clientIP &&
+      now - new Date(m.timestamp).getTime() < READER_OPEN_DEDUPE_MS
+  );
+  if (recent) return;
+
+  const movement = {
+    id: crypto.randomUUID(),
+    type: "reader_magic_open",
+    description: "Apertura del mensaje en el reader vía enlace con magic link",
+    source: "email",
+    timestamp: new Date().toISOString(),
+    userAgent,
+    clientIP,
+    browser: userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)\/(\d+)/)?.[0] ?? "Unknown",
+    recipientEmail: data.recipientEmail || "Unknown",
+  };
+
+  await docRef.update({
+    "tracking.movements": FieldValue.arrayUnion(movement),
+  });
+}
 
 /**
  * Permite al lector público cargar un mensaje sin Firebase Auth en el cliente.
@@ -34,6 +76,9 @@ export async function GET(request: NextRequest) {
     if (!storedToken || storedToken !== k) {
       return NextResponse.json({ error: "Enlace inválido o caducado" }, { status: 401 });
     }
+
+    // Registrar apertura del reader de forma no bloqueante (fire-and-forget)
+    recordReaderOpen(snap.ref, data, request).catch(() => {});
 
     return NextResponse.json({ mail: data });
   } catch (e: unknown) {

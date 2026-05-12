@@ -98,3 +98,7 @@ env:
     availability:
       - BUILD
       - RUNTIME
+  - variable: WHATSAPP_VERIFY_TOKEN
+    secret: WHATSAPP_VERIFY_TOKEN
+    availability:
+      - RUNTIME

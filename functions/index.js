@@ -16,6 +16,8 @@ const whatsappPhoneNumberId = defineSecret('WHATSAPP_PHONE_NUMBER_ID');
 const smtpPass = defineSecret('SMTP_PASS');
 // Mismo valor que App Hosting POLYGON_CERTIFY_SECRET — protege /api/polygon/certify-event
 const polygonCertifySecret = defineSecret('POLYGON_CERTIFY_SECRET');
+// Token de verificación del webhook de WhatsApp (se define en Meta Developer Portal)
+const whatsappVerifyToken = defineSecret('WHATSAPP_VERIFY_TOKEN');
 // Template aprobado en Meta (requerido para contactar usuarios fuera de ventana 24h)
 const whatsappTemplateName = defineString('WHATSAPP_TEMPLATE_NAME', { default: '' });
 const whatsappTemplateLanguage = defineString('WHATSAPP_TEMPLATE_LANGUAGE', { default: 'es_AR' });
@@ -273,11 +275,11 @@ function injectTrackingIntoHtml(html, docId, token) {
       return;
     }
 
-    // El botón "Acceder a la notificación" va DIRECTO al reader (sin linkRedirect) para máxima compatibilidad
-    // con clientes de email que pueden bloquear o alterar URLs largas/encoded
+    // El botón "Acceder a la notificación" pasa por linkRedirect (sin `u`) para registrar link_clicked
     const isReaderUrl = cleanHref.includes('/reader/') && cleanHref.includes(`?k=`);
     if (isReaderUrl) {
-      $(el).attr('href', readerUrl);
+      const trackUrl = `${LINK_REDIRECT_URL}?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(token)}`;
+      $(el).attr('href', trackUrl);
       processedCount++;
       return;
     }
@@ -643,6 +645,30 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
             );
             if (resultWA && typeof resultWA === 'string') {
               whatsappId = resultWA;
+              // Guardar wamid + movimiento (fire-and-forget para no bloquear la respuesta)
+              const waMovement = {
+                id: crypto.randomUUID(),
+                type: 'whatsapp_sent',
+                description: `Notificación enviada por WhatsApp a +${formatPhoneForWhatsApp(recipientPhone) || recipientPhone}`,
+                timestamp: new Date().toISOString(),
+                userAgent: 'Server',
+                clientIP: 'Server',
+                forwardedIPs: [],
+                realIP: 'Server',
+                browser: 'WhatsApp Cloud API',
+                recipientEmail: emailData.recipientEmail || 'Unknown',
+                whatsappMessageId: whatsappId,
+              };
+              docRef.update({
+                'tracking.whatsappMessageId': whatsappId,
+                'tracking.movements': FieldValue.arrayUnion(waMovement),
+              }).catch(e => console.warn('⚠️ Error guardando whatsappMessageId:', e.message));
+              // Índice para lookup rápido desde el webhook de delivery
+              getFirestore().doc(`whatsapp_ids/${whatsappId}`).set({
+                mailDocId: docId,
+                recipientPhone: formatPhoneForWhatsApp(recipientPhone) || recipientPhone,
+                createdAt: FieldValue.serverTimestamp(),
+              }).catch(e => console.warn('⚠️ Error guardando whatsapp_ids:', e.message));
             } else if (resultWA && resultWA.error) {
               const err = resultWA.error;
               // Meta: { error: { message: "..." } }
@@ -792,39 +818,122 @@ exports.trackOpen = onRequest({ region: REGION, secrets: [polygonCertifySecret] 
   }
 });
 
+const KNOWN_SCANNER_PATTERNS = [
+  /barracuda/i,
+  /proofpoint/i,
+  /mimecast/i,
+  /symantec/i,
+  /trend\s*micro/i,
+  /ironport/i,
+  /messagelabs/i,
+  /forcepoint/i,
+  /linkscanner/i,
+  /safebrowsing/i,
+  /googleimageproxy/i,
+  /safelinks\.protection\.outlook/i,
+  /office365/i,
+  /msn\.com.*bot/i,
+  /antivirus/i,
+  /emailchecker/i,
+  /validator/i,
+  /spamhaus/i,
+];
+
+function isKnownScanner(userAgent) {
+  if (!userAgent) return false;
+  return KNOWN_SCANNER_PATTERNS.some((re) => re.test(userAgent));
+}
+
 exports.linkRedirect = onRequest({ region: REGION, secrets: [polygonCertifySecret] }, async (req, res) => {
   try {
     const { msg, u, k, src, r } = req.query;
-    console.log('🔗 linkRedirect called with:', { msg, u, k, src, r: r ? '(set)' : '' });
-    
-    if (!msg || !u || !k) return res.status(400).send('Missing params');
+    console.log('🔗 linkRedirect called with:', { msg, u: u ? '(set)' : '(none)', k: k ? '(set)' : '(none)', src, r: r ? '(set)' : '' });
+
+    if (!msg || !k) return res.status(400).send('Missing params');
+
+    const userAgentForCheck = req.get('User-Agent') || '';
+    if (isKnownScanner(userAgentForCheck)) {
+      console.log('🤖 Scanner de email detectado, redirigiendo sin tracking:', userAgentForCheck.substring(0, 80));
+      const readerFallback = `${APP_HOSTING_URL}/reader/${encodeURIComponent(String(msg))}?k=${encodeURIComponent(String(k))}`;
+      return res.redirect(302, readerFallback);
+    }
+
+    const readerUrl = `${APP_HOSTING_URL}/reader/${encodeURIComponent(String(msg))}?k=${encodeURIComponent(String(k))}`;
+
+    // Sin `u`: click directo en el CTA del correo → redirigir al reader y registrar link_clicked
+    if (!u) {
+      console.log('🔗 Sin parámetro u — click en CTA del correo, redirigiendo al reader');
+      const db = getFirestore();
+      const docRef = db.collection('mail').doc(String(msg));
+      const snap = await docRef.get();
+      if (snap.exists) {
+        const data = snap.data() || {};
+        const token = data?.tracking?.token;
+        if (token && token === String(k)) {
+          const existingMovements = data?.tracking?.movements || [];
+          const clientIP = req.get('X-Forwarded-For')?.split(',')[0]?.trim() || req.get('X-Real-IP') || req.connection.remoteAddress || 'Unknown';
+          const now = Date.now();
+          const recentDuplicate = existingMovements.find(m =>
+            m.type === 'link_clicked' &&
+            !m.description?.includes('http') &&
+            new Date(m.timestamp).getTime() > now - 5000 &&
+            m.clientIP === clientIP
+          );
+          if (!recentDuplicate) {
+            const movement = {
+              id: crypto.randomUUID(),
+              type: 'link_clicked',
+              description: 'Click en botón del correo para acceder a la notificación',
+              source: src || 'email',
+              timestamp: new Date().toISOString(),
+              userAgent: userAgentForCheck,
+              clientIP,
+              forwardedIPs: req.get('X-Forwarded-For') ? req.get('X-Forwarded-For').split(',').map(ip => ip.trim()) : [],
+              realIP: req.get('X-Real-IP') || 'Unknown',
+              browser: extractBrowserInfo(userAgentForCheck),
+              recipientEmail: data.recipientEmail || 'Unknown',
+            };
+            await docRef.update({
+              'tracking.clickCount': FieldValue.increment(1),
+              'tracking.lastClickAt': FieldValue.serverTimestamp(),
+              'tracking.movements': [...existingMovements, movement],
+            });
+            console.log('✅ link_clicked (CTA) registrado');
+          } else {
+            console.log('⚠️ Duplicate CTA click dentro de 5s, skipping');
+          }
+        } else {
+          console.log('❌ Token inválido para CTA click');
+        }
+      }
+      return res.redirect(302, readerUrl);
+    }
 
     // VALIDACIÓN TEMPRANA: Verificar que el parámetro codificado tenga una longitud razonable
     // "#" codificado en base64 es "Iw==" (4 caracteres), muy corto para ser una URL real
     const encodedUrl = String(u);
     if (!encodedUrl || encodedUrl.length < 10) {
       console.log(`⚠️ URL codificada demasiado corta (${encodedUrl.length} chars), probablemente inválida. Redirigiendo sin tracking.`);
-      const fallbackUrl = `${APP_HOSTING_URL}/reader/${encodeURIComponent(String(msg))}?k=${encodeURIComponent(String(k))}`;
-      return res.redirect(302, fallbackUrl);
+      return res.redirect(302, readerUrl);
     }
 
     let decodedUrl;
     let url;
     let isOriginalUrlValid = false;
-    
+
     try {
       decodedUrl = base64UrlDecode(encodedUrl);
       // Limpiar la URL (trim) y validar
       decodedUrl = decodedUrl ? decodedUrl.trim() : '';
       console.log('🔗 Decoded URL:', decodedUrl);
-      
+
       // VALIDACIÓN EXPLÍCITA: Rechazar fragmentos de hash y URLs vacías ANTES de cualquier procesamiento
-      if (!decodedUrl || 
-          decodedUrl === '#' || 
-          decodedUrl === '' || 
+      if (!decodedUrl ||
+          decodedUrl === '#' ||
+          decodedUrl === '' ||
           decodedUrl.startsWith('#')) {
         console.log('⚠️ URL decodificada es un fragmento (#) o inválida, redirigiendo SIN tracking');
-        url = `${APP_HOSTING_URL}/reader/${encodeURIComponent(String(msg))}?k=${encodeURIComponent(String(k))}`;
+        url = readerUrl;
         isOriginalUrlValid = false;
       } else if (decodedUrl.match(/^https?:\/\//i)) {
         // URL HTTP/HTTPS válida
@@ -833,13 +942,12 @@ exports.linkRedirect = onRequest({ region: REGION, secrets: [polygonCertifySecre
       } else {
         // URL relativa u otro tipo inválido
         console.log('⚠️ URL decodificada no es HTTP/HTTPS válida, redirigiendo SIN tracking');
-        url = `${APP_HOSTING_URL}/reader/${encodeURIComponent(String(msg))}?k=${encodeURIComponent(String(k))}`;
+        url = readerUrl;
         isOriginalUrlValid = false;
       }
     } catch (decodeError) {
       console.error('❌ Error decoding URL:', decodeError);
-      // Si falla la decodificación, construir URL del reader basada en el docId
-      url = `${APP_HOSTING_URL}/reader/${encodeURIComponent(String(msg))}?k=${encodeURIComponent(String(k))}`;
+      url = readerUrl;
       isOriginalUrlValid = false;
     }
     
@@ -1276,9 +1384,132 @@ Este mensaje fue destinado a ${recipientNorm}. Si no reconoce esta notificacion,
     
   } catch (error) {
     console.error('❌ Error procesando correo entrante:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// WhatsApp Webhook — recibe status de entrega/lectura de Meta
+// Configurar en Meta Developer Portal → Webhooks → messages
+// URL: https://whatsappwebhook-ju7n3yysfq-uc.a.run.app  (o la URL que asigne Cloud Run)
+// ---------------------------------------------------------------------------
+
+async function processWhatsAppStatus(status) {
+  const wamid = status.id;
+  const statusType = status.status; // sent | delivered | read | failed
+  const recipientPhone = status.recipient_id;
+  const timestamp = status.timestamp
+    ? new Date(parseInt(status.timestamp, 10) * 1000).toISOString()
+    : new Date().toISOString();
+
+  console.log(`📱 WhatsApp status: ${statusType} | wamid=${wamid} | phone=${recipientPhone}`);
+
+  // Solo procesar delivered, read y failed (sent ya se registra al enviar)
+  if (!['delivered', 'read', 'failed'].includes(statusType)) return;
+
+  const db = getFirestore();
+  const idDoc = await db.doc(`whatsapp_ids/${wamid}`).get();
+  if (!idDoc.exists) {
+    console.warn(`⚠️ No se encontró mailDocId para wamid=${wamid}`);
+    return;
+  }
+
+  const { mailDocId } = idDoc.data();
+  const mailRef = db.doc(`mail/${mailDocId}`);
+  const mailSnap = await mailRef.get();
+  if (!mailSnap.exists) {
+    console.warn(`⚠️ Documento mail/${mailDocId} no encontrado`);
+    return;
+  }
+
+  const data = mailSnap.data() || {};
+  const existingMovements = data?.tracking?.movements || [];
+
+  // Dedupe: no registrar el mismo status dos veces para el mismo wamid
+  const alreadyRecorded = existingMovements.some(
+    (m) => m.whatsappMessageId === wamid && m.type === `whatsapp_${statusType}`
+  );
+  if (alreadyRecorded) {
+    console.log(`⚠️ whatsapp_${statusType} ya registrado para wamid=${wamid}, skip`);
+    return;
+  }
+
+  const typeMap = { delivered: 'whatsapp_delivered', read: 'whatsapp_read', failed: 'whatsapp_failed' };
+  const descMap = {
+    delivered: `Mensaje de WhatsApp entregado al teléfono +${recipientPhone}`,
+    read: `Mensaje de WhatsApp leído en el teléfono +${recipientPhone}`,
+    failed: `Error de entrega en WhatsApp para +${recipientPhone}${status.errors?.[0]?.title ? ': ' + status.errors[0].title : ''}`,
+  };
+
+  const movement = {
+    id: crypto.randomUUID(),
+    type: typeMap[statusType],
+    description: descMap[statusType],
+    timestamp,
+    userAgent: 'WhatsApp Cloud API',
+    clientIP: 'Server',
+    forwardedIPs: [],
+    realIP: 'Server',
+    browser: 'WhatsApp',
+    recipientEmail: data.recipientEmail || 'Unknown',
+    recipientPhone,
+    whatsappMessageId: wamid,
+  };
+
+  const update = { 'tracking.movements': [...existingMovements, movement] };
+  if (statusType === 'delivered') {
+    update['tracking.whatsappDelivered'] = true;
+    update['tracking.whatsappDeliveredAt'] = FieldValue.serverTimestamp();
+  } else if (statusType === 'read') {
+    update['tracking.whatsappRead'] = true;
+    update['tracking.whatsappReadAt'] = FieldValue.serverTimestamp();
+  }
+
+  await mailRef.update(update);
+  console.log(`✅ whatsapp_${statusType} registrado en mail/${mailDocId}`);
+}
+
+exports.whatsappWebhook = onRequest(
+  { region: REGION, secrets: [whatsappVerifyToken] },
+  async (req, res) => {
+    // GET: verificación del webhook por Meta Developer Portal
+    if (req.method === 'GET') {
+      const mode = req.query['hub.mode'];
+      const token = req.query['hub.verify_token'];
+      const challenge = req.query['hub.challenge'];
+      const expected = whatsappVerifyToken.value();
+      if (mode === 'subscribe' && token && expected && token === expected) {
+        console.log('✅ WhatsApp webhook verificado por Meta');
+        return res.status(200).send(String(challenge));
+      }
+      console.warn('⚠️ WhatsApp webhook: token de verificación inválido');
+      return res.status(403).send('Forbidden');
+    }
+
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+
+    // Responder 200 inmediatamente — Meta reintenta si no recibe respuesta rápida
+    res.status(200).send('OK');
+
+    try {
+      const body = req.body;
+      if (body?.object !== 'whatsapp_business_account') return;
+
+      for (const entry of (body.entry || [])) {
+        for (const change of (entry.changes || [])) {
+          if (change.field !== 'messages') continue;
+          for (const status of (change.value?.statuses || [])) {
+            await processWhatsAppStatus(status).catch(e =>
+              console.error('❌ Error procesando status WA:', e.message, status)
+            );
+          }
+        }
+      }
+    } catch (e) {
+      console.error('❌ Error en whatsappWebhook:', e.message);
+    }
+  }
+);

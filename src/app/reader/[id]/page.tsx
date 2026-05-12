@@ -98,7 +98,7 @@ export default function ReaderPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messageId: params.id,
-          attachmentId: attachment.id,
+          attachmentId: attachment.id || (attachment.hash ? `hash:${attachment.hash}` : attachment.fileName),
           fileName: attachment.fileName,
           action: 'opened',
           k: trackingToken, // magic link token para autenticación del reader público
