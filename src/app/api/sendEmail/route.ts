@@ -27,11 +27,25 @@ export async function POST(request: NextRequest) {
     }
 
     const functionUrl = getFirebaseSendEmailUrl();
-    const response = await fetch(functionUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ docId })
-    });
+    const cfController = new AbortController();
+    const cfTimeout = setTimeout(() => cfController.abort(), 55_000); // 55s — menor que el AbortController del cliente (60s)
+    let response: Response;
+    try {
+      response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ docId }),
+        signal: cfController.signal,
+      });
+    } catch (fetchErr: any) {
+      const msg = fetchErr?.name === 'AbortError'
+        ? 'Timeout al llamar la función de envío (>55s)'
+        : fetchErr?.message;
+      console.error('❌ Error/timeout llamando Cloud Function:', msg);
+      return NextResponse.json({ error: 'Error al enviar email' }, { status: 500 });
+    } finally {
+      clearTimeout(cfTimeout);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
