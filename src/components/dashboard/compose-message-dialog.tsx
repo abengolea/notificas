@@ -236,8 +236,6 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
     }, [open, initialContact, form]);
 
     const onSubmit = useCallback(async (data: MessageFormValues) => {
-        console.log('🚀 onSubmit called with:', { recipient: data.recipient, isExecuting: isExecutingRef.current });
-        
         if (isSuspended) {
             toast({
                 title: "Cuenta Suspendida",
@@ -247,18 +245,10 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             return;
         }
 
-        // 🚨 PROTECCIÓN ROBUSTA CONTRA DUPLICADOS
-        if (isExecutingRef.current) {
-            console.log('⚠️ Envío ya en progreso, ignorando llamada duplicada');
-            return;
-        }
+        if (isExecutingRef.current) return;
 
-        // 🚨 BLOQUEAR INMEDIATAMENTE
         isExecutingRef.current = true;
-        console.log('🔒 Bloqueo activado');
-
         const executionId = Math.random().toString(36).substring(7);
-        console.log('🆔 Execution ID:', executionId);
         currentExecutionIdRef.current = executionId;
         setIsSending(true);
         
@@ -280,19 +270,24 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
 
             let uploadedAttachments: UploadedFile[] = [];
 
-            const mailId = await scheduleEmail({
-                to: recipientEmail,
-                subject,
-                html: '<p>Cargando contenido...</p>',
-                from: 'contacto@notificas.com',
-                replyTo: sender,
-                senderName: user.email,
-                recipientName: recipientEmail.split('@')[0],
-                recipientEmail,
-                recipientPhone: phoneForWhatsApp,
-                createdBy: user.uid,
-                skipAutoSend: true,
-            });
+            const mailId = await Promise.race([
+                scheduleEmail({
+                    to: recipientEmail,
+                    subject,
+                    html: '<p>Cargando contenido...</p>',
+                    from: 'contacto@notificas.com',
+                    replyTo: sender,
+                    senderName: user.email,
+                    recipientName: recipientEmail.split('@')[0],
+                    recipientEmail,
+                    recipientPhone: phoneForWhatsApp,
+                    createdBy: user.uid,
+                    skipAutoSend: true,
+                }),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('No se pudo crear el mensaje. Revisa tu conexión e intentá de nuevo.')), 30_000)
+                ),
+            ]);
 
             if (selectedFiles.length > 0) {
                 toast({
@@ -355,7 +350,12 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                 updateData.attachmentsHashes = uploadedAttachments.map((file) => file.hash);
             }
 
-            await updateDoc(mailRef, updateData as any);
+            await Promise.race([
+                updateDoc(mailRef, updateData as any),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Timeout al guardar el mensaje. Revisa tu conexión.')), 30_000)
+                ),
+            ]);
 
             let sendResult: SendEmailResult;
             try {
@@ -371,27 +371,40 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             }
 
             try {
-                const userRef = doc(db, 'users', user.uid);
-                await updateDoc(userRef, {
-                    creditos: increment(-1),
-                    updatedAt: new Date(),
-                });
-                await addDoc(collection(db, 'user_transactions'), {
-                    userId: user.uid,
-                    tipo: 'envio',
-                    descripcion: `Envío de mensaje certificado a ${recipientEmail}`,
-                    monto: 0,
-                    creditos: -1,
-                    metodoPago: 'Créditos',
-                    fecha: new Date(),
-                    mailId,
-                });
+                const creditOps = async () => {
+                    const userRef = doc(db, 'users', user.uid);
+                    await updateDoc(userRef, {
+                        creditos: increment(-1),
+                        updatedAt: new Date(),
+                    });
+                    await addDoc(collection(db, 'user_transactions'), {
+                        userId: user.uid,
+                        tipo: 'envio',
+                        descripcion: `Envío de mensaje certificado a ${recipientEmail}`,
+                        monto: 0,
+                        creditos: -1,
+                        metodoPago: 'Créditos',
+                        fecha: new Date(),
+                        mailId,
+                    });
+                };
+                await Promise.race([
+                    creditOps(),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('Timeout')), 15_000)
+                    ),
+                ]);
             } catch (credErr) {
-                console.error('❌ Error al descontar crédito:', credErr);
+                console.error('Error al descontar crédito:', credErr);
             }
 
             if (user.uid) {
-                await guardarContacto(user.uid, recipientEmail, undefined, undefined, phoneForWhatsApp);
+                try {
+                    await Promise.race([
+                        guardarContacto(user.uid, recipientEmail, undefined, undefined, phoneForWhatsApp),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10_000)),
+                    ]);
+                } catch { /* no bloquear el flujo */ }
             }
 
             let toastDesc = 'Tu mensaje ha sido enviado y certificado en blockchain de Polygon.';
@@ -425,7 +438,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                 setIsSending(false);
             }
         }
-    }, [isSuspended, toast, user, guardarContacto, onOpenChange, form, selectedFiles]);
+    }, [isSuspended, toast, user, onOpenChange, form, selectedFiles]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
