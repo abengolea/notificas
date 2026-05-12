@@ -1050,8 +1050,7 @@ exports.linkRedirect = onRequest({ region: REGION, secrets: [polygonCertifySecre
         realIP: realIP,
         browser: extractBrowserInfo(userAgent),
         recipientEmail: data.recipientEmail || 'Unknown',
-        recipientPhone: recipientPhoneFromLink || undefined,
-        recipientPhoneVerified: recipientPhoneVerified
+        ...(recipientPhoneFromLink ? { recipientPhone: recipientPhoneFromLink, recipientPhoneVerified: recipientPhoneVerified } : {})
       };
       const updateData = {
         'tracking.clickCount': FieldValue.increment(1),
