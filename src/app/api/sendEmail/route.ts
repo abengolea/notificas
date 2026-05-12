@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { verifyAuthToken } from '@/lib/auth-helper';
 import { computeContentHash } from '@/lib/certification';
@@ -26,9 +27,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No autorizado para enviar este mensaje' }, { status: 403 });
     }
 
+    // Llamar a la Cloud Function para enviar email + WhatsApp
     const functionUrl = getFirebaseSendEmailUrl();
     const cfController = new AbortController();
-    const cfTimeout = setTimeout(() => cfController.abort(), 55_000); // 55s — menor que el AbortController del cliente (60s)
+    const cfTimeout = setTimeout(() => cfController.abort(), 55_000);
     let response: Response;
     try {
       response = await fetch(functionUrl, {
@@ -55,43 +57,45 @@ export async function POST(request: NextRequest) {
 
     const result = await response.json();
 
-    // Certificar en Polygon después de envío exitoso (incluye hash del contenido para integridad)
-    // IMPORTANTE: envuelto en timeout para que un cuelgue del RPC no bloquee la respuesta al cliente.
-    // El correo y WhatsApp ya fueron enviados — Polygon es adicional, no debe bloquear.
-    let polygonTxHash: string | undefined;
-    try {
-      const mailSnap = await adminDb.collection('mail').doc(docId).get();
-      const mailData = mailSnap.data();
-      if (mailData) {
-        const toEmail = Array.isArray(mailData.to) ? mailData.to[0] : mailData.recipientEmail || mailData.to || '';
+    // Certificar en Polygon DESPUÉS de responder al cliente (fire-and-forget via after()).
+    // El correo y WhatsApp ya fueron enviados — Polygon es adicional y NO debe bloquear la UI.
+    // after() ejecuta la tarea luego de que la respuesta HTTP fue enviada al cliente.
+    after(async () => {
+      try {
+        const snap = await adminDb.collection('mail').doc(docId).get();
+        const mailData = snap.data();
+        if (!mailData) return;
+
+        const toEmail = Array.isArray(mailData.to)
+          ? mailData.to[0]
+          : mailData.recipientEmail || mailData.to || '';
         const fromUserId = mailData.createdBy || mailData.senderName || 'app';
         const subject = mailData.message?.subject || '';
         const html = mailData.message?.html;
         const text = mailData.message?.text;
         const contentHash = await computeContentHash(subject, html, text);
-        polygonTxHash = await Promise.race([
+
+        const polygonTxHash = await Promise.race([
           certificarEnvio(docId, fromUserId, toEmail, contentHash),
           new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error('Timeout certificación Polygon (>40s)')), 40_000)
           ),
         ]);
+
         await adminDb.collection('mail').doc(docId).update({
           'polygonCertifications.send': polygonTxHash,
           'polygonCertifications.contentHash': contentHash,
-          'polygonCertifications.updatedAt': new Date()
+          'polygonCertifications.updatedAt': new Date(),
         });
-        console.log('🔗 Envío certificado en Polygon (con contentHash):', polygonTxHash);
+        console.log('🔗 Envío certificado en Polygon:', polygonTxHash);
+      } catch (polygonError: any) {
+        console.error('⚠️ Error certificando en Polygon (no afecta el envío):', polygonError?.message);
       }
-    } catch (polygonError: any) {
-      console.error('⚠️ Error certificando en Polygon (no bloquea el envío):', polygonError?.message);
-      // No fallar el envío si Polygon falla o tarda demasiado
-    }
-
-    return NextResponse.json({
-      ...result,
-      polygonTxHash: polygonTxHash || undefined,
     });
-    
+
+    // Responder al cliente inmediatamente — Polygon corre en segundo plano
+    return NextResponse.json(result);
+
   } catch (error) {
     console.error('❌ Error en endpoint sendEmail:', error);
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
