@@ -42,6 +42,8 @@ export async function POST(request: NextRequest) {
     const result = await response.json();
 
     // Certificar en Polygon después de envío exitoso (incluye hash del contenido para integridad)
+    // IMPORTANTE: envuelto en timeout para que un cuelgue del RPC no bloquee la respuesta al cliente.
+    // El correo y WhatsApp ya fueron enviados — Polygon es adicional, no debe bloquear.
     let polygonTxHash: string | undefined;
     try {
       const mailSnap = await adminDb.collection('mail').doc(docId).get();
@@ -53,7 +55,12 @@ export async function POST(request: NextRequest) {
         const html = mailData.message?.html;
         const text = mailData.message?.text;
         const contentHash = await computeContentHash(subject, html, text);
-        polygonTxHash = await certificarEnvio(docId, fromUserId, toEmail, contentHash);
+        polygonTxHash = await Promise.race([
+          certificarEnvio(docId, fromUserId, toEmail, contentHash),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout certificación Polygon (>40s)')), 40_000)
+          ),
+        ]);
         await adminDb.collection('mail').doc(docId).update({
           'polygonCertifications.send': polygonTxHash,
           'polygonCertifications.contentHash': contentHash,
@@ -63,7 +70,7 @@ export async function POST(request: NextRequest) {
       }
     } catch (polygonError: any) {
       console.error('⚠️ Error certificando en Polygon (no bloquea el envío):', polygonError?.message);
-      // No fallar el envío si Polygon falla
+      // No fallar el envío si Polygon falla o tarda demasiado
     }
 
     return NextResponse.json({

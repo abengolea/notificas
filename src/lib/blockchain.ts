@@ -71,8 +71,14 @@ export async function sendPolygonTransaction(data: string): Promise<string> {
     console.log('⏳ Transacción enviada a Polygon Mainnet, esperando confirmación...', tx.hash);
     console.log('🔍 Ver en explorer: https://polygonscan.com/tx/' + tx.hash);
 
-    // Esperar confirmación de la transacción
-    const receipt = await tx.wait();
+    // Esperar confirmación con timeout — tx.wait() puede colgar indefinidamente
+    // si el RPC hace un drop silencioso; 30s es suficiente en Polygon mainnet (~2s/bloque)
+    const receipt = await Promise.race([
+      tx.wait(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Timeout esperando confirmación de tx ${tx.hash} en Polygon`)), 30_000)
+      ),
+    ]);
     
     console.log('✅ Transacción confirmada en Polygon Mainnet:', tx.hash);
     console.log('📊 Gas usado:', receipt?.gasUsed.toString());
