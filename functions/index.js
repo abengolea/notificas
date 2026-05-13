@@ -6,8 +6,18 @@ const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const cheerio = require('cheerio');
 const { generateEmailWithTracking } = require('./email-template');
+const { injectTrackingIntoHtml: injectTrackingIntoHtmlImpl } = require('./tracking-html');
 
 initializeApp();
+
+// Permite escribir docs/arrays con campos undefined sin que Firestore rechace el update.
+// Crítico para tracking.movements: documentos viejos pueden contener undefined heredado, y al
+// re-escribir el array (spread) el admin SDK valida todos los elementos contra esta regla.
+try {
+  getFirestore().settings({ ignoreUndefinedProperties: true });
+} catch (e) {
+  // settings() ya aplicado en una invocación previa de la misma instancia (warm). Ignorar.
+}
 
 // Secrets de WhatsApp en Secret Manager (firebase functions:secrets:set)
 const whatsappAccessToken = defineSecret('WHATSAPP_ACCESS_TOKEN');
@@ -230,75 +240,21 @@ function base64UrlDecode(str) {
   return Buffer.from(str.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
 }
 
+/**
+ * Wrapper que delega en `./tracking-html.js` (módulo testeable) pasándole las URLs
+ * de tracking definidas en este archivo, y loggea las estadísticas de procesamiento.
+ */
 function injectTrackingIntoHtml(html, docId, token) {
   if (!html) return html;
-  const $ = cheerio.load(html, { decodeEntities: false });
-
-  let processedCount = 0;
-  let replacedCount = 0;
-  let ignoredCount = 0;
-  
-  // URL del reader para reemplazar enlaces inválidos
-  const readerUrl = `${APP_HOSTING_URL}/reader/${encodeURIComponent(docId)}?k=${encodeURIComponent(token)}`;
-
-  $('a[href]').each((_, el) => {
-    const href = $(el).attr('href');
-    
-    // Limpiar y validar el href
-    if (!href) {
-      ignoredCount++;
-      return;
-    }
-    const cleanHref = href.trim();
-    
-    // Validar si es una URL HTTP/HTTPS válida (excluyendo mailto, tel, javascript, data)
-    const isMailtoOrTel = cleanHref.startsWith('mailto:') || cleanHref.startsWith('tel:');
-    const isScriptOrData = cleanHref.startsWith('javascript:') || cleanHref.startsWith('data:');
-    const isValidHttpUrl = cleanHref && 
-                           cleanHref.match(/^https?:\/\//i) && 
-                           !cleanHref.startsWith(`${LINK_REDIRECT_URL}`);
-    
-    // Si es mailto:, tel:, javascript:, o data:, mantener como está (no reemplazar)
-    if (isMailtoOrTel || isScriptOrData) {
-      ignoredCount++;
-      return;
-    }
-    
-    // Si NO es una URL HTTP válida (incluyendo fragmentos # y enlaces relativos), REEMPLAZAR con readerUrl
-    if (!isValidHttpUrl || 
-        cleanHref === '' ||
-        cleanHref === '#' ||
-        cleanHref.startsWith('#')) {
-      console.log(`⚠️ Reemplazando enlace inválido/relativo href="${cleanHref}" con readerUrl`);
-      $(el).attr('href', readerUrl);
-      replacedCount++;
-      return;
-    }
-
-    // El botón "Acceder a la notificación" pasa por linkRedirect (sin `u`) para registrar link_clicked
-    const isReaderUrl = cleanHref.includes('/reader/') && cleanHref.includes(`?k=`);
-    if (isReaderUrl) {
-      const trackUrl = `${LINK_REDIRECT_URL}?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(token)}`;
-      $(el).attr('href', trackUrl);
-      processedCount++;
-      return;
-    }
-    
-    // Otras URLs HTTP válidas: usar linkRedirect para tracking de clicks
-    const encoded = base64UrlEncode(cleanHref);
-    const redirectUrl = `${LINK_REDIRECT_URL}?msg=${encodeURIComponent(docId)}&u=${encoded}&k=${encodeURIComponent(token)}`;
-    $(el).attr('href', redirectUrl);
-    processedCount++;
+  const { html: out, stats } = injectTrackingIntoHtmlImpl(html, docId, token, {
+    trackingBaseUrl: TRACKING_BASE_URL,
+    linkRedirectUrl: LINK_REDIRECT_URL,
+    appHostingUrl: APP_HOSTING_URL,
   });
-  
-  console.log(`🔗 Tracking: ${processedCount} enlaces procesados, ${replacedCount} enlaces inválidos reemplazados, ${ignoredCount} ignorados (mailto/tel/js)`);
-
-  // Tracking pixel URL removed
-  // Tracking pixel tag removed
-
-  // No agregar "Confirmar lectura" en el email: el usuario lo ve en el reader al acceder
-
-  return $.html();
+  console.log(
+    `🔗 Tracking: ${stats.processedCount} enlaces procesados, ${stats.replacedCount} enlaces inválidos reemplazados, ${stats.ignoredCount} ignorados (mailto/tel/js)`
+  );
+  return out;
 }
 
 
@@ -622,14 +578,15 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
           } else {
             const templateName = whatsappTemplateName.value()?.trim() || '';
             const templateLang = whatsappTemplateLanguage.value()?.trim() || 'es_AR';
-            const encodedReader = base64UrlEncode(readerUrl);
+            // Mismo formato que el CTA del correo (linkRedirect sin `u`): más corto, menos `&`
+            // (evita cortes de enlace en WhatsApp) y evita depender de base64 en la URL.
             const whatsappLink = (() => {
               const waDigits = formatPhoneForWhatsApp(recipientPhone);
               const rParam =
                 waDigits && waDigits.length >= 10
                   ? `&r=${encodeURIComponent(base64UrlEncode(waDigits))}`
                   : '';
-              return `${LINK_REDIRECT_URL}?msg=${encodeURIComponent(docId)}&u=${encodeURIComponent(encodedReader)}&k=${encodeURIComponent(trackingToken)}&src=whatsapp${rParam}`;
+              return `${LINK_REDIRECT_URL}?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}&src=whatsapp${rParam}`;
             })();
             const waRecipient = formatWhatsAppRecipientDisplay(emailData.recipientName);
             const waSender = formatWhatsAppSenderDisplay(emailData.senderName || from, from);
@@ -742,11 +699,36 @@ exports.trackOpen = onRequest({ region: REGION, secrets: [polygonCertifySecret] 
     const clientIP = req.get('X-Forwarded-For') || req.get('X-Real-IP') || req.connection.remoteAddress || 'Unknown';
     const forwardedIPs = req.get('X-Forwarded-For') ? req.get('X-Forwarded-For').split(',').map(ip => ip.trim()) : [];
     const realIP = req.get('X-Real-IP') || 'Unknown';
-    
-    // Generar UUID único para este movimiento
+
+    // Filtrar scanners corporativos / proxys de imágenes que cargan el pixel sin intervención humana.
+    // Sin esto, Gmail/Outlook generarían `email_opened` apenas reciben el correo, no cuando el destinatario lo lee.
+    if (isKnownScanner(userAgent)) {
+      console.log('🤖 Scanner de email detectado en trackOpen, devolviendo pixel sin registrar:', userAgent.substring(0, 80));
+      const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+      res.set('Content-Type', 'image/gif');
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      return res.status(200).send(pixel);
+    }
+
+    // Dedupe de 5 segundos por IP para evitar duplicar el evento si el cliente recarga
+    const existingMovements = data?.tracking?.movements || [];
+    const fiveSecondsAgo = Date.now() - 5000;
+    const recentOpen = existingMovements
+      .filter((m) => m.type === 'email_opened')
+      .find((m) => {
+        const t = new Date(m.timestamp).getTime();
+        return t > fiveSecondsAgo && (m.clientIP === clientIP || m.realIP === clientIP);
+      });
+    if (recentOpen) {
+      console.log('⚠️ email_opened duplicado dentro de 5s, devolviendo pixel sin registrar');
+      const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+      res.set('Content-Type', 'image/gif');
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      return res.status(200).send(pixel);
+    }
+
     const movementId = require('crypto').randomUUID();
-    
-    // Crear movimiento detallado
+
     const movement = {
       id: movementId,
       type: 'email_opened',
@@ -760,14 +742,11 @@ exports.trackOpen = onRequest({ region: REGION, secrets: [polygonCertifySecret] 
       recipientEmail: data.recipientEmail || 'Unknown'
     };
 
-    // Obtener movimientos existentes o crear array vacío
-    const existingMovements = data?.tracking?.movements || [];
-    
     await docRef.update({
       'tracking.opened': true,
       'tracking.openedAt': FieldValue.serverTimestamp(),
       'tracking.openCount': FieldValue.increment(1),
-      'tracking.movements': [...existingMovements, movement]
+      'tracking.movements': FieldValue.arrayUnion(movement)
     });
 
     // Certificar recepción (primera apertura) en Polygon
@@ -860,9 +839,9 @@ exports.linkRedirect = onRequest({ region: REGION, secrets: [polygonCertifySecre
 
     const readerUrl = `${APP_HOSTING_URL}/reader/${encodeURIComponent(String(msg))}?k=${encodeURIComponent(String(k))}`;
 
-    // Sin `u`: click directo en el CTA del correo → redirigir al reader y registrar link_clicked
+    // Sin `u`: mismo enlace que el botón del correo (msg + k) — correo o WhatsApp con `src=whatsapp`
     if (!u) {
-      console.log('🔗 Sin parámetro u — click en CTA del correo, redirigiendo al reader');
+      console.log('🔗 Sin parámetro u — CTA correo o enlace corto WhatsApp, redirigiendo al reader');
       const db = getFirestore();
       const docRef = db.collection('mail').doc(String(msg));
       const snap = await docRef.get();
@@ -874,16 +853,33 @@ exports.linkRedirect = onRequest({ region: REGION, secrets: [polygonCertifySecre
           const clientIP = req.get('X-Forwarded-For')?.split(',')[0]?.trim() || req.get('X-Real-IP') || req.connection.remoteAddress || 'Unknown';
           const now = Date.now();
           const recentDuplicate = existingMovements.find(m =>
-            m.type === 'link_clicked' &&
+            (m.type === 'link_clicked' || m.type === 'whatsapp_link_clicked') &&
             !m.description?.includes('http') &&
             new Date(m.timestamp).getTime() > now - 5000 &&
             m.clientIP === clientIP
           );
           if (!recentDuplicate) {
+            const isWhatsApp = src === 'whatsapp';
+            let recipientPhoneFromLink = null;
+            let recipientPhoneVerified = false;
+            if (r) {
+              try {
+                const decodedPhone = base64UrlDecode(String(r));
+                const expected = data.recipientPhone ? formatPhoneForWhatsApp(data.recipientPhone) : null;
+                recipientPhoneFromLink = decodedPhone;
+                recipientPhoneVerified = Boolean(expected && decodedPhone === expected);
+              } catch (decodePhoneErr) {
+                console.warn('⚠️ No se pudo decodificar r (teléfono en enlace):', decodePhoneErr?.message);
+              }
+            }
             const movement = {
               id: crypto.randomUUID(),
-              type: 'link_clicked',
-              description: 'Click en botón del correo para acceder a la notificación',
+              type: isWhatsApp ? 'whatsapp_link_clicked' : 'link_clicked',
+              description: isWhatsApp
+                ? recipientPhoneVerified && recipientPhoneFromLink
+                  ? `Click en WhatsApp (enlace generado para +${recipientPhoneFromLink})`
+                  : 'Click en el mensaje de WhatsApp para acceder a la notificación'
+                : 'Click en botón del correo para acceder a la notificación',
               source: src || 'email',
               timestamp: new Date().toISOString(),
               userAgent: userAgentForCheck,
@@ -892,15 +888,32 @@ exports.linkRedirect = onRequest({ region: REGION, secrets: [polygonCertifySecre
               realIP: req.get('X-Real-IP') || 'Unknown',
               browser: extractBrowserInfo(userAgentForCheck),
               recipientEmail: data.recipientEmail || 'Unknown',
+              ...(recipientPhoneFromLink ? { recipientPhone: recipientPhoneFromLink, recipientPhoneVerified } : {}),
             };
-            await docRef.update({
+            const updateData = {
               'tracking.clickCount': FieldValue.increment(1),
               'tracking.lastClickAt': FieldValue.serverTimestamp(),
-              'tracking.movements': [...existingMovements, movement],
-            });
-            console.log('✅ link_clicked (CTA) registrado');
+              'tracking.movements': FieldValue.arrayUnion(movement),
+            };
+            if (isWhatsApp && !data?.tracking?.opened) {
+              updateData['tracking.opened'] = true;
+              updateData['tracking.openedAt'] = FieldValue.serverTimestamp();
+              updateData['tracking.openCount'] = FieldValue.increment(1);
+              const certifyUrl = `${APP_HOSTING_URL}/api/polygon/certify-event`;
+              void fetch(certifyUrl, certifyEventFetchInit({
+                docId: String(msg),
+                type: 'receive',
+                userId: data?.recipientEmail,
+              }))
+                .then(async (certifyRes) => {
+                  if (!certifyRes.ok) console.warn('⚠️ Polygon certify receive (WhatsApp CTA):', await certifyRes.text());
+                })
+                .catch((e) => console.warn('⚠️ Polygon certify receive failed:', e?.message));
+            }
+            await docRef.update(updateData);
+            console.log(isWhatsApp ? '✅ whatsapp_link_clicked (enlace corto) registrado' : '✅ link_clicked (CTA) registrado');
           } else {
-            console.log('⚠️ Duplicate CTA click dentro de 5s, skipping');
+            console.log('⚠️ Duplicate CTA / WhatsApp click dentro de 5s, skipping');
           }
         } else {
           console.log('❌ Token inválido para CTA click');
@@ -1055,23 +1068,22 @@ exports.linkRedirect = onRequest({ region: REGION, secrets: [polygonCertifySecre
       const updateData = {
         'tracking.clickCount': FieldValue.increment(1),
         'tracking.lastClickAt': FieldValue.serverTimestamp(),
-        'tracking.movements': [...existingMovements, movement]
+        'tracking.movements': FieldValue.arrayUnion(movement)
       };
       if (isWhatsApp && !data?.tracking?.opened) {
         updateData['tracking.opened'] = true;
         updateData['tracking.openedAt'] = FieldValue.serverTimestamp();
         updateData['tracking.openCount'] = FieldValue.increment(1);
-        try {
-          const certifyUrl = `${APP_HOSTING_URL}/api/polygon/certify-event`;
-          const certifyRes = await fetch(certifyUrl, certifyEventFetchInit({
-            docId: String(msg),
-            type: 'receive',
-            userId: data?.recipientEmail,
-          }));
-          if (!certifyRes.ok) console.warn('⚠️ Polygon certify receive (WhatsApp):', await certifyRes.text());
-        } catch (e) {
-          console.warn('⚠️ Polygon certify receive failed:', e?.message);
-        }
+        const certifyUrl = `${APP_HOSTING_URL}/api/polygon/certify-event`;
+        void fetch(certifyUrl, certifyEventFetchInit({
+          docId: String(msg),
+          type: 'receive',
+          userId: data?.recipientEmail,
+        }))
+          .then(async (certifyRes) => {
+            if (!certifyRes.ok) console.warn('⚠️ Polygon certify receive (WhatsApp):', await certifyRes.text());
+          })
+          .catch((e) => console.warn('⚠️ Polygon certify receive failed:', e?.message));
       }
       await docRef.update(updateData);
       
@@ -1136,13 +1148,10 @@ exports.confirmRead = onRequest({ region: REGION, secrets: [polygonCertifySecret
       recipientEmail: data.recipientEmail || 'Unknown'
     };
 
-    // Obtener movimientos existentes o crear array vacío
-    const existingMovements = data?.tracking?.movements || [];
-    
     await docRef.update({
       'tracking.readConfirmed': true,
       'tracking.readConfirmedAt': FieldValue.serverTimestamp(),
-      'tracking.movements': [...existingMovements, movement]
+      'tracking.movements': FieldValue.arrayUnion(movement)
     });
 
     // Certificar lectura en Polygon
@@ -1458,7 +1467,7 @@ async function processWhatsAppStatus(status) {
     whatsappMessageId: wamid,
   };
 
-  const update = { 'tracking.movements': [...existingMovements, movement] };
+  const update = { 'tracking.movements': FieldValue.arrayUnion(movement) };
   if (statusType === 'delivered') {
     update['tracking.whatsappDelivered'] = true;
     update['tracking.whatsappDeliveredAt'] = FieldValue.serverTimestamp();
