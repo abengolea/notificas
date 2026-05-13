@@ -21,7 +21,9 @@
     "normalize-mail": "node scripts/normalize-mail-recipient-fields.js",
     "check:admin-env": "node scripts/check-admin-env.js",
     "check:app-env": "node scripts/check-app-env.js",
-    "seed:demo-empresa": "node scripts/seed-demo-empresa.js"
+    "seed:demo-empresa": "node scripts/seed-demo-empresa.js",
+    "migrate:legacy-users": "node scripts/import-legacy-users-from-csv.js",
+    "deploy:functions": "node scripts/deploy-functions.js"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.13.0",

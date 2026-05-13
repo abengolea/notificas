@@ -34,9 +34,6 @@ function normalizedEmailIdentity(value?: string): string | undefined {
 export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend?: boolean }): Promise<string> {
   const { to, subject, html, text, from, replyTo, cc, bcc, recipientName, recipientEmail, recipientPhone, senderName, createdBy, skipAutoSend = false } = params;
 
-  console.log('📧 scheduleEmail called with:', { to, subject, recipientEmail, senderName, skipAutoSend });
-  console.log('📧 Stack trace:', new Error().stack);
-
   const payload: any = {
     to: normalizeEmailList(to),
     message: {
@@ -48,8 +45,6 @@ export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend
     createdAt: serverTimestamp(),
     timestamp: new Date().toISOString()
   };
-
-  console.log('📧 Payload created:', { to: payload.to, subject: payload.message.subject, recipientEmail, senderName });
 
   // Agregar campos para el template personalizado
   if (recipientName) payload.recipientName = recipientName;
@@ -76,41 +71,21 @@ export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend
   if (ccNorm.length) payload.cc = ccNorm;
   if (bccNorm.length) payload.bcc = bccNorm;
 
-  // 🚨 VERIFICAR DUPLICADOS ANTES DE CREAR
-  console.log('📧 Checking for duplicates with uniqueId:', uniqueId);
-  
-  // TEMPORALMENTE DESHABILITADO - Error de índice de Firestore
-  // TODO: Crear índice o usar otra estrategia
-  console.log('⚠️ Verificación de duplicados deshabilitada temporalmente');
-  
   const docRef = await addDoc(collection(db, 'mail'), payload);
-  console.log('📧 Document created with ID:', docRef.id);
   
-  // 🚀 LLAMAR AL ENDPOINT HTTP PARA ENVIAR EL EMAIL (solo si skipAutoSend es false)
   if (!skipAutoSend) {
     try {
-      const timestamp = new Date().toISOString();
-      console.log(`🌐 [${timestamp}] Llamando a /api/sendEmail con docId:`, docRef.id);
       const response = await fetch('/api/sendEmail', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ docId: docRef.id })
       });
-      console.log(`🌐 [${timestamp}] Respuesta de /api/sendEmail:`, response.status, response.statusText);
-      
       if (!response.ok) {
-        console.error('❌ Error al enviar email:', response.statusText);
-      } else {
-        const result = await response.json();
-        console.log('✅ Email enviado exitosamente:', result);
+        console.error('Error al enviar email:', response.statusText);
       }
     } catch (error) {
-      console.error('❌ Error al llamar endpoint sendEmail:', error);
+      console.error('Error al llamar endpoint sendEmail:', error);
     }
-  } else {
-    console.log('⏭️ Auto-envío deshabilitado (skipAutoSend=true), se debe llamar manualmente a sendEmail');
   }
   
   return docRef.id;
@@ -118,23 +93,53 @@ export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend
 
 export type SendEmailResult = { success: boolean; whatsappId?: string; whatsappError?: string };
 
-// Función helper para enviar el email manualmente después de actualizar el documento
-export async function sendEmailManually(docId: string): Promise<SendEmailResult> {
-  const token = await auth.currentUser?.getIdToken();
-  const response = await fetch('/api/sendEmail', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ docId })
-  });
+const SEND_EMAIL_TIMEOUT_MS = 60_000;
+const GET_TOKEN_TIMEOUT_MS = 15_000;
 
-  const result = await response.json();
-  if (!response.ok) {
-    throw new Error(result?.error || `Error al enviar email: ${response.status}`);
+function withTimeout<T>(promise: Promise<T>, ms: number, msg: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(msg)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer!));
+}
+
+export async function sendEmailManually(docId: string): Promise<SendEmailResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SEND_EMAIL_TIMEOUT_MS);
+
+  try {
+    const token = await withTimeout(
+      auth.currentUser?.getIdToken() ?? Promise.resolve(undefined),
+      GET_TOKEN_TIMEOUT_MS,
+      'No se pudo obtener el token de autenticación. Revisa tu conexión.',
+    );
+
+    const response = await fetch('/api/sendEmail', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ docId }),
+      signal: controller.signal,
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result?.error || `Error al enviar email: ${response.status}`);
+    }
+    return result;
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('El envío tardó demasiado. Por favor, revisa tu conexión e intenta de nuevo.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  return result;
 }
 
 // Función helper para enviar emails de notificación usando el template

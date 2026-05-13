@@ -183,6 +183,11 @@ function LoginForm() {
             </svg>
             Continuar con Google
           </Button>
+          <p className="mt-4 text-center text-xs text-muted-foreground">
+            <Link href="/cuenta/activar-migracion" className="underline underline-offset-2" prefetch={false}>
+              Venías de Notificas anterior: activá tu cuenta migrada
+            </Link>
+          </p>
           <div className="mt-6 text-center text-sm">
             ¿No tienes una cuenta?{" "}
             <Link href="/signup" className="underline" prefetch={false}>

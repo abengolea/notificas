@@ -81,8 +81,7 @@ function injectTrackingIntoHtml(html, docId, token, urls) {
 
   // Pixel invisible 1x1 que dispara `trackOpen` cuando el cliente del correo
   // (o el destinatario) renderiza la imagen. Es la base del evento `email_opened`.
-  // Nota: muchos clientes (Gmail/Outlook) cargan imágenes vía proxy y pueden disparar el pixel
-  // sin intervención humana — el filtro de `KNOWN_SCANNER_PATTERNS` en trackOpen mitiga eso.
+  // Gmail usa el proxy GoogleImageProxy (UA distintivo); debe contar como apertura cuando el usuario muestra imágenes.
   const pixelUrl = `${trackingBaseUrl}?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(token)}`;
   const pixelTag = `<img src="${pixelUrl}" width="1" height="1" alt="" style="display:none!important;border:0;width:1px;height:1px;outline:none;text-decoration:none;visibility:hidden;" />`;
   if ($('body').length) {

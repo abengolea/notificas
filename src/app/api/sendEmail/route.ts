@@ -1,10 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { after } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { verifyAuthToken } from '@/lib/auth-helper';
 import { computeContentHash } from '@/lib/certification';
 import { certificarEnvio } from '@/lib/certification-polygon';
 import { getFirebaseSendEmailUrl } from '@/lib/mail-defaults';
+
+/** Certifica el envío en Polygon en segundo plano — nunca bloquea la respuesta HTTP. */
+async function certifyInBackground(docId: string): Promise<void> {
+  try {
+    const snap = await adminDb.collection('mail').doc(docId).get();
+    const mailData = snap.data();
+    if (!mailData) return;
+
+    const toEmail = Array.isArray(mailData.to)
+      ? mailData.to[0]
+      : mailData.recipientEmail || mailData.to || '';
+    const fromUserId = mailData.createdBy || mailData.senderName || 'app';
+    const subject = mailData.message?.subject || '';
+    const html = mailData.message?.html;
+    const text = mailData.message?.text;
+    const contentHash = await computeContentHash(subject, html, text);
+
+    const polygonTxHash = await Promise.race([
+      certificarEnvio(docId, fromUserId, toEmail, contentHash),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout certificación Polygon (>40s)')), 40_000)
+      ),
+    ]);
+
+    await adminDb.collection('mail').doc(docId).update({
+      'polygonCertifications.send': polygonTxHash,
+      'polygonCertifications.contentHash': contentHash,
+      'polygonCertifications.updatedAt': new Date(),
+    });
+    console.log('🔗 Envío certificado en Polygon:', polygonTxHash);
+  } catch (err: any) {
+    console.error('⚠️ Error certificando en Polygon (no afecta el envío):', err?.message);
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -57,43 +90,10 @@ export async function POST(request: NextRequest) {
 
     const result = await response.json();
 
-    // Certificar en Polygon DESPUÉS de responder al cliente (fire-and-forget via after()).
-    // El correo y WhatsApp ya fueron enviados — Polygon es adicional y NO debe bloquear la UI.
-    // after() ejecuta la tarea luego de que la respuesta HTTP fue enviada al cliente.
-    after(async () => {
-      try {
-        const snap = await adminDb.collection('mail').doc(docId).get();
-        const mailData = snap.data();
-        if (!mailData) return;
+    // Lanzar la certificación Polygon sin await — responde al cliente YA.
+    // El void es intencional: Polygon es best-effort y nunca debe bloquear la UI.
+    void certifyInBackground(docId);
 
-        const toEmail = Array.isArray(mailData.to)
-          ? mailData.to[0]
-          : mailData.recipientEmail || mailData.to || '';
-        const fromUserId = mailData.createdBy || mailData.senderName || 'app';
-        const subject = mailData.message?.subject || '';
-        const html = mailData.message?.html;
-        const text = mailData.message?.text;
-        const contentHash = await computeContentHash(subject, html, text);
-
-        const polygonTxHash = await Promise.race([
-          certificarEnvio(docId, fromUserId, toEmail, contentHash),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout certificación Polygon (>40s)')), 40_000)
-          ),
-        ]);
-
-        await adminDb.collection('mail').doc(docId).update({
-          'polygonCertifications.send': polygonTxHash,
-          'polygonCertifications.contentHash': contentHash,
-          'polygonCertifications.updatedAt': new Date(),
-        });
-        console.log('🔗 Envío certificado en Polygon:', polygonTxHash);
-      } catch (polygonError: any) {
-        console.error('⚠️ Error certificando en Polygon (no afecta el envío):', polygonError?.message);
-      }
-    });
-
-    // Responder al cliente inmediatamente — Polygon corre en segundo plano
     return NextResponse.json(result);
 
   } catch (error) {

@@ -195,6 +195,7 @@ export default function DashboardClient() {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   /** Generación del efecto mail: ignora timeouts/listeners que quedaron obsoletos al cambiar carpeta. */
   const mailListListenSeqRef = useRef(0);
+  const migrationPasswordFlagRef = useRef(false);
 
   useEffect(() => {
     let unsubFirestore: (() => void) | undefined;
@@ -258,6 +259,26 @@ export default function DashboardClient() {
       unsubFirestore?.();
     };
   }, []);
+
+  /** Marca en Firestore que el usuario migrado ya pudo entrar (contraseña definida vía flujo seguro). */
+  useEffect(() => {
+    if (!appUser?.uid || migrationPasswordFlagRef.current) return;
+    void (async () => {
+      try {
+        await auth.authStateReady();
+        const u = auth.currentUser;
+        if (!u) return;
+        const token = await u.getIdToken();
+        const r = await fetch("/api/user/migration-password-complete", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (r.ok) migrationPasswordFlagRef.current = true;
+      } catch {
+        /* reintentar en otra visita */
+      }
+    })();
+  }, [appUser?.uid]);
 
   useEffect(() => {
     const seq = ++mailListListenSeqRef.current;
