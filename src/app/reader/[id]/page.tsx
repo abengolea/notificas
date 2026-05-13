@@ -204,6 +204,26 @@ export default function ReaderPage() {
     return () => window.clearInterval(t);
   }, [params.id, trackingToken, mail?.tracking?.readConfirmed]);
 
+  /**
+   * Registra `reader_magic_open` la primera vez que el destinatario abre el reader
+   * vía magic link (?k=...). El endpoint hace dedupe de 5s por IP + valida el token
+   * contra `tracking.token`, así que es seguro dispararlo en cada carga.
+   * Esto es independiente del pixel (email_opened) y del CTA (link_clicked):
+   * cubre el caso de aperturas directas que no pasan por linkRedirect.
+   */
+  useEffect(() => {
+    if (!params.id || !trackingToken || !mail) return;
+    const messageId = params.id as string;
+    const controller = new AbortController();
+    fetch('/api/track-reader-open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messageId, k: trackingToken }),
+      signal: controller.signal,
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [params.id, trackingToken, mail]);
+
   useEffect(() => {
     if (!params.id || !trackingToken || !mail?.tracking?.readConfirmed) return;
     const id = params.id as string;
