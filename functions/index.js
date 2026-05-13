@@ -700,8 +700,7 @@ exports.trackOpen = onRequest({ region: REGION, secrets: [polygonCertifySecret] 
     const forwardedIPs = req.get('X-Forwarded-For') ? req.get('X-Forwarded-For').split(',').map(ip => ip.trim()) : [];
     const realIP = req.get('X-Real-IP') || 'Unknown';
 
-    // Filtrar scanners corporativos / proxys de imágenes que cargan el pixel sin intervención humana.
-    // Sin esto, Gmail/Outlook generarían `email_opened` apenas reciben el correo, no cuando el destinatario lo lee.
+    // Filtrar scanners corporativos de seguridad (no el proxy de imágenes de Gmail: ver KNOWN_SCANNER_PATTERNS).
     if (isKnownScanner(userAgent)) {
       console.log('🤖 Scanner de email detectado en trackOpen, devolviendo pixel sin registrar:', userAgent.substring(0, 80));
       const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
@@ -808,7 +807,8 @@ const KNOWN_SCANNER_PATTERNS = [
   /forcepoint/i,
   /linkscanner/i,
   /safebrowsing/i,
-  /googleimageproxy/i,
+  // Nota: NO incluir GoogleImageProxy. En Gmail, cuando el destinatario activa imágenes,
+  // el pixel se solicita con UA "GoogleImageProxy"; bloquearlo impedía registrar aperturas reales.
   /safelinks\.protection\.outlook/i,
   /office365/i,
   /msn\.com.*bot/i,
@@ -823,7 +823,29 @@ function isKnownScanner(userAgent) {
   return KNOWN_SCANNER_PATTERNS.some((re) => re.test(userAgent));
 }
 
-exports.linkRedirect = onRequest({ region: REGION, secrets: [polygonCertifySecret] }, async (req, res) => {
+/** Evita traer `tracking.movements` (puede crecer mucho y enlentecer / timeout en linkRedirect). */
+const LINK_REDIRECT_READ_MASK = [
+  'tracking.token',
+  'tracking.opened',
+  'tracking.openCount',
+  'tracking.lastRedirectDedupe',
+  'recipientPhone',
+  'recipientEmail',
+];
+
+function linkRedirectDedupeTag(hasU, src, decodedUrl) {
+  if (!hasU) return src === 'whatsapp' ? 'cta-wa' : 'cta-mail';
+  return crypto.createHash('sha256').update(String(decodedUrl)).digest('hex').slice(0, 24);
+}
+
+function isRecentDuplicateRedirect(dedupe, clientIP, tag, windowMs = 5000) {
+  if (!dedupe || typeof dedupe.t !== 'number' || !dedupe.ip || !dedupe.tag) return false;
+  return Date.now() - dedupe.t < windowMs && dedupe.ip === clientIP && dedupe.tag === tag;
+}
+
+exports.linkRedirect = onRequest(
+  { region: REGION, secrets: [polygonCertifySecret], timeoutSeconds: 180, memory: '512MiB' },
+  async (req, res) => {
   try {
     const { msg, u, k, src, r } = req.query;
     console.log('🔗 linkRedirect called with:', { msg, u: u ? '(set)' : '(none)', k: k ? '(set)' : '(none)', src, r: r ? '(set)' : '' });
@@ -844,21 +866,16 @@ exports.linkRedirect = onRequest({ region: REGION, secrets: [polygonCertifySecre
       console.log('🔗 Sin parámetro u — CTA correo o enlace corto WhatsApp, redirigiendo al reader');
       const db = getFirestore();
       const docRef = db.collection('mail').doc(String(msg));
-      const snap = await docRef.get();
+      const snap = await docRef.get({ fieldMask: LINK_REDIRECT_READ_MASK });
       if (snap.exists) {
         const data = snap.data() || {};
         const token = data?.tracking?.token;
         if (token && token === String(k)) {
-          const existingMovements = data?.tracking?.movements || [];
           const clientIP = req.get('X-Forwarded-For')?.split(',')[0]?.trim() || req.get('X-Real-IP') || req.connection.remoteAddress || 'Unknown';
-          const now = Date.now();
-          const recentDuplicate = existingMovements.find(m =>
-            (m.type === 'link_clicked' || m.type === 'whatsapp_link_clicked') &&
-            !m.description?.includes('http') &&
-            new Date(m.timestamp).getTime() > now - 5000 &&
-            m.clientIP === clientIP
-          );
-          if (!recentDuplicate) {
+          const dedupeTag = linkRedirectDedupeTag(false, String(src || ''), '');
+          if (isRecentDuplicateRedirect(data?.tracking?.lastRedirectDedupe, clientIP, dedupeTag)) {
+            console.log('⚠️ Duplicate CTA / WhatsApp click (dedupe), skipping update');
+          } else {
             const isWhatsApp = src === 'whatsapp';
             let recipientPhoneFromLink = null;
             let recipientPhoneVerified = false;
@@ -894,6 +911,7 @@ exports.linkRedirect = onRequest({ region: REGION, secrets: [polygonCertifySecre
               'tracking.clickCount': FieldValue.increment(1),
               'tracking.lastClickAt': FieldValue.serverTimestamp(),
               'tracking.movements': FieldValue.arrayUnion(movement),
+              'tracking.lastRedirectDedupe': { t: Date.now(), ip: clientIP, tag: dedupeTag },
             };
             if (isWhatsApp && !data?.tracking?.opened) {
               updateData['tracking.opened'] = true;
@@ -912,8 +930,6 @@ exports.linkRedirect = onRequest({ region: REGION, secrets: [polygonCertifySecre
             }
             await docRef.update(updateData);
             console.log(isWhatsApp ? '✅ whatsapp_link_clicked (enlace corto) registrado' : '✅ link_clicked (CTA) registrado');
-          } else {
-            console.log('⚠️ Duplicate CTA / WhatsApp click dentro de 5s, skipping');
           }
         } else {
           console.log('❌ Token inválido para CTA click');
@@ -966,8 +982,14 @@ exports.linkRedirect = onRequest({ region: REGION, secrets: [polygonCertifySecre
     
     const db = getFirestore();
     const docRef = db.collection('mail').doc(String(msg));
-    const snap = await docRef.get();
-    
+
+    if (!isOriginalUrlValid) {
+      console.log('⚠️ Invalid URL detected (was: "' + String(decodedUrl ?? '') + '"), skipping tracking completely');
+      return res.redirect(302, url);
+    }
+
+    const snap = await docRef.get({ fieldMask: LINK_REDIRECT_READ_MASK });
+
     if (!snap.exists) {
       console.log('❌ Document not found:', msg);
       return res.redirect(302, url);
@@ -975,59 +997,32 @@ exports.linkRedirect = onRequest({ region: REGION, secrets: [polygonCertifySecre
 
     const data = snap.data() || {};
     const token = data?.tracking?.token;
-    console.log('🔑 Token comparison:', { 
-      storedToken: token, 
-      providedToken: String(k), 
-      match: token === String(k) 
+    console.log('🔑 Token comparison:', {
+      storedToken: token,
+      providedToken: String(k),
+      match: token === String(k),
     });
-    
-    // NO registrar tracking si la URL original era inválida (como "#")
-    // Esto previene registrar clicks en enlaces inválidos o fragmentos
-    if (!isOriginalUrlValid) {
-      console.log('⚠️ Invalid URL detected (was: "' + decodedUrl + '"), skipping tracking completely');
-      return res.redirect(302, url);
-    }
-    
+
     // Solo registrar tracking si el token es válido Y la URL original era válida
     if (token && token === String(k)) {
       console.log('✅ Token valid and URL valid, checking for duplicates');
-      
-      // Obtener movimientos existentes
-      const existingMovements = data?.tracking?.movements || [];
-      
-      // Obtener información del usuario para deduplicación
+
       const userAgent = req.get('User-Agent') || 'Unknown';
-      const clientIP = req.get('X-Forwarded-For')?.split(',')[0]?.trim() || 
-                       req.get('X-Real-IP') || 
-                       req.connection.remoteAddress || 
-                       'Unknown';
-      
-      // Verificar si hay un click reciente del mismo enlace desde la misma IP
-      // (dentro de los últimos 5 segundos)
-      const now = Date.now();
-      const fiveSecondsAgo = now - 5000;
-      
-      const recentDuplicate = existingMovements
-        .filter(m => {
-          const isLinkType = m.type === 'link_clicked' || m.type === 'whatsapp_link_clicked';
-          const matchesUrl = m.type === 'whatsapp_link_clicked' || (m.description && m.description.includes(decodedUrl));
-          return isLinkType && matchesUrl;
-        })
-        .find(m => {
-          const movementTime = new Date(m.timestamp).getTime();
-          const sameIP = m.clientIP === clientIP || m.realIP === clientIP;
-          return movementTime > fiveSecondsAgo && sameIP;
-        });
-      
-      if (recentDuplicate) {
-        console.log('⚠️ Duplicate click detected within 5 seconds, skipping tracking');
+      const clientIP =
+        req.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
+        req.get('X-Real-IP') ||
+        req.connection.remoteAddress ||
+        'Unknown';
+      const dedupeTag = linkRedirectDedupeTag(true, String(src || ''), decodedUrl);
+
+      if (isRecentDuplicateRedirect(data?.tracking?.lastRedirectDedupe, clientIP, dedupeTag)) {
+        console.log('⚠️ Duplicate click (dedupe), skipping tracking');
         return res.redirect(302, url);
       }
-      
+
       console.log('✅ No duplicate found, updating tracking');
-      
-      // Obtener información detallada del usuario
-      const forwardedIPs = req.get('X-Forwarded-For') ? req.get('X-Forwarded-For').split(',').map(ip => ip.trim()) : [];
+
+      const forwardedIPs = req.get('X-Forwarded-For') ? req.get('X-Forwarded-For').split(',').map((ip) => ip.trim()) : [];
       const realIP = req.get('X-Real-IP') || 'Unknown';
       
       // Generar UUID único para este movimiento
@@ -1068,7 +1063,8 @@ exports.linkRedirect = onRequest({ region: REGION, secrets: [polygonCertifySecre
       const updateData = {
         'tracking.clickCount': FieldValue.increment(1),
         'tracking.lastClickAt': FieldValue.serverTimestamp(),
-        'tracking.movements': FieldValue.arrayUnion(movement)
+        'tracking.movements': FieldValue.arrayUnion(movement),
+        'tracking.lastRedirectDedupe': { t: Date.now(), ip: clientIP, tag: dedupeTag },
       };
       if (isWhatsApp && !data?.tracking?.opened) {
         updateData['tracking.opened'] = true;

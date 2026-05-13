@@ -56,6 +56,33 @@ export default function SignupPage() {
     
     setIsLoading(true);
     try {
+      const emailNorm = data.email.trim().toLowerCase();
+      const stateRes = await fetch("/api/auth/legacy-migration-state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailNorm }),
+      });
+      const stateJson = (await stateRes.json().catch(() => ({}))) as { code?: string };
+
+      if (stateJson.code === "MIGRATED_PENDING_PASSWORD") {
+        toast({
+          title: "Cuenta migrada",
+          description:
+            "Tu cuenta viene de Notificas anterior. Continuá para crear tu contraseña desde el enlace que enviaremos a tu correo.",
+        });
+        router.push(`/cuenta/activar-migracion?email=${encodeURIComponent(emailNorm)}`);
+        return;
+      }
+
+      if (stateJson.code === "ACCOUNT_EXISTS") {
+        toast({
+          title: "Este correo ya está registrado",
+          description: "Iniciá sesión o recuperá tu contraseña. Si venías de la versión anterior, podés activar tu cuenta migrada.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // 1. Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
       const user = userCredential.user;
@@ -254,6 +281,10 @@ export default function SignupPage() {
             ¿Ya tienes una cuenta?{' '}
             <Link href="/login" className="underline" prefetch={false}>
               Iniciar Sesión
+            </Link>
+            <span className="mx-1 text-muted-foreground">·</span>
+            <Link href="/cuenta/activar-migracion" className="underline" prefetch={false}>
+              Cuenta migrada
             </Link>
           </div>
         </CardContent>

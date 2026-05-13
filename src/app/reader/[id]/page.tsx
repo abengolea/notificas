@@ -92,20 +92,31 @@ export default function ReaderPage() {
 
   const handleAttachmentClick = async (attachment: any) => {
     if (!mail || !params.id) return;
+    // Abrir pestaña en el mismo tick del clic: si await fetch va antes, muchos navegadores
+    // bloquean window.open por perder el "user gesture".
+    const tab = window.open("about:blank", "_blank");
     try {
-      await fetch('/api/track-attachment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/track-attachment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messageId: params.id,
-          attachmentId: attachment.id || (attachment.hash ? `hash:${attachment.hash}` : attachment.fileName),
+          attachmentId:
+            attachment.id ||
+            (attachment.hash ? `hash:${attachment.hash}` : attachment.fileName),
           fileName: attachment.fileName,
-          action: 'opened',
-          k: trackingToken, // magic link token para autenticación del reader público
-        })
+          action: "opened",
+          k: trackingToken,
+        }),
       });
-    } catch { /* ignore */ }
-    window.open(attachment.fileUrl, '_blank');
+      if (!res.ok && process.env.NODE_ENV === "development") {
+        console.warn("track-attachment:", res.status, await res.text());
+      }
+    } catch {
+      /* ignore */
+    }
+    if (tab) tab.location.href = attachment.fileUrl;
+    else window.open(attachment.fileUrl, "_blank");
   };
 
   useEffect(() => {
