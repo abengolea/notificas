@@ -93,11 +93,28 @@ async function queryByHashIndex(hash: string) {
       const doc = snapshot.docs[0];
       const attachment = findAttachmentByHash(doc, hash);
       if (attachment) {
-        return { doc, attachment };
+        return { doc, attachment, isCertificate: false };
       }
     }
   } catch (error) {
     console.warn("attachmentsHashes query failed:", error);
+  }
+  return null;
+}
+
+async function queryByCertificateHash(hash: string) {
+  try {
+    const snapshot = await adminDb
+      .collection("mail")
+      .where("certificateHashes", "array-contains", hash)
+      .limit(1)
+      .get();
+
+    if (!snapshot.empty) {
+      return { doc: snapshot.docs[0], attachment: null, isCertificate: true };
+    }
+  } catch (error) {
+    console.warn("certificateHashes query failed:", error);
   }
   return null;
 }
@@ -121,7 +138,7 @@ async function scanMailCollection(hash: string) {
     for (const doc of snapshot.docs) {
       const attachment = findAttachmentByHash(doc, hash);
       if (attachment) {
-        return { doc, attachment };
+        return { doc, attachment, isCertificate: false };
       }
     }
 
@@ -182,17 +199,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const quickMatch = await queryByHashIndex(hash);
-    const match = quickMatch || (await scanMailCollection(hash));
+    const quickMatch =
+      (await queryByHashIndex(hash)) ||
+      (await queryByCertificateHash(hash)) ||
+      (await scanMailCollection(hash));
 
-    if (!match) {
+    if (!quickMatch) {
       return NextResponse.json(
         { error: "Documento no encontrado", hash },
         { status: 404 }
       );
     }
 
-    const payload = buildResponsePayload(match.doc, match.attachment, hash);
+    const payload = buildResponsePayload(
+      quickMatch.doc,
+      quickMatch.attachment,
+      hash,
+      { isCertificateVerification: quickMatch.isCertificate }
+    );
 
     return NextResponse.json({
       success: true,
