@@ -139,6 +139,36 @@ export default function VerifyPage() {
           description: "El PDF coincide con un registro certificado.",
         });
       } else if (response.status === 404) {
+        // Intentar verificar por ID extraído del nombre del archivo (certificado-lectura-{id}.pdf)
+        const match = selectedFile.name.match(/^certificado-lectura-([^.]+)\.pdf$/i);
+        if (match) {
+          const messageId = match[1];
+          const idResponse = await fetch("/api/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messageId }),
+          });
+          if (idResponse.ok) {
+            const data = await idResponse.json();
+            setResult({
+              isValid: true,
+              messageId: data?.data?.messageId || data?.data?.docId,
+              senderName: data?.data?.senderName,
+              recipientEmail: data?.data?.recipientEmail,
+              sentAt: data?.data?.sentAt
+                ? new Date(data.data.sentAt).toLocaleString("es-ES")
+                : undefined,
+              hash,
+              blockchainVerified: data?.data?.blockchainVerified ?? true,
+              fileName: selectedFile.name,
+            });
+            toast({
+              title: "Certificado válido",
+              description: "El certificado fue emitido por Notificas.com.",
+            });
+            return;
+          }
+        }
         setResult({
           isValid: false,
           hash,
