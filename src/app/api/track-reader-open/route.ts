@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
+import { certificarRecepcion } from '@/lib/certification-polygon';
 
 function extractBrowserInfo(userAgent: string) {
   const match = userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)\/(\d+)/);
@@ -14,16 +15,48 @@ function generateUUID() {
   });
 }
 
-function certifyEventHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const secret = process.env.POLYGON_CERTIFY_SECRET?.trim();
-  if (secret) headers['X-Certify-Secret'] = secret;
-  return headers;
+/**
+ * Certifica la primera apertura en Polygon en segundo plano.
+ * Encadena la TX al sendTxHash y contentHash del envío para prueba judicial completa.
+ * Nunca bloquea la respuesta HTTP — es fire-and-forget con manejo de errores.
+ */
+async function certifyFirstReadInBackground(
+  docId: string,
+  recipientId: string,
+  sendTxHash: string | undefined,
+  contentHash: string | undefined,
+): Promise<void> {
+  try {
+    // Verificar idempotencia: no certificar si ya tiene TX de recepción
+    const snap = await adminDb.collection('mail').doc(docId).get();
+    const existing = snap.data()?.polygonCertifications || {};
+    if (existing.receive) {
+      console.log('ℹ️ Polygon receive ya certificado para', docId);
+      return;
+    }
+
+    // Certificar con referencia al send: RECEIVE|docId|recipient|contentHash|sendTxHash|timestamp
+    const txHash = await Promise.race([
+      certificarRecepcion(docId, recipientId, sendTxHash, contentHash),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout certificación Polygon RECEIVE (>40s)')), 40_000)
+      ),
+    ]);
+
+    await adminDb.collection('mail').doc(docId).update({
+      'polygonCertifications.receive': txHash,
+      'polygonCertifications.updatedAt': new Date(),
+    });
+    console.log('🔗 Primera lectura certificada en Polygon:', txHash);
+  } catch (err: any) {
+    console.error('⚠️ Error certificando FIRST_READ en Polygon (no afecta la apertura):', err?.message);
+  }
 }
 
 /**
- * Primera apertura real del mensaje vía enlace del correo (?k=...) cuando el HTML enlaza directo a /reader
- * (sin pasar por linkRedirect ni pixel). Registra tracking y certifica receive en Polygon (idempotente).
+ * Registra `reader_magic_open` cuando el destinatario abre el reader vía magic link (?k=...).
+ * Es la señal principal de apertura fehaciente — reemplaza el pixel de correo.
+ * La certificación en Polygon corre en background sin bloquear la respuesta.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -45,6 +78,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Mensaje no encontrado' }, { status: 404 });
     }
     const messageData = messageDoc.data()!;
+
+    // Validar token mágico
     const stored =
       typeof messageData.tracking?.token === 'string'
         ? messageData.tracking.token
@@ -61,6 +96,7 @@ export async function POST(request: NextRequest) {
       request.headers.get('X-Real-IP') ||
       'Unknown';
 
+    // Deduplicación: ignorar si ya hubo una apertura en los últimos 5s desde la misma IP
     const existingMovements: any[] = messageData.tracking?.movements || [];
     const fiveSecondsAgo = Date.now() - 5000;
     const recent = existingMovements
@@ -73,19 +109,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, skipped: true }, { status: 200 });
     }
 
+    const wasFirstOpen = !messageData.tracking?.opened;
     const movement = {
       id: generateUUID(),
       type: 'reader_magic_open',
-      description: 'Apertura del mensaje desde el enlace del correo (reader con token).',
+      description: 'Abrieron la notificación desde el enlace del correo',
       timestamp: new Date().toISOString(),
       userAgent,
       clientIP,
       browser: extractBrowserInfo(userAgent),
       recipientEmail: messageData.recipientEmail || messageData.to?.[0] || 'Unknown',
       source: 'reader_email',
+      isFirstOpen: wasFirstOpen,
     };
-
-    const wasFirstOpen = !messageData.tracking?.opened;
 
     await messageRef.update({
       'tracking.opened': true,
@@ -94,24 +130,15 @@ export async function POST(request: NextRequest) {
       'tracking.movements': FieldValue.arrayUnion(movement),
     });
 
-    const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'http://localhost:9006';
-    if (process.env.POLYGON_CERTIFY_SECRET?.trim()) {
-      try {
-        const certifyRes = await fetch(`${base}/api/polygon/certify-event`, {
-          method: 'POST',
-          headers: certifyEventHeaders(),
-          body: JSON.stringify({
-            docId: messageId,
-            type: 'receive',
-            userId: messageData.recipientEmail || messageData.to?.[0],
-          }),
-        });
-        if (!certifyRes.ok) {
-          console.warn('⚠️ Polygon certify receive (reader-open):', await certifyRes.text());
-        }
-      } catch (e: any) {
-        console.warn('⚠️ Polygon certify receive failed:', e?.message);
-      }
+    // Certificar en Polygon solo la PRIMERA apertura, en background, encadenada al send.
+    // Condición: debe ser primera apertura Y no tener ya certificación de recepción.
+    if (wasFirstOpen && !messageData.polygonCertifications?.receive) {
+      const recipientId = messageData.recipientEmail || messageData.to?.[0] || 'recipient';
+      const sendTxHash = messageData.polygonCertifications?.send as string | undefined;
+      const contentHash = messageData.polygonCertifications?.contentHash as string | undefined;
+
+      // Fire-and-forget: no bloquea la respuesta HTTP
+      void certifyFirstReadInBackground(messageId, recipientId, sendTxHash, contentHash);
     }
 
     return NextResponse.json(

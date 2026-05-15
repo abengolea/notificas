@@ -82,21 +82,51 @@ export async function certificarEnvio(
   return txHash;
 }
 
-export async function certificarRecepcion(messageId: string, userId: string): Promise<string> {
+/**
+ * Certifica la primera apertura (FIRST_READ) en Polygon.
+ * @param sendTxHash - Hash de la TX de envío (encadena la lectura al send para prueba judicial)
+ * @param contentHash - Hash del contenido del mensaje (mismo que en el send, verifica integridad)
+ */
+export async function certificarRecepcion(
+  messageId: string,
+  userId: string,
+  sendTxHash?: string,
+  contentHash?: string,
+): Promise<string> {
   const timestamp = new Date().toISOString();
-  const payload = `RECEIVE|${messageId}|${userId}|${timestamp}`;
 
-  console.log('📨 Certificando recepción de mensaje:', { messageId, userId });
+  // Payload encadenado al send: referencia sendTxHash y contentHash para que
+  // cualquier auditor pueda vincular FIRST_READ ↔ SEND en la blockchain.
+  const payload = sendTxHash && contentHash
+    ? `FIRST_READ|${messageId}|${userId}|${contentHash}|ref:${sendTxHash}|${timestamp}`
+    : sendTxHash
+      ? `FIRST_READ|${messageId}|${userId}|ref:${sendTxHash}|${timestamp}`
+      : `FIRST_READ|${messageId}|${userId}|${timestamp}`;
+
+  console.log('📨 Certificando primera lectura de mensaje:', {
+    messageId,
+    userId,
+    chainedToSend: !!sendTxHash,
+    hasContentHash: !!contentHash,
+  });
 
   const txHash = await sendPolygonTransaction(payload);
 
   await persistBlockchainMovement(
-    { type: 'receive', userId, messageId, txHash, payload },
+    {
+      type: 'first_read',
+      userId,
+      messageId,
+      txHash,
+      payload,
+      sendTxHash: sendTxHash ?? null,
+      contentHash: contentHash ?? null,
+    },
     txHash,
-    'receive'
+    'first_read'
   );
 
-  console.log('✅ Recepción certificada en Polygon:', txHash);
+  console.log('✅ Primera lectura certificada en Polygon:', txHash);
   return txHash;
 }
 
