@@ -1,4 +1,6 @@
+import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { verifyAuthToken } from '@/lib/auth-helper';
 import { generateCertificatePDF } from '@/lib/certificate-generator';
@@ -78,10 +80,16 @@ export async function POST(request: NextRequest) {
 
     // Generar el certificado PDF
     const pdfBlob = await generateCertificatePDF(certificateData);
-    
+
     // Convertir Blob a Buffer
     const arrayBuffer = await pdfBlob.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+
+    // Calcular hash del PDF y guardarlo para verificación posterior
+    const certificateHash = createHash('sha256').update(buffer).digest('hex');
+    messageRef.update({
+      certificateHashes: FieldValue.arrayUnion(certificateHash),
+    }).catch((e: any) => console.warn('⚠️ No se pudo guardar certificateHash:', e?.message));
 
     // Devolver el PDF como respuesta
     return new NextResponse(buffer, {
