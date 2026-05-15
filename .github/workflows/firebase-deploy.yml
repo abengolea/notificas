@@ -46,9 +46,6 @@ jobs:
           ADMIN_PANEL_PASSWORD: ${{ secrets.ADMIN_PANEL_PASSWORD }}
           ADMIN_SESSION_SECRET: ${{ secrets.ADMIN_SESSION_SECRET }}
 
-      - name: Deploy a Firebase Hosting
-        run: firebase deploy --only hosting --token "${{ secrets.FIREBASE_TOKEN }}"
-
       - name: 🔄 Notify Firebase Studio Local
         run: |
           echo "🚀 Notificando Firebase Studio local..."
