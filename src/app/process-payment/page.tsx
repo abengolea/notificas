@@ -40,7 +40,7 @@ export default function ProcessPaymentPage() {
       if (response.ok) {
         toast({
           title: "¡Éxito!",
-          description: `Pago procesado. Se agregaron ${data.creditsAdded} créditos.`,
+          description: `Pago procesado. Se agregaron ${data.creditsAdded} envíos.`,
           variant: 'default',
         });
         setPaymentId('');
@@ -51,7 +51,7 @@ export default function ProcessPaymentPage() {
           variant: 'destructive',
         });
       }
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Error de conexión",
@@ -68,7 +68,7 @@ export default function ProcessPaymentPage() {
         <CardHeader>
           <CardTitle>Procesar Pago Manual</CardTitle>
           <CardDescription>
-            Ingresa el Payment ID de Mercado Pago para procesar el pago y agregar créditos
+            Ingresa el Payment ID de Mercado Pago para procesar el pago y agregar envíos
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

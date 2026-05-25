@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     console.log(
       result.alreadySettled
         ? 'ℹ️ Webhook: pago ya estaba acreditado'
-        : '✅ Webhook: créditos acreditados'
+        : '✅ Webhook: envíos acreditados'
     );
 
     return NextResponse.json({ received: true });

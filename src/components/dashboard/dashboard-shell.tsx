@@ -233,7 +233,7 @@ export function DashboardShell({
             Billetera
           </Link>
           <div className="flex justify-between items-center text-sm p-3 bg-muted rounded-lg">
-            <span>Créditos</span>
+            <span>Envíos</span>
             <span className="font-bold text-lg text-primary">{appUser?.creditos ?? 0}</span>
           </div>
         </div>
@@ -270,18 +270,18 @@ export function DashboardShell({
             <Link
               href="/dashboard/billetera"
               className="inline-flex md:hidden items-center gap-2 rounded-lg border bg-muted px-2.5 py-1.5 min-h-9 shrink-0"
-              aria-label={`Billetera, ${appUser?.creditos ?? 0} créditos`}
+              aria-label={`Billetera, ${appUser?.creditos ?? 0} envíos disponibles`}
             >
               <Wallet className="h-4 w-4 text-primary shrink-0" />
               <div className="flex flex-col items-start leading-none gap-0.5 min-w-[2.75rem]">
-                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Créditos</span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Envíos</span>
                 <span className="font-bold tabular-nums text-sm text-primary">{appUser?.creditos ?? 0}</span>
               </div>
             </Link>
             <div className="hidden md:flex items-center gap-3 p-3 bg-muted rounded-lg border">
               <Wallet className="h-5 w-5 text-primary" />
               <div className="text-right">
-                <div className="text-xs text-muted-foreground">Créditos</div>
+                <div className="text-xs text-muted-foreground">Envíos</div>
                 <div className="font-bold text-lg text-primary">{appUser?.creditos || 0}</div>
               </div>
               <Link href="/dashboard/billetera">

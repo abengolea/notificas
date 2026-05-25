@@ -388,7 +388,7 @@ export default function ColegioDiscountAdminCard() {
               <CardDescription>
                 Cada fila es un colegio: nombre, porcentaje sobre precio de lista, activación y nómina de mails. En la
                 billetera se compara el mail de la sesión (Firebase) con la lista del colegio; si coincide y el
-                descuento está activo, Mercado Pago cobra el precio rebajado manteniendo los créditos del plan. Si un
+                descuento está activo, Mercado Pago cobra el precio rebajado manteniendo los envíos del plan. Si un
                 matriculado está en más de un colegio con descuento vigente, aplica el mayor porcentaje.
               </CardDescription>
             </div>

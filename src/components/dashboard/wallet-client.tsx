@@ -96,10 +96,10 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
               toast({
                 title: data.alreadySettled
                   ? 'Pago ya registrado'
-                  : 'Créditos acreditados',
+                  : 'Envíos acreditados',
                 description: data.alreadySettled
-                  ? 'Este cobro ya había sumado créditos a tu cuenta.'
-                  : `Se agregaron ${data.creditsAdded} créditos.`,
+                  ? 'Este cobro ya había sumado envíos a tu cuenta.'
+                  : `Se agregaron ${data.creditsAdded} envíos.`,
               });
             } else if (
               typeof data.error === 'string' &&
@@ -133,7 +133,7 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
           toast({
             title: 'Iniciá sesión',
             description:
-              'Hay un cobro pendiente de sincronizar. Iniciá sesión para acreditar tus créditos.',
+              'Hay un cobro pendiente de sincronizar. Iniciá sesión para acreditar tus envíos.',
             variant: 'destructive',
           });
         }
@@ -141,13 +141,13 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
         toast({
           title: 'Pago recibido',
           description:
-            'Si los créditos no aparecen, esperá unos segundos o recargá la página.',
+            'Si los envíos no aparecen, esperá unos segundos o recargá la página.',
         });
       } else if (pending && !cancelled) {
         toast({
           title: 'Pago pendiente',
           description:
-            'Tu pago está en proceso. Los créditos se verán cuando se apruebe.',
+            'Tu pago está en proceso. Los envíos se verán cuando se apruebe.',
         });
       } else if (failed && !cancelled) {
         toast({
@@ -314,8 +314,8 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
         toast({
           title: data.alreadySettled ? 'Ya estaba cargado' : 'Listo',
           description: data.alreadySettled
-            ? 'Este número de operación ya había acreditado tus créditos.'
-            : `Se acreditaron ${data.creditsAdded} crédito(s).`,
+            ? 'Este número de operación ya había acreditado tus envíos.'
+            : `Se acreditaron ${data.creditsAdded} envío(s).`,
         });
         setSyncOpId('');
       } else {
@@ -355,10 +355,10 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
       <div className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-medium text-muted-foreground">Créditos disponibles</p>
+            <p className="text-sm font-medium text-muted-foreground">Envíos disponibles</p>
             <p className="text-4xl font-bold tabular-nums text-primary sm:text-5xl">{user.creditos}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Equivale a envíos certificados que podés usar. Sin vencimiento.
+              Son envíos certificados disponibles en tu billetera. Sin vencimiento.
             </p>
           </div>
         </div>
@@ -385,7 +385,7 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
         <TabsContent value="comprar" className="mt-4 space-y-0 focus-visible:outline-none">
           <Card className="shadow-lg">
             <CardHeader>
-              <CardTitle>Comprar créditos</CardTitle>
+              <CardTitle>Comprar envíos</CardTitle>
               <CardDescription>
                 Elegí un plan; el cobro es seguro con Mercado Pago.
               </CardDescription>
@@ -476,7 +476,7 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle>Historial de transacciones</CardTitle>
-              <CardDescription>Compras y uso de créditos. Podés desplazarte dentro de la tabla si hay muchos movimientos.</CardDescription>
+              <CardDescription>Compras y uso de envíos. Podés desplazarte dentro de la tabla si hay muchos movimientos.</CardDescription>
             </CardHeader>
             <CardContent className="p-0 sm:p-6 sm:pt-0">
               <div className="max-h-[min(65vh,560px)] overflow-auto rounded-md border sm:border-0">
@@ -486,7 +486,7 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
                       <TableHead>Fecha</TableHead>
                       <TableHead>Descripción</TableHead>
                       <TableHead>Tipo</TableHead>
-                      <TableHead>Créditos</TableHead>
+                      <TableHead>Envíos</TableHead>
                       <TableHead className="text-right">Monto</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -528,7 +528,7 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
         <TabsContent value="sincronizar" className="mt-4 focus-visible:outline-none">
           <Card className="border-dashed shadow-lg">
             <CardHeader>
-              <CardTitle className="text-lg">¿Pagaste y no ves los créditos?</CardTitle>
+              <CardTitle className="text-lg">¿Pagaste y no ves los envíos?</CardTitle>
               <CardDescription>
                 Pegá el número de operación del comprobante de Mercado Pago (sin el numeral #). Tiene que ser la misma
                 cuenta con la que hiciste la compra.

@@ -69,13 +69,13 @@ function validatePayload(body: PlanPayload, requireAll: boolean): string | null 
   const need = ["nombre", "descripcion", "precio", "creditos", "type"] as const;
   if (requireAll) {
     for (const k of need) {
-      if (body[k] === undefined || body[k] === null) return `Falta ${k}`;
+      if (body[k] === undefined || body[k] === null) return k === "creditos" ? "Falta envíos" : `Falta ${k}`;
     }
   }
   if (body.precio != null && (typeof body.precio !== "number" || body.precio < 0))
     return "precio inválido";
   if (body.creditos != null && (!Number.isInteger(body.creditos) || body.creditos < 0))
-    return "creditos inválido";
+    return "envíos inválidos";
   if (body.type != null && !["unitario", "pack", "suscripcion"].includes(body.type))
     return "type inválido";
   return null;

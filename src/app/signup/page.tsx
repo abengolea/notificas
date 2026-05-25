@@ -103,7 +103,7 @@ export default function SignupPage() {
           telefono: data.phone,
           verificado: true, // Mark as verified since we don't require email verification
         },
-        creditos: 0, // Start with 0 credits
+        creditos: 0, // Empieza con 0 envíos disponibles
         estado: 'activo',
         createdAt: new Date(),
         lastLogin: new Date(),

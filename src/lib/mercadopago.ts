@@ -151,7 +151,7 @@ export async function createPaymentPreference(data: CreatePreferenceData): Promi
 
     const hubPeriodo = new Date().toISOString().slice(0, 7);
     const hubConcepto = truncateHubField(
-      `${data.planName} — ${data.credits} creditos`,
+      `${data.planName} — ${data.credits} envios`,
       120,
     );
 
@@ -191,7 +191,7 @@ export async function createPaymentPreference(data: CreatePreferenceData): Promi
         {
           id: data.planId,
           title: data.planName,
-          description: `Compra de ${data.credits} créditos para notificaciones certificadas`,
+          description: `Compra de ${data.credits} envíos para notificaciones certificadas`,
           quantity: 1,
           unit_price: data.price,
           currency_id: 'ARS'

@@ -21,7 +21,6 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuLabel,
-    DropdownMenuSeparator,
     DropdownMenuTrigger,
   } from "@/components/ui/dropdown-menu"
 import {
@@ -31,7 +30,6 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -149,7 +147,7 @@ export default function UserManagement() {
             }
             toast({
                 title: '¡Envíos regalados!',
-                description: `Se sumaron ${giftAmount} envíos (créditos) a ${selectedUser.nombre}.`,
+                description: `Se sumaron ${giftAmount} envíos a ${selectedUser.nombre}.`,
             });
             setGiftDialogOpen(false);
             setSelectedUser(null);

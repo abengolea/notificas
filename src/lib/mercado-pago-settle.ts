@@ -162,7 +162,7 @@ async function settleApprovedFromMpMetadata(opts: {
   }
 
   if (!Number.isFinite(addCredits) || addCredits <= 0) {
-    return { ok: false, status: 400, error: 'No se pudieron determinar los créditos del pago.' };
+    return { ok: false, status: 400, error: 'No se pudieron determinar los envíos del pago.' };
   }
 
   const stampRef = db.collection('applied_mp_payments').doc(paymentIdStr);
@@ -204,7 +204,7 @@ async function settleApprovedFromMpMetadata(opts: {
         id: purchaseTransactionRef.id,
         userId: metaUserId,
         tipo: 'compra',
-        descripcion: `Compra de ${addCredits} créditos — ${planName}`,
+        descripcion: `Compra de ${addCredits} envíos — ${planName}`,
         monto,
         creditos: addCredits,
         metodoPago: 'Mercado Pago',
@@ -246,7 +246,7 @@ async function settleApprovedFromMpMetadata(opts: {
 }
 
 /**
- * Acredita créditos para un pago aprobado de Checkout Pro.
+ * Acredita envíos para un pago aprobado de Checkout Pro.
  * Idempotente: si ese paymentId ya figura en el historial, no vuelve a sumar.
  */
 export async function settleMercadoPagoPayment(opts: {
@@ -379,7 +379,7 @@ export async function settleMercadoPagoPayment(opts: {
         id: purchaseTransactionRef.id,
         userId: uid,
         tipo: 'compra',
-        descripcion: `Compra de ${data.credits} créditos — ${data.planName}`,
+        descripcion: `Compra de ${data.credits} envíos — ${data.planName}`,
         monto: data.price,
         creditos: data.credits,
         metodoPago: 'Mercado Pago',
