@@ -95,7 +95,7 @@ export type Transaccion = {
     descripcion: string;
     monto: number;
     creditos: number;
-    metodoPago?: 'Mercado Pago' | 'Crédito';
+    metodoPago?: 'Mercado Pago' | 'Crédito' | 'Envíos';
 };
 
 export type Contacto = {

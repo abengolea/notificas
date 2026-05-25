@@ -1,6 +1,7 @@
 "use client";
 
 import { escapeHtml } from "./inject-content-for-reader";
+import { renderRichMessageContent } from "./rich-text";
 
 export interface MailMessage {
   from?: string;
@@ -10,8 +11,6 @@ export interface MailMessage {
     html?: string;
     content?: string;
     details?: {
-      priority?: string;
-      requireCertificate?: boolean;
       fecha?: string;
       attachmentsCount?: number;
     };
@@ -19,8 +18,8 @@ export interface MailMessage {
   senderName?: string;
   recipientEmail?: string;
   createdBy?: string;
-  delivery?: { state?: string; time?: any };
-  tracking?: { sentAt?: any };
+  delivery?: { state?: string; time?: unknown };
+  tracking?: { sentAt?: unknown };
   attachments?: Array<{
     id: string;
     fileName: string;
@@ -74,11 +73,12 @@ export function buildSenderViewHtml(mail: MailMessage): string {
   let html = "";
 
   if (content) {
+    const contentHtml = renderRichMessageContent(content);
     html += `
     <div class="mb-6">
       <h3 class="text-sm font-semibold text-muted-foreground mb-2">Contenido del mensaje</h3>
       <div class="rounded-lg border border-border bg-muted/30 p-4">
-        <div class="whitespace-pre-wrap text-sm">${content.split("\n").map((l) => escapeHtml(l)).join("<br/>")}</div>
+        <div class="rich-message-content text-sm leading-6">${contentHtml}</div>
       </div>
     </div>`;
   }
@@ -88,8 +88,6 @@ export function buildSenderViewHtml(mail: MailMessage): string {
     <div class="mb-6">
       <h3 class="text-sm font-semibold text-muted-foreground mb-2">Detalles del envío</h3>
       <ul class="text-sm space-y-1 text-muted-foreground">
-        <li>Prioridad: <strong class="text-foreground">${escapeHtml(details.priority || "normal")}</strong></li>
-        <li>Certificado requerido: <strong class="text-foreground">${details.requireCertificate ? "Sí" : "No"}</strong></li>
         <li>Fecha: <strong class="text-foreground">${escapeHtml(details.fecha || "-")}</strong></li>
         ${(details.attachmentsCount || 0) > 0 ? `<li>Adjuntos: <strong class="text-foreground">${details.attachmentsCount} archivo(s)</strong></li>` : ""}
       </ul>

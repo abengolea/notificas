@@ -250,7 +250,7 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
 
     const scheduleFutureEarly = Boolean(scheduleIso && new Date(scheduleIso) > new Date());
     if (sendNow && !scheduleFutureEarly && creditos < recipients.length) {
-      toast({ title: "Créditos insuficientes", variant: "destructive" });
+      toast({ title: "Envíos insuficientes", variant: "destructive" });
       return;
     }
 
@@ -596,7 +596,7 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
             />
             <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
               Cada destinatario recibirá una notificación individual certificada en Polygon. Consumo:{" "}
-              <strong>1 crédito</strong> por envío exitoso. Tu saldo: <strong>{creditos}</strong>.
+              <strong>1 envío</strong> por envío exitoso. Tu saldo: <strong>{creditos}</strong>.
               {!scheduleIso && creditos < recipients.length ? (
                 <span className="text-destructive block mt-1">Saldo insuficiente para enviar ahora.</span>
               ) : null}
