@@ -57,7 +57,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: 'La factura todavía no está disponible' }, { status: 404 });
   }
 
-  const pdf = buildInvoicePdfBuffer({
+  const pdf = await buildInvoicePdfBuffer({
     tipoComprobante: asString(billingHub.tipoComprobante) ?? undefined,
     cbteTipo: asNumber(billingHub.cbteTipo) ?? undefined,
     puntoVenta: asNumber(billingHub.ptoVta) ?? undefined,

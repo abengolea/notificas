@@ -1,5 +1,8 @@
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import sharp from 'sharp';
 
 export type InvoicePdfData = {
   tipoComprobante?: string;
@@ -113,6 +116,21 @@ function drawBrandMark(doc: jsPDF, x: number, y: number, size: number) {
   doc.triangle(x + 10, y + size - 12, x + size - 10, y + size - 12, cx, cy + 5, 'F');
 }
 
+async function loadLogoPngDataUrl(): Promise<string | null> {
+  const logoPath = path.join(process.cwd(), 'public', 'notificasLogo.svg');
+  if (!existsSync(logoPath)) return null;
+
+  try {
+    const png = await sharp(readFileSync(logoPath))
+      .resize(120, 120, { fit: 'contain' })
+      .png()
+      .toBuffer();
+    return `data:image/png;base64,${png.toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
+
 function drawLabelValue(doc: jsPDF, label: string, value: string, x: number, y: number) {
   setTextColor(doc, COLORS.muted);
   doc.setFont('helvetica', 'normal');
@@ -173,7 +191,7 @@ function drawQrCode(doc: jsPDF, url: string, x: number, y: number, size: number)
   }
 }
 
-export function buildInvoicePdfBuffer(data: InvoicePdfData): Buffer {
+export async function buildInvoicePdfBuffer(data: InvoicePdfData): Promise<Buffer> {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const width = doc.internal.pageSize.getWidth();
   const height = doc.internal.pageSize.getHeight();
@@ -193,7 +211,12 @@ export function buildInvoicePdfBuffer(data: InvoicePdfData): Buffer {
   setDrawColor(doc, COLORS.line);
   doc.roundedRect(left - 12, 28, right - left + 24, 756, 12, 12, 'FD');
 
-  drawBrandMark(doc, left, 50, 44);
+  const logo = await loadLogoPngDataUrl();
+  if (logo) {
+    doc.addImage(logo, 'PNG', left, 48, 50, 50);
+  } else {
+    drawBrandMark(doc, left, 50, 44);
+  }
   setTextColor(doc, COLORS.ink);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
