@@ -2,7 +2,6 @@ import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import sharp from 'sharp';
 
 export type InvoicePdfData = {
   tipoComprobante?: string;
@@ -116,19 +115,24 @@ function drawBrandMark(doc: jsPDF, x: number, y: number, size: number) {
   doc.triangle(x + 10, y + size - 12, x + size - 10, y + size - 12, cx, cy + 5, 'F');
 }
 
-async function loadLogoPngDataUrl(): Promise<string | null> {
-  const logoPath = path.join(process.cwd(), 'public', 'notificasLogo.svg');
-  if (!existsSync(logoPath)) return null;
+function loadLogoImage(): { dataUrl: string; format: 'JPEG' | 'PNG' } | null {
+  const candidates: Array<{ file: string; format: 'JPEG' | 'PNG'; mime: string }> = [
+    { file: 'notificasLogo.jpg', format: 'JPEG', mime: 'image/jpeg' },
+    { file: 'notificasLogo.jpeg', format: 'JPEG', mime: 'image/jpeg' },
+    { file: 'notificasLogo.png', format: 'PNG', mime: 'image/png' },
+  ];
 
-  try {
-    const png = await sharp(readFileSync(logoPath))
-      .resize(120, 120, { fit: 'contain' })
-      .png()
-      .toBuffer();
-    return `data:image/png;base64,${png.toString('base64')}`;
-  } catch {
-    return null;
+  for (const candidate of candidates) {
+    const logoPath = path.join(process.cwd(), 'public', candidate.file);
+    if (!existsSync(logoPath)) continue;
+    const image = readFileSync(logoPath);
+    return {
+      dataUrl: `data:${candidate.mime};base64,${image.toString('base64')}`,
+      format: candidate.format,
+    };
   }
+
+  return null;
 }
 
 function drawLabelValue(doc: jsPDF, label: string, value: string, x: number, y: number) {
@@ -191,7 +195,7 @@ function drawQrCode(doc: jsPDF, url: string, x: number, y: number, size: number)
   }
 }
 
-export async function buildInvoicePdfBuffer(data: InvoicePdfData): Promise<Buffer> {
+export function buildInvoicePdfBuffer(data: InvoicePdfData): Buffer {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const width = doc.internal.pageSize.getWidth();
   const height = doc.internal.pageSize.getHeight();
@@ -211,9 +215,9 @@ export async function buildInvoicePdfBuffer(data: InvoicePdfData): Promise<Buffe
   setDrawColor(doc, COLORS.line);
   doc.roundedRect(left - 12, 28, right - left + 24, 756, 12, 12, 'FD');
 
-  const logo = await loadLogoPngDataUrl();
+  const logo = loadLogoImage();
   if (logo) {
-    doc.addImage(logo, 'PNG', left, 48, 50, 50);
+    doc.addImage(logo.dataUrl, logo.format, left, 48, 50, 50);
   } else {
     drawBrandMark(doc, left, 50, 44);
   }
