@@ -33,11 +33,16 @@ type BillingHubResult =
   | { ok: false; skipped?: false; error: string; status?: number };
 
 function billingEmitUrl(): string | undefined {
-  const raw =
+  const explicit =
     process.env.NOTIFICASHUB_BILLING_EMIT_URL ||
     process.env.NOTIFICAS_HUB_BILLING_EMIT_URL;
-  const url = raw?.trim();
-  return url || undefined;
+  const explicitUrl = explicit?.trim();
+  if (explicitUrl) return explicitUrl;
+
+  const hubBase = process.env.NOTIFICASHUB_URL?.trim().replace(/\/+$/, '');
+  if (!hubBase) return undefined;
+
+  return `${hubBase}/api/integrations/notificas/billing/emit`;
 }
 
 function billingSharedSecret(): string | undefined {
