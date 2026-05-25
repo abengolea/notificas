@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
       'tracking.lastAppOpenAt': new Date(),
     });
 
-    if (wasFirstOpen) {
+    if (wasFirstOpen || !messageData.polygonCertifications?.receive) {
       try {
         const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9006';
         const certifyRes = await fetch(`${base}/api/polygon/certify-event`, {

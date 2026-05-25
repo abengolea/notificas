@@ -23,6 +23,9 @@
     "check:app-env": "node scripts/check-app-env.js",
     "seed:demo-empresa": "node scripts/seed-demo-empresa.js",
     "migrate:legacy-users": "node scripts/import-legacy-users-from-csv.js",
+    "repair:legacy-csv-corruption": "node scripts/repair-legacy-csv-email-corruption.js",
+    "export:users-excel": "node scripts/export-firestore-users-to-xlsx.js",
+    "script:send-reset-link": "node scripts/send-password-reset-link.js",
     "deploy:functions": "node scripts/deploy-functions.js"
   },
   "dependencies": {
@@ -51,6 +54,7 @@
     "@radix-ui/react-toast": "^1.2.6",
     "@radix-ui/react-tooltip": "^1.1.8",
     "@types/nodemailer": "^7.0.1",
+    "@types/qrcode": "^1.5.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
@@ -69,6 +73,7 @@
     "nodemailer": "^7.0.6",
     "patch-package": "^8.0.0",
     "pdfjs-dist": "^4.10.38",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",
@@ -78,9 +83,7 @@
     "tailwind-merge": "^3.0.1",
     "tailwindcss-animate": "^1.0.7",
     "xlsx": "^0.18.5",
-    "zod": "^3.24.2",
-    "@types/qrcode": "^1.5.6",
-    "qrcode": "^1.5.4"
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",

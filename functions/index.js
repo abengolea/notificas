@@ -153,7 +153,6 @@ Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@noti
 
 const REGION = 'us-central1';
 const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'notificas-f9953';
-const TRACKING_BASE_URL = 'https://trackopen-ju7n3yysfq-uc.a.run.app';
 const LINK_REDIRECT_URL = 'https://linkredirect-ju7n3yysfq-uc.a.run.app';
 const CONFIRM_READ_URL = 'https://confirmread-ju7n3yysfq-uc.a.run.app';
 // IMPORTANTE: Siempre usar la URL de producción para los enlaces en correos
@@ -178,6 +177,35 @@ function certifyEventFetchInit(body) {
   const secret = polygonCertifySecret.value();
   if (secret) headers['X-Certify-Secret'] = secret;
   return { method: 'POST', headers, body: JSON.stringify(body) };
+}
+
+function getCertifyRecipientId(data) {
+  return (
+    data?.recipientEmail ||
+    (Array.isArray(data?.to) ? data.to[0] : data?.to) ||
+    'recipient'
+  );
+}
+
+function certifyPolygonEventOnce(docId, data, type, context) {
+  if (!docId || !['receive', 'read'].includes(type)) return;
+  if (data?.polygonCertifications?.[type]) {
+    console.log(`🔗 Polygon ${type} ya certificado (${context})`);
+    return;
+  }
+
+  const certifyUrl = `${APP_HOSTING_URL}/api/polygon/certify-event`;
+  void fetch(certifyUrl, certifyEventFetchInit({
+    docId: String(docId),
+    type,
+    userId: getCertifyRecipientId(data),
+  }))
+    .then(async (certifyRes) => {
+      if (!certifyRes.ok) {
+        console.warn(`⚠️ Polygon certify ${type} (${context}):`, await certifyRes.text());
+      }
+    })
+    .catch((e) => console.warn(`⚠️ Polygon certify ${type} failed (${context}):`, e?.message));
 }
 
 // Función para extraer información del navegador del User-Agent
@@ -247,7 +275,6 @@ function base64UrlDecode(str) {
 function injectTrackingIntoHtml(html, docId, token) {
   if (!html) return html;
   const { html: out, stats } = injectTrackingIntoHtmlImpl(html, docId, token, {
-    trackingBaseUrl: TRACKING_BASE_URL,
     linkRedirectUrl: LINK_REDIRECT_URL,
     appHostingUrl: APP_HOSTING_URL,
   });
@@ -446,7 +473,50 @@ exports.sendEmail = onRequest(
       }
       
       console.log(`✅ HTML procesado: ${finalHashLinks} enlaces con #, ${localhostLinks} enlaces con localhost`);
-      
+
+      // `data-email-hide` borra cuerpo + adjuntos del HTML guardado; el destinatario no llegaba a tener
+      // enlaces «Ver documento» trackeables. Reinsertamos solo una lista visible de adjuntos (mismos fileUrl)
+      // para que `injectTrackingIntoHtml` los envuelva con linkRedirect.
+      if (Array.isArray(emailData.attachments) && emailData.attachments.length > 0) {
+        const valid = emailData.attachments.filter(
+          (att) => att && typeof att.fileUrl === 'string' && /^https?:\/\//i.test(att.fileUrl.trim()),
+        );
+        if (valid.length > 0) {
+          const blocks = valid
+            .map((att) => {
+              const name = escapeHtmlTextEmail(att.fileName || 'Documento');
+              /** `att` evita depender del match URL tras Safe Links / Gmail; `injectTrackingIntoHtml` no lo reemplaza. */
+              const redirectAtt = `${LINK_REDIRECT_URL}?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}&att=${encodeURIComponent(String(att.id))}`;
+              const hrefEsc = escapeHrefAmpersands(redirectAtt);
+              const ext = escapeHtmlTextEmail(String(att.fileName || '').split('.').pop() || 'DOC').toUpperCase();
+              return `<div style="margin-bottom:12px;padding:12px;background:#ffffff;border:1px solid #e2e8f0;border-radius:6px;">
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                  <div style="width:40px;height:40px;background:#dc2626;border-radius:6px;display:flex;align-items:center;justify-content:center;">
+                    <span style="color:white;font-weight:bold;font-size:12px;">${ext}</span>
+                  </div>
+                  <div style="flex:1;min-width:140px;">
+                    <strong style="color:#1e293b;font-size:14px;">${name}</strong>
+                  </div>
+                  <a href="${hrefEsc}" style="background:#0D9488;color:white;padding:8px 16px;border-radius:6px;text-decoration:none;font-size:12px;font-weight:600;display:inline-block;">Ver documento</a>
+                </div>
+              </div>`;
+            })
+            .join('');
+          const outer = `<div style="margin:24px 0;padding:16px;background:#f8fafc;border-radius:8px;border-left:4px solid #0D9488;">
+            <h2 style="color:#1e293b;margin:0 0 8px 0;font-size:18px;font-weight:600;">📎 Documentos adjuntos (${valid.length})</h2>
+            <p style="margin:0 0 12px 0;color:#64748b;font-size:13px;line-height:1.5;">Descargue o visualice cada archivo desde este correo. El acceso queda registrado como constancia en la notificación.</p>
+            ${blocks}
+          </div>`;
+          const $inj = cheerio.load(htmlToProcess, { decodeEntities: false });
+          if ($inj('body').length) {
+            $inj('body').append(outer);
+          } else {
+            $inj.root().append(outer);
+          }
+          htmlToProcess = $inj.html();
+        }
+      }
+
       htmlWithTracking = injectTrackingIntoHtml(htmlToProcess, docId, trackingToken);
       console.log('📎 Usando HTML original con archivos adjuntos');
     } else {
@@ -460,7 +530,7 @@ exports.sendEmail = onRequest(
         year: new Date().getFullYear(),
         docId: docId,
         trackingToken: trackingToken,
-        trackingBaseUrl: TRACKING_BASE_URL
+        linkRedirectUrl: LINK_REDIRECT_URL
       });
       console.log('📧 Usando template genérico');
     }
@@ -612,7 +682,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
                 clientIP: 'Server',
                 forwardedIPs: [],
                 realIP: 'Server',
-                browser: 'WhatsApp Cloud API',
+                browser: 'Sistema (WhatsApp de Meta)',
                 recipientEmail: emailData.recipientEmail || 'Unknown',
                 whatsappMessageId: whatsappId,
               };
@@ -678,121 +748,44 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
   }
 );
 
-exports.trackOpen = onRequest({ region: REGION, secrets: [polygonCertifySecret] }, async (req, res) => {
+/** GIF 1×1 transparente (respuesta de `trackOpen` para correos antiguos con pixel). */
+const TRACK_OPEN_TRANSPARENT_GIF = Buffer.from(
+  'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+  'base64'
+);
+
+/**
+ * Endpoint histórico del pixel de apertura de correo.
+ * Ya no registra `email_opened` ni toca Firestore: los correos nuevos no inyectan pixel;
+ * las plantillas antiguas siguen recibiendo una imagen válida para no mostrar ícono roto.
+ */
+exports.trackOpen = onRequest({ region: REGION }, async (req, res) => {
   try {
     const { msg, k } = req.query;
-    if (!msg || !k) return res.status(400).send('Missing params');
+    if (!msg || !k) {
+      res.set('Content-Type', 'image/gif');
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      return res.status(200).send(TRACK_OPEN_TRANSPARENT_GIF);
+    }
 
     const db = getFirestore();
-    const docRef = db.collection('mail').doc(String(msg));
-    const snap = await docRef.get();
-    if (!snap.exists) return res.status(404).send('Not found');
-
+    const snap = await db.collection('mail').doc(String(msg)).get();
     const data = snap.data() || {};
     const token = data?.tracking?.token;
-    if (!token || token !== String(k)) {
-      return res.status(403).send('Forbidden');
-    }
-
-    // Obtener información detallada del usuario
-    const userAgent = req.get('User-Agent') || 'Unknown';
-    const clientIP = req.get('X-Forwarded-For') || req.get('X-Real-IP') || req.connection.remoteAddress || 'Unknown';
-    const forwardedIPs = req.get('X-Forwarded-For') ? req.get('X-Forwarded-For').split(',').map(ip => ip.trim()) : [];
-    const realIP = req.get('X-Real-IP') || 'Unknown';
-
-    // Filtrar scanners corporativos de seguridad (no el proxy de imágenes de Gmail: ver KNOWN_SCANNER_PATTERNS).
-    if (isKnownScanner(userAgent)) {
-      console.log('🤖 Scanner de email detectado en trackOpen, devolviendo pixel sin registrar:', userAgent.substring(0, 80));
-      const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+    if (!snap.exists || !token || token !== String(k)) {
       res.set('Content-Type', 'image/gif');
       res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-      return res.status(200).send(pixel);
+      return res.status(200).send(TRACK_OPEN_TRANSPARENT_GIF);
     }
 
-    // Dedupe de 5 segundos por IP para evitar duplicar el evento si el cliente recarga
-    const existingMovements = data?.tracking?.movements || [];
-    const fiveSecondsAgo = Date.now() - 5000;
-    const recentOpen = existingMovements
-      .filter((m) => m.type === 'email_opened')
-      .find((m) => {
-        const t = new Date(m.timestamp).getTime();
-        return t > fiveSecondsAgo && (m.clientIP === clientIP || m.realIP === clientIP);
-      });
-    if (recentOpen) {
-      console.log('⚠️ email_opened duplicado dentro de 5s, devolviendo pixel sin registrar');
-      const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
-      res.set('Content-Type', 'image/gif');
-      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-      return res.status(200).send(pixel);
-    }
-
-    const movementId = require('crypto').randomUUID();
-
-    const movement = {
-      id: movementId,
-      type: 'email_opened',
-      description: 'Lectura de documento desde link del email',
-      timestamp: new Date().toISOString(),
-      userAgent: userAgent,
-      clientIP: clientIP,
-      forwardedIPs: forwardedIPs,
-      realIP: realIP,
-      browser: extractBrowserInfo(userAgent),
-      recipientEmail: data.recipientEmail || 'Unknown'
-    };
-
-    await docRef.update({
-      'tracking.opened': true,
-      'tracking.openedAt': FieldValue.serverTimestamp(),
-      'tracking.openCount': FieldValue.increment(1),
-      'tracking.movements': FieldValue.arrayUnion(movement)
-    });
-
-    // Certificar recepción (primera apertura) en Polygon
-    const wasFirstOpen = !data?.tracking?.opened;
-    if (wasFirstOpen) {
-      try {
-        const certifyUrl = `${APP_HOSTING_URL}/api/polygon/certify-event`;
-        const certifyRes = await fetch(certifyUrl, certifyEventFetchInit({
-          docId: String(msg),
-          type: 'receive',
-          userId: data?.recipientEmail,
-        }));
-        if (!certifyRes.ok) console.warn('⚠️ Polygon certify receive:', await certifyRes.text());
-      } catch (e) {
-        console.warn('⚠️ Polygon certify receive failed:', e?.message);
-      }
-    }
-
-    // Generar imagen SVG visible con información del mensaje
-    const messageData = data;
-    const senderName = messageData.senderName || 'Remitente';
-    const subject = messageData.message?.subject || 'Sin asunto';
-    const sentDate = messageData.delivery?.time ? new Date(messageData.delivery.time.seconds * 1000).toLocaleDateString('es-ES') : new Date().toLocaleDateString('es-ES');
-    
-    const svgImage = `
-    <svg width="600" height="120" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" style="stop-color:#0D9488;stop-opacity:1" />
-          <stop offset="100%" style="stop-color:#14B8A6;stop-opacity:1" />
-        </linearGradient>
-      </defs>
-      <rect width="600" height="120" fill="url(#grad)" rx="8"/>
-      <rect x="1" y="1" width="598" height="118" fill="none" stroke="#ffffff" stroke-width="2" rx="8"/>
-      <text x="20" y="30" fill="white" font-family="Arial, sans-serif" font-size="16" font-weight="bold">📧 Notificación Digital Certificada</text>
-      <text x="20" y="55" fill="white" font-family="Arial, sans-serif" font-size="12">De: ${senderName}</text>
-      <text x="20" y="75" fill="white" font-family="Arial, sans-serif" font-size="12">Asunto: ${subject}</text>
-      <text x="20" y="95" fill="white" font-family="Arial, sans-serif" font-size="12">Fecha: ${sentDate}</text>
-      <text x="400" y="70" fill="white" font-family="Arial, sans-serif" font-size="14" font-weight="bold">✅ Apertura Certificada</text>
-    </svg>`;
-
-    res.set('Content-Type', 'image/svg+xml');
+    res.set('Content-Type', 'image/gif');
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-    return res.status(200).send(svgImage);
+    return res.status(200).send(TRACK_OPEN_TRANSPARENT_GIF);
   } catch (e) {
-    console.error(e);
-    return res.status(200).end();
+    console.error('trackOpen (deprecated, no-op):', e);
+    res.set('Content-Type', 'image/gif');
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    return res.status(200).send(TRACK_OPEN_TRANSPARENT_GIF);
   }
 });
 
@@ -829,8 +822,10 @@ const LINK_REDIRECT_READ_MASK = [
   'tracking.opened',
   'tracking.openCount',
   'tracking.lastRedirectDedupe',
+  'to',
   'recipientPhone',
   'recipientEmail',
+  'attachments',
 ];
 
 function linkRedirectDedupeTag(hasU, src, decodedUrl) {
@@ -838,17 +833,179 @@ function linkRedirectDedupeTag(hasU, src, decodedUrl) {
   return crypto.createHash('sha256').update(String(decodedUrl)).digest('hex').slice(0, 24);
 }
 
+function escapeHtmlTextEmail(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Escapa `&` para usar una URL absoluta dentro de un atributo HTML href. */
+function escapeHrefAmpersands(url) {
+  return String(url).replace(/&/g, '&amp;');
+}
+
+function urlsMatchAttachmentUrl(stored, clicked) {
+  const a = String(stored || '').trim();
+  const b = String(clicked || '').trim();
+  if (!a || !b) return false;
+  if (a === b) return true;
+  try {
+    return new URL(a).href === new URL(b).href;
+  } catch {
+    return false;
+  }
+}
+
+function findAttachmentByDecodedUrl(attachments, decodedUrl) {
+  if (!Array.isArray(attachments)) return null;
+  for (const att of attachments) {
+    if (!att || typeof att.fileUrl !== 'string') continue;
+    if (urlsMatchAttachmentUrl(att.fileUrl, decodedUrl)) return att;
+  }
+  return null;
+}
+
 function isRecentDuplicateRedirect(dedupe, clientIP, tag, windowMs = 5000) {
   if (!dedupe || typeof dedupe.t !== 'number' || !dedupe.ip || !dedupe.tag) return false;
   return Date.now() - dedupe.t < windowMs && dedupe.ip === clientIP && dedupe.tag === tag;
 }
 
-exports.linkRedirect = onRequest(
-  { region: REGION, secrets: [polygonCertifySecret], timeoutSeconds: 180, memory: '512MiB' },
-  async (req, res) => {
+/**
+ * Registra `attachment_opened` + actualiza `attachments[].tracking` y redirige al archivo.
+ * Usado por linkRedirect con `?att=id` (correo) o con `u=` cuando coincide fileUrl.
+ */
+async function handleAttachmentTrackingRedirect(req, res, opts) {
+  const { docRef, data, k, matchedAttachment, readerUrl, redirectUrl, dedupeTag, src } = opts;
+  const token = data?.tracking?.token;
+  if (!token || token !== String(k)) {
+    console.log('❌ Token inválido para tracking de adjunto');
+    return res.redirect(302, readerUrl);
+  }
+
+  const userAgent = req.get('User-Agent') || 'Unknown';
+  const clientIP =
+    req.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
+    req.get('X-Real-IP') ||
+    req.connection.remoteAddress ||
+    'Unknown';
+
+  if (isRecentDuplicateRedirect(data?.tracking?.lastRedirectDedupe, clientIP, dedupeTag)) {
+    console.log('⚠️ Duplicate attachment click (dedupe), skipping tracking');
+    return res.redirect(302, redirectUrl);
+  }
+
+  const movementId = crypto.randomUUID();
+  const forwardedIPs = req.get('X-Forwarded-For')
+    ? req.get('X-Forwarded-For').split(',').map((ip) => ip.trim())
+    : [];
+  const realIP = req.get('X-Real-IP') || 'Unknown';
+  const r = req.query.r;
+  let recipientPhoneFromLink = null;
+  let recipientPhoneVerified = false;
+  if (r) {
+    try {
+      const decodedPhone = base64UrlDecode(String(r));
+      const expected = data.recipientPhone ? formatPhoneForWhatsApp(data.recipientPhone) : null;
+      recipientPhoneFromLink = decodedPhone;
+      recipientPhoneVerified = Boolean(expected && decodedPhone === expected);
+    } catch (decodePhoneErr) {
+      console.warn('⚠️ No se pudo decodificar r (teléfono en enlace):', decodePhoneErr?.message);
+    }
+  }
+
+  const mailboxRecipient =
+    (data.recipientEmail && String(data.recipientEmail).trim().toLowerCase()) ||
+    (Array.isArray(data.to) && data.to[0] ? String(data.to[0]).trim().toLowerCase() : '') ||
+    '';
+  const openedByDisplay = mailboxRecipient || data.recipientEmail || 'Unknown';
+  const baseName = matchedAttachment.fileName || matchedAttachment.id || 'documento';
+  const attachmentMovement = {
+    id: movementId,
+    type: 'attachment_opened',
+    description: `Abrieron el adjunto «${baseName}» desde el enlace del correo (descarga / vista del archivo).`,
+    source: src || 'email',
+    timestamp: new Date().toISOString(),
+    userAgent,
+    clientIP,
+    forwardedIPs,
+    realIP,
+    browser: extractBrowserInfo(userAgent),
+    recipientEmail: data.recipientEmail || 'Unknown',
+    ...(data.recipientEmail ? { mailRecipientEmail: data.recipientEmail } : {}),
+    openedByEmail: openedByDisplay,
+    viewerIsSender: false,
+    openerHasFirebaseSession: false,
+    attachmentId: matchedAttachment.id,
+    fileName: matchedAttachment.fileName || null,
+    action: 'opened',
+    ...(recipientPhoneFromLink ? { recipientPhone: recipientPhoneFromLink, recipientPhoneVerified } : {}),
+  };
+
+  const attachmentsArr = Array.isArray(data.attachments)
+    ? data.attachments.map((a) => (a && typeof a === 'object' ? { ...a } : a))
+    : [];
+  const idx = attachmentsArr.findIndex((att) => att && String(att.id) === String(matchedAttachment.id));
+
+  const attachmentUpdate = {
+    'tracking.lastAttachmentActivity': FieldValue.serverTimestamp(),
+    'tracking.movements': FieldValue.arrayUnion(attachmentMovement),
+    'tracking.attachmentsOpened': FieldValue.increment(1),
+    'tracking.lastRedirectDedupe': { t: Date.now(), ip: clientIP, tag: dedupeTag },
+  };
+
+  if (idx >= 0) {
+    const prev = attachmentsArr[idx].tracking || {};
+    const prevClick = typeof prev.clickCount === 'number' ? prev.clickCount : 0;
+    const prevDev = prev.deviceInfo || {};
+    attachmentsArr[idx] = {
+      ...attachmentsArr[idx],
+      tracking: {
+        opened: true,
+        openedAt: new Date().toISOString(),
+        duration: typeof prev.duration === 'number' ? prev.duration : 0,
+        scrollDepth: typeof prev.scrollDepth === 'number' ? prev.scrollDepth : 0,
+        deviceInfo: {
+          userAgent:
+            typeof prevDev.userAgent === 'string' && prevDev.userAgent ? prevDev.userAgent : userAgent,
+          screenResolution:
+            typeof prevDev.screenResolution === 'string' ? prevDev.screenResolution : '—',
+          timezone: typeof prevDev.timezone === 'string' ? prevDev.timezone : '—',
+        },
+        ipAddress: clientIP,
+        signatureStatus: prev.signatureStatus || 'pending',
+        ...(prev.signatureTimestamp ? { signatureTimestamp: prev.signatureTimestamp } : {}),
+        clickCount: prevClick + 1,
+      },
+    };
+    attachmentUpdate.attachments = attachmentsArr;
+  }
+
   try {
-    const { msg, u, k, src, r } = req.query;
-    console.log('🔗 linkRedirect called with:', { msg, u: u ? '(set)' : '(none)', k: k ? '(set)' : '(none)', src, r: r ? '(set)' : '' });
+    await docRef.update(attachmentUpdate);
+    console.log('✅ Adjunto desde correo — attachment_opened registrado');
+    certifyPolygonEventOnce(docRef.id, data, 'receive', 'attachment_opened');
+  } catch (updateErr) {
+    // La apertura del archivo no debe romperse por un fallo de tracking.
+    console.error('⚠️ No se pudo registrar attachment_opened; redirigiendo igual:', updateErr?.message);
+  }
+  return res.redirect(302, redirectUrl);
+}
+
+const linkRedirectOptions = { region: REGION, secrets: [polygonCertifySecret], timeoutSeconds: 180, memory: '512MiB' };
+
+async function linkRedirectHandler(req, res) {
+  try {
+    const { msg, u, k, src, r, att } = req.query;
+    console.log('🔗 linkRedirect called with:', {
+      msg,
+      u: u ? '(set)' : '(none)',
+      k: k ? '(set)' : '(none)',
+      att: att ? String(att).slice(0, 40) : '(none)',
+      src,
+      r: r ? '(set)' : '',
+    });
 
     if (!msg || !k) return res.status(400).send('Missing params');
 
@@ -860,6 +1017,36 @@ exports.linkRedirect = onRequest(
     }
 
     const readerUrl = `${APP_HOSTING_URL}/reader/${encodeURIComponent(String(msg))}?k=${encodeURIComponent(String(k))}`;
+
+    const attIdRaw = att != null && String(att).trim() !== '' ? String(att).trim() : '';
+    if (attIdRaw) {
+      console.log('📎 linkRedirect: adjunto del correo (att)');
+      const db = getFirestore();
+      const docRef = db.collection('mail').doc(String(msg));
+      const snap = await docRef.get({ fieldMask: LINK_REDIRECT_READ_MASK });
+      if (!snap.exists) {
+        return res.redirect(302, readerUrl);
+      }
+      const dataAtt = snap.data() || {};
+      const listAtt = Array.isArray(dataAtt.attachments) ? dataAtt.attachments : [];
+      const matchedAtt = listAtt.find(
+        (a) => a && (String(a.id) === attIdRaw || String(a.fileName) === attIdRaw),
+      );
+      if (!matchedAtt || typeof matchedAtt.fileUrl !== 'string' || !/^https?:\/\//i.test(matchedAtt.fileUrl.trim())) {
+        console.log('⚠️ Parámetro att sin adjunto válido:', attIdRaw);
+        return res.redirect(302, readerUrl);
+      }
+      return handleAttachmentTrackingRedirect(req, res, {
+        docRef,
+        data: dataAtt,
+        k,
+        matchedAttachment: matchedAtt,
+        readerUrl,
+        redirectUrl: matchedAtt.fileUrl.trim(),
+        dedupeTag: `att-open-${attIdRaw}`,
+        src,
+      });
+    }
 
     // Sin `u`: mismo enlace que el botón del correo (msg + k) — correo o WhatsApp con `src=whatsapp`
     if (!u) {
@@ -894,9 +1081,9 @@ exports.linkRedirect = onRequest(
               type: isWhatsApp ? 'whatsapp_link_clicked' : 'link_clicked',
               description: isWhatsApp
                 ? recipientPhoneVerified && recipientPhoneFromLink
-                  ? `Click en WhatsApp (enlace generado para +${recipientPhoneFromLink})`
-                  : 'Click en el mensaje de WhatsApp para acceder a la notificación'
-                : 'Click en botón del correo para acceder a la notificación',
+                  ? `Pulsaron el enlace en WhatsApp (número del envío: +${recipientPhoneFromLink})`
+                  : 'Pulsaron el enlace en WhatsApp para abrir la notificación'
+                : 'Pulsaron el botón del correo para abrir la notificación',
               source: src || 'email',
               timestamp: new Date().toISOString(),
               userAgent: userAgentForCheck,
@@ -917,18 +1104,9 @@ exports.linkRedirect = onRequest(
               updateData['tracking.opened'] = true;
               updateData['tracking.openedAt'] = FieldValue.serverTimestamp();
               updateData['tracking.openCount'] = FieldValue.increment(1);
-              const certifyUrl = `${APP_HOSTING_URL}/api/polygon/certify-event`;
-              void fetch(certifyUrl, certifyEventFetchInit({
-                docId: String(msg),
-                type: 'receive',
-                userId: data?.recipientEmail,
-              }))
-                .then(async (certifyRes) => {
-                  if (!certifyRes.ok) console.warn('⚠️ Polygon certify receive (WhatsApp CTA):', await certifyRes.text());
-                })
-                .catch((e) => console.warn('⚠️ Polygon certify receive failed:', e?.message));
             }
             await docRef.update(updateData);
+            certifyPolygonEventOnce(msg, data, 'receive', isWhatsApp ? 'whatsapp_cta' : 'email_cta');
             console.log(isWhatsApp ? '✅ whatsapp_link_clicked (enlace corto) registrado' : '✅ link_clicked (CTA) registrado');
           }
         } else {
@@ -1041,15 +1219,29 @@ exports.linkRedirect = onRequest(
         }
       }
 
+      const matchedAttachment = findAttachmentByDecodedUrl(data.attachments, decodedUrl);
+      if (matchedAttachment) {
+        return handleAttachmentTrackingRedirect(req, res, {
+          docRef,
+          data,
+          k,
+          matchedAttachment,
+          readerUrl,
+          redirectUrl: url,
+          dedupeTag,
+          src,
+        });
+      }
+
       const isWhatsApp = src === 'whatsapp';
       const movement = {
         id: movementId,
         type: isWhatsApp ? 'whatsapp_link_clicked' : 'link_clicked',
         description: isWhatsApp
           ? recipientPhoneVerified && recipientPhoneFromLink
-            ? `Click en WhatsApp (enlace generado para +${recipientPhoneFromLink})`
-            : 'Click en el mensaje de WhatsApp para acceder a la notificación'
-          : `Click en enlace del correo: ${decodedUrl}`,
+            ? `Pulsaron el enlace en WhatsApp (número del envío: +${recipientPhoneFromLink})`
+            : 'Pulsaron el enlace en WhatsApp para abrir la notificación'
+          : `Pulsaron un enlace dentro del correo: ${decodedUrl}`,
         source: src || 'email',
         timestamp: new Date().toISOString(),
         userAgent: userAgent,
@@ -1070,18 +1262,9 @@ exports.linkRedirect = onRequest(
         updateData['tracking.opened'] = true;
         updateData['tracking.openedAt'] = FieldValue.serverTimestamp();
         updateData['tracking.openCount'] = FieldValue.increment(1);
-        const certifyUrl = `${APP_HOSTING_URL}/api/polygon/certify-event`;
-        void fetch(certifyUrl, certifyEventFetchInit({
-          docId: String(msg),
-          type: 'receive',
-          userId: data?.recipientEmail,
-        }))
-          .then(async (certifyRes) => {
-            if (!certifyRes.ok) console.warn('⚠️ Polygon certify receive (WhatsApp):', await certifyRes.text());
-          })
-          .catch((e) => console.warn('⚠️ Polygon certify receive failed:', e?.message));
       }
       await docRef.update(updateData);
+      certifyPolygonEventOnce(msg, data, 'receive', isWhatsApp ? 'whatsapp_link' : 'email_link');
       
       console.log('✅ Tracking updated successfully');
     } else {
@@ -1099,7 +1282,9 @@ exports.linkRedirect = onRequest(
     }
     return res.status(302).redirect(APP_HOSTING_URL);
   }
-});
+}
+
+exports.linkRedirect = onRequest(linkRedirectOptions, linkRedirectHandler);
 
 exports.confirmRead = onRequest({ region: REGION, secrets: [polygonCertifySecret] }, async (req, res) => {
   try {
@@ -1134,7 +1319,7 @@ exports.confirmRead = onRequest({ region: REGION, secrets: [polygonCertifySecret
     const movement = {
       id: movementId,
       type: 'read_confirmed',
-      description: 'Acreditación en juicio',
+      description: 'Confirmaron la lectura del mensaje (constancia para el expediente).',
       timestamp: new Date().toISOString(),
       userAgent: userAgent,
       clientIP: clientIP,
@@ -1284,7 +1469,7 @@ exports.processIncomingEmail = onRequest({ region: REGION, secrets: [smtpPass] }
       year: new Date().getFullYear(),
       docId: docId,
       trackingToken: trackingToken,
-      trackingBaseUrl: TRACKING_BASE_URL
+      linkRedirectUrl: LINK_REDIRECT_URL
     });
     
     // Generar versión de texto plano completa con toda la información
@@ -1401,6 +1586,23 @@ Este mensaje fue destinado a ${recipientNorm}. Si no reconoce esta notificacion,
 // URL: https://whatsappwebhook-ju7n3yysfq-uc.a.run.app  (o la URL que asigne Cloud Run)
 // ---------------------------------------------------------------------------
 
+async function resolveMailDocIdFromWhatsAppMessageId(db, wamid) {
+  const id = typeof wamid === 'string' ? wamid.trim() : '';
+  if (!id) return null;
+  const candidates = [id, id.startsWith('wamid.') ? id : `wamid.${id}`];
+  const tried = new Set();
+  for (const key of candidates) {
+    if (!key || tried.has(key)) continue;
+    tried.add(key);
+    const snap = await db.doc(`whatsapp_ids/${key}`).get();
+    if (snap.exists) {
+      const d = snap.data();
+      if (d?.mailDocId) return d.mailDocId;
+    }
+  }
+  return null;
+}
+
 async function processWhatsAppStatus(status) {
   const wamid = status.id;
   const statusType = status.status; // sent | delivered | read | failed
@@ -1415,13 +1617,11 @@ async function processWhatsAppStatus(status) {
   if (!['delivered', 'read', 'failed'].includes(statusType)) return;
 
   const db = getFirestore();
-  const idDoc = await db.doc(`whatsapp_ids/${wamid}`).get();
-  if (!idDoc.exists) {
-    console.warn(`⚠️ No se encontró mailDocId para wamid=${wamid}`);
+  const mailDocId = await resolveMailDocIdFromWhatsAppMessageId(db, wamid);
+  if (!mailDocId) {
+    console.warn(`⚠️ No se encontró mailDocId para wamid=${wamid} (whatsapp_ids)`);
     return;
   }
-
-  const { mailDocId } = idDoc.data();
   const mailRef = db.doc(`mail/${mailDocId}`);
   const mailSnap = await mailRef.get();
   if (!mailSnap.exists) {
@@ -1453,7 +1653,7 @@ async function processWhatsAppStatus(status) {
     type: typeMap[statusType],
     description: descMap[statusType],
     timestamp,
-    userAgent: 'WhatsApp Cloud API',
+    userAgent: 'Sistema (WhatsApp de Meta)',
     clientIP: 'Server',
     forwardedIPs: [],
     realIP: 'Server',
@@ -1473,11 +1673,17 @@ async function processWhatsAppStatus(status) {
   }
 
   await mailRef.update(update);
+  if (statusType === 'delivered') {
+    certifyPolygonEventOnce(mailDocId, data, 'receive', 'whatsapp_delivered');
+  } else if (statusType === 'read') {
+    certifyPolygonEventOnce(mailDocId, data, 'receive', 'whatsapp_read');
+    certifyPolygonEventOnce(mailDocId, data, 'read', 'whatsapp_read');
+  }
   console.log(`✅ whatsapp_${statusType} registrado en mail/${mailDocId}`);
 }
 
 exports.whatsappWebhook = onRequest(
-  { region: REGION, secrets: [whatsappVerifyToken] },
+  { region: REGION, secrets: [whatsappVerifyToken, polygonCertifySecret] },
   async (req, res) => {
     // GET: verificación del webhook por Meta Developer Portal
     if (req.method === 'GET') {
@@ -1495,25 +1701,23 @@ exports.whatsappWebhook = onRequest(
 
     if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
-    // Responder 200 inmediatamente — Meta reintenta si no recibe respuesta rápida
-    res.status(200).send('OK');
-
     try {
       const body = req.body;
-      if (body?.object !== 'whatsapp_business_account') return;
-
-      for (const entry of (body.entry || [])) {
-        for (const change of (entry.changes || [])) {
-          if (change.field !== 'messages') continue;
-          for (const status of (change.value?.statuses || [])) {
-            await processWhatsAppStatus(status).catch(e =>
-              console.error('❌ Error procesando status WA:', e.message, status)
-            );
+      if (body?.object === 'whatsapp_business_account') {
+        for (const entry of (body.entry || [])) {
+          for (const change of (entry.changes || [])) {
+            if (change.field !== 'messages') continue;
+            for (const status of (change.value?.statuses || [])) {
+              await processWhatsAppStatus(status).catch(e =>
+                console.error('❌ Error procesando status WA:', e.message, status)
+              );
+            }
           }
         }
       }
     } catch (e) {
       console.error('❌ Error en whatsappWebhook:', e.message);
     }
+    return res.status(200).send('OK');
   }
 );

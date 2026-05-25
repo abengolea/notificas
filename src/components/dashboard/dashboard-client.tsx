@@ -108,6 +108,7 @@ type DisplayMessage = {
   sentAt: Date | string;
   from: string;
   to: string[];
+  recipientEmail?: string;
   subject: string;
   lastStatus: string;
   source?: string;
@@ -137,6 +138,12 @@ function docsToSortedDisplayMessages(
         : rawTo
           ? [String(rawTo)]
           : [];
+      const recipientEmail =
+        typeof data?.recipientEmail === "string"
+          ? data.recipientEmail
+          : to.length === 1
+            ? to[0]
+            : undefined;
       const msg = data?.message as { subject?: string } | undefined;
       const subject = msg?.subject || "Sin asunto";
 
@@ -165,6 +172,7 @@ function docsToSortedDisplayMessages(
         sentAt,
         from,
         to,
+        recipientEmail,
         subject,
         lastStatus,
         source: typeof data?.source === "string" ? data.source : "app_web",
@@ -565,9 +573,15 @@ export default function DashboardClient() {
                         <span>{message.sourceLabel}</span>
                         <span className="text-border">·</span>
                         <span>
-                          {filterRecipientVisibleMovements(message.movements).length} eventos
-                          {filterRecipientVisibleMovements(message.movements).length > 0
-                            ? ` (${countRecipientOpenMovements(message.movements)} aperturas)`
+                          {filterRecipientVisibleMovements(message.movements, {
+                            recipientEmail: message.recipientEmail,
+                          }).length} eventos
+                          {filterRecipientVisibleMovements(message.movements, {
+                            recipientEmail: message.recipientEmail,
+                          }).length > 0
+                            ? ` (${countRecipientOpenMovements(message.movements, {
+                              recipientEmail: message.recipientEmail,
+                            })} aperturas)`
                             : ''}
                         </span>
                       </div>
@@ -628,11 +642,17 @@ export default function DashboardClient() {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Badge variant="outline" className="text-xs">
-                            {filterRecipientVisibleMovements(message.movements).length} eventos
+                            {filterRecipientVisibleMovements(message.movements, {
+                              recipientEmail: message.recipientEmail,
+                            }).length} eventos
                           </Badge>
-                          {filterRecipientVisibleMovements(message.movements).length > 0 && (
+                          {filterRecipientVisibleMovements(message.movements, {
+                            recipientEmail: message.recipientEmail,
+                          }).length > 0 && (
                             <span className="text-xs text-muted-foreground">
-                              {countRecipientOpenMovements(message.movements)} aperturas
+                              {countRecipientOpenMovements(message.movements, {
+                                recipientEmail: message.recipientEmail,
+                              })} aperturas
                             </span>
                           )}
                         </div>

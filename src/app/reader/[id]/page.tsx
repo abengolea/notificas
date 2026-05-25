@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db, auth } from "@/lib/firebase";
@@ -8,6 +8,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { Card } from "@/components/ui/card";
 import { Mail, CheckCircle } from "lucide-react";
 import { injectContentForReader } from "@/lib/inject-content-for-reader";
+import { stripUntrackedAttachmentSectionFromMailHtml } from "@/lib/strip-reader-attachment-duplicate-html";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const CONFIRM_READ_URL = "https://confirmread-ju7n3yysfq-uc.a.run.app";
@@ -20,7 +21,7 @@ interface MailData {
     html?: string;
     subject?: string;
     content?: string;
-    details?: { priority?: string; requireCertificate?: boolean; fecha?: string; attachmentsCount?: number };
+    details?: { fecha?: string; attachmentsCount?: number };
   };
   delivery?: {
     state: string;
@@ -89,6 +90,8 @@ export default function ReaderPage() {
   const [loading, setLoading] = useState(true);
   /** Permiso Firestore denegado o enlace incorrecto — mensaje más claro que "no existe". */
   const [accessDenied, setAccessDenied] = useState(false);
+  /** Evita POST duplicados a track-reader-open (Strict Mode, re-renders al actualizar mail). */
+  const readerOpenTrackedRef = useRef(false);
 
   const handleAttachmentClick = async (attachment: any) => {
     if (!mail || !params.id) return;
@@ -216,14 +219,12 @@ export default function ReaderPage() {
   }, [params.id, trackingToken, mail?.tracking?.readConfirmed]);
 
   /**
-   * Registra `reader_magic_open` la primera vez que el destinatario abre el reader
-   * vía magic link (?k=...). El endpoint hace dedupe de 5s por IP + valida el token
-   * contra `tracking.token`, así que es seguro dispararlo en cada carga.
-   * Esto es independiente del pixel (email_opened) y del CTA (link_clicked):
-   * cubre el caso de aperturas directas que no pasan por linkRedirect.
+   * Registra `reader_magic_open` una sola vez por carga del reader (?k=...).
+   * El servidor rechaza duplicados; no depender de `mail` para no re-disparar en cada poll.
    */
   useEffect(() => {
-    if (!params.id || !trackingToken || !mail) return;
+    if (!params.id || !trackingToken || readerOpenTrackedRef.current) return;
+    readerOpenTrackedRef.current = true;
     const messageId = params.id as string;
     const controller = new AbortController();
     fetch('/api/track-reader-open', {
@@ -233,7 +234,7 @@ export default function ReaderPage() {
       signal: controller.signal,
     }).catch(() => {});
     return () => controller.abort();
-  }, [params.id, trackingToken, mail]);
+  }, [params.id, trackingToken]);
 
   useEffect(() => {
     if (!params.id || !trackingToken || !mail?.tracking?.readConfirmed) return;
@@ -300,7 +301,9 @@ export default function ReaderPage() {
             className="prose prose-lg max-w-none [&_.container]:!max-w-none [&_.wrapper]:!max-w-none [&_table]:!max-w-full"
             dangerouslySetInnerHTML={{
               __html: sanitizeHtmlForReader(
-                injectContentForReader(mail?.message?.html || "", mail),
+                stripUntrackedAttachmentSectionFromMailHtml(
+                  injectContentForReader(mail?.message?.html || "", mail)
+                ),
                 params.id as string,
                 trackingToken
               ),

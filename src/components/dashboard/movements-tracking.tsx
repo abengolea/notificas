@@ -28,7 +28,12 @@ interface Movement {
     | 'read_confirmed'
     | 'attachment_opened'
     | 'link_clicked'
-    | 'whatsapp_link_clicked';
+    | 'whatsapp_link_clicked'
+    | 'whatsapp_sent'
+    | 'whatsapp_delivered'
+    | 'whatsapp_read'
+    | 'whatsapp_failed'
+    | 'reader_magic_open';
   description: string;
   timestamp: any; // Firestore timestamp
   userAgent?: string;
@@ -48,6 +53,7 @@ interface Movement {
 
 interface MovementsTrackingProps {
   movements: Movement[];
+  recipientEmail?: string | null;
 }
 
 const getMovementIcon = (type: string) => {
@@ -63,8 +69,13 @@ const getMovementIcon = (type: string) => {
     case 'link_clicked':
       return <Globe className="h-4 w-4 text-orange-500" />;
     case 'whatsapp_link_clicked':
+    case 'whatsapp_sent':
+    case 'whatsapp_delivered':
+    case 'whatsapp_read':
+    case 'whatsapp_failed':
       return <MessageCircle className="h-4 w-4 text-green-600" />;
     case 'app_opened':
+    case 'reader_magic_open':
       return <Eye className="h-4 w-4 text-teal-500" />;
     default:
       return <Clock className="h-4 w-4 text-gray-500" />;
@@ -84,8 +95,13 @@ const getMovementColor = (type: string) => {
     case 'link_clicked':
       return 'bg-orange-100 text-orange-800';
     case 'whatsapp_link_clicked':
+    case 'whatsapp_sent':
+    case 'whatsapp_delivered':
+    case 'whatsapp_read':
+    case 'whatsapp_failed':
       return 'bg-green-100 text-green-800 border border-green-300';
     case 'app_opened':
+    case 'reader_magic_open':
       return 'bg-teal-100 text-teal-800';
     default:
       return 'bg-gray-100 text-gray-800';
@@ -113,8 +129,67 @@ const formatIPs = (clientIP: string, forwardedIPs: string[], realIP: string) => 
   return [...new Set(ips)].join(', '); // Remove duplicates
 };
 
-export function MovementsTracking({ movements }: MovementsTrackingProps) {
-  const visibleMovements = filterRecipientVisibleMovements(movements);
+const READER_MAGIC_OPEN_DESCRIPTION =
+  'El destinatario abrió el mensaje para leerlo (página web de la notificación)';
+
+const MOVEMENT_TYPE_LABELS: Record<string, string> = {
+  email_sent: 'CORREO ENVIADO',
+  email_opened: 'CORREO ABIERTO',
+  read_confirmed: 'LECTURA CONFIRMADA',
+  attachment_opened: 'ARCHIVO ABIERTO',
+  link_clicked: 'ENLACE PULSADO (CORREO)',
+  whatsapp_link_clicked: 'CLIC EN WHATSAPP',
+  whatsapp_sent: 'WHATSAPP ENVIADO',
+  whatsapp_delivered: 'WHATSAPP ENTREGADO',
+  whatsapp_read: 'WHATSAPP LEÍDO',
+  whatsapp_failed: 'WHATSAPP NO ENTREGADO',
+  reader_magic_open: 'NOTIFICACIÓN LEÍDA',
+};
+
+const MOVEMENT_TYPES_WITH_RECIPIENT_CONTEXT = new Set([
+  'whatsapp_link_clicked',
+  'whatsapp_sent',
+  'whatsapp_delivered',
+  'whatsapp_read',
+  'whatsapp_failed',
+  'link_clicked',
+  'email_sent',
+  'app_opened',
+]);
+
+function getMovementDescription(movement: Movement): string {
+  if (movement.type === 'reader_magic_open') return READER_MAGIC_OPEN_DESCRIPTION;
+  return movement.description;
+}
+
+function getMovementLabel(movement: Movement): string {
+  if (movement.type === 'app_opened') {
+    return movement.viewerIsSender
+      ? 'VISITA DEL REMITENTE (DETALLE)'
+      : 'APERTURA EN LA WEB (DESTINATARIO)';
+  }
+  return MOVEMENT_TYPE_LABELS[movement.type] || movement.type.replace(/_/g, ' ').toUpperCase();
+}
+
+function getBrowserLabel(browser: string): string {
+  switch (browser) {
+    case 'Unknown':
+      return 'Desconocido';
+    case 'WhatsApp Cloud API':
+      return 'Sistema (WhatsApp de Meta)';
+    default:
+      return browser;
+  }
+}
+
+function getRecipientPhoneLabel(type: string): string {
+  return type === 'whatsapp_link_clicked'
+    ? 'WhatsApp (enlace generado para):'
+    : 'WhatsApp (teléfono del destinatario):';
+}
+
+export function MovementsTracking({ movements, recipientEmail }: MovementsTrackingProps) {
+  const visibleMovements = filterRecipientVisibleMovements(movements, { recipientEmail });
 
   if (!visibleMovements.length) {
     return (
@@ -165,28 +240,15 @@ export function MovementsTracking({ movements }: MovementsTrackingProps) {
                     variant="outline" 
                     className={`text-xs ${getMovementColor(movement.type)}`}
                   >
-                    {movement.type === 'email_sent' && 'CORREO ENVIADO'}
-                    {movement.type === 'email_opened' && 'CORREO ABIERTO'}
-                    {movement.type === 'read_confirmed' && 'LECTURA CONFIRMADA'}
-                    {movement.type === 'attachment_opened' && 'ARCHIVO ABIERTO'}
-                    {movement.type === 'link_clicked' && 'ENLACE PULSADO (CORREO)'}
-                    {movement.type === 'whatsapp_link_clicked' && 'CLIC EN WHATSAPP'}
-                    {movement.type === 'app_opened' &&
-                      (movement.viewerIsSender
-                        ? 'VISITA DEL REMITENTE (DETALLE)'
-                        : 'APERTURA EN LA WEB (DESTINATARIO)')}
-                    {!['email_sent', 'email_opened', 'app_opened', 'read_confirmed', 'attachment_opened', 'link_clicked', 'whatsapp_link_clicked'].includes(movement.type) && movement.type.replace(/_/g, ' ').toUpperCase()}
+                    {getMovementLabel(movement)}
                   </Badge>
                 </div>
                 
                 <p className="text-sm text-muted-foreground mb-2">
-                  {movement.description}
+                  {getMovementDescription(movement)}
                 </p>
 
-                {(movement.type === 'whatsapp_link_clicked' ||
-                    movement.type === 'link_clicked' ||
-                    movement.type === 'email_sent' ||
-                    movement.type === 'app_opened') &&
+                {MOVEMENT_TYPES_WITH_RECIPIENT_CONTEXT.has(movement.type) &&
                   (movement.recipientEmail ||
                     movement.mailRecipientEmail ||
                     movement.recipientPhone ||
@@ -223,7 +285,7 @@ export function MovementsTracking({ movements }: MovementsTrackingProps) {
                         )}
                       {movement.recipientPhone && (
                         <div>
-                          <span className="text-foreground/80">WhatsApp (enlace generado para):</span>{' '}
+                          <span className="text-foreground/80">{getRecipientPhoneLabel(movement.type)}</span>{' '}
                           <span className="font-mono">+{movement.recipientPhone}</span>
                           {movement.recipientPhoneVerified ? (
                             <span className="text-emerald-700"> · verificado</span>
@@ -244,9 +306,7 @@ export function MovementsTracking({ movements }: MovementsTrackingProps) {
                     <div className="flex items-center gap-1">
                       <Monitor className="h-3 w-3" />
                       <span>
-                        {movement.browser === 'Unknown'
-                          ? 'Desconocido'
-                          : movement.browser}
+                        {getBrowserLabel(movement.browser)}
                       </span>
                     </div>
                   )}
