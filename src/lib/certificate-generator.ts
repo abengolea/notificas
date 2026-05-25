@@ -68,9 +68,14 @@ const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   read_confirmed: 'Lectura confirmada',
   link_clicked: 'Acceso a enlace (correo)',
   whatsapp_link_clicked: 'Click en mensaje de WhatsApp',
+  whatsapp_sent: 'WhatsApp enviado',
+  whatsapp_delivered: 'WhatsApp entregado',
+  whatsapp_read: 'WhatsApp leído',
+  whatsapp_failed: 'WhatsApp no entregado',
   attachment_downloaded: 'Descarga de adjunto',
   document_viewed: 'Documento visualizado',
-  fallback_access: 'Ingreso por enlace alternativo'
+  fallback_access: 'Ingreso por enlace alternativo',
+  reader_magic_open: 'Notificación leída',
 };
 
 // Colores alineados con la marca Notificas (globals.css: primary HSL 186 78% 37%)
@@ -90,6 +95,18 @@ function getMovementLabel(type?: string) {
   if (!type) return 'Movimiento registrado';
   const normalized = type.toLowerCase();
   return MOVEMENT_TYPE_LABELS[normalized] || type.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getMovementBrowserLabel(browser?: string) {
+  if (!browser) return 'N/A';
+  switch (browser) {
+    case 'Server':
+      return 'Servidor';
+    case 'WhatsApp Cloud API':
+      return 'Sistema (WhatsApp de Meta)';
+    default:
+      return browser;
+  }
 }
 
 /** Ruta fija del visor en la app (no expira como las URLs firmadas de Storage). Requiere iniciar sesión. */
@@ -977,10 +994,9 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     // Tabla con 5 columnas: #, Evento, Fecha y hora, Detalle técnico, Navegador / Dispositivo
     const movementRows = movements.map((movement, index) => {
       // Unir navegador con versión en una sola línea
-      let browserText = 'N/A';
+      let browserText = getMovementBrowserLabel(movement.browser);
       if (movement.browser) {
-        browserText = movement.browser === 'Server' ? 'Servidor' : movement.browser;
-        if (movement.browserVersion && movement.browser !== 'Server') {
+        if (movement.browserVersion && movement.browser !== 'Server' && movement.browser !== 'WhatsApp Cloud API') {
           browserText = `${movement.browser} ${movement.browserVersion}`;
         }
       }

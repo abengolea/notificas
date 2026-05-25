@@ -1,0 +1,4 @@
+# Exportaciones locales con PII
+*.pdf
+*.xlsx
+*.csv

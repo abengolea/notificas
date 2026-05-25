@@ -3,7 +3,6 @@ const assert = require('node:assert/strict');
 const { injectTrackingIntoHtml, base64UrlEncode } = require('./tracking-html');
 
 const URLS = {
-  trackingBaseUrl: 'https://trackopen-test.example.com',
   linkRedirectUrl: 'https://linkredirect-test.example.com',
   appHostingUrl: 'https://app-test.example.com',
 };
@@ -19,16 +18,12 @@ function decodeHtmlEntities(s) {
   return s.replace(/&amp;/g, '&');
 }
 
-test('inyecta el pixel invisible al final del body', () => {
+test('no inyecta pixel de apertura (trackOpen) en el HTML', () => {
   const input = '<html><body><p>Hola</p></body></html>';
   const { html } = injectTrackingIntoHtml(input, DOC_ID, TOKEN, URLS);
   const decoded = decodeHtmlEntities(html);
-
-  const expectedPixel = `src="${URLS.trackingBaseUrl}?msg=${DOC_ID}&k=${TOKEN}"`;
-  assert.ok(decoded.includes(expectedPixel), `No se encontró el pixel ${expectedPixel} en:\n${decoded}`);
-  assert.ok(decoded.includes('width="1"'));
-  assert.ok(decoded.includes('height="1"'));
-  assert.ok(decoded.includes('display:none!important'));
+  assert.ok(!decoded.includes('trackopen'), decoded);
+  assert.ok(!decoded.includes('width="1" height="1"'), decoded);
 });
 
 test('reescribe <a href="http..."> a linkRedirect con `u` codificado en base64url', () => {
@@ -117,12 +112,25 @@ test('un enlace que ya empieza con linkRedirectUrl NO se duplica: cae al reader 
   assert.ok(!decoded.match(/linkredirect-test\.example\.com.+linkredirect-test\.example\.com/));
 });
 
-test('si no hay <body>, el pixel se agrega al root igual', () => {
+test('enlace linkRedirect con parámetro att= (adjunto en correo) se deja intacto', () => {
+  const attHref = `${URLS.linkRedirectUrl}?msg=${encodeURIComponent(DOC_ID)}&k=${encodeURIComponent(TOKEN)}&att=${encodeURIComponent('docABC123_0')}`;
+  const input = `<html><body><a href="${attHref}">Ver PDF</a></body></html>`;
+  const { html, stats } = injectTrackingIntoHtml(input, DOC_ID, TOKEN, URLS);
+  const decoded = decodeHtmlEntities(html);
+  assert.ok(
+    decoded.includes(attHref) || (decoded.includes('att=') && decoded.includes('docABC123_0')),
+    decoded,
+  );
+  assert.equal(stats.processedCount, 0);
+  assert.equal(stats.replacedCount, 0);
+  assert.equal(stats.ignoredCount, 1);
+});
+
+test('sin <body> el HTML se serializa sin añadir pixel', () => {
   const input = '<p>Sin body</p><a href="https://example.com">Link</a>';
   const { html } = injectTrackingIntoHtml(input, DOC_ID, TOKEN, URLS);
   const decoded = decodeHtmlEntities(html);
-  const expectedPixel = `src="${URLS.trackingBaseUrl}?msg=${DOC_ID}&k=${TOKEN}"`;
-  assert.ok(decoded.includes(expectedPixel), `Pixel no encontrado en:\n${decoded}`);
+  assert.ok(!decoded.includes('trackopen'));
 });
 
 test('html vacío devuelve el mismo input sin error', () => {
@@ -133,12 +141,12 @@ test('html vacío devuelve el mismo input sin error', () => {
 
 test('faltar urls lanza error explícito', () => {
   assert.throws(
-    () => injectTrackingIntoHtml('<p>x</p>', DOC_ID, TOKEN, { trackingBaseUrl: 'a' }),
+    () => injectTrackingIntoHtml('<p>x</p>', DOC_ID, TOKEN, { linkRedirectUrl: 'a' }),
     /faltan urls/i
   );
 });
 
-test('docId y token con caracteres especiales se url-encodean en pixel y links', () => {
+test('docId y token con caracteres especiales se url-encodean en links', () => {
   const docIdRaw = 'doc/with spaces&special';
   const tokenRaw = 'tok+/=raw';
   const input = '<html><body><a href="https://x.com">X</a></body></html>';

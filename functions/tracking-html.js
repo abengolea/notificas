@@ -15,19 +15,20 @@ function base64UrlEncode(str) {
 /**
  * Procesa el HTML del correo y le inyecta el tracking de Notificas:
  *   - Cada `<a href="http(s)://...">` se reescribe para pasar por `linkRedirectUrl` (registra `link_clicked`).
+ *   - Enlaces ya armados como `linkRedirectUrl?...&att=...` (adjunto desde el correo) se dejan sin tocar.
  *   - El botón "Acceder a la notificación" (que apunta al reader directo) pasa por `linkRedirectUrl` sin `u`.
  *   - Los `<a href="#">`, hrefs vacíos o relativos se reemplazan con la URL del reader.
  *   - Los `mailto:`, `tel:`, `javascript:` y `data:` se ignoran (se dejan tal cual).
- *   - Se añade un pixel invisible 1x1 que dispara `trackOpen` cuando el cliente del correo renderiza la imagen.
+ *   - La apertura fehaciente del mensaje se registra al abrir el reader con ?k= (no hay pixel en el HTML).
  *
  * Recibe las URLs por parámetro para permitir tests unitarios sin acoplarse a la config global.
  */
 function injectTrackingIntoHtml(html, docId, token, urls) {
   if (!html) return html;
-  const { trackingBaseUrl, linkRedirectUrl, appHostingUrl } = urls || {};
-  if (!trackingBaseUrl || !linkRedirectUrl || !appHostingUrl) {
+  const { linkRedirectUrl, appHostingUrl } = urls || {};
+  if (!linkRedirectUrl || !appHostingUrl) {
     throw new Error(
-      'injectTrackingIntoHtml: faltan urls.trackingBaseUrl / urls.linkRedirectUrl / urls.appHostingUrl'
+      'injectTrackingIntoHtml: faltan urls.linkRedirectUrl / urls.appHostingUrl'
     );
   }
 
@@ -49,12 +50,22 @@ function injectTrackingIntoHtml(html, docId, token, urls) {
 
     const isMailtoOrTel = cleanHref.startsWith('mailto:') || cleanHref.startsWith('tel:');
     const isScriptOrData = cleanHref.startsWith('javascript:') || cleanHref.startsWith('data:');
+    /** Enlaces ya armados en sendEmail (adjunto desde correo); no tocar ni anidar otro linkRedirect. */
+    const isAttachmentRedirectLink =
+      typeof linkRedirectUrl === 'string' &&
+      cleanHref.startsWith(linkRedirectUrl) &&
+      /[?&]att=/.test(cleanHref);
     const isValidHttpUrl =
       cleanHref &&
       cleanHref.match(/^https?:\/\//i) &&
       !cleanHref.startsWith(`${linkRedirectUrl}`);
 
     if (isMailtoOrTel || isScriptOrData) {
+      ignoredCount++;
+      return;
+    }
+
+    if (isAttachmentRedirectLink) {
       ignoredCount++;
       return;
     }
@@ -78,17 +89,6 @@ function injectTrackingIntoHtml(html, docId, token, urls) {
     $(el).attr('href', redirectUrl);
     processedCount++;
   });
-
-  // Pixel invisible 1x1 que dispara `trackOpen` cuando el cliente del correo
-  // (o el destinatario) renderiza la imagen. Es la base del evento `email_opened`.
-  // Gmail usa el proxy GoogleImageProxy (UA distintivo); debe contar como apertura cuando el usuario muestra imágenes.
-  const pixelUrl = `${trackingBaseUrl}?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(token)}`;
-  const pixelTag = `<img src="${pixelUrl}" width="1" height="1" alt="" style="display:none!important;border:0;width:1px;height:1px;outline:none;text-decoration:none;visibility:hidden;" />`;
-  if ($('body').length) {
-    $('body').append(pixelTag);
-  } else {
-    $.root().append(pixelTag);
-  }
 
   return {
     html: $.html(),

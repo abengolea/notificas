@@ -16,7 +16,6 @@ import { FileText, CheckCircle } from 'lucide-react';
 import MailTraceability from '@/components/dashboard/mail-traceability';
 import { buildSenderViewHtml } from '@/lib/message-views';
 import PolygonCertifications from '@/components/dashboard/polygon-certifications';
-import { AttachmentsTracking } from '@/components/dashboard/attachments-tracking';
 import { DownloadCertificate } from '@/components/dashboard/download-certificate';
 
 /** Misma lógica que /api/track-app-open: destinatarios del documento mail. */
@@ -89,40 +88,6 @@ function MessageContent() {
   const [trackingStopped, setTrackingStopped] = useState(false);
   const params = useParams();
   const id = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : null;
-
-  /**
-   * Registra `attachment_opened` y abre el archivo en una pestaña nueva.
-   * Solo se llama para destinatarios logueados (el remitente igual ve el botón, pero
-   * el endpoint rechaza el evento si quien dispara no aparece como recipient — ver
-   * /api/track-attachment, que valida con Bearer token).
-   */
-  const handleViewAttachment = async (attachmentId: string, fileUrl: string) => {
-    if (!id) return;
-    const attachment = (messageData?.attachments || []).find(
-      (a: any) => (a.id || a.fileName) === attachmentId
-    );
-    try {
-      const token = await auth.currentUser?.getIdToken();
-      if (token) {
-        await fetch('/api/track-attachment', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            messageId: id,
-            attachmentId,
-            fileName: attachment?.fileName || attachmentId,
-            action: 'opened',
-          }),
-        });
-      }
-    } catch {
-      /* no bloquear la apertura si falla el tracking */
-    }
-    window.open(fileUrl, '_blank', 'noopener,noreferrer');
-  };
 
   // Función para manejar la descarga del certificado
   const handleDownloadCertificate = async () => {
@@ -339,27 +304,8 @@ function MessageContent() {
             <>
               <MailMessageView data={messageData} />
               <MailTraceability mail={messageData} />
-              {/**
-                * Sección de adjuntos con tracking: el botón "Ver Documento" dispara
-                * /api/track-attachment (registra `attachment_opened`) y abre el archivo en otra pestaña.
-                * Mapeamos del shape Firestore (fileName/fileSize/fileUrl) al shape del componente (name/size/url).
-                */}
-              {Array.isArray(messageData.attachments) && messageData.attachments.length > 0 && (
-                <AttachmentsTracking
-                  attachments={messageData.attachments.map((a: any) => ({
-                    id: a.id || a.fileName,
-                    name: a.fileName,
-                    size: a.fileSize || 0,
-                    url: a.fileUrl,
-                    hash: a.hash,
-                    integrityCertificate: a.integrityCertificate,
-                    tracking: a.tracking,
-                  }))}
-                  onViewPDF={handleViewAttachment}
-                />
-              )}
               <PolygonCertifications certifications={messageData.polygonCertifications} messageId={id ?? undefined} />
-              
+
               {/* Botón de descarga de certificado - SIEMPRE DISPONIBLE */}
               <Card>
                 <CardContent className="pt-6">

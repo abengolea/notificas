@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Gift, Package, TrendingUp, CreditCard, Loader2, History, RefreshCw } from 'lucide-react';
+import { Gift, Package, TrendingUp, CreditCard, Loader2, History, RefreshCw, Download } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { clienteDescuentoLista, COLEGIO_NOMBRE_FALLBACK_CLIENT } from '@/lib/colegio-discount-client';
@@ -339,9 +339,54 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
     }
   };
 
+  const handleDownloadInvoice = async (tx: Transaccion) => {
+    const u = auth.currentUser;
+    if (!u) {
+      toast({
+        title: 'Sesión requerida',
+        description: 'Iniciá sesión para descargar la factura.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const token = await u.getIdToken();
+      const res = await fetch(`/api/user/invoices/${encodeURIComponent(tx.id)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(
+          typeof data.error === 'string' ? data.error : 'No se pudo descargar la factura.',
+        );
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const pv = String(tx.billingHub?.ptoVta ?? 0).padStart(5, '0');
+      const nro = String(tx.billingHub?.voucherNumber ?? 0).padStart(8, '0');
+      a.href = url;
+      a.download = `factura-${pv}-${nro}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({
+        title: 'No se pudo bajar la factura',
+        description: error instanceof Error ? error.message : 'Probá de nuevo en un momento.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const sortedTx = [...transactions].sort(
     (a, b) => b.fecha.getTime() - a.fecha.getTime(),
   );
+
+  const canTryDownloadInvoice = (tx: Transaccion) => tx.tipo === 'compra';
 
   return (
     <div className="space-y-5">
@@ -480,13 +525,13 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
             </CardHeader>
             <CardContent className="p-0 sm:p-6 sm:pt-0">
               <div className="max-h-[min(65vh,560px)] overflow-auto rounded-md border sm:border-0">
-                <Table>
+                <Table className="min-w-[780px]">
                   <TableHeader className="sticky top-0 z-[1] bg-background shadow-[0_1px_0_hsl(var(--border))]">
                     <TableRow>
                       <TableHead>Fecha</TableHead>
-                      <TableHead>Descripción</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Envíos</TableHead>
+                      <TableHead className="w-[40%]">Descripción</TableHead>
+                      <TableHead className="w-[90px]">Tipo</TableHead>
+                      <TableHead className="w-[80px]">Envíos</TableHead>
                       <TableHead className="text-right">Monto</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -503,7 +548,19 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
                           <TableCell>
                             <FormattedDateCell date={tx.fecha} />
                           </TableCell>
-                          <TableCell className="font-medium">{tx.descripcion}</TableCell>
+                          <TableCell className="max-w-[360px]">
+                            <div className="font-medium leading-snug">{tx.descripcion}</div>
+                            {canTryDownloadInvoice(tx) ? (
+                              <button
+                                type="button"
+                                className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary underline-offset-2 hover:underline"
+                                onClick={() => void handleDownloadInvoice(tx)}
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                                Bajar factura
+                              </button>
+                            ) : null}
+                          </TableCell>
                           <TableCell>
                             <Badge variant={tx.tipo === 'compra' ? 'default' : 'secondary'}>
                               {tx.tipo.charAt(0).toUpperCase() + tx.tipo.slice(1)}

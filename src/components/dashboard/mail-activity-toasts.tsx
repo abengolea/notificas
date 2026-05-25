@@ -18,6 +18,7 @@ function mailDocSubject(data: Record<string, unknown>): string {
 const TRACKING_TOAST_TYPES = new Set([
   "email_opened",
   "app_opened",
+  "reader_magic_open",
   "read_confirmed",
   "attachment_opened",
   "link_clicked",
@@ -28,6 +29,8 @@ function trackingToastTitle(type: string): string {
   switch (type) {
     case "email_opened":
       return "Abrieron el correo";
+    case "reader_magic_open":
+      return "Notificación leída";
     case "app_opened":
       return "Abrieron el mensaje en la app";
     case "read_confirmed":

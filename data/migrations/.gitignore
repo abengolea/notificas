@@ -1,0 +1,3 @@
+# CSV completo con PII: colocar localmente como legacy-users.csv (no versionar).
+legacy-users.csv
+import-report.json

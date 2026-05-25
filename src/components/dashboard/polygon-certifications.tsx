@@ -49,7 +49,7 @@ export default function PolygonCertifications({
         });
       })
       .catch(() => {});
-  }, [messageId, certifications?.contentHash]);
+  }, [messageId, certifications?.contentHash, certifications?.send]);
 
   if (!certifications || Object.keys(certifications).length === 0) {
     return null;
@@ -63,56 +63,55 @@ export default function PolygonCertifications({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <ShieldCheck className="h-5 w-5 text-emerald-600" />
-          Certificaciones en Polygon
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
+      <CardHeader className="p-4 pb-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ShieldCheck className="h-5 w-5 text-emerald-600" />
+            Certificaciones en Polygon
+          </CardTitle>
           {integrityCheck && integrityCheck.integrityValid !== null && (
-            <div
-              className={`flex items-start gap-2 p-3 rounded-lg border ${
+            <Badge
+              variant="outline"
+              className={
                 integrityCheck.integrityValid
-                  ? 'bg-emerald-50 border-emerald-200'
-                  : 'bg-amber-50 border-amber-200'
-              }`}
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700/60 dark:bg-emerald-950/50 dark:text-emerald-200'
+                  : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700/60 dark:bg-amber-950/50 dark:text-amber-200'
+              }
+              title={integrityCheck.message}
             >
               {integrityCheck.integrityValid ? (
-                <CheckCircle className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                <CheckCircle className="mr-1 h-3 w-3" />
               ) : (
-                <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <AlertTriangle className="mr-1 h-3 w-3" />
               )}
-              <div className="text-sm">
-                <p className="font-medium">
-                  {integrityCheck.integrityValid
-                    ? 'Integridad del contenido verificada'
-                    : 'Contenido posiblemente alterado'}
-                </p>
-                <p className="text-muted-foreground mt-0.5">{integrityCheck.message}</p>
-              </div>
-            </div>
+              {integrityCheck.integrityValid ? 'Contenido verificado' : 'Revisar contenido'}
+            </Badge>
           )}
+        </div>
+      </CardHeader>
+      <CardContent className="px-4 pb-4 pt-0">
+        <div className="space-y-2">
           {entries.map(([event, txHash]) => {
             const { label } = EVENT_LABELS[event] || { label: event };
             const explorerUrl = `${POLYGON_EXPLORER}/tx/${txHash}`;
             return (
               <div
                 key={event}
-                className="flex flex-wrap items-center gap-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2 dark:border-emerald-800/60 dark:bg-emerald-950/30"
               >
-                <Badge variant="secondary" className="font-normal">
-                  {label}
-                </Badge>
-                <code className="text-xs bg-white/80 px-2 py-0.5 rounded truncate max-w-[180px]">
-                  {txHash.slice(0, 10)}...{txHash.slice(-8)}
-                </code>
+                <div className="flex min-w-0 items-center gap-2">
+                  <Badge variant="secondary" className="shrink-0 bg-slate-900 text-white font-normal dark:bg-emerald-900/70 dark:text-emerald-100">
+                    {label}
+                  </Badge>
+                  <code className="truncate rounded bg-white/80 px-2 py-0.5 text-xs text-slate-700 dark:bg-slate-900/80 dark:text-slate-200">
+                    {txHash.slice(0, 10)}...{txHash.slice(-8)}
+                  </code>
+                </div>
                 <a
                   href={explorerUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:text-emerald-800 hover:underline"
+                  className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700 hover:text-emerald-800 hover:underline dark:text-emerald-300 dark:hover:text-emerald-200"
                 >
                   <ExternalLink className="h-4 w-4" />
                   Ver en PolygonScan
@@ -121,7 +120,7 @@ export default function PolygonCertifications({
             );
           })}
           <p className="text-xs text-muted-foreground">
-            Cada hash certifica el evento en la blockchain de Polygon y puede verificarse en PolygonScan.
+            Cada transacción certifica un hito del mensaje en blockchain.
             {certifications.contentHash && ' El contenido del mensaje está vinculado criptográficamente.'}
           </p>
         </div>

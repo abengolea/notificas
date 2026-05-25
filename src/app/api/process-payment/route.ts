@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { settleMercadoPagoPayment } from '@/lib/mercado-pago-settle';
 import { verifyAuthToken } from '@/lib/auth-helper';
+import { requestHubInvoiceForMercadoPagoPayment } from '@/lib/notificas-hub-billing';
 
 /**
  * Concilia un pago aprobado con la transacción pendiente en Firestore.
@@ -52,6 +53,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
+    const billing = await requestHubInvoiceForMercadoPagoPayment(String(paymentId));
+    if (!billing.ok && !billing.skipped) {
+      console.error('❌ process-payment: facturación Hub falló', {
+        paymentId,
+        error: billing.error,
+        status: billing.status,
+      });
+    }
+
     return NextResponse.json({
       success: true,
       message: result.alreadySettled
@@ -59,6 +69,7 @@ export async function POST(request: NextRequest) {
         : 'Pago procesado correctamente',
       creditsAdded: result.creditsAdded,
       alreadySettled: result.alreadySettled,
+      billingHub: billing,
     });
   } catch (error) {
     console.error('❌ Error procesando pago:', error);

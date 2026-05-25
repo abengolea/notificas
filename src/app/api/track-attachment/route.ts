@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb, adminAuth } from '@/lib/firebase-admin';
+import { certificarRecepcion } from '@/lib/certification-polygon';
 
 function extractBrowserInfo(userAgent: string) {
   const match = userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)\/(\d+)/);
@@ -12,6 +13,24 @@ function generateUUID() {
     const r = (Math.random() * 16) | 0;
     return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
   });
+}
+
+function normalizeEmail(value: unknown): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function getRecipientEmails(messageData: Record<string, any>): string[] {
+  const recipientsRaw = Array.isArray(messageData.to) ? messageData.to : [messageData.to];
+  const recipientsFromTo = recipientsRaw.map(normalizeEmail).filter(Boolean);
+  const recipientDocEmail = normalizeEmail(messageData.recipientEmail);
+  return [...new Set([...recipientsFromTo, recipientDocEmail].filter(Boolean))];
+}
+
+function getPrimaryRecipientEmail(messageData: Record<string, any>): string {
+  return (
+    normalizeEmail(messageData.recipientEmail) ||
+    (Array.isArray(messageData.to) ? normalizeEmail(messageData.to[0]) : normalizeEmail(messageData.to))
+  );
 }
 
 export async function POST(request: NextRequest) {
@@ -36,6 +55,8 @@ export async function POST(request: NextRequest) {
     // 1. Firebase ID token (usuarios logueados)
     // 2. Tracking key `k` (destinatarios externos vía magic link del reader)
     let recipientEmail: string | null = null;
+    let openedByEmail: string | null = null;
+    const primaryRecipientEmail = getPrimaryRecipientEmail(messageData);
 
     const authHeader = request.headers.get('Authorization');
     const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -43,7 +64,30 @@ export async function POST(request: NextRequest) {
     if (bearerToken) {
       try {
         const decoded = await adminAuth.verifyIdToken(bearerToken);
-        recipientEmail = decoded.email ?? null;
+        const userEmail = normalizeEmail(decoded.email);
+        const recipients = getRecipientEmails(messageData);
+        const isRecipient = Boolean(userEmail && recipients.includes(userEmail));
+        const isSender =
+          messageData.createdBy === decoded.uid ||
+          normalizeEmail(messageData.senderName) === userEmail ||
+          normalizeEmail(messageData.replyTo) === userEmail;
+
+        if (!isRecipient) {
+          if (isSender) {
+            return NextResponse.json({
+              success: true,
+              skipped: true,
+              message: 'Apertura de adjunto del remitente ignorada.',
+            });
+          }
+          return NextResponse.json(
+            { error: 'No autorizado para trackear este adjunto.' },
+            { status: 403 },
+          );
+        }
+
+        recipientEmail = userEmail || null;
+        openedByEmail = userEmail || null;
       } catch {
         return NextResponse.json({ error: 'Token inválido o expirado.' }, { status: 401 });
       }
@@ -57,7 +101,8 @@ export async function POST(request: NextRequest) {
       if (!stored || stored !== k) {
         return NextResponse.json({ error: 'Tracking key inválido.' }, { status: 401 });
       }
-      recipientEmail = messageData.recipientEmail || null;
+      recipientEmail = primaryRecipientEmail || null;
+      openedByEmail = recipientEmail;
     } else {
       return NextResponse.json({ error: 'Se requiere autenticación o tracking key.' }, { status: 401 });
     }
@@ -76,7 +121,10 @@ export async function POST(request: NextRequest) {
       userAgent,
       clientIP,
       browser: extractBrowserInfo(userAgent),
-      recipientEmail: recipientEmail || messageData.recipientEmail || 'Unknown',
+      recipientEmail: recipientEmail || primaryRecipientEmail || 'Unknown',
+      mailRecipientEmail: primaryRecipientEmail || undefined,
+      openedByEmail: openedByEmail || recipientEmail || undefined,
+      viewerIsSender: false,
       attachmentId,
       fileName: fileName || null,
       action: action || 'open',
@@ -89,6 +137,21 @@ export async function POST(request: NextRequest) {
       'tracking.lastAttachmentActivity': new Date(),
       'tracking.movements': FieldValue.arrayUnion(attachmentMovement),
     });
+
+    if (!messageData.polygonCertifications?.receive) {
+      try {
+        const txHash = await certificarRecepcion(messageId, recipientEmail || primaryRecipientEmail || 'recipient');
+        await messageRef.update({
+          'polygonCertifications.receive': txHash,
+          'polygonCertifications.updatedAt': new Date(),
+        });
+      } catch (certifyError: unknown) {
+        console.warn(
+          '⚠️ Polygon certify receive (attachment):',
+          certifyError instanceof Error ? certifyError.message : certifyError
+        );
+      }
+    }
 
     return NextResponse.json({ success: true, movementId: attachmentMovement.id });
   } catch (error: any) {

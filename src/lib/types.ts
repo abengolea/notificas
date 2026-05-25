@@ -96,6 +96,20 @@ export type Transaccion = {
     monto: number;
     creditos: number;
     metodoPago?: 'Mercado Pago' | 'Crédito' | 'Envíos';
+    paymentId?: string;
+    billingHub?: {
+      status?: 'issued' | 'failed' | 'pending' | string;
+      facturaId?: string | null;
+      cae?: string | null;
+      caeFchVto?: string | null;
+      voucherNumber?: number | null;
+      ptoVta?: number | null;
+      cbteTipo?: number | null;
+      tipoComprobante?: string | null;
+      netoGravado?: number | null;
+      iva?: number | null;
+      total?: number | null;
+    };
 };
 
 export type Contacto = {
