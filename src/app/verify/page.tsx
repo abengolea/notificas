@@ -469,7 +469,7 @@ export default function VerifyPage() {
                         ¿Qué significa este resultado?
                       </h4>
                       <p className="text-sm text-blue-700">
-                        Este documento fue emitido oficialmente por Notificas.com y está certificado en la red Blockchain. Puede ser utilizado como evidencia legal.
+                        Este documento fue emitido oficialmente por Notificas.com y está certificado en la red Polygon. Puede ser utilizado como evidencia legal.
                       </p>
                     </div>
                   </>
@@ -534,7 +534,6 @@ export default function VerifyPage() {
                 <li><strong>Recepción:</strong> Cuándo el destinatario accedió por primera vez al mensaje, encadenado al envío</li>
                 <li><strong>Lectura:</strong> Confirmación explícita de lectura por el destinatario</li>
                 <li><strong>Certificado PDF:</strong> Hash SHA-256 del PDF oficial, anclado en Polygon y encadenado al envío</li>
-                <li><strong>Adjuntos:</strong> Hash de integridad de cada archivo adjunto</li>
               </ul>
             </div>
 
@@ -549,7 +548,7 @@ export default function VerifyPage() {
               <h4 className="font-semibold text-foreground mb-2">4. ¿Cómo verificar un documento?</h4>
               <ul className="text-sm text-muted-foreground space-y-1">
                 <li><strong>Certificado de lectura (PDF):</strong> Ingrese el &quot;Identificador de mensaje&quot; que figura en el PDF.</li>
-                <li><strong>Adjunto enviado por correo:</strong> Suba el archivo PDF original; el sistema compara su hash con el registrado.</li>
+                <li><strong>Constancia PDF de Notificas:</strong> Suba el archivo PDF de constancia; el sistema compara su hash con el registrado en Polygon.</li>
               </ul>
             </div>
 
@@ -625,7 +624,7 @@ export default function VerifyPage() {
                 </div>
                 <h3 className="font-semibold mb-2">1. Documento</h3>
                 <p className="text-sm text-gray-600">
-                  Notificas genera un PDF con hash criptográfico o adjuntos con hash de integridad
+                  Notificas genera un certificado PDF con hash criptográfico anclado en Polygon
                 </p>
               </div>
               <div className="text-center">
