@@ -44,6 +44,7 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
   const [loadingPlan, setLoadingPlan] = useState<Plan['id'] | null>(null);
   const [syncOpId, setSyncOpId] = useState('');
   const [syncLoading, setSyncLoading] = useState(false);
+  const [invoiceLoadingId, setInvoiceLoadingId] = useState<string | null>(null);
   const [colegioPct, setColegioPct] = useState(0);
   const [colegioEligible, setColegioEligible] = useState(false);
   const [colegioNombre, setColegioNombre] = useState(COLEGIO_NOMBRE_FALLBACK_CLIENT);
@@ -339,6 +340,45 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
     }
   };
 
+  const fetchInvoiceBlob = async (token: string, transactionId: string) => {
+    const res = await fetch(`/api/user/invoices/${encodeURIComponent(transactionId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      return { ok: true as const, blob: await res.blob() };
+    }
+
+    const data = await res.json().catch(() => ({}));
+    return {
+      ok: false as const,
+      status: res.status,
+      message:
+        typeof data.error === 'string'
+          ? data.error
+          : 'No se pudo descargar la factura.',
+    };
+  };
+
+  const retryInvoiceBilling = async (token: string, paymentId: string) => {
+    const res = await fetch('/api/process-payment', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ paymentId }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(
+        typeof data.error === 'string'
+          ? data.error
+          : 'No se pudo preparar la factura.',
+      );
+    }
+  };
+
   const handleDownloadInvoice = async (tx: Transaccion) => {
     const u = auth.currentUser;
     if (!u) {
@@ -351,18 +391,29 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
     }
 
     try {
+      setInvoiceLoadingId(tx.id);
       const token = await u.getIdToken();
-      const res = await fetch(`/api/user/invoices/${encodeURIComponent(tx.id)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(
-          typeof data.error === 'string' ? data.error : 'No se pudo descargar la factura.',
-        );
+      let invoice = await fetchInvoiceBlob(token, tx.id);
+
+      if (
+        !invoice.ok &&
+        invoice.status === 404 &&
+        invoice.message === 'La factura todavía no está disponible' &&
+        tx.paymentId
+      ) {
+        toast({
+          title: 'Preparando factura',
+          description: 'Reintentamos generar la factura y la descargamos cuando esté lista.',
+        });
+        await retryInvoiceBilling(token, tx.paymentId);
+        invoice = await fetchInvoiceBlob(token, tx.id);
       }
 
-      const blob = await res.blob();
+      if (!invoice.ok) {
+        throw new Error(invoice.message);
+      }
+
+      const blob = invoice.blob;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       const pv = String(tx.billingHub?.ptoVta ?? 0).padStart(5, '0');
@@ -379,6 +430,8 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
         description: error instanceof Error ? error.message : 'Probá de nuevo en un momento.',
         variant: 'destructive',
       });
+    } finally {
+      setInvoiceLoadingId(null);
     }
   };
 
@@ -386,7 +439,18 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
     (a, b) => b.fecha.getTime() - a.fecha.getTime(),
   );
 
-  const canTryDownloadInvoice = (tx: Transaccion) => tx.tipo === 'compra';
+  const canTryDownloadInvoice = (tx: Transaccion) => tx.tipo === 'compra' && Boolean(tx.paymentId);
+
+  const invoiceStatusMessage = (tx: Transaccion) => {
+    const status = tx.billingHub?.status;
+    if (status === 'pending') {
+      return 'Factura pendiente de emisión. Podés reintentar desde Bajar factura.';
+    }
+    if (status === 'failed') {
+      return 'Factura no emitida automáticamente. Bajar factura reintenta el proceso.';
+    }
+    return null;
+  };
 
   return (
     <div className="space-y-5">
@@ -543,37 +607,58 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
                         </TableCell>
                       </TableRow>
                     ) : (
-                      sortedTx.map((tx) => (
-                        <TableRow key={tx.id}>
-                          <TableCell>
-                            <FormattedDateCell date={tx.fecha} />
-                          </TableCell>
-                          <TableCell className="max-w-[360px]">
-                            <div className="font-medium leading-snug">{tx.descripcion}</div>
-                            {canTryDownloadInvoice(tx) ? (
-                              <button
-                                type="button"
-                                className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary underline-offset-2 hover:underline"
-                                onClick={() => void handleDownloadInvoice(tx)}
-                              >
-                                <Download className="h-3.5 w-3.5" />
-                                Bajar factura
-                              </button>
-                            ) : null}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={tx.tipo === 'compra' ? 'default' : 'secondary'}>
-                              {tx.tipo.charAt(0).toUpperCase() + tx.tipo.slice(1)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className={`font-bold ${tx.tipo === 'compra' ? 'text-green-600' : 'text-destructive'}`}>
-                            {tx.tipo === 'compra' ? `+${tx.creditos}` : tx.creditos}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {tx.monto > 0 ? formatCurrency(tx.monto) : '-'}
-                          </TableCell>
-                        </TableRow>
-                      ))
+                      sortedTx.map((tx) => {
+                        const isInvoiceLoading = invoiceLoadingId === tx.id;
+                        const invoiceNotice = invoiceStatusMessage(tx);
+
+                        return (
+                          <TableRow key={tx.id}>
+                            <TableCell>
+                              <FormattedDateCell date={tx.fecha} />
+                            </TableCell>
+                            <TableCell className="max-w-[360px]">
+                              <div className="font-medium leading-snug">{tx.descripcion}</div>
+                              {canTryDownloadInvoice(tx) ? (
+                                <button
+                                  type="button"
+                                  className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:no-underline"
+                                  onClick={() => void handleDownloadInvoice(tx)}
+                                  disabled={isInvoiceLoading}
+                                >
+                                  {isInvoiceLoading ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Download className="h-3.5 w-3.5" />
+                                  )}
+                                  {isInvoiceLoading ? 'Preparando factura' : 'Bajar factura'}
+                                </button>
+                              ) : null}
+                              {invoiceNotice ? (
+                                <p
+                                  className={`mt-1 text-xs ${
+                                    tx.billingHub?.status === 'failed'
+                                      ? 'text-destructive'
+                                      : 'text-muted-foreground'
+                                  }`}
+                                >
+                                  {invoiceNotice}
+                                </p>
+                              ) : null}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={tx.tipo === 'compra' ? 'default' : 'secondary'}>
+                                {tx.tipo.charAt(0).toUpperCase() + tx.tipo.slice(1)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className={`font-bold ${tx.tipo === 'compra' ? 'text-green-600' : 'text-destructive'}`}>
+                              {tx.tipo === 'compra' ? `+${tx.creditos}` : tx.creditos}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {tx.monto > 0 ? formatCurrency(tx.monto) : '-'}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>

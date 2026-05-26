@@ -32,6 +32,16 @@ type BillingHubResult =
   | { ok: false; skipped: true; reason: string }
   | { ok: false; skipped?: false; error: string; status?: number };
 
+type BillingHubPersistStatus = 'issued' | 'pending' | 'failed';
+
+type BillingHubSnapshot = {
+  id: string;
+  ref: {
+    set(data: Record<string, unknown>, options: { merge: boolean }): Promise<unknown>;
+  };
+  data(): Record<string, unknown>;
+};
+
 function billingEmitUrl(): string | undefined {
   const explicit =
     process.env.NOTIFICASHUB_BILLING_EMIT_URL ||
@@ -77,6 +87,80 @@ function asString(value: unknown): string | undefined {
 function digits(value: unknown, max = 32): string | undefined {
   const d = asString(value)?.replace(/\D/g, '').slice(0, max);
   return d || undefined;
+}
+
+function limitText(value: string | undefined, max = 500): string | null {
+  if (!value) return null;
+  return value.length > max ? value.slice(0, max) : value;
+}
+
+function hubErrorMessage(json: Record<string, unknown>, status: number): string {
+  const explicit = asString(json.error) || asString(json.message);
+  if (explicit && !explicit.trimStart().startsWith('<!DOCTYPE html')) {
+    return explicit;
+  }
+  if (status === 404) {
+    return 'Endpoint de facturación del Hub no encontrado';
+  }
+  return `Hub respondió HTTP ${status}`;
+}
+
+function statusForHubReason(reason: string): BillingHubPersistStatus {
+  const normalized = reason.toLowerCase();
+  if (
+    normalized.includes('pending') ||
+    normalized.includes('not_ready') ||
+    normalized.includes('process') ||
+    normalized.includes('pendiente')
+  ) {
+    return 'pending';
+  }
+  return 'failed';
+}
+
+async function persistBillingHubAttempt(opts: {
+  paymentId: string;
+  transactionSnap: BillingHubSnapshot | null;
+  billingHub: Record<string, unknown> & { status: BillingHubPersistStatus };
+}) {
+  const { paymentId, transactionSnap, billingHub } = opts;
+  if (!transactionSnap) return;
+
+  const currentBillingHub = transactionSnap.data().billingHub as
+    | { status?: unknown }
+    | undefined;
+  if (billingHub.status !== 'issued' && currentBillingHub?.status === 'issued') {
+    return;
+  }
+
+  const db = getAdminDb();
+  await transactionSnap.ref.set({ billingHub }, { merge: true });
+  await db
+    .collection('user_transactions')
+    .doc(`mp_${paymentId}`)
+    .set({ billingHub }, { merge: true });
+}
+
+function buildBillingHubProblem(opts: {
+  status: BillingHubPersistStatus;
+  reason?: string;
+  error?: string;
+  httpStatus?: number;
+}) {
+  return {
+    status: opts.status,
+    facturaId: null,
+    cae: null,
+    caeFchVto: null,
+    voucherNumber: null,
+    ptoVta: null,
+    cbteTipo: null,
+    tipoComprobante: null,
+    reason: limitText(opts.reason),
+    error: limitText(opts.error),
+    httpStatus: opts.httpStatus ?? null,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
 }
 
 async function findSettledTransaction(payment: PaymentRecord) {
@@ -145,25 +229,52 @@ export async function requestHubInvoiceForMercadoPagoPayment(
     };
   }
 
+  const meta = metadataOf(payment);
+  const paymentIdStr = String(payment.id ?? paymentId);
+  const transactionSnap = (await findSettledTransaction(payment)) as BillingHubSnapshot | null;
+  const transaction = transactionSnap?.data() as Record<string, unknown> | undefined;
+
   if (payment.status !== 'approved') {
+    await persistBillingHubAttempt({
+      paymentId: paymentIdStr,
+      transactionSnap,
+      billingHub: buildBillingHubProblem({
+        status: 'pending',
+        reason: 'payment_not_approved',
+        error: asString(payment.status),
+      }),
+    });
     return { ok: false, skipped: true, reason: 'payment_not_approved' };
   }
 
-  const meta = metadataOf(payment);
   const shouldEmit =
     metaString(meta, 'hub_emit_factura') === 'true' ||
     process.env.MERCADOPAGO_HUB_EMIT_FACTURA === 'true' ||
     process.env.NOTIFICASHUB_BILLING_FORCE_EMIT === 'true';
   if (!shouldEmit) {
+    await persistBillingHubAttempt({
+      paymentId: paymentIdStr,
+      transactionSnap,
+      billingHub: buildBillingHubProblem({
+        status: 'failed',
+        reason: 'hub_emit_factura_not_enabled',
+      }),
+    });
     return { ok: false, skipped: true, reason: 'hub_emit_factura_not_enabled' };
   }
 
   if (!url || !secret) {
+    await persistBillingHubAttempt({
+      paymentId: paymentIdStr,
+      transactionSnap,
+      billingHub: buildBillingHubProblem({
+        status: 'failed',
+        reason: 'hub_billing_not_configured',
+      }),
+    });
     return { ok: false, skipped: true, reason: 'hub_billing_not_configured' };
   }
 
-  const transactionSnap = await findSettledTransaction(payment);
-  const transaction = transactionSnap?.data() as Record<string, unknown> | undefined;
   const userId = asString(transaction?.userId) || metaString(meta, 'user_id');
   const db = getAdminDb();
 
@@ -181,6 +292,14 @@ export async function requestHubInvoiceForMercadoPagoPayment(
         ? payment.transaction_amount
         : Number(metaString(meta, 'amount') ?? 0);
   if (!Number.isFinite(amount) || amount <= 0) {
+    await persistBillingHubAttempt({
+      paymentId: paymentIdStr,
+      transactionSnap,
+      billingHub: buildBillingHubProblem({
+        status: 'failed',
+        error: 'Importe inválido para facturación Hub',
+      }),
+    });
     return { ok: false, error: 'Importe inválido para facturación Hub' };
   }
 
@@ -191,7 +310,6 @@ export async function requestHubInvoiceForMercadoPagoPayment(
     typeof transaction?.credits === 'number'
       ? transaction.credits
       : Number(metaString(meta, 'credits') ?? 0);
-  const paymentIdStr = String(payment.id ?? paymentId);
 
   const payload = {
     idempotencyKey: `notificas_mp_${paymentIdStr}`,
@@ -240,6 +358,14 @@ export async function requestHubInvoiceForMercadoPagoPayment(
       body: JSON.stringify(payload),
     });
   } catch (error) {
+    await persistBillingHubAttempt({
+      paymentId: paymentIdStr,
+      transactionSnap,
+      billingHub: buildBillingHubProblem({
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'No se pudo contactar al Hub',
+      }),
+    });
     return {
       ok: false,
       error: error instanceof Error ? error.message : 'No se pudo contactar al Hub',
@@ -255,18 +381,37 @@ export async function requestHubInvoiceForMercadoPagoPayment(
   }
 
   if (!response.ok) {
+    const error = hubErrorMessage(json, response.status);
+    await persistBillingHubAttempt({
+      paymentId: paymentIdStr,
+      transactionSnap,
+      billingHub: buildBillingHubProblem({
+        status: 'failed',
+        error,
+        httpStatus: response.status,
+      }),
+    });
     return {
       ok: false,
       status: response.status,
-      error: asString(json.error) || `Hub respondió HTTP ${response.status}`,
+      error,
     };
   }
 
   if (json.ok === false) {
+    const reason = asString(json.status) || asString(json.message) || 'hub_invoice_not_ready';
+    await persistBillingHubAttempt({
+      paymentId: paymentIdStr,
+      transactionSnap,
+      billingHub: buildBillingHubProblem({
+        status: statusForHubReason(reason),
+        reason,
+      }),
+    });
     return {
       ok: false,
       skipped: true,
-      reason: asString(json.status) || asString(json.message) || 'hub_invoice_not_ready',
+      reason,
     };
   }
 
@@ -286,8 +431,10 @@ export async function requestHubInvoiceForMercadoPagoPayment(
     alreadyIssued: json.alreadyIssued === true,
   };
 
-  if (transactionSnap) {
-    const billingHub = {
+  await persistBillingHubAttempt({
+    paymentId: paymentIdStr,
+    transactionSnap,
+    billingHub: {
       status: 'issued',
       facturaId: result.facturaId ?? null,
       cae: result.CAE ?? null,
@@ -305,13 +452,8 @@ export async function requestHubInvoiceForMercadoPagoPayment(
       buyerDomicilio: payload.buyer.domicilio || null,
       alreadyIssued: result.alreadyIssued ?? false,
       updatedAt: FieldValue.serverTimestamp(),
-    };
-    await transactionSnap.ref.set({ billingHub }, { merge: true });
-    await db
-      .collection('user_transactions')
-      .doc(`mp_${paymentIdStr}`)
-      .set({ billingHub }, { merge: true });
-  }
+    },
+  });
 
   return result;
 }

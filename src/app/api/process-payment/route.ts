@@ -54,7 +54,12 @@ export async function POST(request: NextRequest) {
     }
 
     const billing = await requestHubInvoiceForMercadoPagoPayment(String(paymentId));
-    if (!billing.ok && !billing.skipped) {
+    if (!billing.ok && billing.skipped) {
+      console.warn('⚠️ process-payment: facturación Hub pendiente/omitida', {
+        paymentId,
+        reason: billing.reason,
+      });
+    } else if (!billing.ok) {
       console.error('❌ process-payment: facturación Hub falló', {
         paymentId,
         error: billing.error,
