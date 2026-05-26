@@ -15,9 +15,9 @@ import {
 } from "@/components/ui/sheet";
 
 const navLinks = [
-  { href: "#ventajas", label: "Ventajas" },
+  { href: "/#ventajas", label: "Ventajas" },
   { href: "/verify", label: "Verificar certificado" },
-  { href: "#faq", label: "Preguntas frecuentes" },
+  { href: "/#faq", label: "Preguntas frecuentes" },
 ];
 
 export function LandingHeader() {
