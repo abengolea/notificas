@@ -109,6 +109,9 @@ export type Transaccion = {
       netoGravado?: number | null;
       iva?: number | null;
       total?: number | null;
+      reason?: string | null;
+      error?: string | null;
+      httpStatus?: number | null;
     };
 };
 

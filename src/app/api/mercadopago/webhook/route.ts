@@ -66,7 +66,12 @@ export async function POST(request: NextRequest) {
         facturaId: billing.facturaId,
         alreadyIssued: billing.alreadyIssued,
       });
-    } else if (!billing.skipped) {
+    } else if (billing.skipped) {
+      console.warn('⚠️ Webhook: facturación Hub pendiente/omitida', {
+        paymentId,
+        reason: billing.reason,
+      });
+    } else {
       console.error('❌ Webhook: facturación Hub falló', {
         paymentId,
         error: billing.error,
