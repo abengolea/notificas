@@ -48,18 +48,25 @@ export async function certificarEnvio(
   messageId: string,
   fromUserId: string,
   toEmail: string,
-  contentHash?: string
+  contentHash?: string,
+  smtpMessageId?: string,
 ): Promise<string> {
   const timestamp = new Date().toISOString();
-  const payload = contentHash
-    ? `SEND|${messageId}|${fromUserId}|${toEmail}|${contentHash}|${timestamp}`
-    : `SEND|${messageId}|${fromUserId}|${toEmail}|${timestamp}`;
+
+  // smtpMessageId vincula la TX de Polygon con el registro del servidor SMTP —
+  // permite cruzar con los logs del proveedor de correo si el juez lo requiere.
+  const parts = ['SEND', messageId, fromUserId, toEmail];
+  if (contentHash) parts.push(contentHash);
+  if (smtpMessageId) parts.push(`smtp:${smtpMessageId}`);
+  parts.push(timestamp);
+  const payload = parts.join('|');
 
   console.log('📤 Certificando envío de mensaje:', {
     messageId,
     fromUserId,
     toEmail,
     contentHash: !!contentHash,
+    smtpMessageId: !!smtpMessageId,
   });
 
   const txHash = await sendPolygonTransaction(payload);
@@ -71,6 +78,7 @@ export async function certificarEnvio(
       messageId,
       toEmail,
       contentHash: contentHash ?? null,
+      smtpMessageId: smtpMessageId ?? null,
       txHash,
       payload,
     },
@@ -79,6 +87,48 @@ export async function certificarEnvio(
   );
 
   console.log('✅ Envío certificado en Polygon:', txHash);
+  return txHash;
+}
+
+/**
+ * Certifica el hash SHA-256 del certificado PDF generado para este mensaje.
+ * Encadena al TX de envío para que quede demostrable que el certificado
+ * corresponde a un envío real y no fue generado artificialmente.
+ */
+export async function certificarDocumento(
+  messageId: string,
+  pdfHash: string,
+  sendTxHash?: string,
+): Promise<string> {
+  const timestamp = new Date().toISOString();
+
+  const parts = ['CERTIFICATE', messageId, `sha256:${pdfHash}`];
+  if (sendTxHash) parts.push(`ref:${sendTxHash}`);
+  parts.push(timestamp);
+  const payload = parts.join('|');
+
+  console.log('📄 Certificando PDF del mensaje:', {
+    messageId,
+    pdfHash,
+    chainedToSend: !!sendTxHash,
+  });
+
+  const txHash = await sendPolygonTransaction(payload);
+
+  await persistBlockchainMovement(
+    {
+      type: 'certificate',
+      messageId,
+      pdfHash,
+      sendTxHash: sendTxHash ?? null,
+      txHash,
+      payload,
+    },
+    txHash,
+    'certificate'
+  );
+
+  console.log('✅ PDF certificado en Polygon:', txHash);
   return txHash;
 }
 

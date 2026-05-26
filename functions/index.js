@@ -1,4 +1,5 @@
 const { onRequest } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret, defineString } = require('firebase-functions/params');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
@@ -262,7 +263,7 @@ function injectTrackingIntoHtml(html, docId, token) {
 
 
 exports.sendEmail = onRequest(
-  { region: REGION, concurrency: 1, secrets: [whatsappAccessToken, whatsappPhoneNumberId, smtpPass] },
+  { region: REGION, concurrency: 1, secrets: [whatsappAccessToken, whatsappPhoneNumberId, smtpPass, polygonCertifySecret] },
   async (req, res) => {
     const timestamp = new Date().toISOString();
     console.log(`🔥 [${timestamp}] Firebase Function sendEmail ejecutada`);
@@ -543,6 +544,8 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
           time: FieldValue.serverTimestamp(),
           info: result.messageId
         },
+        // smtpMessageId guardado en campo raíz para que certify-event lo incluya en la TX de Polygon
+        smtpMessageId: result.messageId,
         tracking: {
           token: trackingToken,
           sentAt: FieldValue.serverTimestamp(),
@@ -562,6 +565,18 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
       });
 
       console.log('Email enviado:', result.messageId);
+
+      // Certificar envío en Polygon (fire-and-forget, no bloquea la respuesta)
+      void fetch(`${APP_HOSTING_URL}/api/polygon/certify-event`, certifyEventFetchInit({
+        docId: docId,
+        type: 'send',
+        userId: emailData.createdBy || from,
+      }))
+        .then(async (certRes) => {
+          if (!certRes.ok) console.warn('⚠️ Polygon certify send:', await certRes.text());
+          else console.log('✅ Envío certificado en Polygon (automático)');
+        })
+        .catch((e) => console.warn('⚠️ Polygon certify send failed (no afecta el envío):', e?.message));
 
       // Enviar WhatsApp si hay teléfono (secrets desde Secret Manager)
       const recipientPhone = emailData.recipientPhone;
@@ -1515,5 +1530,67 @@ exports.whatsappWebhook = onRequest(
     } catch (e) {
       console.error('❌ Error en whatsappWebhook:', e.message);
     }
+  }
+);
+
+/**
+ * Retry automático de certificación en Polygon.
+ * Cada 10 minutos busca correos DELIVERED sin polygonCertifications.send
+ * (últimas 48 h) y los certifica. Cubre el gap del fire-and-forget de sendEmail.
+ */
+exports.retryCertifyPendingSends = onSchedule(
+  {
+    schedule: 'every 10 minutes',
+    region: REGION,
+    secrets: [polygonCertifySecret],
+    timeoutSeconds: 540,
+  },
+  async () => {
+    const db = getFirestore();
+    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000); // últimas 48 h
+
+    // Consulta de un solo campo — no requiere índice compuesto.
+    // Filtramos por fecha en memoria para no tocar docs históricos.
+    const snap = await db.collection('mail')
+      .where('delivery.state', '==', 'DELIVERED')
+      .limit(200)
+      .get();
+
+    const pending = snap.docs.filter((doc) => {
+      const data = doc.data();
+      if (data.polygonCertifications?.send) return false; // ya certificado
+      const sentAt = data.tracking?.sentAt?.toDate?.();
+      return sentAt && sentAt >= cutoff; // solo últimas 48 h
+    });
+
+    if (pending.length === 0) {
+      console.log('✅ retryCertifyPendingSends: ningún envío pendiente de certificar');
+      return;
+    }
+
+    console.log(`🔄 retryCertifyPendingSends: ${pending.length} envíos sin certificar`);
+
+    let ok = 0;
+    let fail = 0;
+    for (const doc of pending) {
+      try {
+        const res = await fetch(
+          `${APP_HOSTING_URL}/api/polygon/certify-event`,
+          certifyEventFetchInit({ docId: doc.id, type: 'send', userId: doc.data().createdBy || 'retry' })
+        );
+        if (res.ok) {
+          ok++;
+          console.log(`✅ Certificado (retry): ${doc.id}`);
+        } else {
+          fail++;
+          console.warn(`⚠️ Retry fallido ${doc.id}:`, await res.text());
+        }
+      } catch (e) {
+        fail++;
+        console.warn(`⚠️ Retry error ${doc.id}:`, e?.message);
+      }
+    }
+
+    console.log(`🔄 retryCertifyPendingSends: ${ok} OK, ${fail} fallidos`);
   }
 );

@@ -10,7 +10,7 @@ const features = [
   {
     icon: <ShieldCheck className="h-10 w-10 text-primary" />,
     title: 'COMUNICACIONES CERTIFICADAS',
-    description: 'Tus comunicaciones son registradas y certificadas de manera inmutable en la blockchain.',
+    description: 'Tus comunicaciones son registradas y certificadas de manera inmutable en la red Polygon (blockchain pública y descentralizada).',
   },
   {
     icon: <Send className="h-10 w-10 text-primary" />,
@@ -20,24 +20,19 @@ const features = [
   {
     icon: <Cpu className="h-10 w-10 text-primary" />,
     title: 'COSTOS',
-    description: 'Los costos son menores en comparación con las cartas documento.',
+    description: 'Hasta 20 veces más económico que una carta documento, con mayor trazabilidad y sin necesidad de concurrir a ninguna oficina.',
   },
   {
     icon: <ArrowRight className="h-10 w-10 text-primary" />,
-    title: 'REENVIOS',
-    description: 'Si el destinatario no abre el correo, nuestro sistema vuelve a enviar otro de manera automática quedando todo registrado en la blockchain.',
-  },
-  {
-    icon: <ShieldCheck className="h-10 w-10 text-primary" />,
-    title: 'PLANTILLAS',
-    description: 'Podés usar modelos/plantillas de intimaciones.',
+    title: 'TRAZABILIDAD COMPLETA',
+    description: 'Cada evento queda registrado: envío, recepción, apertura y lectura confirmada, tanto por correo como por WhatsApp. Todo certificado en Polygon y verificable de forma independiente.',
   },
   {
     icon: <ShieldCheck className="h-10 w-10 text-primary" />,
     title: 'PRUEBA EN JUICIO',
-    description: 'El sistema genera una pericia informática automática para que puedas demostrar en juicio el envío, contenido, recepción y/o lectura del mensaje.',
+    description: 'El sistema genera un certificado oficial con valor probatorio para demostrar el envío, contenido, recepción y/o lectura del mensaje.',
   },
-   {
+  {
     icon: <ShieldCheck className="h-10 w-10 text-primary" />,
     title: 'ALMACENAMIENTO',
     description: 'La documentación queda guardada por más de 5 años.',
@@ -45,15 +40,13 @@ const features = [
 ];
 
 const useCases = [
-    "Diligenciamiento de oficios electrónicos",
-    "Intimaciones o reclamos de consumidores hacia empresas proveedoras",
-    "Intimaciones de pago",
-    "Comunicaciones entre empleados y trabajadores",
-    "Intimaciones entre particulares (reclamo de pago, daños, deudas, etc.)",
-    "Notificaciones de actos administrativos",
-    "Reclamos de consumidores",
-    "Comunicaciones laborales",
-    "Avisos de corte de servicios",
+    "Intimaciones de pago entre particulares o empresas",
+    "Reclamos y notificaciones de consumidores hacia empresas proveedoras",
+    "Comunicaciones laborales entre empleadores y trabajadores",
+    "Avisos de rescisión, incumplimiento o mora contractual",
+    "Notificaciones en el marco de relaciones comerciales",
+    "Avisos de corte o suspensión de servicios",
+    "Comunicaciones en procesos de mediación o instancias previas",
     "Notificaciones de acciones colectivas",
 ];
 
@@ -69,7 +62,7 @@ export default function LandingPage() {
               Comunicaciones fehacientes, con respaldo blockchain.
             </h1>
             <p className="mx-auto mb-8 max-w-3xl text-pretty text-base text-muted-foreground sm:text-lg md:text-xl">
-              El contenido, envío, recepción y lectura de la comunicación quedará registrado de forma inmutable en blockchain.
+              El contenido, envío, recepción y lectura de cada comunicación quedan registrados de forma inmutable en blockchain. Usamos la red Polygon: pública, descentralizada y verificable por cualquier persona.
             </p>
             <Button size="lg" className="w-full sm:w-auto" asChild>
               <Link href="/signup">Empezá Ahora</Link>
@@ -79,15 +72,65 @@ export default function LandingPage() {
 
         <section id="blockchain" className="px-4 py-16 sm:py-20 md:py-28">
             <div className="container flex justify-center">
-                <div className="max-w-3xl text-center md:text-left">
-                    <h2 className="text-3xl md:text-4xl font-bold mb-4">¿QUÉ ES LA TECNOLOGÍA BLOCKCHAIN?</h2>
-                    <p className="text-muted-foreground mb-4 leading-relaxed">
-                        Blockchain -o cadena de bloques enlazados y cifrados- es un tipo de tecnología digital que funciona como una base de datos diseñada para evitar ser modificada una vez que la información se publica o envía.
-                    </p>
-                    <p className="text-muted-foreground leading-relaxed">
-                        La información se enlaza al bloque anterior de forma cronológica, descentralizada, distribuida y auditable, asegurando su autenticidad, seguridad y estándares éticos.
-                    </p>
-                    <Button variant="link" className="px-0 mt-2">Leer más <ArrowRight className="ml-2 h-4 w-4" /></Button>
+                <div className="max-w-3xl text-center md:text-left space-y-8">
+                    <div>
+                        <h2 className="text-3xl md:text-4xl font-bold mb-4">¿QUÉ ES LA TECNOLOGÍA BLOCKCHAIN?</h2>
+                        <p className="text-muted-foreground mb-4 leading-relaxed">
+                            Blockchain —o cadena de bloques enlazados y cifrados— es una base de datos distribuida diseñada para que la información, una vez registrada, no pueda ser modificada ni eliminada. Cada bloque contiene un sello de tiempo y una referencia criptográfica al bloque anterior, formando una cadena inmutable y auditable por cualquier persona.
+                        </p>
+                    </div>
+
+                    <div>
+                        <h3 className="text-xl font-semibold mb-3">La red que usamos: Polygon</h3>
+                        <p className="text-muted-foreground mb-4 leading-relaxed">
+                            Notificas utiliza <strong>Polygon</strong>, una blockchain pública compatible con Ethereum, con miles de nodos distribuidos alrededor del mundo y más de mil millones de transacciones procesadas. Es una de las redes más auditadas y utilizadas a nivel global, con consenso Proof of Stake y costos de transacción muy bajos.
+                        </p>
+                        <p className="text-muted-foreground leading-relaxed">
+                            Cada transacción generada por Notificas es verificable de forma independiente en{' '}
+                            <a href="https://polygonscan.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">polygonscan.com</a>
+                            {' '}ingresando el hash de la transacción. Nadie —ni Notificas ni nadie más— puede alterar ese registro una vez confirmado.
+                        </p>
+                    </div>
+
+                    <div>
+                        <h3 className="text-xl font-semibold mb-4">¿Qué eventos se certifican en blockchain?</h3>
+                        <div className="grid sm:grid-cols-2 gap-4">
+                            <Card className="text-left">
+                                <CardContent className="pt-5 pb-4">
+                                    <p className="font-semibold text-foreground mb-1">📤 Envío</p>
+                                    <p className="text-sm text-muted-foreground">Marca de tiempo del envío, hash SHA-256 del contenido (asunto + cuerpo) e ID del servidor SMTP. Prueba qué se envió, a quién y cuándo.</p>
+                                </CardContent>
+                            </Card>
+                            <Card className="text-left">
+                                <CardContent className="pt-5 pb-4">
+                                    <p className="font-semibold text-foreground mb-1">📱 Notificación por WhatsApp</p>
+                                    <p className="text-sm text-muted-foreground">El aviso por WhatsApp también queda registrado: envío del mensaje, acceso al enlace y apertura del contenido, todo en el audit trail certificado.</p>
+                                </CardContent>
+                            </Card>
+                            <Card className="text-left">
+                                <CardContent className="pt-5 pb-4">
+                                    <p className="font-semibold text-foreground mb-1">📨 Recepción</p>
+                                    <p className="text-sm text-muted-foreground">Primer acceso fehaciente al mensaje por el destinatario —ya sea por correo o WhatsApp—, encadenado criptográficamente al evento de envío.</p>
+                                </CardContent>
+                            </Card>
+                            <Card className="text-left">
+                                <CardContent className="pt-5 pb-4">
+                                    <p className="font-semibold text-foreground mb-1">✅ Lectura confirmada</p>
+                                    <p className="text-sm text-muted-foreground">Confirmación explícita de lectura por parte del destinatario. El evento más sólido probatoriamente, vinculado a todos los eventos anteriores.</p>
+                                </CardContent>
+                            </Card>
+                            <Card className="text-left sm:col-span-2">
+                                <CardContent className="pt-5 pb-4">
+                                    <p className="font-semibold text-foreground mb-1">📄 Certificado PDF</p>
+                                    <p className="text-sm text-muted-foreground">Hash SHA-256 del PDF oficial generado, anclado en blockchain y encadenado al envío. Garantiza que el certificado presentado ante un juez no fue alterado.</p>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </div>
+
+                    <Button variant="link" className="px-0" asChild>
+                        <a href="https://polygon.technology" target="_blank" rel="noopener noreferrer">Más sobre Polygon <ArrowRight className="ml-2 h-4 w-4" /></a>
+                    </Button>
                 </div>
             </div>
         </section>
@@ -98,7 +141,7 @@ export default function LandingPage() {
               <h2 className="text-3xl md:text-4xl font-bold">CONOCÉ LAS VENTAJAS DE NUESTRO SERVICIO</h2>
             </div>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {features.slice(0, 6).map((feature, index) => (
+              {features.map((feature, index) => (
                 <Card key={index} className="text-center">
                   <CardHeader>
                     <div className="mx-auto bg-primary/10 p-3 rounded-full w-fit mb-4">
@@ -155,14 +198,14 @@ export default function LandingPage() {
       <footer className="bg-foreground text-background">
         <div className="container grid grid-cols-1 gap-8 px-4 py-10 md:grid-cols-3 md:py-12 md:px-6">
             <div>
-                <h3 className="font-bold text-lg mb-4">MegaOne</h3>
+                <h3 className="font-bold text-lg mb-4">Notificas</h3>
                 <p className="text-sm text-background/80">Colon 12, primer piso - San Nicolás de los Arroyos</p>
                 <p className="text-sm text-background/80">Buenos Aires - Argentina</p>
                 <div className="mt-4 space-y-2 text-sm">
-                    <Link href="#" className="block hover:underline text-background/80 hover:text-background">Defensa de las y los consumidores (Hacé el reclamo aquí)</Link>
-                    <Link href="#" className="block hover:underline text-background/80 hover:text-background">Términos y Condiciones (click aquí)</Link>
-                    <Link href="#" className="block hover:underline text-background/80 hover:text-background">Política de privacidad (click aquí)</Link>
-                    <Link href="#" className="block hover:underline text-background/80 hover:text-background">Derecho de arrepentimiento</Link>
+                    <Link href="/consumidores" className="block hover:underline text-background/80 hover:text-background">Defensa del Consumidor</Link>
+                    <Link href="/terminos" className="block hover:underline text-background/80 hover:text-background">Términos y Condiciones</Link>
+                    <Link href="/privacidad" className="block hover:underline text-background/80 hover:text-background">Política de Privacidad</Link>
+                    <Link href="/arrepentimiento" className="block hover:underline text-background/80 hover:text-background">Derecho de Arrepentimiento</Link>
                 </div>
             </div>
             <div>
@@ -185,7 +228,7 @@ export default function LandingPage() {
         </div>
         <div className="border-t border-background/20">
             <div className="container px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-center text-sm text-background/80 space-y-2 md:px-6">
-                <p>Copyright © 2019-2025 | Desarrollado por Notificas SRL</p>
+                <p>Copyright © 2026 | Notificas SRL</p>
                 <p>
                   <Link
                     href="/login?next=/empresa"
@@ -194,7 +237,6 @@ export default function LandingPage() {
                     Acceso empresas
                   </Link>
                 </p>
-                <Link href="/admin" className="text-xs hover:underline inline-block">Admin Panel</Link>
             </div>
         </div>
       </footer>

@@ -141,7 +141,7 @@ export default function SignupPage() {
               <Logo className="h-16 w-16" />
           </div>
           <CardTitle className="text-3xl font-bold">Crear una Cuenta</CardTitle>
-          <CardDescription>Únete a Notificas para enviar y recibir mensajes con validez legal.</CardDescription>
+          <CardDescription>Enviá notificaciones fehacientes con respaldo en blockchain.</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -264,7 +264,12 @@ export default function SignupPage() {
                   </FormItem>
                 )}
               />
-              <p className="text-xs text-muted-foreground">Al registrarte, aceptas nuestros Términos de Servicio y Política de Privacidad.</p>
+              <p className="text-xs text-muted-foreground">
+                Al registrarte aceptás nuestros{' '}
+                <Link href="/terminos" className="underline hover:text-foreground" target="_blank">Términos y Condiciones</Link>
+                {' '}y nuestra{' '}
+                <Link href="/privacidad" className="underline hover:text-foreground" target="_blank">Política de Privacidad</Link>.
+              </p>
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? (
                   <>

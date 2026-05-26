@@ -55,8 +55,8 @@ export const emailTemplate = `<!doctype html>
               </p>
               <div class="divider"></div>
               <p class="muted">
-                La notificacion, sus metadatos de envio, 
-                recepcion y lectura quedan <strong>certificados y registrados</strong> en la red Blockchain a traves de Notificas.com. 
+                La notificacion, sus metadatos de envio,
+                recepcion y lectura quedan <strong>certificados y registrados</strong> en la red Polygon (blockchain publica) a traves de Notificas.com.
                 Esta constancia tecnica no implica conformidad con el contenido.
               </p>
             </td>

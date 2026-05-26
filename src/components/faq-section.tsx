@@ -71,7 +71,7 @@ const faqItems: FaqItem[] = [
   {
     question: "¿Equivale a una carta documento u otro acto notarial?",
     answerShort:
-      "No automáticamente. Cada instrumento tiene requisitos legales según el acto y la jurisdicción. Notificas ofrece constancia digital; convengiente consultar a un abogado o escribano.",
+      "No automáticamente. Cada instrumento tiene requisitos legales según el acto y la jurisdicción. Notificas ofrece constancia digital; es conveniente consultar a un abogado o escribano.",
     answer:
       "No necesariamente. La carta documento, las notificaciones ante organismo público y otros medios de constancia están regulados de modo específico según el tipo de acto y la jurisdicción. Notificas brinda constancia digital con respaldo técnico (envío, contenido, recepción y/o lectura, y documentación asociada). Para determinar si el instrumento resulta idóneo en un expediente o reclamo determinado, se recomienda consultar a un profesional habilitado. Nada de lo aquí expuesto constituye asesoramiento jurídico.",
   },
