@@ -13,6 +13,10 @@ import {
 import { db } from './firebase';
 import { Contacto } from './types';
 
+export function normalizeContactEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 /**
  * Guarda o actualiza un contacto cuando se envía un mensaje
  */
@@ -23,13 +27,16 @@ export async function guardarContacto(
   cuit?: string,
   telefono?: string
 ): Promise<void> {
+  const normalized = normalizeContactEmail(email);
+  if (!normalized.includes('@')) return;
+
   try {
     // Buscar si ya existe un contacto con este email para este usuario
     const contactosRef = collection(db, 'contactos');
     const q = query(
       contactosRef,
       where('usuarioId', '==', usuarioId),
-      where('email', '==', email)
+      where('email', '==', normalized)
     );
     
     const querySnapshot = await getDocs(q);
@@ -37,8 +44,8 @@ export async function guardarContacto(
     if (querySnapshot.empty) {
       // Crear nuevo contacto
       await addDoc(contactosRef, {
-        email,
-        nombre: nombre || email.split('@')[0], // Usar parte antes del @ como nombre por defecto
+        email: normalized,
+        nombre: nombre?.trim() || normalized.split('@')[0],
         cuit: cuit || null,
         telefono: telefono || null,
         usuarioId,
@@ -46,7 +53,7 @@ export async function guardarContacto(
         vecesUsado: 1,
         createdAt: serverTimestamp()
       });
-      console.log('✅ Nuevo contacto guardado:', email);
+      console.log('✅ Nuevo contacto guardado:', normalized);
     } else {
       // Actualizar contacto existente
       const contactoDoc = querySnapshot.docs[0];
@@ -57,7 +64,7 @@ export async function guardarContacto(
         ...(cuit && { cuit }), // Actualizar CUIT si se proporciona
         ...(telefono !== undefined && { telefono }) // Actualizar teléfono si se proporciona
       });
-      console.log('✅ Contacto actualizado:', email);
+      console.log('✅ Contacto actualizado:', normalized);
     }
   } catch (error) {
     console.error('❌ Error al guardar contacto:', error);

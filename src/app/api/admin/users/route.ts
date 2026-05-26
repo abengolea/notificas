@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/** Actualiza estado o suma créditos (envíos) en `users/{uid}`. */
+/** Actualiza estado o suma envíos disponibles en `users/{uid}`. */
 export async function PATCH(request: NextRequest) {
   const denied = assertAdmin(request);
   if (denied) return denied;
@@ -110,7 +110,7 @@ export async function PATCH(request: NextRequest) {
 
   if (!estadoIn && add <= 0) {
     return NextResponse.json(
-      { error: "Indicá estado o addCreditos positivo" },
+      { error: "Indicá estado o una cantidad de envíos positiva" },
       { status: 400 },
     );
   }

@@ -95,7 +95,24 @@ export type Transaccion = {
     descripcion: string;
     monto: number;
     creditos: number;
-    metodoPago?: 'Mercado Pago' | 'Crédito';
+    metodoPago?: 'Mercado Pago' | 'Crédito' | 'Envíos';
+    paymentId?: string;
+    billingHub?: {
+      status?: 'issued' | 'failed' | 'pending' | string;
+      facturaId?: string | null;
+      cae?: string | null;
+      caeFchVto?: string | null;
+      voucherNumber?: number | null;
+      ptoVta?: number | null;
+      cbteTipo?: number | null;
+      tipoComprobante?: string | null;
+      netoGravado?: number | null;
+      iva?: number | null;
+      total?: number | null;
+      reason?: string | null;
+      error?: string | null;
+      httpStatus?: number | null;
+    };
 };
 
 export type Contacto = {

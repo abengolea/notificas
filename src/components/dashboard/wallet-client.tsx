@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Gift, Package, TrendingUp, CreditCard, Loader2, History, RefreshCw } from 'lucide-react';
+import { Gift, Package, TrendingUp, CreditCard, Loader2, History, RefreshCw, Download } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { clienteDescuentoLista, COLEGIO_NOMBRE_FALLBACK_CLIENT } from '@/lib/colegio-discount-client';
@@ -44,6 +44,7 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
   const [loadingPlan, setLoadingPlan] = useState<Plan['id'] | null>(null);
   const [syncOpId, setSyncOpId] = useState('');
   const [syncLoading, setSyncLoading] = useState(false);
+  const [invoiceLoadingId, setInvoiceLoadingId] = useState<string | null>(null);
   const [colegioPct, setColegioPct] = useState(0);
   const [colegioEligible, setColegioEligible] = useState(false);
   const [colegioNombre, setColegioNombre] = useState(COLEGIO_NOMBRE_FALLBACK_CLIENT);
@@ -96,10 +97,10 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
               toast({
                 title: data.alreadySettled
                   ? 'Pago ya registrado'
-                  : 'Créditos acreditados',
+                  : 'Envíos acreditados',
                 description: data.alreadySettled
-                  ? 'Este cobro ya había sumado créditos a tu cuenta.'
-                  : `Se agregaron ${data.creditsAdded} créditos.`,
+                  ? 'Este cobro ya había sumado envíos a tu cuenta.'
+                  : `Se agregaron ${data.creditsAdded} envíos.`,
               });
             } else if (
               typeof data.error === 'string' &&
@@ -133,7 +134,7 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
           toast({
             title: 'Iniciá sesión',
             description:
-              'Hay un cobro pendiente de sincronizar. Iniciá sesión para acreditar tus créditos.',
+              'Hay un cobro pendiente de sincronizar. Iniciá sesión para acreditar tus envíos.',
             variant: 'destructive',
           });
         }
@@ -141,13 +142,13 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
         toast({
           title: 'Pago recibido',
           description:
-            'Si los créditos no aparecen, esperá unos segundos o recargá la página.',
+            'Si los envíos no aparecen, esperá unos segundos o recargá la página.',
         });
       } else if (pending && !cancelled) {
         toast({
           title: 'Pago pendiente',
           description:
-            'Tu pago está en proceso. Los créditos se verán cuando se apruebe.',
+            'Tu pago está en proceso. Los envíos se verán cuando se apruebe.',
         });
       } else if (failed && !cancelled) {
         toast({
@@ -314,8 +315,8 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
         toast({
           title: data.alreadySettled ? 'Ya estaba cargado' : 'Listo',
           description: data.alreadySettled
-            ? 'Este número de operación ya había acreditado tus créditos.'
-            : `Se acreditaron ${data.creditsAdded} crédito(s).`,
+            ? 'Este número de operación ya había acreditado tus envíos.'
+            : `Se acreditaron ${data.creditsAdded} envío(s).`,
         });
         setSyncOpId('');
       } else {
@@ -339,9 +340,117 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
     }
   };
 
+  const fetchInvoiceBlob = async (token: string, transactionId: string) => {
+    const res = await fetch(`/api/user/invoices/${encodeURIComponent(transactionId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      return { ok: true as const, blob: await res.blob() };
+    }
+
+    const data = await res.json().catch(() => ({}));
+    return {
+      ok: false as const,
+      status: res.status,
+      message:
+        typeof data.error === 'string'
+          ? data.error
+          : 'No se pudo descargar la factura.',
+    };
+  };
+
+  const retryInvoiceBilling = async (token: string, paymentId: string) => {
+    const res = await fetch('/api/process-payment', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ paymentId }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(
+        typeof data.error === 'string'
+          ? data.error
+          : 'No se pudo preparar la factura.',
+      );
+    }
+  };
+
+  const handleDownloadInvoice = async (tx: Transaccion) => {
+    const u = auth.currentUser;
+    if (!u) {
+      toast({
+        title: 'Sesión requerida',
+        description: 'Iniciá sesión para descargar la factura.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setInvoiceLoadingId(tx.id);
+      const token = await u.getIdToken();
+      let invoice = await fetchInvoiceBlob(token, tx.id);
+
+      if (
+        !invoice.ok &&
+        invoice.status === 404 &&
+        invoice.message === 'La factura todavía no está disponible' &&
+        tx.paymentId
+      ) {
+        toast({
+          title: 'Preparando factura',
+          description: 'Reintentamos generar la factura y la descargamos cuando esté lista.',
+        });
+        await retryInvoiceBilling(token, tx.paymentId);
+        invoice = await fetchInvoiceBlob(token, tx.id);
+      }
+
+      if (!invoice.ok) {
+        throw new Error(invoice.message);
+      }
+
+      const blob = invoice.blob;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const pv = String(tx.billingHub?.ptoVta ?? 0).padStart(5, '0');
+      const nro = String(tx.billingHub?.voucherNumber ?? 0).padStart(8, '0');
+      a.href = url;
+      a.download = `factura-${pv}-${nro}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({
+        title: 'No se pudo bajar la factura',
+        description: error instanceof Error ? error.message : 'Probá de nuevo en un momento.',
+        variant: 'destructive',
+      });
+    } finally {
+      setInvoiceLoadingId(null);
+    }
+  };
+
   const sortedTx = [...transactions].sort(
     (a, b) => b.fecha.getTime() - a.fecha.getTime(),
   );
+
+  const canTryDownloadInvoice = (tx: Transaccion) => tx.tipo === 'compra' && Boolean(tx.paymentId);
+
+  const invoiceStatusMessage = (tx: Transaccion) => {
+    const status = tx.billingHub?.status;
+    if (status === 'pending') {
+      return 'Factura pendiente de emisión. Podés reintentar desde Bajar factura.';
+    }
+    if (status === 'failed') {
+      return 'Factura no emitida automáticamente. Bajar factura reintenta el proceso.';
+    }
+    return null;
+  };
 
   return (
     <div className="space-y-5">
@@ -355,10 +464,10 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
       <div className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-medium text-muted-foreground">Créditos disponibles</p>
+            <p className="text-sm font-medium text-muted-foreground">Envíos disponibles</p>
             <p className="text-4xl font-bold tabular-nums text-primary sm:text-5xl">{user.creditos}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Equivale a envíos certificados que podés usar. Sin vencimiento.
+              Son envíos certificados disponibles en tu billetera. Sin vencimiento.
             </p>
           </div>
         </div>
@@ -385,7 +494,7 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
         <TabsContent value="comprar" className="mt-4 space-y-0 focus-visible:outline-none">
           <Card className="shadow-lg">
             <CardHeader>
-              <CardTitle>Comprar créditos</CardTitle>
+              <CardTitle>Comprar envíos</CardTitle>
               <CardDescription>
                 Elegí un plan; el cobro es seguro con Mercado Pago.
               </CardDescription>
@@ -476,17 +585,17 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle>Historial de transacciones</CardTitle>
-              <CardDescription>Compras y uso de créditos. Podés desplazarte dentro de la tabla si hay muchos movimientos.</CardDescription>
+              <CardDescription>Compras y uso de envíos. Podés desplazarte dentro de la tabla si hay muchos movimientos.</CardDescription>
             </CardHeader>
             <CardContent className="p-0 sm:p-6 sm:pt-0">
               <div className="max-h-[min(65vh,560px)] overflow-auto rounded-md border sm:border-0">
-                <Table>
+                <Table className="min-w-[780px]">
                   <TableHeader className="sticky top-0 z-[1] bg-background shadow-[0_1px_0_hsl(var(--border))]">
                     <TableRow>
                       <TableHead>Fecha</TableHead>
-                      <TableHead>Descripción</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Créditos</TableHead>
+                      <TableHead className="w-[40%]">Descripción</TableHead>
+                      <TableHead className="w-[90px]">Tipo</TableHead>
+                      <TableHead className="w-[80px]">Envíos</TableHead>
                       <TableHead className="text-right">Monto</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -498,25 +607,58 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
                         </TableCell>
                       </TableRow>
                     ) : (
-                      sortedTx.map((tx) => (
-                        <TableRow key={tx.id}>
-                          <TableCell>
-                            <FormattedDateCell date={tx.fecha} />
-                          </TableCell>
-                          <TableCell className="font-medium">{tx.descripcion}</TableCell>
-                          <TableCell>
-                            <Badge variant={tx.tipo === 'compra' ? 'default' : 'secondary'}>
-                              {tx.tipo.charAt(0).toUpperCase() + tx.tipo.slice(1)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className={`font-bold ${tx.tipo === 'compra' ? 'text-green-600' : 'text-destructive'}`}>
-                            {tx.tipo === 'compra' ? `+${tx.creditos}` : tx.creditos}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {tx.monto > 0 ? formatCurrency(tx.monto) : '-'}
-                          </TableCell>
-                        </TableRow>
-                      ))
+                      sortedTx.map((tx) => {
+                        const isInvoiceLoading = invoiceLoadingId === tx.id;
+                        const invoiceNotice = invoiceStatusMessage(tx);
+
+                        return (
+                          <TableRow key={tx.id}>
+                            <TableCell>
+                              <FormattedDateCell date={tx.fecha} />
+                            </TableCell>
+                            <TableCell className="max-w-[360px]">
+                              <div className="font-medium leading-snug">{tx.descripcion}</div>
+                              {canTryDownloadInvoice(tx) ? (
+                                <button
+                                  type="button"
+                                  className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:no-underline"
+                                  onClick={() => void handleDownloadInvoice(tx)}
+                                  disabled={isInvoiceLoading}
+                                >
+                                  {isInvoiceLoading ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Download className="h-3.5 w-3.5" />
+                                  )}
+                                  {isInvoiceLoading ? 'Preparando factura' : 'Bajar factura'}
+                                </button>
+                              ) : null}
+                              {invoiceNotice ? (
+                                <p
+                                  className={`mt-1 text-xs ${
+                                    tx.billingHub?.status === 'failed'
+                                      ? 'text-destructive'
+                                      : 'text-muted-foreground'
+                                  }`}
+                                >
+                                  {invoiceNotice}
+                                </p>
+                              ) : null}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={tx.tipo === 'compra' ? 'default' : 'secondary'}>
+                                {tx.tipo.charAt(0).toUpperCase() + tx.tipo.slice(1)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className={`font-bold ${tx.tipo === 'compra' ? 'text-green-600' : 'text-destructive'}`}>
+                              {tx.tipo === 'compra' ? `+${tx.creditos}` : tx.creditos}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {tx.monto > 0 ? formatCurrency(tx.monto) : '-'}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
@@ -528,7 +670,7 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
         <TabsContent value="sincronizar" className="mt-4 focus-visible:outline-none">
           <Card className="border-dashed shadow-lg">
             <CardHeader>
-              <CardTitle className="text-lg">¿Pagaste y no ves los créditos?</CardTitle>
+              <CardTitle className="text-lg">¿Pagaste y no ves los envíos?</CardTitle>
               <CardDescription>
                 Pegá el número de operación del comprobante de Mercado Pago (sin el numeral #). Tiene que ser la misma
                 cuenta con la que hiciste la compra.

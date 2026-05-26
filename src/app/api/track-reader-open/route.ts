@@ -73,22 +73,6 @@ export async function POST(request: NextRequest) {
     }
 
     const messageRef = adminDb.collection('mail').doc(messageId);
-    const messageDoc = await messageRef.get();
-    if (!messageDoc.exists) {
-      return NextResponse.json({ error: 'Mensaje no encontrado' }, { status: 404 });
-    }
-    const messageData = messageDoc.data()!;
-
-    // Validar token mágico
-    const stored =
-      typeof messageData.tracking?.token === 'string'
-        ? messageData.tracking.token
-        : typeof messageData.trackingToken === 'string'
-          ? messageData.trackingToken
-          : undefined;
-    if (!stored || stored !== k) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-    }
 
     const userAgent = request.headers.get('User-Agent') || 'Unknown';
     const clientIP =
@@ -96,56 +80,108 @@ export async function POST(request: NextRequest) {
       request.headers.get('X-Real-IP') ||
       'Unknown';
 
-    // Deduplicación: ignorar si ya hubo una apertura en los últimos 5s desde la misma IP
-    const existingMovements: any[] = messageData.tracking?.movements || [];
-    const fiveSecondsAgo = Date.now() - 5000;
-    const recent = existingMovements
-      .filter((m) => m.type === 'reader_magic_open')
-      .find((m) => {
-        const t = new Date(m.timestamp).getTime();
-        return t > fiveSecondsAgo && m.clientIP === clientIP;
-      });
-    if (recent) {
-      return NextResponse.json({ success: true, skipped: true }, { status: 200 });
-    }
-
-    const wasFirstOpen = !messageData.tracking?.opened;
-    const movement = {
-      id: generateUUID(),
-      type: 'reader_magic_open',
-      description: 'Abrieron la notificación desde el enlace del correo',
-      timestamp: new Date().toISOString(),
-      userAgent,
-      clientIP,
-      browser: extractBrowserInfo(userAgent),
-      recipientEmail: messageData.recipientEmail || messageData.to?.[0] || 'Unknown',
-      source: 'reader_email',
-      isFirstOpen: wasFirstOpen,
+    type TxOk = {
+      skipped: false;
+      movementId: string;
+      wasFirstOpen: boolean;
+      certify: boolean;
+      recipientId: string;
+      sendTxHash?: string;
+      contentHash?: string;
     };
+    type TxSkip = { skipped: true; reason: string };
+    type TxResult = TxOk | TxSkip;
 
-    await messageRef.update({
-      'tracking.opened': true,
-      'tracking.openedAt': new Date(),
-      'tracking.openCount': (messageData.tracking?.openCount || 0) + 1,
-      'tracking.movements': FieldValue.arrayUnion(movement),
+    const txResult = await adminDb.runTransaction(async (tx): Promise<TxResult> => {
+      const snap = await tx.get(messageRef);
+      if (!snap.exists) {
+        throw Object.assign(new Error('NOT_FOUND'), { code: 'NOT_FOUND' });
+      }
+      const messageData = snap.data()!;
+
+      const stored =
+        typeof messageData.tracking?.token === 'string'
+          ? messageData.tracking.token
+          : typeof messageData.trackingToken === 'string'
+            ? messageData.trackingToken
+            : undefined;
+      if (!stored || stored !== k) {
+        throw Object.assign(new Error('INVALID_TOKEN'), { code: 'INVALID_TOKEN' });
+      }
+
+      const existingMovements: any[] = messageData.tracking?.movements || [];
+      const alreadyLoggedReaderOpen = existingMovements.some(
+        (m) => m.type === 'reader_magic_open',
+      );
+      if (alreadyLoggedReaderOpen || messageData.tracking?.opened) {
+        return { skipped: true, reason: 'already_logged' };
+      }
+
+      const wasFirstOpen = !messageData.tracking?.opened;
+      const movement = {
+        id: generateUUID(),
+        type: 'reader_magic_open',
+        description:
+          'El destinatario abrió el mensaje para leerlo (página web de la notificación)',
+        timestamp: new Date().toISOString(),
+        userAgent,
+        clientIP,
+        browser: extractBrowserInfo(userAgent),
+        recipientEmail: messageData.recipientEmail || messageData.to?.[0] || 'Unknown',
+        source: 'reader_email',
+        isFirstOpen: wasFirstOpen,
+      };
+
+      tx.update(messageRef, {
+        'tracking.opened': true,
+        'tracking.openedAt': new Date(),
+        'tracking.openCount': (messageData.tracking?.openCount || 0) + 1,
+        'tracking.movements': FieldValue.arrayUnion(movement),
+      });
+
+      const certify =
+        wasFirstOpen && !messageData.polygonCertifications?.receive;
+      return {
+        skipped: false,
+        movementId: movement.id,
+        wasFirstOpen,
+        certify,
+        recipientId:
+          messageData.recipientEmail || messageData.to?.[0] || 'recipient',
+        sendTxHash: messageData.polygonCertifications?.send as string | undefined,
+        contentHash: messageData.polygonCertifications?.contentHash as
+          | string
+          | undefined,
+      };
     });
 
-    // Certificar en Polygon solo la PRIMERA apertura, en background, encadenada al send.
-    // Condición: debe ser primera apertura Y no tener ya certificación de recepción.
-    if (wasFirstOpen && !messageData.polygonCertifications?.receive) {
-      const recipientId = messageData.recipientEmail || messageData.to?.[0] || 'recipient';
-      const sendTxHash = messageData.polygonCertifications?.send as string | undefined;
-      const contentHash = messageData.polygonCertifications?.contentHash as string | undefined;
+    if (txResult.skipped) {
+      return NextResponse.json(
+        { success: true, skipped: true, reason: txResult.reason },
+        { status: 200 },
+      );
+    }
 
-      // Fire-and-forget: no bloquea la respuesta HTTP
-      void certifyFirstReadInBackground(messageId, recipientId, sendTxHash, contentHash);
+    if (txResult.certify) {
+      void certifyFirstReadInBackground(
+        messageId,
+        txResult.recipientId,
+        txResult.sendTxHash,
+        txResult.contentHash,
+      );
     }
 
     return NextResponse.json(
-      { success: true, movementId: movement.id, wasFirstOpen },
-      { status: 200 }
+      { success: true, movementId: txResult.movementId, wasFirstOpen: txResult.wasFirstOpen },
+      { status: 200 },
     );
   } catch (e: any) {
+    if (e?.code === 'NOT_FOUND') {
+      return NextResponse.json({ error: 'Mensaje no encontrado' }, { status: 404 });
+    }
+    if (e?.code === 'INVALID_TOKEN') {
+      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
+    }
     console.error('track-reader-open:', e?.message);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }

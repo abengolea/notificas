@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
     if (creditosInicial < cobrosEsperados) {
       return NextResponse.json(
         {
-          error: `Créditos insuficientes: necesitas ${cobrosEsperados}, tienes ${creditosInicial}`,
+          error: `Envíos insuficientes: necesitás ${cobrosEsperados}, tenés ${creditosInicial}`,
         },
         { status: 400 }
       );
@@ -316,7 +316,7 @@ export async function POST(request: NextRequest) {
           if (!m.creditApplied) {
             const uSnap = await t.get(userRef);
             const c = typeof uSnap.data()?.creditos === 'number' ? (uSnap.data()!.creditos as number) : 0;
-            if (c < 1) throw new Error('Sin créditos');
+            if (c < 1) throw new Error('Sin envíos');
             t.update(userRef, { creditos: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() });
           }
           t.update(msgRefTx, {

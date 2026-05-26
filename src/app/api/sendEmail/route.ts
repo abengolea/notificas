@@ -4,6 +4,7 @@ import { verifyAuthToken } from '@/lib/auth-helper';
 import { computeContentHash } from '@/lib/certification';
 import { certificarEnvio } from '@/lib/certification-polygon';
 import { getFirebaseSendEmailUrl } from '@/lib/mail-defaults';
+import { guardarContactoDesdeMail } from '@/lib/contactos-server';
 
 /** Certifica el envío en Polygon en segundo plano — nunca bloquea la respuesta HTTP. */
 async function certifyInBackground(docId: string): Promise<void> {
@@ -89,6 +90,9 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await response.json();
+
+    // Guardar destinatario en libreta personal (no bloquea la respuesta).
+    void guardarContactoDesdeMail(mailSnap.data()!);
 
     // Lanzar la certificación Polygon sin await — responde al cliente YA.
     // El void es intencional: Polygon es best-effort y nunca debe bloquear la UI.

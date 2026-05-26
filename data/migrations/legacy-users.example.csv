@@ -1,0 +1,3 @@
+id,email,firstname,lastname,phonenumber,creditos_en_haber,cantidad_comprobantes
+999001,legacy.demo+migracion@example.com,Demo,Migración,+541112223344,1000,1
+999002,otro.ejemplo+migracion@example.com,,,,500,0

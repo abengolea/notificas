@@ -66,8 +66,6 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
 
   if (attachments && attachments.length > 0) {
     messageObj.details = {
-      priority: 'normal',
-      requireCertificate: true,
       fecha: new Date().toLocaleDateString('es-ES'),
       attachmentsCount: attachments.length,
       campaignId: campaignId ?? null,

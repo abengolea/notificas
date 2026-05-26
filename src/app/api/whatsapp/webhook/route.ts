@@ -97,7 +97,7 @@ async function processStatus(status: any) {
     type: `whatsapp_${statusType}`,
     description: descMap[statusType],
     timestamp,
-    userAgent: "WhatsApp Cloud API",
+    userAgent: "Sistema (WhatsApp de Meta)",
     clientIP: "Server",
     forwardedIPs: [],
     realIP: "Server",

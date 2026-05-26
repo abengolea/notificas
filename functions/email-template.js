@@ -100,7 +100,7 @@ function generateEmailWithTracking(params) {
     year = new Date().getFullYear(),
     docId,
     trackingToken,
-    trackingBaseUrl
+    linkRedirectUrl
   } = params;
 
   // Template PROFESIONAL que no active filtros de spam
@@ -207,27 +207,12 @@ function generateEmailWithTracking(params) {
     (match, url) => {
       if (url.startsWith('http') && !url.includes('linkredirect')) {
         const encoded = base64UrlEncode(url);
-        const redirectUrl = `https://linkredirect-ju7n3yysfq-uc.a.run.app?msg=${encodeURIComponent(docId)}&u=${encoded}&k=${encodeURIComponent(trackingToken)}`;
+        const redirectUrl = `${linkRedirectUrl}?msg=${encodeURIComponent(docId)}&u=${encoded}&k=${encodeURIComponent(trackingToken)}`;
         return `href="${redirectUrl}"`;
       }
       return match;
     }
   );
-
-  // Imagen de tracking integrada en el template - se ve profesional y trackea la apertura
-  const trackingImageUrl = `https://trackopen-ju7n3yysfq-uc.a.run.app?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}`;
-  
-  // Agregar imagen de tracking como parte del diseño del email
-  const trackingSection = `
-    <div class="divider"></div>
-    <div style="text-align: center; margin: 20px 0; padding: 20px; background: #F8FAFC; border-radius: 8px;">
-      <img src="${trackingImageUrl}" alt="Notificación Digital Certificada" style="display:block;margin:0 auto;max-width:600px;height:auto;border-radius:8px;" />
-    </div>`;
-
-  // No agregar "Confirmar lectura" en el email: el usuario lo ve en el reader al acceder
-
-  // Agregar tracking section al final del HTML
-  html = html + trackingSection;
 
   return html;
 }

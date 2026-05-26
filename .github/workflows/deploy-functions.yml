@@ -1,23 +1,54 @@
 name: Deploy Firebase Functions
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
+    inputs:
+      staging_run_url:
+        description: 'URL del workflow/run de staging aprobado'
+        required: true
+        type: string
+      production_authorization:
+        description: 'Debe ser exactamente: AUTORIZO DEPLOY A PRODUCCIÓN: notificas-f9953'
+        required: true
+        type: string
 
 jobs:
   deploy-functions:
     runs-on: ubuntu-latest
+    environment: production
     permissions:
       contents: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate production gates
+        env:
+          PRODUCTION_AUTHORIZATION: ${{ inputs.production_authorization }}
+          STAGING_RUN_URL: ${{ inputs.staging_run_url }}
+        run: |
+          if [ "$PRODUCTION_AUTHORIZATION" != "AUTORIZO DEPLOY A PRODUCCIÓN: notificas-f9953" ]; then
+            echo "La autorizacion de produccion no coincide exactamente."
+            exit 1
+          fi
+
+          if [ -z "$STAGING_RUN_URL" ]; then
+            echo "Debe indicarse el workflow/run de staging aprobado."
+            exit 1
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: notificas-f9953
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Install Firebase CLI
         run: npm i -g firebase-tools
@@ -26,8 +57,10 @@ jobs:
         working-directory: functions
         run: npm ci
 
+      - name: Test Functions
+        working-directory: functions
+        run: npm test
+
       - name: Deploy Functions
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: |
           firebase deploy --only functions --project notificas-f9953 --non-interactive

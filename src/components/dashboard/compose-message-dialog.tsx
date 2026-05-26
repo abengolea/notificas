@@ -1,10 +1,26 @@
 "use client"
 
 import { useForm } from "react-hook-form"
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, type ClipboardEvent } from 'react';
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Loader2, PenSquare, MessageCircle } from "lucide-react"
+import {
+    AlignCenter,
+    AlignJustify,
+    AlignLeft,
+    AlignRight,
+    Bold,
+    Eraser,
+    Italic,
+    Link as LinkIcon,
+    List,
+    ListOrdered,
+    Loader2,
+    MessageCircle,
+    PenSquare,
+    Quote,
+    Underline,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -18,28 +34,22 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-  } from "@/components/ui/select"
-import { Checkbox } from "../ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { User } from "@/lib/types"
 import { scheduleEmail, sendEmailManually, type SendEmailResult } from "@/lib/email";
-import { addDoc, collection, serverTimestamp, updateDoc, doc, increment } from "firebase/firestore";
+import { addDoc, collection, updateDoc, doc, increment } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
-import { guardarContacto } from "@/lib/contactos";
 import { PDFUpload } from "./pdf-upload";
 import { uploadPDF, type UploadedFile } from "@/lib/storage";
 import { EmailAutocomplete } from "@/components/ui/email-autocomplete";
-
-function escapeHtmlText(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
+import {
+    escapeHtml,
+    normalizeLinkInput,
+    plainTextToHtml,
+    renderRichMessageContent,
+    sanitizeRichTextHtml,
+    stripRichTextToPlainText,
+} from "@/lib/rich-text";
 
 function buildComposeMailHtml(params: {
   recipientEmail: string;
@@ -53,8 +63,8 @@ function buildComposeMailHtml(params: {
     ? `
                 <div class="message-content" data-email-hide style="margin: 20px 0;">
                   <h2 style="color: #1e293b; margin: 0 0 16px 0; font-size: 18px; font-weight: 600;">Contenido del Mensaje:</h2>
-                  <div style="background: #f8fafc; padding: 16px; border-radius: 6px; border-left: 4px solid #0D9488;">
-                    ${content.split("\n").map((line: string) => `<p style="margin: 0 0 8px 0; line-height: 1.6; color: #334155;">${escapeHtmlText(line)}</p>`).join("")}
+                  <div class="rich-message-content" style="background: #f8fafc; padding: 16px; border-radius: 6px; border-left: 4px solid #0D9488; line-height: 1.6; color: #334155;">
+                    ${renderRichMessageContent(content)}
                   </div>
                 </div>`
     : "";
@@ -67,17 +77,17 @@ function buildComposeMailHtml(params: {
                     <div style="background: #f8fafc; padding: 16px; border-radius: 6px; border-left: 4px solid #0D9488;">
                         ${uploadedAttachments
                           .map(
-                            (file, index) => `
+                            (file) => `
                             <div style="margin-bottom: 12px; padding: 12px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px;">
                                 <div style="display: flex; align-items: center; gap: 12px;">
                                     <div style="width: 40px; height: 40px; background: #dc2626; border-radius: 6px; display: flex; align-items: center; justify-content: center;">
                                         <span style="color: white; font-weight: bold; font-size: 12px;">${String(file.name.split(".").pop() || "DOC").toUpperCase()}</span>
                                     </div>
                                     <div style="flex: 1;">
-                                        <h4 style="margin: 0 0 4px 0; color: #1e293b; font-size: 14px; font-weight: 600;">${escapeHtmlText(file.name)}</h4>
+                                        <h4 style="margin: 0 0 4px 0; color: #1e293b; font-size: 14px; font-weight: 600;">${escapeHtml(file.name)}</h4>
                                         <p style="margin: 0; color: #64748b; font-size: 12px;">${(file.size / 1024 / 1024).toFixed(2)} MB • Con hash de integridad</p>
                                     </div>
-                                    <a href="${file.url}" 
+                                    <a href="${file.url}"
                                        style="background: #0D9488; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 600; display: inline-block;">
                                         Ver Documento
                                     </a>
@@ -102,11 +112,11 @@ function buildComposeMailHtml(params: {
       : "";
 
   const year = new Date().getFullYear();
-  const hasInlineBody = !!(content?.trim());
+  const hasInlineBody = !!stripRichTextToPlainText(content || "");
   const leadSecondParagraph = hasInlineBody
-    ? `Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>${escapeHtmlText(sender)}</strong>.
+    ? `Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>${escapeHtml(sender)}</strong>.
                 Puede leer el texto en este mismo correo; para la <strong>constancia fehaciente de lectura</strong> en la plataforma, use el enlace siguiente.`
-    : `Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>${escapeHtmlText(sender)}</strong>.
+    : `Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>${escapeHtml(sender)}</strong>.
                 <strong>Le recomendamos abrir el mensaje</strong> mediante el enlace para conocer el contenido y dejar constancia certificada de lectura.`;
 
   return `<!doctype html>
@@ -134,7 +144,7 @@ function buildComposeMailHtml(params: {
 </head>
 <body>
   <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-    Notificacion digital enviada por ${escapeHtmlText(sender)} a traves de Notificas.com
+    Notificacion digital enviada por ${escapeHtml(sender)} a traves de Notificas.com
   </div>
   <table role="presentation" class="wrapper" width="100%" cellspacing="0" cellpadding="0">
     <tr>
@@ -145,21 +155,21 @@ function buildComposeMailHtml(params: {
               <span class="badge">NOTIFICACION</span>
               <div class="title">Nueva comunicacion para usted</div>
               <div style="margin-top:6px;font-size:13px;opacity:.9;">
-                Enviada por <strong>${escapeHtmlText(sender)}</strong> mediante <strong>Notificas.com</strong>
+                Enviada por <strong>${escapeHtml(sender)}</strong> mediante <strong>Notificas.com</strong>
               </div>
             </td>
           </tr>
           <tr>
             <td class="content">
-              <p class="lead">Estimado/a ${escapeHtmlText(recipientName)},</p>
+              <p class="lead">Estimado/a ${escapeHtml(recipientName)},</p>
               <p class="lead">
                 ${leadSecondParagraph}
               </p>
-              
+
               ${contentSection}
-              
+
               ${attachmentsSection}
-              
+
               <p style="margin: 20px 0;">
                 <a class="btn" href="#" target="_blank" rel="noopener">Acceder a la notificación</a>
               </p>
@@ -169,8 +179,8 @@ function buildComposeMailHtml(params: {
               </p>
               <div class="divider"></div>
               <p class="muted">
-                La notificacion, sus metadatos de envio, 
-                recepcion y lectura quedan <strong>certificados y registrados</strong> en la blockchain de Polygon a traves de Notificas.com. 
+                La notificacion, sus metadatos de envio,
+                recepcion y lectura quedan <strong>certificados y registrados</strong> en la blockchain de Polygon a traves de Notificas.com.
                 Esta constancia tecnica no implica conformidad con el contenido.
               </p>
             </td>
@@ -178,8 +188,8 @@ function buildComposeMailHtml(params: {
           <tr>
             <td class="footer">
               <div class="muted">
-                 ${year} Notificas.com  Este mensaje fue destinado a ${escapeHtmlText(recipientEmail)}. 
-                Si no reconoce esta notificacion, ignore este correo o responda a 
+                 ${year} Notificas.com  Este mensaje fue destinado a ${escapeHtml(recipientEmail)}.
+                Si no reconoce esta notificacion, ignore este correo o responda a
                 <a href="mailto:contacto@notificas.com" style="color:inherit;">contacto@notificas.com</a>.
               </div>
             </td>
@@ -192,20 +202,167 @@ function buildComposeMailHtml(params: {
 </html>`;
 }
 
+type SelectedAttachment = {
+  file: File;
+  name: string;
+  size: number;
+  preview?: string;
+};
+
 const messageSchema = z.object({
   recipient: z.string().email({ message: "Dirección de correo electrónico inválida." }),
   recipientPhone: z.string().optional().refine((v) => !v || /^[\d\s\+\-\(\)]{8,25}$/.test(v), "Número inválido. Ej: +54 11 1234-5678, 011 1234-5678, 9 11 1234-5678"),
-  content: z.string().min(10, { message: "El mensaje debe tener al menos 10 caracteres." }),
-  priority: z.enum(["normal", "alta", "urgente"]),
-  requireCertificate: z.boolean(),
-  attachments: z.array(z.any()).optional(),
+  content: z.string().refine((value) => stripRichTextToPlainText(value).length >= 10, {
+    message: "El mensaje debe tener al menos 10 caracteres.",
+  }),
+  attachments: z.array(z.custom<SelectedAttachment>()).optional(),
 })
 
 type MessageFormValues = z.infer<typeof messageSchema>
 
+type RichTextEditorProps = {
+    value: string;
+    disabled?: boolean;
+    onChange: (value: string) => void;
+    onBlur: () => void;
+};
+
+function RichTextEditor({ value, disabled, onChange, onBlur }: RichTextEditorProps) {
+    const editorRef = useRef<HTMLDivElement | null>(null);
+    const isEmpty = stripRichTextToPlainText(value).length === 0;
+
+    useEffect(() => {
+        const editor = editorRef.current;
+        if (!editor || editor.innerHTML === value) return;
+        editor.innerHTML = value || "";
+    }, [value]);
+
+    const syncFromEditor = useCallback(() => {
+        const html = editorRef.current?.innerHTML || "";
+        onChange(stripRichTextToPlainText(html) ? html : "");
+    }, [onChange]);
+
+    const sanitizeAndSync = useCallback(() => {
+        const editor = editorRef.current;
+        if (!editor) return;
+        const sanitized = sanitizeRichTextHtml(editor.innerHTML);
+        editor.innerHTML = stripRichTextToPlainText(sanitized) ? sanitized : "";
+        onChange(editor.innerHTML);
+    }, [onChange]);
+
+    const exec = useCallback((command: string, commandValue?: string) => {
+        const editor = editorRef.current;
+        if (!editor || disabled) return;
+        editor.focus();
+        document.execCommand(command, false, commandValue);
+        syncFromEditor();
+    }, [disabled, syncFromEditor]);
+
+    const handlePaste = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
+        if (disabled) return;
+        event.preventDefault();
+        const html = event.clipboardData.getData("text/html");
+        const text = event.clipboardData.getData("text/plain");
+        const pastedHtml = html ? sanitizeRichTextHtml(html) : plainTextToHtml(text);
+        document.execCommand("insertHTML", false, pastedHtml || escapeHtml(text));
+        syncFromEditor();
+    }, [disabled, syncFromEditor]);
+
+    const handleBlur = useCallback(() => {
+        sanitizeAndSync();
+        onBlur();
+    }, [onBlur, sanitizeAndSync]);
+
+    const createLink = useCallback(() => {
+        if (disabled) return;
+        const rawUrl = window.prompt("Pegá el enlace que querés insertar:");
+        if (!rawUrl) return;
+        const safeUrl = normalizeLinkInput(rawUrl);
+        if (!safeUrl) return;
+        exec("createLink", safeUrl);
+        sanitizeAndSync();
+    }, [disabled, exec, sanitizeAndSync]);
+
+    const toolbarButtonClass = "h-8 w-8 p-0";
+
+    return (
+        <div className="rounded-md border border-input bg-background">
+            <div className="flex flex-wrap items-center gap-1 border-b bg-muted/30 p-2">
+                <select
+                    aria-label="Formato de párrafo"
+                    className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                    disabled={disabled}
+                    defaultValue="p"
+                    onChange={(event) => exec("formatBlock", `<${event.target.value}>`)}
+                >
+                    <option value="p">Párrafo</option>
+                    <option value="h2">Título</option>
+                    <option value="h3">Subtítulo</option>
+                    <option value="blockquote">Cita</option>
+                </select>
+                <Button type="button" variant="ghost" size="icon" className={toolbarButtonClass} disabled={disabled} title="Negrita" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("bold")}>
+                    <Bold className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="ghost" size="icon" className={toolbarButtonClass} disabled={disabled} title="Cursiva" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("italic")}>
+                    <Italic className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="ghost" size="icon" className={toolbarButtonClass} disabled={disabled} title="Subrayado" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("underline")}>
+                    <Underline className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="ghost" size="icon" className={toolbarButtonClass} disabled={disabled} title="Lista" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("insertUnorderedList")}>
+                    <List className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="ghost" size="icon" className={toolbarButtonClass} disabled={disabled} title="Lista numerada" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("insertOrderedList")}>
+                    <ListOrdered className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="ghost" size="icon" className={toolbarButtonClass} disabled={disabled} title="Cita" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("formatBlock", "<blockquote>")}>
+                    <Quote className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="ghost" size="icon" className={toolbarButtonClass} disabled={disabled} title="Alinear izquierda" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("justifyLeft")}>
+                    <AlignLeft className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="ghost" size="icon" className={toolbarButtonClass} disabled={disabled} title="Centrar" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("justifyCenter")}>
+                    <AlignCenter className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="ghost" size="icon" className={toolbarButtonClass} disabled={disabled} title="Alinear derecha" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("justifyRight")}>
+                    <AlignRight className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="ghost" size="icon" className={toolbarButtonClass} disabled={disabled} title="Justificar" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("justifyFull")}>
+                    <AlignJustify className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="ghost" size="icon" className={toolbarButtonClass} disabled={disabled} title="Insertar enlace" onMouseDown={(e) => e.preventDefault()} onClick={createLink}>
+                    <LinkIcon className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="ghost" size="icon" className={toolbarButtonClass} disabled={disabled} title="Limpiar formato" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("removeFormat")}>
+                    <Eraser className="h-4 w-4" />
+                </Button>
+            </div>
+            <div className="relative">
+                {isEmpty && (
+                    <span className="pointer-events-none absolute left-3 top-3 text-sm text-muted-foreground">
+                        Escribe tu mensaje certificado aquí. También podés pegar texto con formato.
+                    </span>
+                )}
+                <div
+                    ref={editorRef}
+                    role="textbox"
+                    aria-multiline="true"
+                    contentEditable={!disabled}
+                    suppressContentEditableWarning
+                    className="min-h-[170px] rounded-b-md px-3 py-3 text-sm leading-6 outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-lg [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-6"
+                    onInput={syncFromEditor}
+                    onBlur={handleBlur}
+                    onPaste={handlePaste}
+                    onDrop={(event) => event.preventDefault()}
+                />
+            </div>
+        </div>
+    );
+}
+
 export function ComposeMessageDialog({ children, open, onOpenChange, user, initialContact }: { children: React.ReactNode, open: boolean, onOpenChange: (open: boolean) => void, user: User, initialContact?: { email: string, nombre?: string, telefono?: string } }) {
     const [isSending, setIsSending] = useState(false);
-    const [selectedFiles, setSelectedFiles] = useState<any[]>([]);
+    const [selectedFiles, setSelectedFiles] = useState<SelectedAttachment[]>([]);
     const isExecutingRef = useRef(false);
     const currentExecutionIdRef = useRef<string | null>(null);
     const { toast } = useToast();
@@ -216,8 +373,6 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             recipient: "",
             recipientPhone: "",
             content: "",
-            priority: "normal",
-            requireCertificate: true,
             attachments: [],
         },
     });
@@ -245,21 +400,31 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             return;
         }
 
+        const sanitizedContent = sanitizeRichTextHtml(data.content);
+        const plainContent = stripRichTextToPlainText(sanitizedContent);
+        if (plainContent.length < 10) {
+            form.setError("content", {
+                type: "manual",
+                message: "El mensaje debe tener al menos 10 caracteres.",
+            });
+            return;
+        }
+
         if (isExecutingRef.current) return;
 
         isExecutingRef.current = true;
         const executionId = Math.random().toString(36).substring(7);
         currentExecutionIdRef.current = executionId;
         setIsSending(true);
-        
+
         try {
             const recipientEmail = data.recipient.trim().toLowerCase();
             const subject = `Mensaje certificado para ${recipientEmail}`;
 
             if (user.creditos < 1) {
                 toast({
-                    title: "Sin Créditos",
-                    description: "No tienes créditos suficientes para enviar un mensaje certificado.",
+                    title: "Sin envíos",
+                    description: "No tenés envíos suficientes para enviar un mensaje certificado.",
                     variant: "destructive",
                 });
                 return;
@@ -320,7 +485,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
 
             const html = buildComposeMailHtml({
                 recipientEmail,
-                content: data.content,
+                content: sanitizedContent,
                 sender,
                 uploadedAttachments,
             });
@@ -328,10 +493,9 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             const mailRef = doc(db, 'mail', mailId);
             const updateData: Record<string, unknown> = {
                 'message.html': html,
-                'message.content': data.content,
+                'message.content': sanitizedContent,
+                'message.contentText': plainContent,
                 'message.details': {
-                    priority: data.priority,
-                    requireCertificate: data.requireCertificate,
                     fecha: new Date().toLocaleDateString('es-ES'),
                     attachmentsCount: uploadedAttachments.length,
                 },
@@ -351,7 +515,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             }
 
             await Promise.race([
-                updateDoc(mailRef, updateData as any),
+                updateDoc(mailRef, updateData),
                 new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('Timeout al guardar el mensaje. Revisa tu conexión.')), 30_000)
                 ),
@@ -383,7 +547,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                         descripcion: `Envío de mensaje certificado a ${recipientEmail}`,
                         monto: 0,
                         creditos: -1,
-                        metodoPago: 'Créditos',
+                        metodoPago: 'Envíos',
                         fecha: new Date(),
                         mailId,
                     });
@@ -395,16 +559,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                     ),
                 ]);
             } catch (credErr) {
-                console.error('Error al descontar crédito:', credErr);
-            }
-
-            if (user.uid) {
-                try {
-                    await Promise.race([
-                        guardarContacto(user.uid, recipientEmail, undefined, undefined, phoneForWhatsApp),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10_000)),
-                    ]);
-                } catch { /* no bloquear el flujo */ }
+                console.error('Error al descontar envío:', credErr);
             }
 
             let toastDesc = 'Tu mensaje ha sido enviado y certificado en blockchain de Polygon.';
@@ -424,10 +579,10 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             });
             onOpenChange(false);
             form.reset();
-        } catch (e:any) {
+        } catch (e: unknown) {
             toast({
                 title: "Error al enviar",
-                description: e?.message || 'No se pudo enviar el mensaje',
+                description: e instanceof Error ? e.message : 'No se pudo enviar el mensaje',
                 variant: "destructive",
             });
         } finally {
@@ -489,43 +644,32 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                 </div>
                 <div className="grid gap-2">
                     <Label htmlFor="content">Contenido del Mensaje</Label>
-                    <Textarea id="content" {...form.register("content")} placeholder="Escribe tu mensaje certificado aquí." className="min-h-[150px]" />
+                    <RichTextEditor
+                        value={form.watch("content")}
+                        disabled={isSuspended || isSending}
+                        onChange={(value) => {
+                            form.setValue("content", value, {
+                                shouldDirty: true,
+                                shouldValidate: form.formState.isSubmitted,
+                            });
+                        }}
+                        onBlur={() => form.trigger("content")}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        Permite negrita, cursiva, subrayado, listas, citas, enlaces y alineación. Al pegar desde Word, Gmail o Google Docs se conserva el formato compatible.
+                    </p>
                     {form.formState.errors.content && <p className="text-sm text-destructive">{form.formState.errors.content.message}</p>}
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                        <Label htmlFor="priority">Prioridad</Label>
-                        <Select onValueChange={(value) => form.setValue('priority', value as "normal" | "alta" | "urgente")} defaultValue="normal">
-                            <SelectTrigger>
-                                <SelectValue placeholder="Seleccionar prioridad" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="normal">Normal</SelectItem>
-                                <SelectItem value="alta">Alta</SelectItem>
-                                <SelectItem value="urgente">Urgente</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="flex items-end pb-2">
-                        <div className="flex items-center space-x-2">
-                            <Checkbox id="require-certificate" {...form.register("requireCertificate")} defaultChecked={true} />
-                            <Label htmlFor="require-certificate" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                Requerir Certificado
-                            </Label>
-                        </div>
-                    </div>
                 </div>
 
                 {/* Sección de Archivos Adjuntos */}
                 <div className="space-y-4">
-                    <PDFUpload 
+                    <PDFUpload
                         onFileSelect={(files) => {
                             setSelectedFiles(files);
                             form.setValue('attachments', files);
                         }}
-                        maxFiles={3} 
-                        maxSizeMB={10} 
+                        maxFiles={3}
+                        maxSizeMB={10}
                     />
                 </div>
             </fieldset>

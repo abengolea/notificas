@@ -81,7 +81,7 @@ const planSchema = z.object({
   nombre: z.string().min(3, "El nombre debe tener al menos 3 caracteres."),
   descripcion: z.string().min(10, "La descripción debe tener al menos 10 caracteres."),
   precio: z.coerce.number().min(0, "El precio debe ser positivo."),
-  creditos: z.coerce.number().int().min(1, "Mínimo 1 crédito (Mercado Pago lo requiere)."),
+  creditos: z.coerce.number().int().min(1, "Mínimo 1 envío (Mercado Pago lo requiere)."),
   orden: z.coerce.number().int().optional(),
   activo: z.boolean(),
   type: z.enum(["unitario", "pack", "suscripcion"]),
@@ -446,7 +446,7 @@ export default function PlanManagement() {
                                 name="creditos"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>Créditos otorgados al pagar</FormLabel>
+                                        <FormLabel>Envíos otorgados al pagar</FormLabel>
                                         <FormControl>
                                             <Input type="number" min={1} step={1} {...field} />
                                         </FormControl>
@@ -534,7 +534,7 @@ export default function PlanManagement() {
                                     </SelectContent>
                                     </Select>
                                     <FormDescription>
-                                        Etiqueta interna; el cobro siempre suma <strong>créditos</strong> según el número de arriba.
+                                        Etiqueta interna; el cobro siempre suma <strong>envíos</strong> según el número de arriba.
                                     </FormDescription>
                                     <FormMessage />
                                 </FormItem>
@@ -567,7 +567,7 @@ export default function PlanManagement() {
                     <TableHead>ID</TableHead>
                     <TableHead>Nombre</TableHead>
                     <TableHead>Tipo</TableHead>
-                    <TableHead className="text-right">Créditos</TableHead>
+                    <TableHead className="text-right">Envíos</TableHead>
                     <TableHead className="text-right">Orden</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead className="text-right">Precio</TableHead>

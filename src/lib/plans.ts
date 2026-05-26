@@ -17,7 +17,7 @@ export const defaultPlans: Plan[] = [
   {
     id: 'individual',
     nombre: 'Individual',
-    descripcion: '1 crédito para notificación certificada',
+    descripcion: '1 envío para notificación certificada',
     precio: 500,
     creditos: 1,
     type: 'unitario',
@@ -27,7 +27,7 @@ export const defaultPlans: Plan[] = [
   {
     id: 'pack10',
     nombre: 'Pack 10',
-    descripcion: '10 créditos con descuento del 20%',
+    descripcion: '10 envíos con descuento del 20%',
     precio: 4000,
     creditos: 10,
     type: 'pack',
@@ -37,7 +37,7 @@ export const defaultPlans: Plan[] = [
   {
     id: 'pack50',
     nombre: 'Pack 50',
-    descripcion: '50 créditos con descuento del 30%',
+    descripcion: '50 envíos con descuento del 30%',
     precio: 17500,
     creditos: 50,
     type: 'pack',
@@ -47,7 +47,7 @@ export const defaultPlans: Plan[] = [
   {
     id: 'pack100',
     nombre: 'Pack 100',
-    descripcion: '100 créditos con descuento del 40%',
+    descripcion: '100 envíos con descuento del 40%',
     precio: 30000,
     creditos: 100,
     type: 'pack',

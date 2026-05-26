@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { settleMercadoPagoPayment } from '@/lib/mercado-pago-settle';
+import { requestHubInvoiceForMercadoPagoPayment } from '@/lib/notificas-hub-billing';
 
 export async function POST(request: NextRequest) {
   try {
@@ -55,8 +56,28 @@ export async function POST(request: NextRequest) {
     console.log(
       result.alreadySettled
         ? 'ℹ️ Webhook: pago ya estaba acreditado'
-        : '✅ Webhook: créditos acreditados'
+        : '✅ Webhook: envíos acreditados'
     );
+
+    const billing = await requestHubInvoiceForMercadoPagoPayment(paymentId);
+    if (billing.ok) {
+      console.log('✅ Webhook: factura Hub emitida/registrada', {
+        paymentId,
+        facturaId: billing.facturaId,
+        alreadyIssued: billing.alreadyIssued,
+      });
+    } else if (billing.skipped) {
+      console.warn('⚠️ Webhook: facturación Hub pendiente/omitida', {
+        paymentId,
+        reason: billing.reason,
+      });
+    } else {
+      console.error('❌ Webhook: facturación Hub falló', {
+        paymentId,
+        error: billing.error,
+        status: billing.status,
+      });
+    }
 
     return NextResponse.json({ received: true });
   } catch (error) {

@@ -94,7 +94,7 @@ if [ -n "$MERCADOPAGO_ACCESS_TOKEN" ]; then
   echo "🔐 MERCADOPAGO_ACCESS_TOKEN subido a Secret Manager (opcional si ya lo cargás en la consola de App Hosting)"
 fi
 
-# Opcional pero recomendado en prod: mismo valor en App Hosting y en Functions (trackOpen, linkRedirect, confirmRead)
+# Opcional pero recomendado en prod: mismo valor en App Hosting y en Functions (linkRedirect, reader-open / certify-event)
 POLYGON_CERTIFY_SECRET=$(get_env "POLYGON_CERTIFY_SECRET")
 if [ -n "$POLYGON_CERTIFY_SECRET" ]; then
   echo "$POLYGON_CERTIFY_SECRET" | firebase apphosting:secrets:set POLYGON_CERTIFY_SECRET
