@@ -62,15 +62,18 @@ interface CertificateData {
 
 const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   email_sent: 'Correo enviado',
-  email_opened: 'Correo abierto',
+  email_opened: 'Correo abierto (pixel)',
+  reader_magic_open: 'Acceso fehaciente al reader digital',
   app_opened: 'Apertura en app web',
   message_received: 'Mensaje recibido',
   read_confirmed: 'Lectura confirmada',
   link_clicked: 'Acceso a enlace (correo)',
-  whatsapp_link_clicked: 'Click en mensaje de WhatsApp',
+  whatsapp_sent: 'Mensaje de WhatsApp enviado',
+  whatsapp_link_clicked: 'Acceso desde mensaje de WhatsApp',
   attachment_downloaded: 'Descarga de adjunto',
   document_viewed: 'Documento visualizado',
-  fallback_access: 'Ingreso por enlace alternativo'
+  fallback_access: 'Ingreso por enlace alternativo',
+  certificate_downloaded: 'Certificado PDF descargado y anclado en Polygon',
 };
 
 // Colores alineados con la marca Notificas (globals.css: primary HSL 186 78% 37%)

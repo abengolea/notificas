@@ -4,7 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { verifyAuthToken } from '@/lib/auth-helper';
 import { generateCertificatePDF } from '@/lib/certificate-generator';
-import { certificarLectura } from '@/lib/certification-polygon';
+import { certificarLectura, certificarDocumento } from '@/lib/certification-polygon';
 
 export async function POST(request: NextRequest) {
   try {
@@ -87,9 +87,29 @@ export async function POST(request: NextRequest) {
 
     // Calcular hash del PDF y guardarlo para verificación posterior
     const certificateHash = createHash('sha256').update(buffer).digest('hex');
-    messageRef.update({
-      certificateHashes: FieldValue.arrayUnion(certificateHash),
-    }).catch((e: any) => console.warn('⚠️ No se pudo guardar certificateHash:', e?.message));
+    try {
+      await messageRef.update({
+        certificateHashes: FieldValue.arrayUnion(certificateHash),
+      });
+    } catch (e: any) {
+      console.warn('⚠️ No se pudo guardar certificateHash:', e?.message);
+    }
+
+    // Certificar el hash del PDF en Polygon (fire-and-forget — no bloquea la descarga)
+    // La TX encadena al send TX para probar que el certificado corresponde a este mensaje.
+    void (async () => {
+      try {
+        const sendTxHash = mailDataFresh.polygonCertifications?.send as string | undefined;
+        const txHash = await certificarDocumento(messageId, certificateHash, sendTxHash);
+        await messageRef.update({
+          'polygonCertifications.certificate': txHash,
+          'polygonCertifications.updatedAt': new Date(),
+        });
+        console.log('✅ Certificado PDF certificado en Polygon:', txHash);
+      } catch (e: any) {
+        console.warn('⚠️ Polygon certify certificate (no afecta la descarga):', e?.message);
+      }
+    })();
 
     // Devolver el PDF como respuesta
     return new NextResponse(buffer, {

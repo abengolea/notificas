@@ -13,7 +13,7 @@ const plusJakarta = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   title: 'Notificas',
-  description: 'Mensajería certificada con Blockchain Federal Argentina.',
+  description: 'Notificaciones fehacientes digitales con respaldo en la red Polygon. Certificá el envío, recepción y lectura de tus comunicaciones.',
 };
 
 export const viewport: Viewport = {

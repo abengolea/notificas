@@ -61,11 +61,14 @@ function buildResponsePayload(
   const attachmentUrl = attachment?.fileUrl || attachment?.url || attachment?.downloadUrl;
   const attachmentName = attachment?.fileName || attachment?.name;
 
+  const isPolygonTxHash = (v: unknown): boolean =>
+    typeof v === 'string' && /^0x[0-9a-f]{64}$/i.test(v);
+
   const blockchainVerified =
-    Boolean(attachment?.integrityCertificate?.verified) ||
-    Boolean(data.blockchainHash) ||
-    Boolean(data.bfaCertificado?.hashCertificado) ||
-    Boolean(data.polygonCertifications?.send || data.polygonCertifications?.read);
+    isPolygonTxHash(data.polygonCertifications?.send) ||
+    isPolygonTxHash(data.polygonCertifications?.receive) ||
+    isPolygonTxHash(data.polygonCertifications?.read) ||
+    isPolygonTxHash(attachment?.integrityCertificate?.txHash);
 
   return {
     docId: doc.id,

@@ -529,10 +529,11 @@ export default function VerifyPage() {
             <div>
               <h4 className="font-semibold text-foreground mb-2">2. ¿Qué se certifica?</h4>
               <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-                <li><strong>Envío:</strong> Cuándo y por quién se envió el mensaje</li>
-                <li><strong>Contenido:</strong> Hash criptográfico (SHA-256) del asunto y cuerpo, registrado en blockchain</li>
-                <li><strong>Recepción:</strong> Cuándo el destinatario accedió al mensaje</li>
-                <li><strong>Lectura:</strong> Cuándo se descargó el certificado oficial</li>
+                <li><strong>Envío:</strong> Cuándo y por quién se envió el mensaje, con ID SMTP del servidor de correo</li>
+                <li><strong>Contenido:</strong> Hash criptográfico SHA-256 del asunto y cuerpo, registrado en Polygon</li>
+                <li><strong>Recepción:</strong> Cuándo el destinatario accedió por primera vez al mensaje, encadenado al envío</li>
+                <li><strong>Lectura:</strong> Confirmación explícita de lectura por el destinatario</li>
+                <li><strong>Certificado PDF:</strong> Hash SHA-256 del PDF oficial, anclado en Polygon y encadenado al envío</li>
                 <li><strong>Adjuntos:</strong> Hash de integridad de cada archivo adjunto</li>
               </ul>
             </div>
@@ -579,16 +580,19 @@ export default function VerifyPage() {
                   <p className="font-medium text-foreground mb-1">Formato del payload en blockchain</p>
                   <p className="text-muted-foreground mb-1">Cada transacción incluye datos codificados en UTF-8. Tipos de evento:</p>
                   <code className="block bg-muted px-3 py-2 rounded text-xs font-mono break-all">
-                    SEND|messageId|remitente|destinatario|contentHash|timestamp
+                    SEND|messageId|remitente|destinatario|contentHash|smtp:smtpMessageId|timestamp
                   </code>
                   <code className="block bg-muted px-3 py-2 rounded text-xs font-mono break-all mt-1">
-                    RECEIVE|messageId|usuario|timestamp
+                    FIRST_READ|messageId|usuario|contentHash|ref:txHashEnvio|timestamp
                   </code>
                   <code className="block bg-muted px-3 py-2 rounded text-xs font-mono break-all mt-1">
                     READ|messageId|usuario|timestamp
                   </code>
+                  <code className="block bg-muted px-3 py-2 rounded text-xs font-mono break-all mt-1">
+                    CERTIFICATE|messageId|sha256:hashPDF|ref:txHashEnvio|timestamp
+                  </code>
                   <p className="text-muted-foreground mt-2">
-                    El <code className="bg-muted px-1 rounded">contentHash</code> es el SHA-256 del contenido. Cualquier alteración del mensaje produce un hash distinto.
+                    El <code className="bg-muted px-1 rounded">contentHash</code> es el SHA-256 del asunto + cuerpo. El campo <code className="bg-muted px-1 rounded">ref:</code> encadena cada evento al TX de envío, permitiendo verificar la continuidad sin depender de bases de datos. El campo <code className="bg-muted px-1 rounded">smtp:</code> vincula la TX con el registro del servidor de correo.
                   </p>
                 </div>
                 <div>

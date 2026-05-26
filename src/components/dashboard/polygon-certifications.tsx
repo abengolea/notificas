@@ -11,13 +11,16 @@ type PolygonCertificationsData = {
   send?: string;
   receive?: string;
   read?: string;
+  certificate?: string;
   contentHash?: string;
+  updatedAt?: unknown;
 };
 
 const EVENT_LABELS: Record<string, { label: string; short: string }> = {
   send: { label: 'Envío certificado', short: 'Envío' },
   receive: { label: 'Recepción certificada', short: 'Recepción' },
   read: { label: 'Lectura certificada', short: 'Lectura' },
+  certificate: { label: 'Certificado PDF anclado', short: 'PDF' },
 };
 
 export default function PolygonCertifications({
@@ -55,9 +58,10 @@ export default function PolygonCertifications({
     return null;
   }
 
-  const entries = Object.entries(certifications).filter(
-    ([key, value]) => key !== 'contentHash' && value && typeof value === 'string'
-  );
+  const NON_TX_KEYS = new Set(['contentHash', 'updatedAt']);
+  const entries = (Object.entries(certifications) as [string, unknown][]).filter(
+    ([key, value]) => !NON_TX_KEYS.has(key) && value && typeof value === 'string'
+  ) as [string, string][];
 
   if (entries.length === 0 && !certifications.contentHash) return null;
 
