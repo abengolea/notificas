@@ -565,8 +565,17 @@ export default function VerifyPage() {
               <div className="space-y-4 text-sm">
                 <div>
                   <p className="font-medium text-foreground mb-1">Algoritmo criptográfico</p>
-                  <p className="text-muted-foreground">
-                    Hash SHA-256 (Secure Hash Algorithm 256 bits). El contenido se normaliza (asunto + cuerpo en texto plano, sin HTML) y se codifica en UTF-8 antes de calcular el hash. Resultado: 64 caracteres hexadecimales.
+                  <p className="text-muted-foreground mb-2">
+                    Hash SHA-256 (Secure Hash Algorithm 256 bits). Resultado: 64 caracteres hexadecimales.
+                  </p>
+                  <p className="font-medium text-foreground mb-1">Fórmula exacta de reproducción</p>
+                  <code className="block bg-muted px-3 py-2 rounded text-xs font-mono break-all mb-2">
+                    SHA-256( UTF-8( trim(texto_plano_del_mensaje) ) )
+                  </code>
+                  <p className="text-muted-foreground text-xs">
+                    El hash se calcula sobre el <strong>texto plano del mensaje escrito por el remitente</strong> (sin HTML, sin asunto, sin boilerplate del email).
+                    Es exactamente el contenido visible en el certificado, con trim() aplicado.
+                    Implementación de referencia: <code className="bg-muted px-1 rounded">crypto.subtle.digest(&apos;SHA-256&apos;, new TextEncoder().encode(texto.trim()))</code> (Web Crypto API estándar, idéntica en Node.js y navegadores).
                   </p>
                 </div>
                 <div>

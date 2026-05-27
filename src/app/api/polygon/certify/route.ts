@@ -55,10 +55,9 @@ export async function POST(request: NextRequest) {
           const toEmail = Array.isArray(mailData.to)
             ? String(mailData.to[0] ?? '')
             : String(mailData.recipientEmail ?? mailData.to ?? '');
-          const subject = String((mailData.message as Record<string, unknown> | undefined)?.subject ?? '');
-          const html = (mailData.message as Record<string, unknown> | undefined)?.html as string | undefined;
-          const text = (mailData.message as Record<string, unknown> | undefined)?.text as string | undefined;
-          const contentHash = await computeContentHash(subject, html, text);
+          const contentHash = await computeContentHash(
+            String((mailData.message as Record<string, unknown> | undefined)?.contentText ?? '')
+          );
           txHash = await certificarEnvio(messageId, decoded.uid, toEmail, contentHash);
           break;
         }

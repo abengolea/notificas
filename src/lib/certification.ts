@@ -2,32 +2,12 @@ import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 
 /**
- * Normaliza el contenido del mensaje para calcular un hash consistente.
- * Usa la misma lógica que el certificado PDF (sin HTML, solo texto).
+ * Calcula el hash SHA-256 del texto plano del mensaje (lo que el usuario escribió).
+ * Fórmula: SHA-256( UTF-8( trim(plainContent) ) )
+ * Usa Web Crypto API estándar (Node y navegadores).
  */
-function normalizeContentForHash(html?: string, text?: string): string {
-  const raw = html || text || '';
-  return raw
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/**
- * Calcula el hash SHA-256 del contenido del mensaje (asunto + cuerpo).
- * Usa Web Crypto API (compatible con Node y navegador).
- * Vincula criptográficamente el contenido con la certificación en blockchain.
- */
-export async function computeContentHash(
-  subject: string,
-  html?: string,
-  text?: string
-): Promise<string> {
-  const content = normalizeContentForHash(html, text);
-  const normalized = `${subject || ''}|${content}`;
+export async function computeContentHash(plainContent: string): Promise<string> {
+  const normalized = (plainContent || '').trim();
   const encoder = new TextEncoder();
   const data = encoder.encode(normalized);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);

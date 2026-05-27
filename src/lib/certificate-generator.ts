@@ -661,11 +661,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
 
   // Información técnica de verificación - bloque técnico/pericial
   const contentHashStored = (mailData as any).polygonCertifications?.contentHash;
-  const contentHashComputed = await computeContentHash(
-    mailData.message?.subject || '',
-    mailData.message?.html,
-    mailData.message?.text
-  );
+  const contentHashComputed = await computeContentHash(mailData.message?.contentText || '');
   const contentHash = contentHashStored || contentHashComputed;
 
   if (mailData.tracking?.token || mailData.readerUrl || mailData.delivery?.info || contentHash) {
@@ -686,6 +682,11 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
         label: 'Hash de integridad del contenido (SHA-256)',
         value: contentHash,
         monospace: true
+      });
+      techData.push({
+        label: 'Fórmula de reproducción del hash (para peritos)',
+        value: 'SHA-256( UTF-8( trim(texto_plano_del_mensaje) ) ) — El hash se calcula sobre el texto del mensaje tal como lo escribió el remitente, sin HTML ni formato adicional. Implementación: crypto.subtle.digest("SHA-256", new TextEncoder().encode(texto.trim())) — Web Crypto API estándar.',
+        monospace: false
       });
     }
 

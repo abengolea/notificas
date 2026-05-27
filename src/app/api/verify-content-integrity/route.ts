@@ -84,10 +84,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Calcular hash actual del contenido
-    const subject = mailData.message?.subject || '';
-    const html = mailData.message?.html;
-    const text = mailData.message?.text;
-    const currentHash = await computeContentHash(subject, html, text);
+    const currentHash = await computeContentHash(mailData.message?.contentText || '');
 
     const integrityValid = currentHash === storedHash;
 

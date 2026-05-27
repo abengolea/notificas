@@ -59,11 +59,7 @@ export async function POST(request: NextRequest) {
     let txHash: string;
 
     if (type === 'send') {
-      // Calcular contentHash del contenido real del mensaje
-      const subject = (mailData.message?.subject as string | undefined) || '';
-      const html = mailData.message?.html as string | undefined;
-      const text = mailData.message?.text as string | undefined;
-      const contentHash = await computeContentHash(subject, html, text);
+      const contentHash = await computeContentHash((mailData.message?.contentText as string | undefined) || '');
 
       const fromUserId = (mailData.createdBy as string | undefined) || (mailData.from as string | undefined) || 'system';
       const toEmail = (mailData.recipientEmail as string | undefined) || (Array.isArray(mailData.to) ? mailData.to[0] : mailData.to as string | undefined) || '';

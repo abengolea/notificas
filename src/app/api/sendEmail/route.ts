@@ -17,10 +17,7 @@ async function certifyInBackground(docId: string): Promise<void> {
       ? mailData.to[0]
       : mailData.recipientEmail || mailData.to || '';
     const fromUserId = mailData.createdBy || mailData.senderName || 'app';
-    const subject = mailData.message?.subject || '';
-    const html = mailData.message?.html;
-    const text = mailData.message?.text;
-    const contentHash = await computeContentHash(subject, html, text);
+    const contentHash = await computeContentHash(mailData.message?.contentText || '');
 
     const polygonTxHash = await Promise.race([
       certificarEnvio(docId, fromUserId, toEmail, contentHash),
