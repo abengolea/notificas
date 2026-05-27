@@ -32,14 +32,24 @@ export async function PATCH(
     return NextResponse.json({ error: "collegeId requerido" }, { status: 400 });
   }
 
-  let body: { enabled?: unknown; discountPercent?: unknown; nombreColegio?: unknown };
+  let body: {
+    enabled?: unknown;
+    discountPercent?: unknown;
+    nombreColegio?: unknown;
+    legalmevColegioId?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  const patch: { enabled?: boolean; discountPercent?: number; nombreColegio?: string } = {};
+  const patch: {
+    enabled?: boolean;
+    discountPercent?: number;
+    nombreColegio?: string;
+    legalmevColegioId?: string | null;
+  } = {};
   if (typeof body.enabled === "boolean") patch.enabled = body.enabled;
   if (body.discountPercent !== undefined) {
     const n = Number(body.discountPercent);
@@ -53,6 +63,15 @@ export async function PATCH(
       return NextResponse.json({ error: "nombreColegio debe ser texto" }, { status: 400 });
     }
     patch.nombreColegio = body.nombreColegio;
+  }
+  if (body.legalmevColegioId !== undefined) {
+    if (body.legalmevColegioId === null) {
+      patch.legalmevColegioId = null;
+    } else if (typeof body.legalmevColegioId === "string") {
+      patch.legalmevColegioId = body.legalmevColegioId;
+    } else {
+      return NextResponse.json({ error: "legalmevColegioId debe ser texto" }, { status: 400 });
+    }
   }
 
   if (Object.keys(patch).length === 0) {

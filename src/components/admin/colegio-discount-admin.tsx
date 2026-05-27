@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, Scale, Plus, Trash2 } from "lucide-react";
+import { Loader2, Upload, Scale, Plus, Trash2, Link2 } from "lucide-react";
 import type { ColegioCollegeRow } from "@/lib/colegio-discount-types";
 import { COLEGIO_NOMBRE_FALLBACK_CLIENT } from "@/lib/colegio-discount-client";
 import {
@@ -103,6 +103,9 @@ function ColegioTableRow({
   const [pct, setPct] = React.useState(String(college.discountPercent));
   const [enabled, setEnabled] = React.useState(college.enabled);
   const [memberCount, setMemberCount] = React.useState(college.memberCount);
+  const [legalmevId, setLegalmevId] = React.useState(college.legalmevColegioId ?? "");
+  const [legalmevCount, setLegalmevCount] = React.useState(college.legalmevMemberCount ?? 0);
+  const [syncingLegalmev, setSyncingLegalmev] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
@@ -113,15 +116,21 @@ function ColegioTableRow({
     setPct(String(college.discountPercent));
     setEnabled(college.enabled);
     setMemberCount(college.memberCount);
+    setLegalmevId(college.legalmevColegioId ?? "");
+    setLegalmevCount(college.legalmevMemberCount ?? 0);
   }, [
     college.id,
     college.nombreColegio,
     college.discountPercent,
     college.enabled,
     college.memberCount,
+    college.legalmevColegioId,
+    college.legalmevMemberCount,
   ]);
 
-  const busy = saving || uploading || deleting || disabledGlobal;
+  const usesLegalMev = Boolean(legalmevId.trim());
+  const busy = saving || uploading || deleting || disabledGlobal || syncingLegalmev;
+  const displayMemberCount = usesLegalMev ? legalmevCount : memberCount;
   const pctNum = Number(String(pct).replace(",", "."));
 
   async function saveRow() {
@@ -135,6 +144,7 @@ function ColegioTableRow({
           nombreColegio: nombre,
           discountPercent: pctNum,
           enabled,
+          legalmevColegioId: legalmevId.trim() || null,
         }),
       });
       const j = await res.json().catch(() => ({}));
@@ -145,6 +155,8 @@ function ColegioTableRow({
         setPct(String(c.discountPercent));
         setEnabled(c.enabled);
         setMemberCount(c.memberCount);
+        setLegalmevId(c.legalmevColegioId ?? "");
+        setLegalmevCount(c.legalmevMemberCount ?? 0);
       }
       toast({ title: "Colegio actualizado" });
       onRefresh();
@@ -159,10 +171,60 @@ function ColegioTableRow({
     }
   }
 
+  async function syncFromLegalMev() {
+    setSyncingLegalmev(true);
+    try {
+      const res = await fetch(
+        `/api/admin/colegio-discount/colleges/${college.id}/sync-legalmev`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            legalmevColegioId: legalmevId.trim() || undefined,
+          }),
+        },
+      );
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof j?.error === "string" ? j.error : `HTTP ${res.status}`);
+      }
+      const c = j.college as ColegioCollegeRow | undefined;
+      if (c) {
+        setNombre(c.nombreColegio);
+        setLegalmevId(c.legalmevColegioId ?? "");
+        setLegalmevCount(c.legalmevMemberCount ?? 0);
+      }
+      toast({
+        title: "Actualizado desde LegalMev",
+        description: c
+          ? `${c.nombreColegio}: ${c.legalmevMemberCount ?? 0} matriculados activos. La billetera consulta LegalMev en vivo.`
+          : "Vinculación guardada.",
+      });
+      onRefresh();
+    } catch (e) {
+      toast({
+        title: "No se pudo actualizar con LegalMev",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setSyncingLegalmev(false);
+    }
+  }
+
   async function onFile(ev: React.ChangeEvent<HTMLInputElement>) {
     const file = ev.target.files?.[0];
     ev.target.value = "";
     if (!file) return;
+    if (usesLegalMev) {
+      toast({
+        title: "Nómina en LegalMev",
+        description: "Este colegio usa la base de LegalMev. Actualizá la lista allí.",
+        variant: "destructive",
+      });
+      return;
+    }
     setUploading(true);
     setLastFileName(file.name);
     try {
@@ -263,10 +325,45 @@ function ColegioTableRow({
         </div>
       </td>
       <td className="px-3 py-2">
-        <div className="flex flex-wrap items-center gap-2 whitespace-nowrap">
-          <span className="text-muted-foreground text-sm tabular-nums">
-            {memberCount} mail{memberCount === 1 ? "" : "s"}
+        <div className="flex flex-col gap-2 min-w-[240px]">
+          <Button
+            type="button"
+            variant={usesLegalMev ? "secondary" : "default"}
+            size="sm"
+            className="h-auto min-h-8 whitespace-normal text-left text-xs leading-snug py-2"
+            disabled={busy}
+            onClick={() => void syncFromLegalMev()}
+          >
+            {syncingLegalmev ? (
+              <Loader2 className="mr-2 h-3.5 w-3.5 shrink-0 animate-spin" />
+            ) : (
+              <Link2 className="mr-2 h-3.5 w-3.5 shrink-0" />
+            )}
+            Actualizar con la base de datos de LegalMev
+          </Button>
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {usesLegalMev ? (
+              <>
+                <span className="text-primary font-medium">{displayMemberCount}</span> matriculados en
+                LegalMev (consulta en vivo)
+              </>
+            ) : (
+              <>
+                {displayMemberCount} mail{displayMemberCount === 1 ? "" : "s"} en lista local — usá el botón de
+                arriba para pasar a LegalMev
+              </>
+            )}
           </span>
+          {usesLegalMev && legalmevId ? (
+            <span className="text-[10px] text-muted-foreground font-mono truncate" title={legalmevId}>
+              ID LegalMev: {legalmevId}
+            </span>
+          ) : null}
+        </div>
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 whitespace-nowrap">
+          {!usesLegalMev ? (
           <Button type="button" variant="outline" size="sm" disabled={busy} asChild>
             <label className="cursor-pointer">
               <Upload className="mr-1 h-3.5 w-3.5" />
@@ -280,6 +377,7 @@ function ColegioTableRow({
               />
             </label>
           </Button>
+          ) : null}
           {uploading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
           {lastFileName ? (
             <span title={lastFileName} className="max-w-[100px] truncate text-xs text-muted-foreground">
@@ -386,10 +484,10 @@ export default function ColegioDiscountAdminCard() {
             <div>
               <CardTitle>Descuentos por colegio de abogados</CardTitle>
               <CardDescription>
-                Cada fila es un colegio: nombre, porcentaje sobre precio de lista, activación y nómina de mails. En la
-                billetera se compara el mail de la sesión (Firebase) con la lista del colegio; si coincide y el
-                descuento está activo, Mercado Pago cobra el precio rebajado manteniendo los envíos del plan. Si un
-                matriculado está en más de un colegio con descuento vigente, aplica el mayor porcentaje.
+                Cada fila es un colegio adherido: % de descuento y activación en Notificas. La nómina de matriculados
+                puede vivir en <strong>LegalMev</strong> (botón LegalMev → ID del colegio): al pagar o abrir la billetera
+                se consulta en vivo por email. Sin vínculo LegalMev, podés subir Excel/CSV aquí como antes. Si hay varios
+                colegios con descuento, aplica el mayor %.
               </CardDescription>
             </div>
           </div>
@@ -429,9 +527,8 @@ export default function ColegioDiscountAdminCard() {
           </div>
         )}
         <p className="mt-3 text-xs text-muted-foreground">
-          Cada carga de planilla <strong>reemplaza</strong> solo la lista de ese colegio. Encabezados reconocidos:
-          email, mail, correo, nombre, name, etc. Si el nombre queda vacío al guardar, en la billetera se muestra «
-          {COLEGIO_NOMBRE_FALLBACK_CLIENT}».
+          Usá <strong>Actualizar con la base de datos de LegalMev</strong> para vincular el colegio (ej. San Nicolás) y
+          usar la nómina que allí sube el colegio. Sin vínculo, podés cargar Excel/CSV local con «Subir lista».
         </p>
       </CardContent>
     </Card>

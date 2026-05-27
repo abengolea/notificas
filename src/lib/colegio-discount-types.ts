@@ -5,6 +5,10 @@ export type ColegioCollegeRow = {
   enabled: boolean;
   discountPercent: number;
   memberCount: number;
+  /** Si está definido, la nómina se consulta en LegalMev (`colegios/{id}`). */
+  legalmevColegioId?: string;
+  /** Matriculados activos en LegalMev (solo referencia; última sync). */
+  legalmevMemberCount?: number;
 };
 
 /**

@@ -2,6 +2,11 @@ import { createHash } from "node:crypto";
 import { FieldValue, type DocumentReference, type Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { COLEGIO_DESCUENTO_PISO_ARS, type ColegioCollegeRow } from "@/lib/colegio-discount-types";
+import {
+  isLegalMevColegioConfigured,
+  listLegalMevColegios,
+  verifyLegalMevColegioMember,
+} from "@/lib/legalmev-colegio-client";
 
 /** Config global antigua (solo migración). */
 export const COLEGIO_CONFIG_COLLECTION = "colegio_discount_config";
@@ -69,7 +74,22 @@ function parseCollegeDoc(
   const nombreColegio = displayColegioNombre(d.nombreColegio as string | undefined);
   const memberCount =
     typeof d.memberCount === "number" && Number.isFinite(d.memberCount) ? Math.max(0, d.memberCount) : 0;
-  return { nombreColegio, enabled, discountPercent, memberCount };
+  const legalmevColegioId =
+    typeof d.legalmevColegioId === "string" && d.legalmevColegioId.trim()
+      ? d.legalmevColegioId.trim()
+      : undefined;
+  const legalmevMemberCount =
+    typeof d.legalmevMemberCount === "number" && Number.isFinite(d.legalmevMemberCount)
+      ? Math.max(0, d.legalmevMemberCount)
+      : undefined;
+  return {
+    nombreColegio,
+    enabled,
+    discountPercent,
+    memberCount,
+    legalmevColegioId,
+    legalmevMemberCount,
+  };
 }
 
 let migrationPromise: Promise<void> | null = null;
@@ -201,7 +221,13 @@ export async function createColegioCollege(partial?: { nombreColegio?: string })
 
 export async function patchColegioCollege(
   collegeId: string,
-  partial: { enabled?: boolean; discountPercent?: number; nombreColegio?: string },
+  partial: {
+    enabled?: boolean;
+    discountPercent?: number;
+    nombreColegio?: string;
+    legalmevColegioId?: string | null;
+    legalmevMemberCount?: number | null;
+  },
 ): Promise<ColegioCollegeRow> {
   await ensureColegiosMigratedFromLegacy();
   const db = getAdminDb();
@@ -226,6 +252,24 @@ export async function patchColegioCollege(
     const s = partial.nombreColegio.trim().slice(0, 160);
     patch.nombreColegio = displayColegioNombre(s || null);
   }
+  if (partial.legalmevColegioId !== undefined) {
+    if (partial.legalmevColegioId === null || partial.legalmevColegioId === "") {
+      patch.legalmevColegioId = FieldValue.delete();
+    } else if (typeof partial.legalmevColegioId === "string") {
+      patch.legalmevColegioId = partial.legalmevColegioId.trim().slice(0, 128);
+    } else {
+      throw new Error("legalmevColegioId debe ser texto");
+    }
+  }
+  if (partial.legalmevMemberCount !== undefined) {
+    if (partial.legalmevMemberCount === null) {
+      patch.legalmevMemberCount = FieldValue.delete();
+    } else if (typeof partial.legalmevMemberCount === "number" && Number.isFinite(partial.legalmevMemberCount)) {
+      patch.legalmevMemberCount = Math.max(0, Math.floor(partial.legalmevMemberCount));
+    } else {
+      throw new Error("legalmevMemberCount inválido");
+    }
+  }
   if (Object.keys(patch).length <= 1) {
     throw new Error("Nada que actualizar");
   }
@@ -233,6 +277,57 @@ export async function patchColegioCollege(
   const next = await ref.get();
   const d = next.data() as Record<string, unknown>;
   return { id: collegeId, ...parseCollegeDoc(collegeId, d) };
+}
+
+function normalizeMatchName(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+/**
+ * Vincula un colegio de Notificas con LegalMev y guarda el conteo de matriculados activos.
+ */
+export async function syncColegioCollegeFromLegalMev(
+  collegeId: string,
+  options?: { legalmevColegioId?: string },
+): Promise<ColegioCollegeRow> {
+  if (!isLegalMevColegioConfigured()) {
+    throw new Error("Falta LEGALMEV_URL y/o NOTIFICAS_LEGALMEV_SHARED_SECRET en el servidor");
+  }
+
+  await ensureColegiosMigratedFromLegacy();
+  const db = getAdminDb();
+  const ref = db.collection(COLEGIO_COLLEGES_COLLECTION).doc(collegeId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new Error("Colegio no encontrado");
+  }
+
+  const current = snap.data() as Record<string, unknown>;
+  const nombreNotificas = displayColegioNombre(current.nombreColegio as string | undefined);
+  const normNombre = normalizeMatchName(nombreNotificas);
+
+  const list = await listLegalMevColegios();
+  if (list.length === 0) {
+    throw new Error("No hay colegios cargados en LegalMev");
+  }
+
+  const explicitId = options?.legalmevColegioId?.trim();
+  const lm =
+    (explicitId ? list.find((c) => c.id === explicitId) : undefined) ??
+    list.find((c) => normalizeMatchName(c.name) === normNombre) ??
+    list.find((c) => /san\s*nicol/i.test(c.name)) ??
+    list.find((c) => c.convenioActivo) ??
+    list[0];
+
+  return patchColegioCollege(collegeId, {
+    legalmevColegioId: lm.id,
+    nombreColegio: lm.name,
+    legalmevMemberCount: lm.memberCount,
+  });
 }
 
 export async function deleteColegioCollege(collegeId: string): Promise<void> {
@@ -361,10 +456,9 @@ export async function resolveColegioDiscountForEmail(email: string): Promise<{
 
   type Row = { nombreColegio: string; enabled: boolean; discountPercent: number };
   const withMembership: Row[] = [];
+
   await Promise.all(
     all.docs.map(async (doc) => {
-      const mSnap = await doc.ref.collection(COLEGIO_COLLEGE_MEMBERS_SUB).doc(hash).get();
-      if (!mSnap.exists) return;
       const d = doc.data() as Record<string, unknown>;
       const enabled = d.enabled === true;
       const discountPercent =
@@ -372,6 +466,35 @@ export async function resolveColegioDiscountForEmail(email: string): Promise<{
           ? Math.min(100, Math.max(0, d.discountPercent))
           : 0;
       const nombreColegio = displayColegioNombre(d.nombreColegio as string | undefined);
+      const legalmevId =
+        typeof d.legalmevColegioId === "string" && d.legalmevColegioId.trim()
+          ? d.legalmevColegioId.trim()
+          : "";
+
+      if (legalmevId) {
+        const lm = await verifyLegalMevColegioMember(norm, legalmevId);
+        if (lm.onList || lm.isMember) {
+          const displayName =
+            lm.colegioName && lm.colegioName.trim() ? lm.colegioName.trim() : nombreColegio;
+          if (lm.isMember) {
+            withMembership.push({
+              nombreColegio: displayName,
+              enabled: enabled && lm.convenioActivo,
+              discountPercent,
+            });
+          } else {
+            withMembership.push({
+              nombreColegio: displayName,
+              enabled: false,
+              discountPercent: 0,
+            });
+          }
+        }
+        return;
+      }
+
+      const mSnap = await doc.ref.collection(COLEGIO_COLLEGE_MEMBERS_SUB).doc(hash).get();
+      if (!mSnap.exists) return;
       withMembership.push({ nombreColegio, enabled, discountPercent });
     }),
   );
