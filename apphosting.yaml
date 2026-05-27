@@ -102,3 +102,16 @@ env:
     secret: WHATSAPP_VERIFY_TOKEN
     availability:
       - RUNTIME
+  # Panel /admin — solo servidor (cookies HttpOnly en /api/admin/*)
+  - variable: ADMIN_PANEL_EMAIL
+    secret: ADMIN_PANEL_EMAIL
+    availability:
+      - RUNTIME
+  - variable: ADMIN_PANEL_PASSWORD
+    secret: ADMIN_PANEL_PASSWORD
+    availability:
+      - RUNTIME
+  - variable: ADMIN_SESSION_SECRET
+    secret: ADMIN_SESSION_SECRET
+    availability:
+      - RUNTIME
