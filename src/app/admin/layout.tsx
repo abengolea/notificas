@@ -2,6 +2,7 @@
 "use client"
 
 import { usePathname } from 'next/navigation'
+import { AdminAuth } from '@/components/admin/admin-auth'
 import { MainNav } from '@/components/admin/main-nav'
 import { UserNav } from '@/components/dashboard/user-nav'
 import { Search } from 'lucide-react'
@@ -35,6 +36,7 @@ export default function AdminLayout({
     children: React.ReactNode;
 }) {
     const pathname = usePathname()
+    const isLoginPage = pathname === '/admin/login'
     const [appUser, setAppUser] = useState<AppUser | null>(null)
 
     useEffect(() => {
@@ -51,7 +53,12 @@ export default function AdminLayout({
         return 'Panel de Administración'
     }
 
+    if (isLoginPage) {
+        return <>{children}</>
+    }
+
     return (
+        <AdminAuth>
         <div className="flex-col md:flex min-h-screen bg-muted/30">
              <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b bg-background px-4">
                 <Link href="/admin" className="flex min-w-0 items-center gap-2 font-semibold shrink-0">
@@ -79,5 +86,6 @@ export default function AdminLayout({
                 {children}
             </div>
         </div>
+        </AdminAuth>
     );
 }

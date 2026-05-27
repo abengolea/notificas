@@ -35,7 +35,7 @@ export default function AdminLoginPage() {
         return;
       }
 
-      router.push("/admin/email-test");
+      router.push("/admin");
     } catch {
       setError("Error al iniciar sesión");
     } finally {

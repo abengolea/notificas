@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Suspense, useState } from "react";
 import { useFirebaseAuth } from "@/hooks/useFirebaseAuth";
-import { Mail, KeyRound, Loader2, Eye, EyeOff } from "lucide-react";
+import { Mail, KeyRound, Loader2, Eye, EyeOff, Settings } from "lucide-react";
 
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -196,6 +196,14 @@ function LoginForm() {
           </div>
         </CardContent>
       </Card>
+      <Link
+        href="/admin/login"
+        className="fixed bottom-[max(1rem,env(safe-area-inset-bottom,1rem))] right-[max(1rem,env(safe-area-inset-right,1rem))] inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] text-muted-foreground/80 hover:text-muted-foreground bg-muted/50 hover:bg-muted rounded-md transition-colors"
+        aria-label="Panel de administración"
+      >
+        <Settings className="h-3 w-3" aria-hidden />
+        Admin
+      </Link>
     </div>
   );
 }
