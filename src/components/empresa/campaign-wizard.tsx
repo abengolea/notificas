@@ -14,6 +14,7 @@ import {
   where,
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import { normalizeEnviosDisponibles } from "@/lib/envios";
 import type { CampaignAttachment, RecipientEntry, RecipientList as RecipientListType } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -126,8 +127,7 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
     const u = auth.currentUser;
     if (!u) return;
     const unsub = onSnapshot(doc(db, "users", u.uid), (s) => {
-      const c = s.data()?.creditos;
-      setCreditos(typeof c === "number" ? c : 0);
+      setCreditos(normalizeEnviosDisponibles(s.data()?.creditos));
     });
     return () => unsub();
   }, []);

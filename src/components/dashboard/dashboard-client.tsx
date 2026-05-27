@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 
 import type { User as AppUser } from '@/lib/types';
+import { normalizeEnviosDisponibles } from '@/lib/envios';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -243,8 +244,7 @@ export default function DashboardClient() {
                   ...prev,
                   tipo: userData?.tipo || prev.tipo,
                   estado: userData?.estado || prev.estado,
-                  creditos:
-                    typeof userData?.creditos === "number" ? userData.creditos : prev.creditos,
+                  creditos: normalizeEnviosDisponibles(userData?.creditos ?? prev.creditos),
                   perfil: {
                     ...prev.perfil,
                     ...(userData?.perfil || {}),

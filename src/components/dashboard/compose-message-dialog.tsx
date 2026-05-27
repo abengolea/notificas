@@ -22,6 +22,7 @@ import {
     Underline,
 } from "lucide-react"
 
+import { normalizeEnviosDisponibles } from "@/lib/envios";
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -421,7 +422,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             const recipientEmail = data.recipient.trim().toLowerCase();
             const subject = `Mensaje certificado para ${recipientEmail}`;
 
-            if (user.creditos < 1) {
+            if (normalizeEnviosDisponibles(user.creditos) < 1) {
                 toast({
                     title: "Sin envíos",
                     description: "No tenés envíos suficientes para enviar un mensaje certificado.",

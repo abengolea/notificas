@@ -8,6 +8,7 @@ import {
   campaignBodyToHtmlFragment,
   personalizeCampaignText,
 } from '@/lib/campaign-email-html';
+import { normalizeEnviosDisponibles } from '@/lib/envios';
 import { getOrgIfMember, maxRecipientsForPlan } from '@/lib/org-server';
 import type { CampaignAttachment, RecipientEntry } from '@/lib/types';
 import { z } from 'zod';
@@ -131,8 +132,7 @@ export async function POST(request: NextRequest) {
 
     const userRef = db.collection('users').doc(uid);
     const userSnap = await userRef.get();
-    const creditosInicial =
-      typeof userSnap.data()?.creditos === 'number' ? (userSnap.data()!.creditos as number) : 0;
+    const creditosInicial = normalizeEnviosDisponibles(userSnap.data()?.creditos);
 
     const loadMsgIndex = async () => {
       const existingSnap = await db
@@ -315,7 +315,7 @@ export async function POST(request: NextRequest) {
           const m = msgSnap.data() || {};
           if (!m.creditApplied) {
             const uSnap = await t.get(userRef);
-            const c = typeof uSnap.data()?.creditos === 'number' ? (uSnap.data()!.creditos as number) : 0;
+            const c = normalizeEnviosDisponibles(uSnap.data()?.creditos);
             if (c < 1) throw new Error('Sin envíos');
             t.update(userRef, { creditos: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() });
           }

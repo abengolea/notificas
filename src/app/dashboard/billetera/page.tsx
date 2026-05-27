@@ -2,6 +2,7 @@
 
 import { UserNav } from '@/components/dashboard/user-nav';
 import WalletClient from '@/components/dashboard/wallet-client';
+import { normalizeEnviosDisponibles } from '@/lib/envios';
 import { Logo } from '@/components/logo';
 import { mockUser } from '@/lib/mock-data';
 import { getPlans } from '@/lib/plans';
@@ -59,7 +60,7 @@ export default function BilleteraPage() {
                         prev
                             ? {
                                   ...prev,
-                                  creditos: userData.creditos ?? 0,
+                                  creditos: normalizeEnviosDisponibles(userData.creditos),
                                   perfil: {
                                       ...prev.perfil,
                                       nombre:

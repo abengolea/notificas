@@ -106,6 +106,49 @@ export async function verifyLegalMevColegioMember(
   }
 }
 
+export type LegalMevMemberRow = {
+  email: string;
+  name: string;
+  estado: "activo" | "suspendido";
+};
+
+export async function listLegalMevColegioMembers(
+  colegioId: string,
+): Promise<{
+  colegioName: string;
+  convenioActivo: boolean;
+  members: LegalMevMemberRow[];
+}> {
+  const empty = { colegioName: "", convenioActivo: false, members: [] as LegalMevMemberRow[] };
+  const url = baseUrl();
+  const secret = sharedSecret();
+  if (!url || !secret || !colegioId.trim()) return empty;
+
+  try {
+    const res = await fetch(
+      `${url}/api/integrations/notificas/colegios/${encodeURIComponent(colegioId.trim())}/members`,
+      {
+        headers: { Authorization: `Bearer ${secret}` },
+        signal: AbortSignal.timeout(30_000),
+        cache: "no-store",
+      },
+    );
+    const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!res.ok || !Array.isArray(j.members)) return empty;
+    const members = (j.members as LegalMevMemberRow[]).filter(
+      (m) => typeof m.email === "string" && m.email.includes("@"),
+    );
+    return {
+      colegioName: typeof j.colegioName === "string" ? j.colegioName : "",
+      convenioActivo: j.convenioActivo === true,
+      members,
+    };
+  } catch (e) {
+    console.error("[legalmev-colegio] list members", e);
+    return empty;
+  }
+}
+
 /** Lista colegios en LegalMev (admin Notificas para vincular IDs). */
 export async function listLegalMevColegios(): Promise<LegalMevColegioSummary[]> {
   const url = baseUrl();

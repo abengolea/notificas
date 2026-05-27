@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { listAdminUsersMerged } from "@/lib/admin-users-server";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminPanelConfig,
   verifyAdminSessionToken,
 } from "@/lib/admin-session";
+import { normalizeEnviosDisponibles } from "@/lib/envios";
 
 function assertAdmin(request: NextRequest): NextResponse | null {
   const cfg = getAdminPanelConfig();
@@ -22,62 +24,19 @@ function assertAdmin(request: NextRequest): NextResponse | null {
   return null;
 }
 
-function toIso(v: unknown): string {
-  if (v instanceof Timestamp) return v.toDate().toISOString();
-  if (
-    v &&
-    typeof v === "object" &&
-    "toDate" in v &&
-    typeof (v as Timestamp).toDate === "function"
-  ) {
-    try {
-      return (v as Timestamp).toDate().toISOString();
-    } catch {
-      /* fallthrough */
-    }
-  }
-  if (v instanceof Date) return v.toISOString();
-  return new Date(0).toISOString();
-}
-
-/** Lista usuarios desde Firestore `users/{uid}` (perfiles de la app). */
+/** Lista usuarios Notificas y/o nómina del colegio (LegalMev). ?filter=todos|colegio|solo_cuenta */
 export async function GET(request: NextRequest) {
   const denied = assertAdmin(request);
   if (denied) return denied;
 
+  const filterParam = request.nextUrl.searchParams.get("filter");
+  const filter =
+    filterParam === "colegio" || filterParam === "solo_cuenta" ? filterParam : "todos";
+  const collegeId = request.nextUrl.searchParams.get("collegeId")?.trim() || undefined;
+
   try {
-    const db = getAdminDb();
-    let snap;
-    try {
-      snap = await db.collection("users").orderBy("createdAt", "desc").limit(300).get();
-    } catch {
-      snap = await db.collection("users").limit(300).get();
-    }
-
-    const users = snap.docs.map((docSnap) => {
-      const d = docSnap.data() as Record<string, unknown>;
-      const perfil = (d.perfil || {}) as { nombre?: string };
-      const estadoRaw = d.estado;
-      const estado =
-        estadoRaw === "suspendido" ? ("suspendido" as const) : ("activo" as const);
-      const creditos = typeof d.creditos === "number" ? d.creditos : 0;
-
-      return {
-        id: docSnap.id,
-        nombre: (typeof perfil.nombre === "string" && perfil.nombre.trim()) ? perfil.nombre.trim()
-          : typeof d.email === "string" && d.email
-            ? d.email
-            : "Sin nombre",
-        email: typeof d.email === "string" ? d.email : "",
-        estado,
-        enviosDisponibles: creditos,
-        fechaRegistro: toIso(d.createdAt),
-      };
-    });
-
-    users.sort((a, b) => new Date(b.fechaRegistro).getTime() - new Date(a.fechaRegistro).getTime());
-
-    return NextResponse.json({ users });
+    const { users, colegioNombre } = await listAdminUsersMerged({ filter, collegeId });
+    return NextResponse.json({ users, colegioNombre, filter });
   } catch (e) {
     console.error("[admin/users GET]", e);
     return NextResponse.json({ error: "No se pudieron leer los usuarios" }, { status: 500 });
@@ -89,7 +48,7 @@ export async function PATCH(request: NextRequest) {
   const denied = assertAdmin(request);
   if (denied) return denied;
 
-  let body: { uid?: string; estado?: string; addCreditos?: number };
+  let body: { uid?: string; estado?: string; addCreditos?: number; setEnvios?: number };
   try {
     body = await request.json();
   } catch {
@@ -107,10 +66,14 @@ export async function PATCH(request: NextRequest) {
     typeof body.addCreditos === "number" && Number.isFinite(body.addCreditos)
       ? Math.floor(body.addCreditos)
       : 0;
+  const setEnvios =
+    typeof body.setEnvios === "number" && Number.isFinite(body.setEnvios)
+      ? Math.max(0, Math.floor(body.setEnvios))
+      : undefined;
 
-  if (!estadoIn && add <= 0) {
+  if (!estadoIn && add <= 0 && setEnvios === undefined) {
     return NextResponse.json(
-      { error: "Indicá estado o una cantidad de envíos positiva" },
+      { error: "Indicá estado, setEnvios o addCreditos" },
       { status: 400 },
     );
   }
@@ -123,12 +86,41 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 });
     }
 
+    const prev = snap.data() as Record<string, unknown>;
+    const prevCreditos = normalizeEnviosDisponibles(prev.creditos);
+
     const updates: Record<string, unknown> = {};
     if (estadoIn) updates.estado = estadoIn;
-    if (add > 0) updates.creditos = FieldValue.increment(add);
+    if (setEnvios !== undefined) {
+      updates.creditos = setEnvios;
+      const delta = setEnvios - prevCreditos;
+      if (delta !== 0) {
+        await db.collection("user_transactions").add({
+          userId: uid,
+          tipo: "ajuste",
+          descripcion: `Ajuste admin de envíos: ${prevCreditos} → ${setEnvios}`,
+          creditos: delta,
+          monto: 0,
+          fecha: FieldValue.serverTimestamp(),
+        });
+      }
+    } else if (add > 0) {
+      updates.creditos = FieldValue.increment(add);
+      await db.collection("user_transactions").add({
+        userId: uid,
+        tipo: "regalo",
+        descripcion: `Regalo admin (+${add} envíos)`,
+        creditos: add,
+        monto: 0,
+        fecha: FieldValue.serverTimestamp(),
+      });
+    }
 
     await ref.update(updates);
-    return NextResponse.json({ ok: true });
+    const nextCreditos = normalizeEnviosDisponibles(
+      setEnvios !== undefined ? setEnvios : add > 0 ? prevCreditos + add : prevCreditos,
+    );
+    return NextResponse.json({ ok: true, enviosDisponibles: nextCreditos });
   } catch (e) {
     console.error("[admin/users PATCH]", e);
     return NextResponse.json({ error: "No se pudo actualizar el usuario" }, { status: 500 });

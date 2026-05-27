@@ -23,6 +23,8 @@
     "check:app-env": "node scripts/check-app-env.js",
     "seed:demo-empresa": "node scripts/seed-demo-empresa.js",
     "migrate:legacy-users": "node scripts/import-legacy-users-from-csv.js",
+    "migrate:creditos-to-envios": "node scripts/convert-creditos-to-envios.js",
+    "migrate:clamp-negative-creditos": "node scripts/clamp-negative-creditos.js",
     "repair:legacy-csv-corruption": "node scripts/repair-legacy-csv-email-corruption.js",
     "export:users-excel": "node scripts/export-firestore-users-to-xlsx.js",
     "script:send-reset-link": "node scripts/send-password-reset-link.js",

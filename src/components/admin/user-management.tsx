@@ -21,6 +21,7 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuLabel,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
   } from "@/components/ui/dropdown-menu"
 import {
@@ -35,26 +36,94 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { AdminUser } from "@/lib/types"
-import { MoreHorizontal, ToggleLeft, Gift, XCircle, CheckCircle, Loader2 } from "lucide-react"
+import { MoreHorizontal, ToggleLeft, Gift, XCircle, CheckCircle, Loader2, History, Scale, Pencil, Search, X } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { useToast } from "@/hooks/use-toast"
+
+type UserFilter = "colegio" | "todos" | "solo_cuenta"
+
+type HistorialRow = {
+  id: string
+  fecha: string
+  tipo: string
+  descripcion: string
+  creditos: number
+  monto: number
+}
+
+function normalizeForSearch(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim();
+}
+
+function matchesFreeSearch(user: AdminUser, rawQuery: string): boolean {
+  const q = normalizeForSearch(rawQuery);
+  if (!q) return true;
+
+  const haystack = normalizeForSearch(
+    [
+      user.nombre,
+      user.email,
+      user.id,
+      user.colegioNombre ?? "",
+      user.estado,
+      user.colegioMemberEstado ?? "",
+      String(user.enviosDisponibles),
+      user.enNominaColegio ? "colegio nomina matriculado" : "",
+      user.tieneCuentaNotificas ? "cuenta notificas" : "sin cuenta",
+    ].join(" "),
+  );
+
+  const tokens = q.split(/\s+/).filter(Boolean);
+  return tokens.every((token) => haystack.includes(token));
+}
+
+function mapUser(u: Record<string, unknown>): AdminUser {
+  return {
+    id: String(u.id ?? ""),
+    nombre: String(u.nombre ?? ""),
+    email: String(u.email ?? ""),
+    estado: u.estado === "suspendido" ? "suspendido" : "activo",
+    enviosDisponibles: typeof u.enviosDisponibles === "number" ? u.enviosDisponibles : 0,
+    fechaRegistro: new Date(typeof u.fechaRegistro === "string" ? u.fechaRegistro : 0),
+    enNominaColegio: u.enNominaColegio === true,
+    colegioNombre: typeof u.colegioNombre === "string" ? u.colegioNombre : undefined,
+    colegioMemberEstado:
+      u.colegioMemberEstado === "suspendido" ? "suspendido" : u.colegioMemberEstado === "activo" ? "activo" : undefined,
+    tieneCuentaNotificas: u.tieneCuentaNotificas !== false,
+  }
+}
 
 export default function UserManagement() {
     const [users, setUsers] = React.useState<AdminUser[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [listError, setListError] = React.useState<string | null>(null);
+    const [filter, setFilter] = React.useState<UserFilter>("colegio");
+    const [searchQuery, setSearchQuery] = React.useState("");
+    const [colegioNombre, setColegioNombre] = React.useState<string | null>(null);
     const [selectedUser, setSelectedUser] = React.useState<AdminUser | null>(null);
     const [isGiftDialogOpen, setGiftDialogOpen] = React.useState(false);
+    const [isEditEnviosOpen, setEditEnviosOpen] = React.useState(false);
+    const [editEnviosValue, setEditEnviosValue] = React.useState(0);
+    const [isHistorialOpen, setHistorialOpen] = React.useState(false);
+    const [historial, setHistorial] = React.useState<HistorialRow[]>([]);
+    const [historialLoading, setHistorialLoading] = React.useState(false);
+    const [historialNote, setHistorialNote] = React.useState<string | null>(null);
     const [giftAmount, setGiftAmount] = React.useState(0);
     const [actionBusyId, setActionBusyId] = React.useState<string | null>(null);
     const { toast } = useToast();
 
     const loadUsers = React.useCallback(async () => {
         setListError(null);
+        setLoading(true);
         try {
-            const res = await fetch("/api/admin/users", { credentials: "include" });
+            const res = await fetch(`/api/admin/users?filter=${filter}`, { credentials: "include" });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
                 setListError(typeof data.error === "string" ? data.error : "No se pudo cargar la lista");
@@ -62,28 +131,27 @@ export default function UserManagement() {
                 return;
             }
             const raw = Array.isArray(data.users) ? data.users : [];
-            const mapped: AdminUser[] = raw.map((u: Record<string, unknown>) => ({
-                id: String(u.id ?? ""),
-                nombre: String(u.nombre ?? ""),
-                email: String(u.email ?? ""),
-                estado: u.estado === "suspendido" ? "suspendido" : "activo",
-                enviosDisponibles: typeof u.enviosDisponibles === "number" ? u.enviosDisponibles : 0,
-                fechaRegistro: new Date(typeof u.fechaRegistro === "string" ? u.fechaRegistro : 0),
-            }));
-            setUsers(mapped);
+            setUsers(raw.map((u: Record<string, unknown>) => mapUser(u)));
+            setColegioNombre(typeof data.colegioNombre === "string" ? data.colegioNombre : null);
         } catch {
             setListError("Error de red al cargar usuarios");
             setUsers([]);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [filter]);
 
     React.useEffect(() => {
         void loadUsers();
     }, [loadUsers]);
 
+    const filteredUsers = React.useMemo(
+      () => users.filter((u) => matchesFreeSearch(u, searchQuery)),
+      [users, searchQuery],
+    );
+
     const handleToggleSuspend = async (user: AdminUser) => {
+        if (!user.id) return;
         const newStatus = user.estado === "activo" ? "suspendido" : "activo";
         setActionBusyId(user.id);
         try {
@@ -112,14 +180,126 @@ export default function UserManagement() {
         }
     };
 
+    const requireCuenta = (user: AdminUser): boolean => {
+        if (!user.id) {
+            toast({
+                title: "Sin cuenta Notificas",
+                description: "Este matriculado aún no se registró en la app.",
+                variant: "destructive",
+            });
+            return false;
+        }
+        return true;
+    };
+
     const handleOpenGiftDialog = (user: AdminUser) => {
+        if (!requireCuenta(user)) return;
         setSelectedUser(user);
         setGiftAmount(0);
         setGiftDialogOpen(true);
     };
 
+    const handleOpenEditEnvios = (user: AdminUser) => {
+        if (!requireCuenta(user)) return;
+        setSelectedUser(user);
+        setEditEnviosValue(user.enviosDisponibles);
+        setEditEnviosOpen(true);
+    };
+
+    const handleConfirmEditEnvios = async () => {
+        if (!selectedUser?.id) return;
+        if (editEnviosValue < 0 || !Number.isFinite(editEnviosValue)) {
+            toast({
+                title: "Valor inválido",
+                description: "Los envíos deben ser un número mayor o igual a 0.",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        setActionBusyId(selectedUser.id);
+        try {
+            const res = await fetch("/api/admin/users", {
+                method: "PATCH",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    uid: selectedUser.id,
+                    setEnvios: Math.floor(editEnviosValue),
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                toast({
+                    title: "No se pudo guardar",
+                    description: typeof data.error === "string" ? data.error : "Intentá de nuevo",
+                    variant: "destructive",
+                });
+                return;
+            }
+            const nuevo =
+              typeof data.enviosDisponibles === "number"
+                ? data.enviosDisponibles
+                : Math.floor(editEnviosValue);
+            toast({
+                title: "Envíos actualizados",
+                description: `${selectedUser.nombre}: ahora tiene ${nuevo} envío${nuevo === 1 ? "" : "s"}.`,
+            });
+            setEditEnviosOpen(false);
+            setSelectedUser(null);
+            await loadUsers();
+        } finally {
+            setActionBusyId(null);
+        }
+    };
+
+    const handleOpenHistorial = async (user: AdminUser) => {
+        setSelectedUser(user);
+        setHistorial([]);
+        setHistorialNote(null);
+        setHistorialOpen(true);
+        setHistorialLoading(true);
+        try {
+            const q = user.id
+              ? `uid=${encodeURIComponent(user.id)}`
+              : `email=${encodeURIComponent(user.email)}`;
+            const res = await fetch(`/api/admin/users/historial?${q}`, { credentials: "include" });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setHistorialNote(typeof data.error === "string" ? data.error : "No se pudo cargar");
+                return;
+            }
+            if (data.sinCuenta) {
+                setHistorialNote(
+                    typeof data.message === "string"
+                      ? data.message
+                      : "Sin cuenta Notificas — no hay movimientos.",
+                );
+                return;
+            }
+            const rows = Array.isArray(data.historial) ? data.historial : [];
+            setHistorial(
+              rows.map((h: Record<string, unknown>) => ({
+                id: String(h.id ?? ""),
+                fecha: String(h.fecha ?? ""),
+                tipo: String(h.tipo ?? ""),
+                descripcion: String(h.descripcion ?? ""),
+                creditos: typeof h.creditos === "number" ? h.creditos : 0,
+                monto: typeof h.monto === "number" ? h.monto : 0,
+              })),
+            );
+            if (rows.length === 0) {
+                setHistorialNote("Sin movimientos registrados todavía.");
+            }
+        } catch {
+            setHistorialNote("Error de red al cargar el historial.");
+        } finally {
+            setHistorialLoading(false);
+        }
+    };
+
     const handleConfirmGift = async () => {
-        if (!selectedUser || giftAmount <= 0) {
+        if (!selectedUser?.id || giftAmount <= 0) {
             toast({
                 title: 'Error',
                 description: 'Por favor, introduce una cantidad válida de envíos.',
@@ -157,49 +337,104 @@ export default function UserManagement() {
         }
     };
 
-
   return (
     <>
     <Card>
       <CardHeader>
-        <CardTitle>Usuarios</CardTitle>
-        <CardDescription>
-          Usuarios con perfil en Firestore (colección <code className="text-xs">users</code>). Quienes solo existan en Auth sin documento no aparecen.
-        </CardDescription>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Scale className="h-5 w-5 text-primary" />
+              Usuarios
+            </CardTitle>
+            <CardDescription className="mt-1.5 max-w-2xl">
+              La pestaña <strong>Colegio</strong> muestra la nómina de LegalMev (matriculados) y si ya tienen cuenta en
+              Notificas. Podés regalar envíos, suspender y ver historial solo en quienes tienen cuenta.
+            </CardDescription>
+          </div>
+          <Tabs value={filter} onValueChange={(v) => setFilter(v as UserFilter)}>
+            <TabsList>
+              <TabsTrigger value="colegio">Colegio</TabsTrigger>
+              <TabsTrigger value="todos">Todos</TabsTrigger>
+              <TabsTrigger value="solo_cuenta">Solo Notificas</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+        {filter === "colegio" && colegioNombre ? (
+          <p className="text-sm text-primary font-medium">
+            Nómina: {colegioNombre} — {users.length} fila{users.length === 1 ? "" : "s"}
+          </p>
+        ) : null}
+        <div className="relative max-w-xl">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <Input
+            type="search"
+            placeholder="Buscar por nombre, email, UID, envíos, colegio…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10 pr-10"
+            aria-label="Buscar usuarios"
+            disabled={loading}
+          />
+          {searchQuery ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2"
+              aria-label="Limpiar búsqueda"
+              onClick={() => setSearchQuery("")}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          ) : null}
+        </div>
+        {searchQuery.trim() && !loading && !listError ? (
+          <p className="text-sm text-muted-foreground">
+            {filteredUsers.length} de {users.length} coinciden con «{searchQuery.trim()}»
+          </p>
+        ) : null}
       </CardHeader>
       <CardContent>
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
-            Cargando usuarios…
+            Cargando…
           </div>
         ) : listError ? (
           <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
             {listError}
-            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => { setLoading(true); void loadUsers(); }}>
+            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => { void loadUsers(); }}>
               Reintentar
             </Button>
           </div>
         ) : users.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            No hay documentos en <code className="text-xs">users</code>. Los registros por signup crean el perfil aquí.
+            {filter === "colegio"
+              ? "No hay matriculados en la nómina del colegio. Vinculá LegalMev en Planes → Colegios y actualizá la base."
+              : "No hay usuarios para mostrar."}
+          </p>
+        ) : filteredUsers.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            Ningún usuario coincide con «{searchQuery.trim()}». Probá con otro término o limpiá el buscador.
           </p>
         ) : (
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Usuario</TableHead>
+              <TableHead>Colegio / cuenta</TableHead>
               <TableHead>Estado</TableHead>
-              <TableHead>Envíos Disponibles</TableHead>
-              <TableHead>Fecha de Registro</TableHead>
+              <TableHead>Envíos</TableHead>
+              <TableHead>Registro</TableHead>
               <TableHead>
                 <span className="sr-only">Acciones</span>
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {users.map((user) => (
-              <TableRow key={user.id}>
+            {filteredUsers.map((user) => (
+              <TableRow key={user.id || user.email}>
                 <TableCell>
                   <div className="font-medium">{user.nombre}</div>
                   <div className="text-sm text-muted-foreground">
@@ -207,49 +442,91 @@ export default function UserManagement() {
                   </div>
                 </TableCell>
                 <TableCell>
+                  <div className="flex flex-col gap-1">
+                    {user.enNominaColegio ? (
+                      <Badge variant="secondary" className="w-fit text-xs">
+                        {user.colegioNombre ?? "Colegio"}
+                        {user.colegioMemberEstado === "suspendido" ? " (nómina suspendido)" : ""}
+                      </Badge>
+                    ) : null}
+                    {user.tieneCuentaNotificas ? (
+                      <Badge variant="outline" className="w-fit text-xs">Cuenta Notificas</Badge>
+                    ) : (
+                      <Badge variant="destructive" className="w-fit text-xs">Sin cuenta Notificas</Badge>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
                   <Badge variant={user.estado === "activo" ? "default" : "destructive"}>
                     <div className="flex items-center">
                         {user.estado === "activo" ? <CheckCircle className="mr-1 h-3 w-3" /> : <XCircle className="mr-1 h-3 w-3" />}
-                        {user.estado}
+                        {user.tieneCuentaNotificas ? user.estado : user.colegioMemberEstado ?? user.estado}
                     </div>
                   </Badge>
                 </TableCell>
-                <TableCell>{user.enviosDisponibles}</TableCell>
                 <TableCell>
-                  {format(user.fechaRegistro, "dd/MM/yyyy", { locale: es })}
+                  {user.tieneCuentaNotificas ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono tabular-nums text-sm hover:bg-muted"
+                      title="Clic para editar envíos disponibles"
+                      onClick={() => handleOpenEditEnvios(user)}
+                    >
+                      {user.enviosDisponibles}
+                      <Pencil className="h-3 w-3 text-muted-foreground" />
+                    </button>
+                  ) : (
+                    "—"
+                  )}
+                </TableCell>
+                <TableCell>
+                  {user.tieneCuentaNotificas && user.fechaRegistro.getTime() > 0
+                    ? format(user.fechaRegistro, "dd/MM/yyyy", { locale: es })
+                    : "—"}
                 </TableCell>
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button aria-haspopup="true" size="icon" variant="ghost">
                         <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Toggle menu</span>
+                        <span className="sr-only">Menú</span>
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+                      <DropdownMenuItem onClick={() => void handleOpenHistorial(user)}>
+                        <History className="mr-2 h-4 w-4" />
+                        Historial de movimientos
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem
-                        disabled={actionBusyId === user.id}
+                        disabled={!user.id || actionBusyId === user.id}
+                        onClick={() => handleOpenEditEnvios(user)}>
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Editar envíos disponibles
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={!user.id || actionBusyId === user.id}
                         onClick={() => handleOpenGiftDialog(user)}>
                         <Gift className="mr-2 h-4 w-4" />
-                        Regalar Envíos
+                        Sumar envíos (regalo)
                       </DropdownMenuItem>
-                      {user.estado === 'activo' ? (
+                      {user.id && user.estado === 'activo' ? (
                          <DropdownMenuItem
                            className="text-destructive"
                            disabled={actionBusyId === user.id}
                            onClick={() => void handleToggleSuspend(user)}>
                             <XCircle className="mr-2 h-4 w-4" />
-                            Suspender
+                            Suspender cuenta
                          </DropdownMenuItem>
-                      ) : (
+                      ) : user.id ? (
                         <DropdownMenuItem
                           disabled={actionBusyId === user.id}
                           onClick={() => void handleToggleSuspend(user)}>
                             <ToggleLeft className="mr-2 h-4 w-4" />
-                            Reanudar
+                            Reanudar cuenta
                         </DropdownMenuItem>
-                      )}
+                      ) : null}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>
@@ -261,17 +538,60 @@ export default function UserManagement() {
       </CardContent>
     </Card>
 
-    <Dialog open={isGiftDialogOpen} onOpenChange={setGiftDialogOpen}>
+    <Dialog open={isEditEnviosOpen} onOpenChange={setEditEnviosOpen}>
         <DialogContent className="sm:max-w-md">
             <DialogHeader>
-                <DialogTitle>Regalar Envíos a {selectedUser?.nombre}</DialogTitle>
+                <DialogTitle>Editar envíos — {selectedUser?.nombre}</DialogTitle>
                 <DialogDescription>
-                    Introduce la cantidad de envíos que quieres añadir a la cuenta de este usuario.
+                  Definí el saldo exacto de envíos en la billetera (reemplaza el valor actual, no suma).
+                  Útil si antes eran créditos en pesos y hay que corregir la migración.
                 </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                    <Label htmlFor="gift-amount">Cantidad de Envíos</Label>
+                    <Label htmlFor="edit-envios">Envíos disponibles</Label>
+                    <Input
+                        id="edit-envios"
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={editEnviosValue}
+                        onChange={(e) => setEditEnviosValue(parseInt(e.target.value, 10) || 0)}
+                    />
+                    {selectedUser ? (
+                      <p className="text-xs text-muted-foreground">
+                        Valor actual en sistema: <strong>{selectedUser.enviosDisponibles}</strong>
+                      </p>
+                    ) : null}
+                </div>
+            </div>
+            <DialogFooter>
+                <Button type="button" variant="ghost" onClick={() => setEditEnviosOpen(false)}>Cancelar</Button>
+                <Button type="button" disabled={actionBusyId === selectedUser?.id} onClick={() => void handleConfirmEditEnvios()}>
+                  {actionBusyId === selectedUser?.id ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Guardando…
+                    </>
+                  ) : (
+                    "Guardar envíos"
+                  )}
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <Dialog open={isGiftDialogOpen} onOpenChange={setGiftDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+                <DialogTitle>Sumar envíos — {selectedUser?.nombre}</DialogTitle>
+                <DialogDescription>
+                    Suma envíos al saldo actual (no reemplaza). Para fijar un número exacto usá «Editar envíos».
+                </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                    <Label htmlFor="gift-amount">Cantidad de envíos</Label>
                     <Input
                         id="gift-amount"
                         type="number"
@@ -293,6 +613,54 @@ export default function UserManagement() {
                     "Confirmar regalo"
                   )}
                 </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <Dialog open={isHistorialOpen} onOpenChange={setHistorialOpen}>
+        <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+                <DialogTitle>Historial — {selectedUser?.nombre}</DialogTitle>
+                <DialogDescription>{selectedUser?.email}</DialogDescription>
+            </DialogHeader>
+            {historialLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : historialNote ? (
+              <p className="text-sm text-muted-foreground py-4">{historialNote}</p>
+            ) : (
+              <div className="max-h-[360px] overflow-y-auto rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Detalle</TableHead>
+                      <TableHead className="text-right">Envíos</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {historial.map((h) => (
+                      <TableRow key={h.id}>
+                        <TableCell className="text-xs whitespace-nowrap">
+                          {h.fecha ? format(new Date(h.fecha), "dd/MM/yy HH:mm", { locale: es }) : "—"}
+                        </TableCell>
+                        <TableCell className="text-xs">{h.tipo}</TableCell>
+                        <TableCell className="text-xs max-w-[180px] truncate" title={h.descripcion}>
+                          {h.descripcion}
+                        </TableCell>
+                        <TableCell className="text-right text-xs tabular-nums">
+                          {h.creditos > 0 ? `+${h.creditos}` : h.creditos}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+            <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setHistorialOpen(false)}>Cerrar</Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>

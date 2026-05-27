@@ -69,6 +69,10 @@ export type AdminUser = {
     estado: 'activo' | 'suspendido';
     enviosDisponibles: number;
     fechaRegistro: Date;
+    enNominaColegio?: boolean;
+    colegioNombre?: string;
+    colegioMemberEstado?: 'activo' | 'suspendido';
+    tieneCuentaNotificas?: boolean;
 };
 
 export type AdminStats = {
