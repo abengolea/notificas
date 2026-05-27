@@ -56,71 +56,54 @@ const linkEmpresa = (
 const faqItems: FaqItem[] = [
   {
     question: "¿Qué es Notificas?",
-    answerShort:
-      "Servicio de constancia digital: registro de contenido, envío, recepción y lectura en blockchain. Aplicable a intimaciones, reclamos, avisos laborales y oficios, entre otros.",
     answer:
-      "Notificas es un servicio de comunicaciones con constancia digital mediante tecnología blockchain. Cabe registrar, entre otros aspectos, el contenido del mensaje, el envío, la recepción y/o la lectura. La solución está orientada a supuestos como intimaciones, reclamos de consumo, relaciones laborales, oficios electrónicos y, en general, comunicaciones en las que se requiera trazabilidad documentada. La viabilidad jurídica en cada supuesto depende del acto y de la normativa aplicable.",
+      "Notificas es una plataforma de notificaciones fehacientes digitales. Cada comunicación que enviás queda certificada en la red Polygon (blockchain pública): el contenido del mensaje, la fecha y hora de envío, la recepción y la lectura del destinatario. Todo queda registrado de forma inmutable y verificable por cualquier persona.",
   },
   {
-    question: "¿Qué aporta la blockchain a una comunicación?",
-    answerShort:
-      "La cadena de bloques deja un registro enlazado y difícil de alterar, útil para acreditar fechas y contenidos. No reemplaza asesoramiento profesional.",
+    question: "¿Qué eventos se certifican en blockchain?",
     answer:
-      "La información se incorpora a una cadena de bloques enlazada de manera cronológica y auditable. Una vez asentado el registro, resulta sumamente oneroso modificarlo sin dejar evidencia, lo que refuerza la integridad temporal y el soporte para acreditar qué mensaje se envió y en qué momento. La interpretación probatoria en sede administrativa o judicial corresponde a cada caso concreto.",
+      "Certificamos cuatro eventos en cadena: el envío (con hash SHA-256 del contenido e ID del servidor SMTP), la recepción (primer acceso fehaciente del destinatario), la lectura confirmada (cuando el destinatario confirma explícitamente haber leído), y el certificado PDF (hash del documento oficial, encadenado al envío). Todos los eventos están vinculados entre sí mediante referencias criptográficas.",
   },
   {
-    question: "¿Equivale a una carta documento u otro acto notarial?",
-    answerShort:
-      "No automáticamente. Cada instrumento tiene requisitos legales según el acto y la jurisdicción. Notificas ofrece constancia digital; es conveniente consultar a un abogado o escribano.",
+    question: "¿Qué pasa con el canal de WhatsApp?",
     answer:
-      "No necesariamente. La carta documento, las notificaciones ante organismo público y otros medios de constancia están regulados de modo específico según el tipo de acto y la jurisdicción. Notificas brinda constancia digital con respaldo técnico (envío, contenido, recepción y/o lectura, y documentación asociada). Para determinar si el instrumento resulta idóneo en un expediente o reclamo determinado, se recomienda consultar a un profesional habilitado. Nada de lo aquí expuesto constituye asesoramiento jurídico.",
+      "Además del correo electrónico, enviamos una notificación por WhatsApp al destinatario. Registramos el envío del mensaje, la entrega al dispositivo, la apertura del enlace y la lectura del contenido. Todos estos eventos también quedan certificados en Polygon.",
   },
   {
-    question: "¿Qué ocurre si el destinatario no abre el correo?",
-    answerShort:
-      "Queda constancia del envío y de la recepción del mensaje por el servidor de correo del destinatario; además, el sistema puede reintentar el envío y dejar registro de ese proceso en blockchain.",
+    question: "¿Equivale a una carta documento?",
     answer:
-      "Aun cuando el destinatario no abra el mensaje, el servicio deja constancia del envío y del acuse o recepción del correo en el servidor del destinatario (entrega en buzón a nivel de infraestructura de correo), según los eventos que capture la plataforma. Si corresponde a la configuración vigente, puede aplicarse el reenvío automatizado y el registro de dichos reintentos y del proceso en la cadena de bloques. La lectura o apertura del mensaje constituye un evento distinto y, cuando se registra, refuerza la trazabilidad. Cantidad de reintentos y plazos dependen de la funcionalidad habilitada en cada momento.",
+      "Es más económico, más rápido y con mayor trazabilidad que una carta documento tradicional — hasta 20 veces más barato, sin necesidad de concurrir a ninguna oficina. El certificado que generamos tiene valor probatorio y puede presentarse ante autoridades judiciales o administrativas. Para casos específicos que exijan una forma legal determinada, consultá con tu asesor legal.",
+  },
+  {
+    question: "¿Qué pasa si el destinatario no abre el correo?",
+    answer:
+      "Igual queda constancia del envío certificado en Polygon. Si el destinatario no abre el mensaje, el sistema registra el intento de entrega y el estado de la comunicación. Podés también notificar por WhatsApp simultáneamente, lo que amplia la cobertura del intento fehaciente. El certificado PDF refleja todos los eventos ocurridos hasta el momento en que lo descargás.",
   },
   {
     question: "¿Por cuánto tiempo se conserva la documentación?",
-    answerShort:
-      "La documentación asociada puede conservarse, como mínimo, cinco años, según lo informado en este sitio.",
     answer:
-      "Según la información publicada en el sitio, la documentación asociada a las comunicaciones puede almacenarse durante un período no inferior a cinco años, a fin de preservar respaldo e historial. Los plazos exactos pueden actualizarse en los términos comerciales o la política aplicable; se sugiere revisar la versión vigente al momento del envío.",
+      "Toda la documentación asociada a tus envíos se conserva por un mínimo de 5 años. Las transacciones en Polygon son permanentes por naturaleza: ningún tercero, ni siquiera Notificas, puede modificarlas o eliminarlas una vez confirmadas.",
   },
   {
-    question: "¿Cómo se acredita el envío o la lectura en un juicio o reclamo?",
-    answerShort:
-      "Se generan constancias y documentación vinculada a la cadena de eventos. La eficacia probatoria la determina el juez o la autoridad según el caso.",
+    question: "¿Cómo se usa el certificado en un juicio o reclamo?",
     answer:
-      "El sistema está diseñado para producir documentación de respaldo (constancias, informes o materiales asociados a la secuencia de eventos) que puedan incorporarse a un expediente o reclamo, siempre con el sustento profesional que corresponda. La valoración probatoria es prerrogativa del órgano jurisdiccional o administrativo competente, según el caso y la normativa aplicable.",
+      "Desde el dashboard podés descargar el certificado PDF oficial de cualquier envío. Ese documento incluye todos los eventos certificados, los hashes SHA-256, los hash de transacción en Polygon y la cadena de eventos. El hash del propio PDF también queda anclado en blockchain, lo que garantiza que no fue alterado. Podés presentarlo directamente en cualquier expediente.",
   },
   {
-    question: "¿Cómo se verifica un PDF o certificado emitido por Notificas?",
-    answerShort: (
-      <>
-        Utilice la sección {linkVerify} para validar constancias atribuidas a Notificas.
-      </>
-    ),
+    question: "¿Cómo verifico que un certificado es auténtico?",
     answer: (
       <>
-        Puede verificar la autenticidad de las constancias en formato PDF atribuidas a Notificas mediante la sección{" "}
-        {linkVerify}
-        , donde se contrasta el documento con los registros del servicio.
+        Ingresá a la sección {linkVerify} y subí el PDF o ingresá el ID del mensaje. El sistema compara el hash del documento con el registrado en Polygon. Si coincide, el certificado es auténtico y no fue modificado. También podés verificar la transacción de forma independiente en{" "}
+        <a href="https://polygonscan.com" target="_blank" rel="noopener noreferrer" className="text-primary font-medium underline-offset-4 hover:underline">polygonscan.com</a>{" "}
+        ingresando el hash de TX que figura en el PDF.
       </>
     ),
   },
   {
-    question: "¿Cómo se accede al servicio?",
-    answerShort: (
-      <>
-        {linkSignup}, {linkLogin} o {linkEmpresa} para cuentas corporativas.
-      </>
-    ),
+    question: "¿Cómo empiezo a usar Notificas?",
     answer: (
       <>
-        Para crear una cuenta utilice {linkSignup}; para ingresar a una cuenta existente, {linkLogin}. Las organizaciones pueden utilizar el {linkEmpresa} cuando corresponda a su flujo de trabajo.
+        Creá tu cuenta en {linkSignup} — el proceso toma menos de dos minutos. Desde el dashboard podés cargar créditos y empezar a enviar notificaciones certificadas de inmediato. Para cuentas corporativas o de volumen, usá el {linkEmpresa}.
       </>
     ),
   },
@@ -155,8 +138,7 @@ export function FaqSection() {
             Preguntas frecuentes
           </h2>
           <p className="text-muted-foreground text-base md:text-lg max-w-2xl mx-auto">
-            Información general sobre constancias digitales, blockchain y uso de la
-            plataforma. No constituye asesoramiento jurídico.
+            Todo lo que necesitás saber sobre el servicio, la certificación en blockchain y cómo usar la plataforma.
           </p>
         </div>
         <Accordion
