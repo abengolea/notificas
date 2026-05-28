@@ -8,6 +8,7 @@ interface MailMessageContent {
   text?: string;
   subject?: string;
   content?: string; // Contenido real del mensaje (sin template de email)
+  contentText?: string; // Texto plano del mensaje (usado para hash de integridad)
 }
 
 interface MailTracking {
