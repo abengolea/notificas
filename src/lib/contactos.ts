@@ -73,6 +73,53 @@ export async function guardarContacto(
 }
 
 /**
+ * Persiste email/teléfono al cargarlos en el formulario de envío.
+ * No incrementa vecesUsado (eso ocurre al enviar el mensaje).
+ */
+export async function persistirContactoDestinatario(
+  usuarioId: string,
+  email: string,
+  telefono?: string
+): Promise<void> {
+  const normalized = normalizeContactEmail(email);
+  if (!normalized.includes('@')) return;
+
+  try {
+    const contactosRef = collection(db, 'contactos');
+    const q = query(
+      contactosRef,
+      where('usuarioId', '==', usuarioId),
+      where('email', '==', normalized)
+    );
+
+    const querySnapshot = await getDocs(q);
+    const telefonoVal = telefono?.trim() || null;
+
+    if (querySnapshot.empty) {
+      await addDoc(contactosRef, {
+        email: normalized,
+        nombre: normalized.split('@')[0],
+        cuit: null,
+        telefono: telefonoVal,
+        usuarioId,
+        ultimoUso: serverTimestamp(),
+        vecesUsado: 0,
+        createdAt: serverTimestamp(),
+      });
+      console.log('✅ Contacto destinatario guardado:', normalized);
+    } else if (telefonoVal) {
+      const contactoDoc = querySnapshot.docs[0];
+      await updateDoc(doc(db, 'contactos', contactoDoc.id), {
+        telefono: telefonoVal,
+      });
+      console.log('✅ Teléfono de contacto actualizado:', normalized);
+    }
+  } catch (error) {
+    console.error('❌ Error al persistir contacto destinatario:', error);
+  }
+}
+
+/**
  * Obtiene los contactos más usados de un usuario para autocompletado
  */
 export async function obtenerContactos(
@@ -127,9 +174,10 @@ export async function buscarContactos(
     
     // Filtrar por término de búsqueda (email o nombre)
     const terminoLower = termino.toLowerCase();
-    const contactosFiltrados = contactos.filter(contacto => 
+    const contactosFiltrados = contactos.filter(contacto =>
       contacto.email.toLowerCase().includes(terminoLower) ||
-      (contacto.nombre && contacto.nombre.toLowerCase().includes(terminoLower))
+      (contacto.nombre && contacto.nombre.toLowerCase().includes(terminoLower)) ||
+      (contacto.telefono && contacto.telefono.replace(/\D/g, '').includes(termino.replace(/\D/g, '')))
     );
     
     return contactosFiltrados.slice(0, limite);
