@@ -14,6 +14,11 @@ const plusJakarta = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: 'Notificas',
   description: 'Notificaciones fehacientes digitales con respaldo en la red Polygon. Certificá el envío, recepción y lectura de tus comunicaciones.',
+  icons: {
+    icon: [{ url: '/notificasLogo.jpg', type: 'image/jpeg' }],
+    apple: '/notificasLogo.jpg',
+    shortcut: '/notificasLogo.jpg',
+  },
 };
 
 export const viewport: Viewport = {
