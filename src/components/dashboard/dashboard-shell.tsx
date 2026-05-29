@@ -108,6 +108,7 @@ export function DashboardShell({
   const router = useRouter();
   const pathname = usePathname();
   const onContactosRoute = pathname?.startsWith("/dashboard/contactos") ?? false;
+  const onCuentaRoute = pathname?.startsWith("/dashboard/cuenta") ?? false;
 
   const [isComposeOpen, setComposeOpen] = useState(false);
   const [appUserInternal, setAppUserInternal] = useState<AppUser | null>(null);
@@ -204,12 +205,16 @@ export function DashboardShell({
       <div className="mt-auto p-6 space-y-6">
         <Separator />
 
-        <div>
-          <Link href="#" className="flex items-center text-base font-medium text-card-foreground/80 hover:text-primary">
+        <Button
+          variant={onCuentaRoute ? "secondary" : "ghost"}
+          className="w-full justify-start text-base font-medium"
+          asChild
+        >
+          <Link href="/dashboard/cuenta" className="flex w-full items-center">
             <UserIcon className="mr-3 h-5 w-5" />
-            Mi Perfil
+            Mi cuenta
           </Link>
-        </div>
+        </Button>
         <div>
           <Button
             variant="ghost"
