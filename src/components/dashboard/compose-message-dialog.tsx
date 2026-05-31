@@ -45,6 +45,12 @@ import { uploadPDF, type UploadedFile } from "@/lib/storage";
 import { EmailAutocomplete } from "@/components/ui/email-autocomplete";
 import { persistirContactoDestinatario } from "@/lib/contactos";
 import {
+    clearComposeDraft,
+    hasComposeDraftContent,
+    readComposeDraft,
+    writeComposeDraft,
+} from "@/lib/compose-draft";
+import {
     escapeHtml,
     normalizeLinkInput,
     plainTextToHtml,
@@ -52,56 +58,6 @@ import {
     sanitizeRichTextHtml,
     stripRichTextToPlainText,
 } from "@/lib/rich-text";
-
-type ComposeDraft = {
-    recipient: string;
-    recipientPhone: string;
-    content: string;
-    savedAt: number;
-};
-
-function composeDraftKey(uid: string) {
-    return `notificas-compose-draft:${uid}`;
-}
-
-function readComposeDraft(uid: string): ComposeDraft | null {
-    if (typeof window === "undefined") return null;
-    try {
-        const raw = localStorage.getItem(composeDraftKey(uid));
-        if (!raw) return null;
-        const parsed = JSON.parse(raw) as ComposeDraft;
-        if (!parsed || typeof parsed.content !== "string") return null;
-        return parsed;
-    } catch {
-        return null;
-    }
-}
-
-function writeComposeDraft(uid: string, draft: ComposeDraft) {
-    if (typeof window === "undefined") return;
-    try {
-        localStorage.setItem(composeDraftKey(uid), JSON.stringify(draft));
-    } catch {
-        // Ignorar quota exceeded u otros errores de almacenamiento
-    }
-}
-
-function clearComposeDraft(uid: string) {
-    if (typeof window === "undefined") return;
-    try {
-        localStorage.removeItem(composeDraftKey(uid));
-    } catch {
-        // noop
-    }
-}
-
-function hasComposeDraftContent(draft: Pick<ComposeDraft, "recipient" | "recipientPhone" | "content">) {
-    return (
-        !!draft.recipient?.trim() ||
-        !!draft.recipientPhone?.trim() ||
-        stripRichTextToPlainText(draft.content || "").length > 0
-    );
-}
 
 function buildComposeMailHtml(params: {
   recipientEmail: string;
@@ -425,6 +381,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
     const [selectedFiles, setSelectedFiles] = useState<SelectedAttachment[]>([]);
     const isExecutingRef = useRef(false);
     const currentExecutionIdRef = useRef<string | null>(null);
+    const skipDraftSaveRef = useRef(false);
     const { toast } = useToast();
     const form = useForm<MessageFormValues>({
         resolver: zodResolver(messageSchema),
@@ -453,6 +410,36 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
 
         void persistirContactoDestinatario(user.uid, email, phone || undefined);
     }, [form, user.uid]);
+
+    const saveDraftFromForm = useCallback(() => {
+        if (!user.uid) return;
+
+        if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+        }
+
+        const values = form.getValues();
+        const draft = {
+            recipient: values.recipient || "",
+            recipientPhone: values.recipientPhone || "",
+            content: values.content || "",
+            savedAt: Date.now(),
+        };
+
+        if (hasComposeDraftContent(draft)) {
+            writeComposeDraft(user.uid, draft);
+        } else {
+            clearComposeDraft(user.uid);
+        }
+    }, [form, user.uid]);
+
+    const handleOpenChange = useCallback((nextOpen: boolean) => {
+        if (!nextOpen && !skipDraftSaveRef.current) {
+            saveDraftFromForm();
+        }
+        skipDraftSaveRef.current = false;
+        onOpenChange(nextOpen);
+    }, [onOpenChange, saveDraftFromForm]);
 
     // Establecer contacto inicial o restaurar borrador local al abrir el diálogo
     useEffect(() => {
@@ -686,8 +673,9 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                 description: toastDesc,
                 variant: 'default',
             });
-            onOpenChange(false);
+            skipDraftSaveRef.current = true;
             clearComposeDraft(user.uid);
+            handleOpenChange(false);
             form.reset();
         } catch (e: unknown) {
             toast({
@@ -703,11 +691,11 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                 setIsSending(false);
             }
         }
-    }, [isSuspended, toast, user, onOpenChange, form, selectedFiles]);
+    }, [isSuspended, toast, user, handleOpenChange, form, selectedFiles]);
 
     const composeActions = (
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="ghost" size="sm" onClick={() => handleOpenChange(false)}>
                 Cancelar
             </Button>
             <Button type="submit" size="sm" disabled={isSending || isSuspended}>
@@ -727,7 +715,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
     );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>

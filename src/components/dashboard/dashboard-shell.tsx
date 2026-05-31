@@ -41,6 +41,8 @@ import { UserNav } from "@/components/dashboard/user-nav";
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { auth } from "@/lib/firebase";
+import { OPEN_COMPOSE_EVENT } from "@/lib/compose-draft";
+import { useComposeDraftPending } from "@/hooks/use-compose-draft-pending";
 
 export type MailFolderNavId =
   | "inbox"
@@ -114,6 +116,13 @@ export function DashboardShell({
   const [appUserInternal, setAppUserInternal] = useState<AppUser | null>(null);
 
   const appUser = syncAuthFromParent ? parentAppUser : appUserInternal;
+  const hasPendingDraft = useComposeDraftPending(appUser?.uid);
+
+  useEffect(() => {
+    const openCompose = () => setComposeOpen(true);
+    window.addEventListener(OPEN_COMPOSE_EVENT, openCompose);
+    return () => window.removeEventListener(OPEN_COMPOSE_EVENT, openCompose);
+  }, []);
 
   useEffect(() => {
     if (syncAuthFromParent) return;
@@ -163,12 +172,20 @@ export function DashboardShell({
       <nav className="flex-1 px-4 space-y-2">
         {folders.map((folder) => {
           const active = folderNavMode === "client" && selectedMailFolder === folder.id;
+          const showDraftBadge = folder.id === "drafts" && hasPendingDraft;
           if (folderNavMode === "route") {
             return (
               <Button key={folder.id} variant="ghost" className="w-full justify-start h-11 text-base" asChild>
                 <Link href="/dashboard" className="flex w-full items-center">
                   {folder.icon}
-                  {folder.label}
+                  <span className="flex-1 text-left">{folder.label}</span>
+                  {showDraftBadge && (
+                    <span
+                      className="ml-auto h-2.5 w-2.5 shrink-0 rounded-full bg-primary"
+                      aria-label="Borrador pendiente"
+                      title="Tenés un borrador sin enviar"
+                    />
+                  )}
                 </Link>
               </Button>
             );
@@ -181,7 +198,14 @@ export function DashboardShell({
               onClick={() => onMailFolderSelect?.(folder.id)}
             >
               {folder.icon}
-              {folder.label}
+              <span className="flex-1 text-left">{folder.label}</span>
+              {showDraftBadge && (
+                <span
+                  className="ml-auto h-2.5 w-2.5 shrink-0 rounded-full bg-primary"
+                  aria-label="Borrador pendiente"
+                  title="Tenés un borrador sin enviar"
+                />
+              )}
             </Button>
           );
         })}
