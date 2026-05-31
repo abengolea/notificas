@@ -783,10 +783,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                     )}
                 </div>
                 <div className="grid gap-2">
-                    <div className="flex flex-col gap-2 border-b pb-3 sm:flex-row sm:items-center sm:justify-between">
-                        <Label htmlFor="content" className="mb-0">Contenido del Mensaje</Label>
-                        {composeActions}
-                    </div>
+                    <Label htmlFor="content">Contenido del Mensaje</Label>
                     <RichTextEditor
                         value={form.watch("content")}
                         disabled={isSuspended || isSending}
