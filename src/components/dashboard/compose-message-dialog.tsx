@@ -43,6 +43,13 @@ import { auth, db } from "@/lib/firebase";
 import { PDFUpload } from "./pdf-upload";
 import { uploadPDF, type UploadedFile } from "@/lib/storage";
 import { EmailAutocomplete } from "@/components/ui/email-autocomplete";
+import { persistirContactoDestinatario } from "@/lib/contactos";
+import {
+    clearComposeDraft,
+    hasComposeDraftContent,
+    readComposeDraft,
+    writeComposeDraft,
+} from "@/lib/compose-draft";
 import {
     escapeHtml,
     normalizeLinkInput,
@@ -230,11 +237,14 @@ type RichTextEditorProps = {
 
 function RichTextEditor({ value, disabled, onChange, onBlur }: RichTextEditorProps) {
     const editorRef = useRef<HTMLDivElement | null>(null);
+    const isEditorFocusedRef = useRef(false);
     const isEmpty = stripRichTextToPlainText(value).length === 0;
 
     useEffect(() => {
         const editor = editorRef.current;
-        if (!editor || editor.innerHTML === value) return;
+        // No pisar el DOM mientras el usuario escribe: evita perder texto al hacer blur/clic fuera
+        if (!editor || isEditorFocusedRef.current) return;
+        if (editor.innerHTML === value) return;
         editor.innerHTML = value || "";
     }, [value]);
 
@@ -270,9 +280,11 @@ function RichTextEditor({ value, disabled, onChange, onBlur }: RichTextEditorPro
     }, [disabled, syncFromEditor]);
 
     const handleBlur = useCallback(() => {
+        isEditorFocusedRef.current = false;
+        syncFromEditor();
         sanitizeAndSync();
         onBlur();
-    }, [onBlur, sanitizeAndSync]);
+    }, [onBlur, sanitizeAndSync, syncFromEditor]);
 
     const createLink = useCallback(() => {
         if (disabled) return;
@@ -350,7 +362,10 @@ function RichTextEditor({ value, disabled, onChange, onBlur }: RichTextEditorPro
                     aria-multiline="true"
                     contentEditable={!disabled}
                     suppressContentEditableWarning
-                    className="min-h-[170px] rounded-b-md px-3 py-3 text-sm leading-6 outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-lg [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-6"
+                    className="max-h-[min(320px,38vh)] min-h-[200px] overflow-y-auto rounded-b-md px-3 py-3 text-sm leading-6 outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-lg [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-6"
+                    onFocus={() => {
+                        isEditorFocusedRef.current = true;
+                    }}
                     onInput={syncFromEditor}
                     onBlur={handleBlur}
                     onPaste={handlePaste}
@@ -366,6 +381,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
     const [selectedFiles, setSelectedFiles] = useState<SelectedAttachment[]>([]);
     const isExecutingRef = useRef(false);
     const currentExecutionIdRef = useRef<string | null>(null);
+    const skipDraftSaveRef = useRef(false);
     const { toast } = useToast();
     const form = useForm<MessageFormValues>({
         resolver: zodResolver(messageSchema),
@@ -380,16 +396,93 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
 
     const isSuspended = user.estado === 'suspendido';
 
-    // Establecer contacto inicial cuando se abre el diálogo
-    useEffect(() => {
-        if (open && initialContact) {
-            form.setValue('recipient', initialContact.email);
-            if (initialContact.telefono) form.setValue('recipientPhone', initialContact.telefono);
-        } else if (open && !initialContact) {
-            form.setValue('recipient', '');
-            form.setValue('recipientPhone', '');
+    const persistRecipientContact = useCallback(async () => {
+        if (!user.uid) return;
+
+        const email = form.getValues('recipient')?.trim();
+        const phone = form.getValues('recipientPhone')?.trim();
+
+        const emailValid = await form.trigger('recipient');
+        if (!emailValid || !email) return;
+
+        const phoneValid = phone ? await form.trigger('recipientPhone') : true;
+        if (!phoneValid) return;
+
+        void persistirContactoDestinatario(user.uid, email, phone || undefined);
+    }, [form, user.uid]);
+
+    const saveDraftFromForm = useCallback(() => {
+        if (!user.uid) return;
+
+        if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
         }
-    }, [open, initialContact, form]);
+
+        const values = form.getValues();
+        const draft = {
+            recipient: values.recipient || "",
+            recipientPhone: values.recipientPhone || "",
+            content: values.content || "",
+            savedAt: Date.now(),
+        };
+
+        if (hasComposeDraftContent(draft)) {
+            writeComposeDraft(user.uid, draft);
+        } else {
+            clearComposeDraft(user.uid);
+        }
+    }, [form, user.uid]);
+
+    const handleOpenChange = useCallback((nextOpen: boolean) => {
+        if (!nextOpen && !skipDraftSaveRef.current) {
+            saveDraftFromForm();
+        }
+        skipDraftSaveRef.current = false;
+        onOpenChange(nextOpen);
+    }, [onOpenChange, saveDraftFromForm]);
+
+    // Establecer contacto inicial o restaurar borrador local al abrir el diálogo
+    useEffect(() => {
+        if (!open || !user.uid) return;
+
+        if (initialContact) {
+            form.setValue("recipient", initialContact.email);
+            if (initialContact.telefono) form.setValue("recipientPhone", initialContact.telefono);
+            return;
+        }
+
+        const draft = readComposeDraft(user.uid);
+        if (draft && hasComposeDraftContent(draft)) {
+            form.setValue("recipient", draft.recipient || "");
+            form.setValue("recipientPhone", draft.recipientPhone || "");
+            form.setValue("content", draft.content || "");
+            return;
+        }
+
+        form.setValue("recipient", "");
+        form.setValue("recipientPhone", "");
+    }, [open, initialContact, form, user.uid]);
+
+    // Autoguardar borrador en el navegador mientras se redacta
+    useEffect(() => {
+        if (!open || !user.uid) return;
+
+        const subscription = form.watch((values) => {
+            const draft = {
+                recipient: values.recipient || "",
+                recipientPhone: values.recipientPhone || "",
+                content: values.content || "",
+                savedAt: Date.now(),
+            };
+            if (!hasComposeDraftContent(draft)) {
+                clearComposeDraft(user.uid);
+                return;
+            }
+            writeComposeDraft(user.uid, draft);
+        });
+
+        return () => subscription.unsubscribe();
+    }, [open, form, user.uid]);
 
     const onSubmit = useCallback(async (data: MessageFormValues) => {
         if (isSuspended) {
@@ -433,6 +526,8 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
 
             const sender = auth.currentUser?.email || user.email;
             const phoneForWhatsApp = data.recipientPhone?.trim() || undefined;
+
+            void persistirContactoDestinatario(user.uid, recipientEmail, phoneForWhatsApp);
 
             let uploadedAttachments: UploadedFile[] = [];
 
@@ -578,7 +673,9 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                 description: toastDesc,
                 variant: 'default',
             });
-            onOpenChange(false);
+            skipDraftSaveRef.current = true;
+            clearComposeDraft(user.uid);
+            handleOpenChange(false);
             form.reset();
         } catch (e: unknown) {
             toast({
@@ -594,22 +691,49 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                 setIsSending(false);
             }
         }
-    }, [isSuspended, toast, user, onOpenChange, form, selectedFiles]);
+    }, [isSuspended, toast, user, handleOpenChange, form, selectedFiles]);
+
+    const composeActions = (
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={() => handleOpenChange(false)}>
+                Cancelar
+            </Button>
+            <Button type="submit" size="sm" disabled={isSending || isSuspended}>
+                {isSending ? (
+                    <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Enviando...
+                    </>
+                ) : (
+                    <>
+                        <PenSquare className="mr-2 h-4 w-4" />
+                        Enviar Mensaje Certificado
+                    </>
+                )}
+            </Button>
+        </div>
+    );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Redactar Nuevo Mensaje Certificado</DialogTitle>
-          <DialogDescription>
-            Este mensaje será encriptado y certificado en la blockchain de Polygon.
-          </DialogDescription>
+      <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1.5rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0 top-[4vh] translate-y-0 sm:top-[50%] sm:translate-y-[-50%] sm:w-full">
+        <DialogHeader className="shrink-0 space-y-3 border-b px-6 py-4 pr-12">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1 text-left">
+              <DialogTitle>Redactar Nuevo Mensaje Certificado</DialogTitle>
+              <DialogDescription>
+                Este mensaje será encriptado y certificado en la blockchain de Polygon.
+              </DialogDescription>
+            </div>
+            {composeActions}
+          </div>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <fieldset disabled={isSuspended}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
+            <fieldset disabled={isSuspended} className="space-y-4">
                 <div className="grid gap-2">
                     <Label htmlFor="email-input">Correo del destinatario</Label>
                     <EmailAutocomplete
@@ -617,9 +741,10 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                         userId={user.uid}
                         value={form.watch('recipient')}
                         onChange={(v) => form.setValue('recipient', v, { shouldValidate: true })}
-                        onBlur={() => form.trigger('recipient')}
+                        onBlur={persistRecipientContact}
                         onContactSelect={(c) => {
                             if (c.telefono) form.setValue('recipientPhone', c.telefono);
+                            void persistirContactoDestinatario(user.uid, c.email, c.telefono);
                         }}
                         error={form.formState.errors.recipient?.message}
                         placeholder="destinatario@ejemplo.com"
@@ -634,7 +759,9 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                         id="recipientPhone"
                         type="tel"
                         placeholder="+54 11 1234-5678, 011 1234-5678, 9 11 1234-5678"
-                        {...form.register("recipientPhone")}
+                        {...form.register("recipientPhone", {
+                            onBlur: () => { void persistRecipientContact(); },
+                        })}
                     />
                     <p className="text-xs text-muted-foreground">
                         Si indicas un número, se puede enviar un mensaje por WhatsApp además del correo.
@@ -674,26 +801,14 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                     />
                 </div>
             </fieldset>
+            </div>
 
-            <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button type="submit" disabled={isSending || isSuspended}>
-                {isSending ? (
-                    <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Enviando...
-                    </>
-                ) : (
-                    <>
-                        <PenSquare className="mr-2 h-4 w-4" />
-                        Enviar Mensaje Certificado
-                    </>
-                )}
-            </Button>
+            <DialogFooter className="shrink-0 gap-2 border-t bg-background px-6 py-3 sm:justify-end">
+                {composeActions}
             </DialogFooter>
         </form>
          {isSuspended && (
-            <div className="text-center text-sm text-destructive mt-4 p-2 bg-destructive/10 rounded-md">
+            <div className="shrink-0 border-t px-6 py-3 text-center text-sm text-destructive bg-destructive/10">
                 Tu cuenta está suspendida. No puedes enviar nuevos mensajes.
             </div>
         )}

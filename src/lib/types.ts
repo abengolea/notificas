@@ -8,6 +8,7 @@ export type User = {
     apellido?: string;
     razonSocial?: string;
     cuit?: string;
+    dni?: string;
     direccion?: string;
     telefono?: string;
     verificado: boolean;

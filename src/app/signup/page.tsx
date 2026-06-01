@@ -95,7 +95,7 @@ export default function SignupPage() {
       // 3. Save additional user data to Firestore
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
-        email: data.email,
+        email: emailNorm,
         tipo: data.accountType,
         perfil: {
           nombre: data.name,
@@ -103,11 +103,21 @@ export default function SignupPage() {
           telefono: data.phone,
           verificado: true, // Mark as verified since we don't require email verification
         },
-        creditos: 0, // Empieza con 0 envíos disponibles
+        creditos: 0,
         estado: 'activo',
         createdAt: new Date(),
         lastLogin: new Date(),
       });
+
+      try {
+        const token = await user.getIdToken();
+        await fetch("/api/auth/apply-pending-colegio-envios", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch {
+        /* el layout del dashboard también reintenta al entrar */
+      }
 
       toast({
         title: "¡Cuenta Creada!",

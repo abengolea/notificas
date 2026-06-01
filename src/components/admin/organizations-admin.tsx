@@ -114,9 +114,30 @@ export default function OrganizationsAdmin() {
           extraMemberEmails: extraMemberEmails.length ? extraMemberEmails : undefined,
         }),
       });
-      const data = await res.json();
+      const data = (await res.json()) as {
+        id?: string;
+        error?: string;
+        inviteEmailSent?: boolean;
+        inviteEmailError?: string;
+        warning?: string;
+        authCreated?: boolean;
+      };
       if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "Error al crear");
-      toast({ title: "Organización creada", description: `ID: ${data.id}` });
+      if (data.inviteEmailSent) {
+        toast({
+          title: "Organización creada",
+          description: `ID: ${data.id}. Se envió el correo de activación al administrador.`,
+        });
+      } else {
+        toast({
+          title: "Organización creada (sin correo)",
+          description:
+            data.inviteEmailError ||
+            data.warning ||
+            "No se pudo enviar el mail de activación. Revisá la configuración de correo.",
+          variant: "destructive",
+        });
+      }
       form.reset({
         nombre: "",
         cuit: "",
@@ -146,8 +167,9 @@ export default function OrganizationsAdmin() {
             Alta de empresa / organización
           </CardTitle>
           <CardDescription>
-            El responsable debe tener cuenta en la app (Firebase Auth). Podés agregar miembros por email (también
-            registrados).
+            Si el email no tiene cuenta, se crea automáticamente y se envía un correo con enlace para definir contraseña y
+            acceder al módulo <span className="font-mono text-xs">/empresa</span>. Requiere{' '}
+            <span className="font-mono text-xs">NEXT_PUBLIC_APP_URL</span> configurada en el servidor.
           </CardDescription>
         </CardHeader>
         <CardContent>

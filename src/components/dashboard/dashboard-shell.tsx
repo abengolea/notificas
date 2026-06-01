@@ -17,6 +17,7 @@ import {
   User as UserIcon,
   Wallet,
   Users,
+  Receipt,
 } from "lucide-react";
 
 import type { User as AppUser } from "@/lib/types";
@@ -41,6 +42,8 @@ import { UserNav } from "@/components/dashboard/user-nav";
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { auth } from "@/lib/firebase";
+import { OPEN_COMPOSE_EVENT } from "@/lib/compose-draft";
+import { useComposeDraftPending } from "@/hooks/use-compose-draft-pending";
 
 export type MailFolderNavId =
   | "inbox"
@@ -108,11 +111,19 @@ export function DashboardShell({
   const router = useRouter();
   const pathname = usePathname();
   const onContactosRoute = pathname?.startsWith("/dashboard/contactos") ?? false;
+  const onCuentaRoute = pathname?.startsWith("/dashboard/cuenta") ?? false;
 
   const [isComposeOpen, setComposeOpen] = useState(false);
   const [appUserInternal, setAppUserInternal] = useState<AppUser | null>(null);
 
   const appUser = syncAuthFromParent ? parentAppUser : appUserInternal;
+  const hasPendingDraft = useComposeDraftPending(appUser?.uid);
+
+  useEffect(() => {
+    const openCompose = () => setComposeOpen(true);
+    window.addEventListener(OPEN_COMPOSE_EVENT, openCompose);
+    return () => window.removeEventListener(OPEN_COMPOSE_EVENT, openCompose);
+  }, []);
 
   useEffect(() => {
     if (syncAuthFromParent) return;
@@ -162,12 +173,20 @@ export function DashboardShell({
       <nav className="flex-1 px-4 space-y-2">
         {folders.map((folder) => {
           const active = folderNavMode === "client" && selectedMailFolder === folder.id;
+          const showDraftBadge = folder.id === "drafts" && hasPendingDraft;
           if (folderNavMode === "route") {
             return (
               <Button key={folder.id} variant="ghost" className="w-full justify-start h-11 text-base" asChild>
                 <Link href="/dashboard" className="flex w-full items-center">
                   {folder.icon}
-                  {folder.label}
+                  <span className="flex-1 text-left">{folder.label}</span>
+                  {showDraftBadge && (
+                    <span
+                      className="ml-auto h-2.5 w-2.5 shrink-0 rounded-full bg-primary"
+                      aria-label="Borrador pendiente"
+                      title="Tenés un borrador sin enviar"
+                    />
+                  )}
                 </Link>
               </Button>
             );
@@ -180,7 +199,14 @@ export function DashboardShell({
               onClick={() => onMailFolderSelect?.(folder.id)}
             >
               {folder.icon}
-              {folder.label}
+              <span className="flex-1 text-left">{folder.label}</span>
+              {showDraftBadge && (
+                <span
+                  className="ml-auto h-2.5 w-2.5 shrink-0 rounded-full bg-primary"
+                  aria-label="Borrador pendiente"
+                  title="Tenés un borrador sin enviar"
+                />
+              )}
             </Button>
           );
         })}
@@ -204,12 +230,16 @@ export function DashboardShell({
       <div className="mt-auto p-6 space-y-6">
         <Separator />
 
-        <div>
-          <Link href="#" className="flex items-center text-base font-medium text-card-foreground/80 hover:text-primary">
+        <Button
+          variant={onCuentaRoute ? "secondary" : "ghost"}
+          className="w-full justify-start text-base font-medium"
+          asChild
+        >
+          <Link href="/dashboard/cuenta" className="flex w-full items-center">
             <UserIcon className="mr-3 h-5 w-5" />
-            Mi Perfil
+            Mi cuenta
           </Link>
-        </div>
+        </Button>
         <div>
           <Button
             variant="ghost"
@@ -231,6 +261,13 @@ export function DashboardShell({
           <Link href="/dashboard/billetera" className="flex items-center text-lg font-semibold hover:text-primary">
             <Wallet className="mr-2 h-6 w-6" />
             Billetera
+          </Link>
+          <Link
+            href="/dashboard/billetera?tab=movimientos"
+            className="flex items-center text-sm font-medium text-muted-foreground hover:text-primary"
+          >
+            <Receipt className="mr-2 h-4 w-4" />
+            Pagos y facturas
           </Link>
           <div className="flex justify-between items-center text-sm p-3 bg-muted rounded-lg">
             <span>Envíos</span>

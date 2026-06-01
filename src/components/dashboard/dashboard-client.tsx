@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { DashboardShell, type MailFolderNavId } from './dashboard-shell';
+import { ComposeDraftPanel } from './compose-draft-panel';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -496,12 +497,18 @@ export default function DashboardClient() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
             <h1 className="text-balance text-xl font-semibold sm:text-2xl">
               {folders.find((f) => f.id === selectedFolder)?.label}{' '}
-              <span className="text-muted-foreground block text-base font-normal sm:inline sm:text-2xl sm:font-semibold">
-                (Notificaciones recientes)
-              </span>
+              {selectedFolder !== 'drafts' && (
+                <span className="text-muted-foreground block text-base font-normal sm:inline sm:text-2xl sm:font-semibold">
+                  (Notificaciones recientes)
+                </span>
+              )}
             </h1>
           </div>
 
+          {selectedFolder === 'drafts' ? (
+            appUser?.uid ? <ComposeDraftPanel uid={appUser.uid} /> : null
+          ) : (
+          <>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
             <Input
@@ -685,6 +692,8 @@ export default function DashboardClient() {
               </TableBody>
             </Table>
           </Card>
+          </>
+          )}
       </div>
     </DashboardShell>
   );
