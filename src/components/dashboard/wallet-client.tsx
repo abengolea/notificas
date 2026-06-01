@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type { User, Transaccion, Plan } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,6 +42,9 @@ const FormattedDateCell = ({ date }: { date: Date | string }) => {
 };
 
 export default function WalletClient({ user, transactions, planes }: WalletClientProps) {
+  const searchParams = useSearchParams();
+  const initialTab =
+    searchParams.get('tab') === 'movimientos' ? 'movimientos' : 'comprar';
   const [loadingPlan, setLoadingPlan] = useState<Plan['id'] | null>(null);
   const [syncOpId, setSyncOpId] = useState('');
   const [syncLoading, setSyncLoading] = useState(false);
@@ -473,7 +477,7 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
         </div>
       </div>
 
-      <Tabs defaultValue="comprar" className="w-full">
+      <Tabs defaultValue={initialTab} className="w-full">
         <div className="sticky top-16 z-10 -mx-4 border-b bg-muted/30 px-4 py-2 backdrop-blur-sm sm:-mx-6 sm:px-6">
           <TabsList className="grid h-auto w-full grid-cols-3 gap-1 sm:inline-flex sm:w-auto">
             <TabsTrigger value="comprar" className="gap-1.5 px-2 sm:px-3">
@@ -482,7 +486,7 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
             </TabsTrigger>
             <TabsTrigger value="movimientos" className="gap-1.5 px-2 sm:px-3">
               <History className="hidden h-4 w-4 sm:inline" aria-hidden />
-              <span className="text-xs sm:text-sm">Historial</span>
+              <span className="text-xs sm:text-sm">Pagos y facturas</span>
             </TabsTrigger>
             <TabsTrigger value="sincronizar" className="gap-1.5 px-2 sm:px-3">
               <RefreshCw className="hidden h-4 w-4 sm:inline" aria-hidden />
@@ -584,8 +588,11 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
         <TabsContent value="movimientos" className="mt-4 focus-visible:outline-none">
           <Card className="shadow-lg">
             <CardHeader>
-              <CardTitle>Historial de transacciones</CardTitle>
-              <CardDescription>Compras y uso de envíos. Podés desplazarte dentro de la tabla si hay muchos movimientos.</CardDescription>
+              <CardTitle>Historial de pagos y facturas</CardTitle>
+              <CardDescription>
+                Compras con Mercado Pago y uso de envíos. En cada compra podés bajar la factura fiscal en PDF
+                (Notificas S.R.L.).
+              </CardDescription>
             </CardHeader>
             <CardContent className="p-0 sm:p-6 sm:pt-0">
               <div className="max-h-[min(65vh,560px)] overflow-auto rounded-md border sm:border-0">

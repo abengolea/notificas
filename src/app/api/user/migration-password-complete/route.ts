@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { verifyAuthToken } from "@/lib/auth-helper";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { LEGACY_MIGRATION_SOURCE } from "@/lib/legacy-migration";
+import { hasPendingPasswordOnboarding } from "@/lib/legacy-migration";
 
 /**
  * Tras un login exitoso, marca que el usuario migrado ya definió contraseña usable
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ updated: false, reason: "no_profile" });
     }
     const d = snap.data() as Record<string, unknown>;
-    if (d.migrationSource !== LEGACY_MIGRATION_SOURCE || d.mustSetPassword !== true) {
+    if (!hasPendingPasswordOnboarding(d)) {
       return NextResponse.json({ updated: false, reason: "not_applicable" });
     }
 

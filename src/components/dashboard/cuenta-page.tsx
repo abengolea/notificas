@@ -363,14 +363,19 @@ export function CuentaPageComponent() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Billetera</CardTitle>
-          <CardDescription>Envíos disponibles y compra de planes.</CardDescription>
+          <CardTitle>Billetera y facturación</CardTitle>
+          <CardDescription>Envíos disponibles, compra de planes e historial de pagos con descarga de facturas.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-wrap gap-2">
           <Button variant="secondary" asChild>
             <Link href="/dashboard/billetera">
               <Wallet className="mr-2 h-4 w-4" />
-              Ir a la billetera
+              Comprar envíos
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/dashboard/billetera?tab=movimientos">
+              Historial de pagos y facturas
             </Link>
           </Button>
         </CardContent>

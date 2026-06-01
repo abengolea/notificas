@@ -17,6 +17,7 @@ import {
   User as UserIcon,
   Wallet,
   Users,
+  Receipt,
 } from "lucide-react";
 
 import type { User as AppUser } from "@/lib/types";
@@ -260,6 +261,13 @@ export function DashboardShell({
           <Link href="/dashboard/billetera" className="flex items-center text-lg font-semibold hover:text-primary">
             <Wallet className="mr-2 h-6 w-6" />
             Billetera
+          </Link>
+          <Link
+            href="/dashboard/billetera?tab=movimientos"
+            className="flex items-center text-sm font-medium text-muted-foreground hover:text-primary"
+          >
+            <Receipt className="mr-2 h-4 w-4" />
+            Pagos y facturas
           </Link>
           <div className="flex justify-between items-center text-sm p-3 bg-muted rounded-lg">
             <span>Envíos</span>

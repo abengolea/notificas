@@ -1,5 +1,8 @@
 import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
-import { LEGACY_MIGRATION_SOURCE, type LegacyMigrationStateCode } from "@/lib/legacy-migration";
+import {
+  hasPendingPasswordOnboarding,
+  type LegacyMigrationStateCode,
+} from "@/lib/legacy-migration";
 
 /** Email ya normalizado (trim + lower). */
 export async function getLegacyMigrationStateCode(
@@ -32,9 +35,7 @@ export async function getLegacyMigrationStateCode(
   }
 
   const d = snap.data() as Record<string, unknown> | undefined;
-  const pending =
-    d?.migrationSource === LEGACY_MIGRATION_SOURCE && d?.mustSetPassword === true;
-  if (pending) {
+  if (hasPendingPasswordOnboarding(d)) {
     return { ok: true, code: "MIGRATED_PENDING_PASSWORD" };
   }
   return { ok: true, code: "ACCOUNT_EXISTS" };

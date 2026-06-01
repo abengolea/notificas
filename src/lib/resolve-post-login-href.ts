@@ -10,7 +10,8 @@ export async function resolvePostLoginHref(
   user: User,
   options: { requested: string; defaultConsumerEntry: boolean },
 ): Promise<string> {
-  if (!options.defaultConsumerEntry) return options.requested;
+  // Siempre revisar org. B2B cuando el destino es el panel de particulares,
+  // aunque venga `?next=/dashboard` (enlace guardado o "Acceso empresas" mal copiado).
   if (options.requested !== "/dashboard") return options.requested;
 
   const token = await user.getIdToken();
