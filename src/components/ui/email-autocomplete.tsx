@@ -39,6 +39,8 @@ export function EmailAutocomplete({
 
   // Buscar sugerencias cuando cambia el valor
   useEffect(() => {
+    let cancelled = false
+
     const searchSuggestions = async () => {
       if (!value || value.length < 2 || !userId) {
         setSuggestions([])
@@ -49,23 +51,33 @@ export function EmailAutocomplete({
       setIsLoading(true)
       try {
         const contactos = await buscarContactos(userId, value, 5)
-        // Filtrar sugerencias que ya coincidan exactamente con el valor actual
-        const filteredContactos = contactos.filter(contacto => 
-          contacto.email.toLowerCase() !== value.toLowerCase()
+        if (cancelled) return
+
+        const filteredContactos = contactos.filter(
+          (contacto) => contacto.email.toLowerCase() !== value.toLowerCase().trim()
         )
+
         setSuggestions(filteredContactos)
         setShowSuggestions(filteredContactos.length > 0)
       } catch (error) {
+        if (cancelled) return
         console.error('Error al buscar contactos:', error)
         setSuggestions([])
         setShowSuggestions(false)
       } finally {
-        setIsLoading(false)
+        if (!cancelled) setIsLoading(false)
       }
     }
 
-    const timeoutId = setTimeout(searchSuggestions, 300) // Debounce
-    return () => clearTimeout(timeoutId)
+    if (value.length >= 2) {
+      setShowSuggestions(false)
+    }
+
+    const timeoutId = setTimeout(searchSuggestions, 300)
+    return () => {
+      cancelled = true
+      clearTimeout(timeoutId)
+    }
   }, [value, userId])
 
   // Cerrar sugerencias al hacer clic fuera

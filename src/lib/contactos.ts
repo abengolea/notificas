@@ -172,13 +172,18 @@ export async function buscarContactos(
   try {
     const contactos = await obtenerContactos(usuarioId, 50); // Obtener más para filtrar
     
-    // Filtrar por término de búsqueda (email o nombre)
-    const terminoLower = termino.toLowerCase();
-    const contactosFiltrados = contactos.filter(contacto =>
-      contacto.email.toLowerCase().includes(terminoLower) ||
-      (contacto.nombre && contacto.nombre.toLowerCase().includes(terminoLower)) ||
-      (contacto.telefono && contacto.telefono.replace(/\D/g, '').includes(termino.replace(/\D/g, '')))
-    );
+    const terminoLower = termino.toLowerCase().trim();
+    const terminoDigits = termino.replace(/\D/g, '');
+
+    const contactosFiltrados = contactos.filter((contacto) => {
+      if (contacto.email.toLowerCase().includes(terminoLower)) return true;
+      if (contacto.nombre?.toLowerCase().includes(terminoLower)) return true;
+      // Solo filtrar por teléfono si el término incluye dígitos (evita que includes('') coincida con todos)
+      if (terminoDigits.length >= 2 && contacto.telefono) {
+        return contacto.telefono.replace(/\D/g, '').includes(terminoDigits);
+      }
+      return false;
+    });
     
     return contactosFiltrados.slice(0, limite);
   } catch (error) {
