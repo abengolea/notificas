@@ -382,6 +382,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
     const isExecutingRef = useRef(false);
     const currentExecutionIdRef = useRef<string | null>(null);
     const skipDraftSaveRef = useRef(false);
+    const showDraftSavedToastRef = useRef(false);
     const { toast } = useToast();
     const form = useForm<MessageFormValues>({
         resolver: zodResolver(messageSchema),
@@ -411,8 +412,8 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
         void persistirContactoDestinatario(user.uid, email, phone || undefined);
     }, [form, user.uid]);
 
-    const saveDraftFromForm = useCallback(() => {
-        if (!user.uid) return;
+    const saveDraftFromForm = useCallback((): boolean => {
+        if (!user.uid) return false;
 
         if (document.activeElement instanceof HTMLElement) {
             document.activeElement.blur();
@@ -428,18 +429,27 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
 
         if (hasComposeDraftContent(draft)) {
             writeComposeDraft(user.uid, draft);
-        } else {
-            clearComposeDraft(user.uid);
+            return true;
         }
+
+        clearComposeDraft(user.uid);
+        return false;
     }, [form, user.uid]);
 
     const handleOpenChange = useCallback((nextOpen: boolean) => {
         if (!nextOpen && !skipDraftSaveRef.current) {
-            saveDraftFromForm();
+            const saved = saveDraftFromForm();
+            if (saved && showDraftSavedToastRef.current) {
+                toast({
+                    title: "Mensaje guardado en borradores",
+                    description: "Tu mensaje no se borró. Podés retomarlo desde la carpeta Borradores.",
+                });
+            }
+            showDraftSavedToastRef.current = false;
         }
         skipDraftSaveRef.current = false;
         onOpenChange(nextOpen);
-    }, [onOpenChange, saveDraftFromForm]);
+    }, [onOpenChange, saveDraftFromForm, toast]);
 
     // Establecer contacto inicial o restaurar borrador local al abrir el diálogo
     useEffect(() => {
@@ -719,7 +729,12 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
-      <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1.5rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0 top-[4vh] translate-y-0 sm:top-[50%] sm:translate-y-[-50%] sm:w-full">
+      <DialogContent
+        className="flex max-h-[92vh] w-[calc(100vw-1.5rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0 top-[4vh] translate-y-0 sm:top-[50%] sm:translate-y-[-50%] sm:w-full"
+        onInteractOutside={() => {
+          showDraftSavedToastRef.current = true;
+        }}
+      >
         <DialogHeader className="shrink-0 space-y-3 border-b px-6 py-4 pr-12">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-1 text-left">
