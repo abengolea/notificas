@@ -168,6 +168,9 @@ export function ContactoHistorial({ contacto, isOpen, onClose, userEmail }: Cont
                   }
                 </DialogTitle>
                 <p className="text-sm text-muted-foreground">{contacto.email}</p>
+                {contacto.empresa ? (
+                  <p className="text-xs text-muted-foreground">{contacto.empresa}</p>
+                ) : null}
               </div>
             </div>
             <Button variant="ghost" size="sm" onClick={onClose}>

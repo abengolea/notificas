@@ -124,6 +124,7 @@ export type Contacto = {
     id: string;
     email: string;
     nombre?: string;
+    empresa?: string; // Organización a la que pertenece el contacto
     cuit?: string; // CUIT opcional
     telefono?: string; // Teléfono para WhatsApp
     usuarioId: string; // ID del usuario que tiene este contacto

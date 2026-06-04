@@ -16,12 +16,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { actualizarNombreContacto } from "@/lib/contactos";
+import { actualizarContacto } from "@/lib/contactos";
 import type { Contacto } from "@/lib/types";
 import { Loader2 } from "lucide-react";
 
 const schema = z.object({
   nombre: z.string().min(2, { message: "El nombre debe tener al menos 2 caracteres." }),
+  empresa: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -37,7 +38,7 @@ export function EditarContactoNombreDialog({ open, onOpenChange, contacto, onAct
   const { toast } = useToast();
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { nombre: "" },
+    defaultValues: { nombre: "", empresa: "" },
   });
 
   useEffect(() => {
@@ -46,7 +47,7 @@ export function EditarContactoNombreDialog({ open, onOpenChange, contacto, onAct
         contacto.nombre?.trim() ||
         contacto.email.split("@")[0] ||
         "";
-      form.reset({ nombre: inicial });
+      form.reset({ nombre: inicial, empresa: contacto.empresa || "" });
     }
   }, [open, contacto, form]);
 
@@ -54,10 +55,13 @@ export function EditarContactoNombreDialog({ open, onOpenChange, contacto, onAct
     if (!contacto?.id) return;
 
     try {
-      await actualizarNombreContacto(contacto.id, data.nombre);
+      await actualizarContacto(contacto.id, {
+        nombre: data.nombre,
+        empresa: data.empresa,
+      });
       toast({
-        title: "Nombre actualizado",
-        description: `Se guardó el nombre para ${contacto.email}.`,
+        title: "Contacto actualizado",
+        description: `Se guardaron los datos de ${contacto.email}.`,
       });
       onActualizado?.();
       onOpenChange(false);
@@ -75,9 +79,9 @@ export function EditarContactoNombreDialog({ open, onOpenChange, contacto, onAct
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Editar nombre del contacto</DialogTitle>
+          <DialogTitle>Editar contacto</DialogTitle>
           <DialogDescription>
-            Este nombre es solo para tu agenda; no cambia el correo del destinatario ({contacto?.email}).
+            Estos datos son solo para tu agenda; no cambian el correo del destinatario ({contacto?.email}).
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -92,6 +96,18 @@ export function EditarContactoNombreDialog({ open, onOpenChange, contacto, onAct
             {form.formState.errors.nombre?.message ? (
               <p className="text-sm text-destructive">{form.formState.errors.nombre.message}</p>
             ) : null}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-contacto-empresa">Empresa (Opcional)</Label>
+            <Input
+              id="edit-contacto-empresa"
+              autoComplete="organization"
+              placeholder="Nombre de la organización"
+              {...form.register("empresa")}
+            />
+            <p className="text-xs text-muted-foreground">
+              Agrupa varios contactos de la misma organización.
+            </p>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

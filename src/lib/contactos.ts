@@ -25,7 +25,8 @@ export async function guardarContacto(
   email: string, 
   nombre?: string,
   cuit?: string,
-  telefono?: string
+  telefono?: string,
+  empresa?: string
 ): Promise<void> {
   const normalized = normalizeContactEmail(email);
   if (!normalized.includes('@')) return;
@@ -46,6 +47,7 @@ export async function guardarContacto(
       await addDoc(contactosRef, {
         email: normalized,
         nombre: nombre?.trim() || normalized.split('@')[0],
+        empresa: empresa?.trim() || null,
         cuit: cuit || null,
         telefono: telefono || null,
         usuarioId,
@@ -61,6 +63,7 @@ export async function guardarContacto(
         ultimoUso: serverTimestamp(),
         vecesUsado: (contactoDoc.data().vecesUsado || 0) + 1,
         ...(nombre && { nombre }), // Actualizar nombre si se proporciona
+        ...(empresa !== undefined && { empresa: empresa?.trim() || null }),
         ...(cuit && { cuit }), // Actualizar CUIT si se proporciona
         ...(telefono !== undefined && { telefono }) // Actualizar teléfono si se proporciona
       });
@@ -99,6 +102,7 @@ export async function persistirContactoDestinatario(
       await addDoc(contactosRef, {
         email: normalized,
         nombre: normalized.split('@')[0],
+        empresa: null,
         cuit: null,
         telefono: telefonoVal,
         usuarioId,
@@ -145,6 +149,7 @@ export async function obtenerContactos(
         id: doc.id,
         email: data.email,
         nombre: data.nombre,
+        empresa: data.empresa,
         cuit: data.cuit,
         telefono: data.telefono,
         usuarioId: data.usuarioId,
@@ -178,6 +183,7 @@ export async function buscarContactos(
     const contactosFiltrados = contactos.filter((contacto) => {
       if (contacto.email.toLowerCase().includes(terminoLower)) return true;
       if (contacto.nombre?.toLowerCase().includes(terminoLower)) return true;
+      if (contacto.empresa?.toLowerCase().includes(terminoLower)) return true;
       // Solo filtrar por teléfono si el término incluye dígitos (evita que includes('') coincida con todos)
       if (terminoDigits.length >= 2 && contacto.telefono) {
         return contacto.telefono.replace(/\D/g, '').includes(terminoDigits);
@@ -193,14 +199,32 @@ export async function buscarContactos(
 }
 
 /**
- * Actualiza el nombre mostrado de un contacto (el dueño ya está validado por reglas Firestore).
+ * Actualiza datos editables de un contacto (el dueño ya está validado por reglas Firestore).
  */
-export async function actualizarNombreContacto(contactoId: string, nombre: string): Promise<void> {
-  const trimmed = nombre.trim();
-  if (trimmed.length < 2) {
-    throw new Error('El nombre debe tener al menos 2 caracteres.');
+export async function actualizarContacto(
+  contactoId: string,
+  datos: { nombre?: string; empresa?: string }
+): Promise<void> {
+  const update: Record<string, string | null> = {};
+
+  if (datos.nombre !== undefined) {
+    const trimmed = datos.nombre.trim();
+    if (trimmed.length < 2) {
+      throw new Error('El nombre debe tener al menos 2 caracteres.');
+    }
+    update.nombre = trimmed;
   }
-  await updateDoc(doc(db, 'contactos', contactoId), {
-    nombre: trimmed,
-  });
+
+  if (datos.empresa !== undefined) {
+    update.empresa = datos.empresa.trim() || null;
+  }
+
+  if (Object.keys(update).length === 0) return;
+
+  await updateDoc(doc(db, 'contactos', contactoId), update);
+}
+
+/** @deprecated Usar actualizarContacto */
+export async function actualizarNombreContacto(contactoId: string, nombre: string): Promise<void> {
+  await actualizarContacto(contactoId, { nombre });
 }

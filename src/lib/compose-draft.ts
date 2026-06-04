@@ -3,6 +3,7 @@ import { stripRichTextToPlainText } from '@/lib/rich-text';
 export type ComposeDraft = {
   recipient: string;
   recipientPhone: string;
+  subject: string;
   content: string;
   savedAt: number;
 };
@@ -15,11 +16,12 @@ export function composeDraftKey(uid: string) {
 }
 
 export function hasComposeDraftContent(
-  draft: Pick<ComposeDraft, 'recipient' | 'recipientPhone' | 'content'>,
+  draft: Pick<ComposeDraft, 'recipient' | 'recipientPhone' | 'subject' | 'content'>,
 ) {
   return (
     !!draft.recipient?.trim() ||
     !!draft.recipientPhone?.trim() ||
+    !!draft.subject?.trim() ||
     stripRichTextToPlainText(draft.content || '').length > 0
   );
 }

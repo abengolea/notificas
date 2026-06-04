@@ -12,7 +12,7 @@ export function normalizeContactEmail(email: string): string {
 export async function guardarContactoServer(
   usuarioId: string,
   email: string,
-  opts?: { nombre?: string; cuit?: string; telefono?: string }
+  opts?: { nombre?: string; cuit?: string; telefono?: string; empresa?: string }
 ): Promise<void> {
   const normalized = normalizeContactEmail(email);
   if (!normalized.includes('@')) return;
@@ -29,6 +29,7 @@ export async function guardarContactoServer(
       await contactosRef.add({
         email: normalized,
         nombre: opts?.nombre?.trim() || normalized.split('@')[0],
+        empresa: opts?.empresa?.trim() || null,
         cuit: opts?.cuit || null,
         telefono: opts?.telefono || null,
         usuarioId,
@@ -44,6 +45,7 @@ export async function guardarContactoServer(
         ultimoUso: FieldValue.serverTimestamp(),
         vecesUsado: (data.vecesUsado || 0) + 1,
         ...(opts?.nombre?.trim() && { nombre: opts.nombre.trim() }),
+        ...(opts?.empresa !== undefined && { empresa: opts.empresa?.trim() || null }),
         ...(opts?.cuit && { cuit: opts.cuit }),
         ...(opts?.telefono !== undefined && { telefono: opts.telefono }),
       });

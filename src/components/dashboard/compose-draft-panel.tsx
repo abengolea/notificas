@@ -64,6 +64,9 @@ export function ComposeDraftPanel({ uid }: ComposeDraftPanelProps) {
               <span className="text-xs text-muted-foreground">Guardado {savedLabel}</span>
             )}
           </div>
+          {draft.subject?.trim() && (
+            <p className="text-sm font-medium">{draft.subject.trim()}</p>
+          )}
           {draft.recipient?.trim() && (
             <p className="text-sm">
               <span className="text-muted-foreground">Para: </span>
