@@ -16,6 +16,7 @@ import {
   MoreVertical,
   Filter,
   Pencil,
+  Building2,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -247,7 +248,7 @@ export function ContactosPageComponent({ layout = "standalone" }: { layout?: "st
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Buscar por email o nombre..."
+              placeholder="Buscar por email, nombre o empresa..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               className="pl-10"
@@ -324,6 +325,12 @@ export function ContactosPageComponent({ layout = "standalone" }: { layout?: "st
                         </Badge>
                       </div>
                       <p className="truncate text-sm text-muted-foreground">{contacto.email}</p>
+                      {contacto.empresa ? (
+                        <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <Building2 className="h-3 w-3 shrink-0" />
+                          {contacto.empresa}
+                        </p>
+                      ) : null}
                       {contacto.cuit ? (
                         <p className="text-xs text-muted-foreground">CUIT: {contacto.cuit}</p>
                       ) : null}
@@ -355,7 +362,7 @@ export function ContactosPageComponent({ layout = "standalone" }: { layout?: "st
                           onClick={() => setContactoEditando(contacto)}
                         >
                           <Pencil className="mr-2 h-4 w-4" />
-                          Editar nombre
+                          Editar contacto
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => abrirCompose(contacto)}>
                           <Send className="mr-2 h-4 w-4" />

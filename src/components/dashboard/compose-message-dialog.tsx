@@ -220,6 +220,11 @@ type SelectedAttachment = {
 const messageSchema = z.object({
   recipient: z.string().email({ message: "Dirección de correo electrónico inválida." }),
   recipientPhone: z.string().optional().refine((v) => !v || /^[\d\s\+\-\(\)]{8,25}$/.test(v), "Número inválido. Ej: +54 11 1234-5678, 011 1234-5678, 9 11 1234-5678"),
+  subject: z
+    .string()
+    .trim()
+    .min(1, { message: "El asunto es obligatorio." })
+    .max(200, { message: "El asunto no puede superar 200 caracteres." }),
   content: z.string().refine((value) => stripRichTextToPlainText(value).length >= 10, {
     message: "El mensaje debe tener al menos 10 caracteres.",
   }),
@@ -390,6 +395,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
         defaultValues: {
             recipient: "",
             recipientPhone: "",
+            subject: "",
             content: "",
             attachments: [],
         },
@@ -423,6 +429,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
         const draft = {
             recipient: values.recipient || "",
             recipientPhone: values.recipientPhone || "",
+            subject: values.subject || "",
             content: values.content || "",
             savedAt: Date.now(),
         };
@@ -465,12 +472,14 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
         if (draft && hasComposeDraftContent(draft)) {
             form.setValue("recipient", draft.recipient || "");
             form.setValue("recipientPhone", draft.recipientPhone || "");
+            form.setValue("subject", draft.subject || "");
             form.setValue("content", draft.content || "");
             return;
         }
 
         form.setValue("recipient", "");
         form.setValue("recipientPhone", "");
+        form.setValue("subject", "");
     }, [open, initialContact, form, user.uid]);
 
     // Autoguardar borrador en el navegador mientras se redacta
@@ -481,6 +490,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             const draft = {
                 recipient: values.recipient || "",
                 recipientPhone: values.recipientPhone || "",
+                subject: values.subject || "",
                 content: values.content || "",
                 savedAt: Date.now(),
             };
@@ -523,7 +533,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
 
         try {
             const recipientEmail = data.recipient.trim().toLowerCase();
-            const subject = `Mensaje certificado para ${recipientEmail}`;
+            const subject = data.subject.trim();
 
             if (normalizeEnviosDisponibles(user.creditos) < 1) {
                 toast({
@@ -773,7 +783,6 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                     <Input
                         id="recipientPhone"
                         type="tel"
-                        placeholder="+54 11 1234-5678, 011 1234-5678, 9 11 1234-5678"
                         {...form.register("recipientPhone", {
                             onBlur: () => { void persistRecipientContact(); },
                         })}
@@ -783,6 +792,21 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                     </p>
                     {form.formState.errors.recipientPhone && (
                         <p className="text-sm text-destructive">{form.formState.errors.recipientPhone.message}</p>
+                    )}
+                </div>
+                <div className="grid gap-2">
+                    <Label htmlFor="subject">Asunto</Label>
+                    <Input
+                        id="subject"
+                        {...form.register("subject")}
+                        placeholder="Ej: Deuda Oxipilar, Aviso de vencimiento..."
+                        maxLength={200}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        Este texto aparece en el asunto del correo que recibe el destinatario.
+                    </p>
+                    {form.formState.errors.subject && (
+                        <p className="text-sm text-destructive">{form.formState.errors.subject.message}</p>
                     )}
                 </div>
                 <div className="grid gap-2">

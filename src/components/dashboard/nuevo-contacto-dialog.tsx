@@ -23,6 +23,7 @@ import { UserPlus, Loader2 } from "lucide-react"
 const contactoSchema = z.object({
   nombre: z.string().min(2, { message: "El nombre debe tener al menos 2 caracteres." }),
   email: z.string().email({ message: "Dirección de correo electrónico inválida." }),
+  empresa: z.string().optional(),
   cuit: z.string().optional().refine((val) => {
     if (!val || val.trim() === "") return true; // CUIT es opcional
     // Validar formato de CUIT: XX-XXXXXXXX-X
@@ -55,6 +56,7 @@ export function NuevoContactoDialog({
     defaultValues: {
       nombre: "",
       email: "",
+      empresa: "",
       cuit: "",
       telefono: "",
     },
@@ -70,7 +72,8 @@ export function NuevoContactoDialog({
         data.email,
         data.nombre,
         data.cuit || undefined,
-        data.telefono?.trim() || undefined
+        data.telefono?.trim() || undefined,
+        data.empresa?.trim() || undefined
       )
 
       toast({
@@ -110,7 +113,7 @@ export function NuevoContactoDialog({
             Nuevo Contacto
           </DialogTitle>
           <DialogDescription>
-            Agrega un nuevo contacto a tu lista. CUIT y teléfono (para WhatsApp) son opcionales.
+            Agrega un nuevo contacto a tu lista. Empresa, CUIT y teléfono (para WhatsApp) son opcionales.
           </DialogDescription>
         </DialogHeader>
 
@@ -144,6 +147,19 @@ export function NuevoContactoDialog({
                 {form.formState.errors.email.message}
               </p>
             )}
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="empresa">Empresa (Opcional)</Label>
+            <Input
+              id="empresa"
+              {...form.register("empresa")}
+              placeholder="Nombre de la organización"
+              disabled={isSaving}
+            />
+            <p className="text-xs text-muted-foreground">
+              Útil cuando tenés varios correos de la misma empresa (Legales, CEO, etc.).
+            </p>
           </div>
 
           <div className="grid gap-2">

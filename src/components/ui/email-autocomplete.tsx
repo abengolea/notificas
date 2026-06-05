@@ -176,6 +176,11 @@ export function EmailAutocomplete({
                     {contacto.nombre}
                   </div>
                 )}
+                {contacto.empresa && (
+                  <div className="text-xs text-gray-500 truncate">
+                    {contacto.empresa}
+                  </div>
+                )}
                 {contacto.telefono && (
                   <div className="text-xs text-emerald-600 truncate">
                     📱 {contacto.telefono}
