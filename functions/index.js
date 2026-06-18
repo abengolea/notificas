@@ -238,6 +238,17 @@ function extractBrowserInfo(userAgent) {
   return 'Unknown Browser';
 }
 
+const DEFAULT_FROM_EMAIL = 'contacto@notificas.com';
+const DEFAULT_FROM_DISPLAY_NAME = 'Notificas';
+
+/** Nombre visible en bandeja de entrada: "Notificas" en lugar de "contacto". */
+function formatSmtpFrom(email, displayName = DEFAULT_FROM_DISPLAY_NAME) {
+  const addr = (email || DEFAULT_FROM_EMAIL).trim();
+  if (/^[^<]+<[^>]+>$/.test(addr)) return addr;
+  const name = (displayName || DEFAULT_FROM_DISPLAY_NAME).trim();
+  return `${name} <${addr}>`;
+}
+
 // El transporter se crea de forma lazy para acceder al secret en runtime
 function getTransporter() {
   const pass = smtpPass.value();
@@ -332,7 +343,7 @@ exports.sendEmail = onRequest(
       const textCf =
         emailData.message?.text || String(htmlCf).replace(/<[^>]*>/g, '');
       const resultCf = await getTransporter().sendMail({
-        from: fromCf,
+        from: formatSmtpFrom(fromCf),
         to: toCf,
         replyTo: emailData.replyTo,
         subject: subjectCf,
@@ -565,7 +576,7 @@ ${new Date().getFullYear()} Notificas.com
 Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce esta notificacion, ignore este correo o responda a contacto@notificas.com.`;
 
       const mailOptions = {
-        from,
+        from: formatSmtpFrom(from),
         to,
         subject,
         text: textVersion,
@@ -1553,7 +1564,7 @@ Este mensaje fue destinado a ${recipientNorm}. Si no reconoce esta notificacion,
 
     // Enviar el correo certificado
     const mailOptions = {
-      from: 'contacto@notificas.com',
+      from: formatSmtpFrom(DEFAULT_FROM_EMAIL),
       to: recipientNorm,
       subject: parsed.actualSubject,
       text: textVersion,

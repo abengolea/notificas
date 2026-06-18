@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -25,7 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Contacto } from "@/lib/types"
-import { obtenerContactos, buscarContactos } from "@/lib/contactos"
+import { obtenerContactos, filtrarContactos, agruparContactosPorEmpresa, extraerEmpresasUnicas } from "@/lib/contactos"
 import { useToast } from "@/hooks/use-toast"
 import { useFirebaseAuth } from "@/hooks/useFirebaseAuth"
 import { ComposeMessageDialog } from "@/components/dashboard/compose-message-dialog"
@@ -72,24 +72,18 @@ export function ContactosPageComponent({ layout = "standalone" }: { layout?: "st
     }
   }
 
-  const buscarContactosHandler = async (termino: string) => {
-    if (!user?.uid) return
-    
+  const buscarContactosHandler = (termino: string) => {
     setBusqueda(termino)
-    
-    if (termino.trim() === "") {
-      setContactosFiltrados(contactos)
-      return
-    }
-
-    try {
-      const resultados = await buscarContactos(user.uid, termino, 50)
-      setContactosFiltrados(resultados)
-    } catch (error) {
-      console.error('Error al buscar contactos:', error)
-      setContactosFiltrados([])
-    }
+    setContactosFiltrados(filtrarContactos(contactos, termino))
   }
+
+  const empresasSugeridas = useMemo(() => extraerEmpresasUnicas(contactos), [contactos])
+
+  const gruposContactos = useMemo(() => {
+    const grupos = agruparContactosPorEmpresa(contactosFiltrados)
+    const tieneEmpresas = grupos.some((g) => g.empresa !== null)
+    return tieneEmpresas ? grupos : null
+  }, [contactosFiltrados])
 
   const abrirCompose = (contacto?: Contacto) => {
     setContactoSeleccionado(contacto || null)
@@ -144,16 +138,94 @@ export function ContactosPageComponent({ layout = "standalone" }: { layout?: "st
     return "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/25"
   }
 
+  const renderContacto = (contacto: Contacto) => (
+    <li
+      key={contacto.id}
+      className="flex flex-col gap-4 p-4 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between sm:gap-6"
+    >
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <Avatar className="h-11 w-11 shrink-0">
+          <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+            {getIniciales(contacto.email, contacto.nombre)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-base font-medium text-foreground">
+              {contacto.nombre && contacto.nombre !== contacto.email.split("@")[0]
+                ? contacto.nombre
+                : contacto.email.split("@")[0]}
+            </h3>
+            <Badge variant="outline" className={getFrecuenciaColor(contacto.vecesUsado)}>
+              {getFrecuenciaTexto(contacto.vecesUsado)}
+            </Badge>
+          </div>
+          <p className="truncate text-sm text-muted-foreground">{contacto.email}</p>
+          {contacto.empresa && !gruposContactos ? (
+            <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Building2 className="h-3 w-3 shrink-0" />
+              {contacto.empresa}
+            </p>
+          ) : null}
+          {contacto.cuit ? (
+            <p className="text-xs text-muted-foreground">CUIT: {contacto.cuit}</p>
+          ) : null}
+          <div className="flex flex-wrap gap-x-4 gap-y-1 pt-0.5 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <Clock className="h-3 w-3 shrink-0" />
+              Último uso: {format(contacto.ultimoUso, "dd/MM/yyyy", { locale: es })}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Mail className="h-3 w-3 shrink-0" />
+              Creado: {format(contacto.createdAt, "dd/MM/yyyy", { locale: es })}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center justify-end gap-2 sm:pl-2">
+        <Button size="sm" onClick={() => abrirCompose(contacto)}>
+          <Send className="mr-2 h-4 w-4" />
+          Enviar
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="icon" className="h-9 w-9" aria-label="Más opciones">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setContactoEditando(contacto)}>
+              <Pencil className="mr-2 h-4 w-4" />
+              Editar contacto
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => abrirCompose(contacto)}>
+              <Send className="mr-2 h-4 w-4" />
+              Enviar mensaje
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => abrirHistorial(contacto)}>
+              <History className="mr-2 h-4 w-4" />
+              Ver historial
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </li>
+  )
+
   useEffect(() => {
     cargarContactos()
   }, [user?.uid])
+
+  useEffect(() => {
+    setContactosFiltrados(filtrarContactos(contactos, busqueda))
+  }, [contactos])
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       buscarContactosHandler(busqueda)
     }, 300)
     return () => clearTimeout(timeoutId)
-  }, [busqueda])
+  }, [busqueda, contactos])
 
   if (!user) {
     return (
@@ -218,22 +290,31 @@ export function ContactosPageComponent({ layout = "standalone" }: { layout?: "st
       {contactos.length > 0 && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Card className="border-border/80 shadow-sm">
-            <CardContent className="flex items-center justify-between gap-3 pt-4 pb-4">
-              <span className="text-sm font-medium text-muted-foreground">Total</span>
+            <CardContent className="flex items-end justify-between gap-3 pt-4 pb-4">
+              <div className="min-w-0 space-y-0.5">
+                <span className="text-sm font-medium text-foreground">Contactos</span>
+                <p className="text-xs text-muted-foreground">en tu agenda</p>
+              </div>
               <span className="text-2xl font-bold tabular-nums text-primary">{contactos.length}</span>
             </CardContent>
           </Card>
           <Card className="border-border/80 shadow-sm">
-            <CardContent className="flex items-center justify-between gap-3 pt-4 pb-4">
-              <span className="text-sm font-medium text-muted-foreground">Activos</span>
+            <CardContent className="flex items-end justify-between gap-3 pt-4 pb-4">
+              <div className="min-w-0 space-y-0.5">
+                <span className="text-sm font-medium text-foreground">Recurrentes</span>
+                <p className="text-xs text-muted-foreground">con más de 1 envío</p>
+              </div>
               <span className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
                 {contactos.filter((c) => c.vecesUsado > 1).length}
               </span>
             </CardContent>
           </Card>
           <Card className="border-border/80 shadow-sm">
-            <CardContent className="flex items-center justify-between gap-3 pt-4 pb-4">
-              <span className="text-sm font-medium text-muted-foreground">Envíos registrados</span>
+            <CardContent className="flex items-end justify-between gap-3 pt-4 pb-4">
+              <div className="min-w-0 space-y-0.5">
+                <span className="text-sm font-medium text-foreground">Total de envíos</span>
+                <p className="text-xs text-muted-foreground">suma de todos los contactos</p>
+              </div>
               <span className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
                 {contactos.reduce((sum, c) => sum + c.vecesUsado, 0)}
               </span>
@@ -301,83 +382,34 @@ export function ContactosPageComponent({ layout = "standalone" }: { layout?: "st
             <CardTitle className="text-base font-semibold">Lista de contactos</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <ul className="divide-y divide-border">
-              {contactosFiltrados.map((contacto) => (
-                <li
-                  key={contacto.id}
-                  className="flex flex-col gap-4 p-4 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between sm:gap-6"
-                >
-                  <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <Avatar className="h-11 w-11 shrink-0">
-                      <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-                        {getIniciales(contacto.email, contacto.nombre)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="truncate text-base font-medium text-foreground">
-                          {contacto.nombre && contacto.nombre !== contacto.email.split("@")[0]
-                            ? contacto.nombre
-                            : contacto.email.split("@")[0]}
-                        </h3>
-                        <Badge variant="outline" className={getFrecuenciaColor(contacto.vecesUsado)}>
-                          {getFrecuenciaTexto(contacto.vecesUsado)}
-                        </Badge>
-                      </div>
-                      <p className="truncate text-sm text-muted-foreground">{contacto.email}</p>
-                      {contacto.empresa ? (
-                        <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                          <Building2 className="h-3 w-3 shrink-0" />
-                          {contacto.empresa}
-                        </p>
-                      ) : null}
-                      {contacto.cuit ? (
-                        <p className="text-xs text-muted-foreground">CUIT: {contacto.cuit}</p>
-                      ) : null}
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 pt-0.5 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1">
-                          <Clock className="h-3 w-3 shrink-0" />
-                          Último uso: {format(contacto.ultimoUso, "dd/MM/yyyy", { locale: es })}
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <Mail className="h-3 w-3 shrink-0" />
-                          Creado: {format(contacto.createdAt, "dd/MM/yyyy", { locale: es })}
-                        </span>
-                      </div>
+            {gruposContactos ? (
+              <div className="divide-y divide-border">
+                {gruposContactos.map((grupo) => (
+                  <section key={grupo.empresa ?? "__sin_empresa__"}>
+                    <div className="flex items-center gap-2 border-b bg-muted/40 px-4 py-2.5">
+                      {grupo.empresa ? (
+                        <>
+                          <Building2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <h3 className="text-sm font-semibold text-foreground">{grupo.empresa}</h3>
+                        </>
+                      ) : (
+                        <h3 className="text-sm font-semibold text-muted-foreground">Sin empresa</h3>
+                      )}
+                      <Badge variant="secondary" className="ml-auto tabular-nums">
+                        {grupo.contactos.length}
+                      </Badge>
                     </div>
-                  </div>
-                  <div className="flex shrink-0 items-center justify-end gap-2 sm:pl-2">
-                    <Button size="sm" onClick={() => abrirCompose(contacto)}>
-                      <Send className="mr-2 h-4 w-4" />
-                      Enviar
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="icon" className="h-9 w-9" aria-label="Más opciones">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => setContactoEditando(contacto)}
-                        >
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Editar contacto
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => abrirCompose(contacto)}>
-                          <Send className="mr-2 h-4 w-4" />
-                          Enviar mensaje
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => abrirHistorial(contacto)}>
-                          <History className="mr-2 h-4 w-4" />
-                          Ver historial
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    <ul className="divide-y divide-border">
+                      {grupo.contactos.map(renderContacto)}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <ul className="divide-y divide-border">
+                {contactosFiltrados.map(renderContacto)}
+              </ul>
+            )}
           </CardContent>
         </Card>
       )}
@@ -430,6 +462,7 @@ export function ContactosPageComponent({ layout = "standalone" }: { layout?: "st
               creditos: 0,
             }}
             onContactoAgregado={handleContactoAgregado}
+            empresasSugeridas={empresasSugeridas}
           />
 
           <EditarContactoNombreDialog
@@ -438,6 +471,7 @@ export function ContactosPageComponent({ layout = "standalone" }: { layout?: "st
               if (!open) setContactoEditando(null)
             }}
             contacto={contactoEditando}
+            empresasSugeridas={empresasSugeridas}
             onActualizado={() => {
               void cargarContactos()
             }}

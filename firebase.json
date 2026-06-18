@@ -26,6 +26,12 @@
       "source": ".",
       "config": "apphosting.yaml",
       "alwaysDeployFromSource": true
+    },
+    {
+      "backendId": "notificas-stagin",
+      "source": ".",
+      "config": "apphosting.yaml",
+      "alwaysDeployFromSource": true
     }
   ],
   "extensions": {

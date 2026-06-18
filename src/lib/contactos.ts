@@ -169,6 +169,26 @@ export async function obtenerContactos(
 /**
  * Busca contactos que coincidan con un término de búsqueda
  */
+export function filtrarContactos(contactos: Contacto[], termino: string): Contacto[] {
+  const terminoLower = termino.toLowerCase().trim();
+  if (!terminoLower) return contactos;
+
+  const terminoDigits = termino.replace(/\D/g, '');
+
+  return contactos.filter((contacto) => {
+    if (contacto.email.toLowerCase().includes(terminoLower)) return true;
+    if (contacto.nombre?.toLowerCase().includes(terminoLower)) return true;
+    if (contacto.empresa?.toLowerCase().includes(terminoLower)) return true;
+    if (terminoDigits.length >= 2 && contacto.telefono) {
+      return contacto.telefono.replace(/\D/g, '').includes(terminoDigits);
+    }
+    return false;
+  });
+}
+
+/**
+ * Busca contactos que coincidan con un término de búsqueda (consulta remota)
+ */
 export async function buscarContactos(
   usuarioId: string, 
   termino: string, 
@@ -177,19 +197,7 @@ export async function buscarContactos(
   try {
     const contactos = await obtenerContactos(usuarioId, 50); // Obtener más para filtrar
     
-    const terminoLower = termino.toLowerCase().trim();
-    const terminoDigits = termino.replace(/\D/g, '');
-
-    const contactosFiltrados = contactos.filter((contacto) => {
-      if (contacto.email.toLowerCase().includes(terminoLower)) return true;
-      if (contacto.nombre?.toLowerCase().includes(terminoLower)) return true;
-      if (contacto.empresa?.toLowerCase().includes(terminoLower)) return true;
-      // Solo filtrar por teléfono si el término incluye dígitos (evita que includes('') coincida con todos)
-      if (terminoDigits.length >= 2 && contacto.telefono) {
-        return contacto.telefono.replace(/\D/g, '').includes(terminoDigits);
-      }
-      return false;
-    });
+    const contactosFiltrados = filtrarContactos(contactos, termino);
     
     return contactosFiltrados.slice(0, limite);
   } catch (error) {
@@ -227,4 +235,59 @@ export async function actualizarContacto(
 /** @deprecated Usar actualizarContacto */
 export async function actualizarNombreContacto(contactoId: string, nombre: string): Promise<void> {
   await actualizarContacto(contactoId, { nombre });
+}
+
+/** Lista única de empresas ya usadas en la agenda (orden alfabético). */
+export function extraerEmpresasUnicas(contactos: Contacto[]): string[] {
+  const seen = new Set<string>();
+  const empresas: string[] = [];
+  for (const c of contactos) {
+    const e = c.empresa?.trim();
+    if (!e) continue;
+    const key = e.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    empresas.push(e);
+  }
+  return empresas.sort((a, b) => a.localeCompare(b, 'es'));
+}
+
+export type GrupoContactos = {
+  empresa: string | null;
+  contactos: Contacto[];
+};
+
+/** Agrupa contactos por empresa; "sin empresa" al final. */
+export function agruparContactosPorEmpresa(contactos: Contacto[]): GrupoContactos[] {
+  const porEmpresa = new Map<string, Contacto[]>();
+  const sinEmpresa: Contacto[] = [];
+
+  for (const c of contactos) {
+    const e = c.empresa?.trim();
+    if (!e) {
+      sinEmpresa.push(c);
+      continue;
+    }
+    const key = e.toLowerCase();
+    const lista = porEmpresa.get(key) ?? [];
+    lista.push(c);
+    porEmpresa.set(key, lista);
+  }
+
+  const sortContactos = (a: Contacto, b: Contacto) =>
+    (a.nombre || a.email).localeCompare(b.nombre || b.email, 'es');
+
+  const grupos: GrupoContactos[] = [...porEmpresa.entries()]
+    .sort(([a], [b]) => a.localeCompare(b, 'es'))
+    .map(([, lista]) => {
+      lista.sort(sortContactos);
+      return { empresa: lista[0].empresa!.trim(), contactos: lista };
+    });
+
+  if (sinEmpresa.length > 0) {
+    sinEmpresa.sort(sortContactos);
+    grupos.push({ empresa: null, contactos: sinEmpresa });
+  }
+
+  return grupos;
 }

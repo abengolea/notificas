@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { actualizarContacto } from "@/lib/contactos";
+import { EmpresaAutocomplete } from "@/components/ui/empresa-autocomplete";
 import type { Contacto } from "@/lib/types";
 import { Loader2 } from "lucide-react";
 
@@ -32,9 +33,10 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   contacto: Contacto | null;
   onActualizado?: () => void;
+  empresasSugeridas?: string[];
 };
 
-export function EditarContactoNombreDialog({ open, onOpenChange, contacto, onActualizado }: Props) {
+export function EditarContactoNombreDialog({ open, onOpenChange, contacto, onActualizado, empresasSugeridas = [] }: Props) {
   const { toast } = useToast();
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -97,18 +99,14 @@ export function EditarContactoNombreDialog({ open, onOpenChange, contacto, onAct
               <p className="text-sm text-destructive">{form.formState.errors.nombre.message}</p>
             ) : null}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-contacto-empresa">Empresa (Opcional)</Label>
-            <Input
-              id="edit-contacto-empresa"
-              autoComplete="organization"
-              placeholder="Nombre de la organización"
-              {...form.register("empresa")}
-            />
-            <p className="text-xs text-muted-foreground">
-              Agrupa varios contactos de la misma organización.
-            </p>
-          </div>
+          <EmpresaAutocomplete
+            id="edit-contacto-empresa"
+            label="Empresa (Opcional)"
+            value={form.watch("empresa") || ""}
+            onChange={(v) => form.setValue("empresa", v, { shouldDirty: true })}
+            empresas={empresasSugeridas}
+            hint="Agrupa varios contactos de la misma organización."
+          />
           <DialogFooter className="gap-2 sm:gap-0">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
