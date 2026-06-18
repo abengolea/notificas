@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { LandingHeader } from '@/components/landing-header';
+import { ReclamoForm } from '@/components/reclamo-form';
 
 export const metadata = {
   title: 'Defensa del Consumidor — Notificas',
@@ -28,12 +29,18 @@ export default function ConsumidoresPage() {
 
           <section>
             <h2 className="text-lg font-semibold mb-2">¿Tenés un reclamo?</h2>
-            <p className="mb-3">
-              Podés contactarnos directamente por correo electrónico a{' '}
-              <a href="mailto:contacto@notificas.com" className="text-primary underline">contacto@notificas.com</a>.
+            <p className="mb-4">
+              Completá el formulario y recibirás al instante un <strong>número de ticket</strong> por correo electrónico.
               Nos comprometemos a responder en un plazo de <strong>5 días hábiles</strong>.
             </p>
-            <p>
+            <div className="p-4 bg-muted/40 rounded-lg border">
+              <ReclamoForm />
+            </div>
+            <p className="mt-4 text-muted-foreground">
+              También podés escribirnos a{' '}
+              <a href="mailto:contacto@notificas.com" className="text-primary underline">contacto@notificas.com</a>.
+            </p>
+            <p className="mt-3">
               Si no obtenés respuesta satisfactoria, podés presentar tu reclamo ante la
               <strong> Dirección Nacional de Defensa del Consumidor</strong>:
             </p>

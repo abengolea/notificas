@@ -71,6 +71,7 @@ export type AdminUser = {
     enviosDisponibles: number;
     fechaRegistro: Date;
     enNominaColegio?: boolean;
+    colegioId?: string;
     colegioNombre?: string;
     colegioMemberEstado?: 'activo' | 'suspendido';
     tieneCuentaNotificas?: boolean;

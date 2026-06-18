@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { User } from "@/lib/types"
 import { guardarContacto } from "@/lib/contactos"
+import { EmpresaAutocomplete } from "@/components/ui/empresa-autocomplete"
 import { UserPlus, Loader2 } from "lucide-react"
 
 const contactoSchema = z.object({
@@ -40,13 +41,15 @@ interface NuevoContactoDialogProps {
   onOpenChange: (open: boolean) => void
   user: User
   onContactoAgregado?: () => void
+  empresasSugeridas?: string[]
 }
 
 export function NuevoContactoDialog({ 
   open, 
   onOpenChange, 
   user, 
-  onContactoAgregado 
+  onContactoAgregado,
+  empresasSugeridas = [],
 }: NuevoContactoDialogProps) {
   const [isSaving, setIsSaving] = useState(false)
   const { toast } = useToast()
@@ -149,18 +152,15 @@ export function NuevoContactoDialog({
             )}
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="empresa">Empresa (Opcional)</Label>
-            <Input
-              id="empresa"
-              {...form.register("empresa")}
-              placeholder="Nombre de la organización"
-              disabled={isSaving}
-            />
-            <p className="text-xs text-muted-foreground">
-              Útil cuando tenés varios correos de la misma empresa (Legales, CEO, etc.).
-            </p>
-          </div>
+          <EmpresaAutocomplete
+            id="empresa"
+            label="Empresa (Opcional)"
+            value={form.watch("empresa") || ""}
+            onChange={(v) => form.setValue("empresa", v, { shouldDirty: true })}
+            empresas={empresasSugeridas}
+            disabled={isSaving}
+            hint="Útil cuando tenés varios correos de la misma empresa (Legales, CEO, etc.)."
+          />
 
           <div className="grid gap-2">
             <Label htmlFor="cuit">CUIT (Opcional)</Label>

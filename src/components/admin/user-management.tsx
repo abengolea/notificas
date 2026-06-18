@@ -37,13 +37,23 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import type { AdminUser } from "@/lib/types"
+import type { ColegioCollegeRow } from "@/lib/colegio-discount-types"
 import { MoreHorizontal, ToggleLeft, Gift, XCircle, CheckCircle, Loader2, History, Scale, Pencil, Search, X } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { useToast } from "@/hooks/use-toast"
 
-type UserFilter = "colegio" | "todos" | "solo_cuenta"
+type UserFilter = "todos" | "solo_cuenta"
+
+const ALL_COLLEGES_VALUE = "__all__"
 
 type HistorialRow = {
   id: string
@@ -93,6 +103,7 @@ function mapUser(u: Record<string, unknown>): AdminUser {
     enviosDisponibles: typeof u.enviosDisponibles === "number" ? u.enviosDisponibles : 0,
     fechaRegistro: new Date(typeof u.fechaRegistro === "string" ? u.fechaRegistro : 0),
     enNominaColegio: u.enNominaColegio === true,
+    colegioId: typeof u.colegioId === "string" ? u.colegioId : undefined,
     colegioNombre: typeof u.colegioNombre === "string" ? u.colegioNombre : undefined,
     colegioMemberEstado:
       u.colegioMemberEstado === "suspendido" ? "suspendido" : u.colegioMemberEstado === "activo" ? "activo" : undefined,
@@ -104,7 +115,9 @@ export default function UserManagement() {
     const [users, setUsers] = React.useState<AdminUser[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [listError, setListError] = React.useState<string | null>(null);
-    const [filter, setFilter] = React.useState<UserFilter>("colegio");
+    const [filter, setFilter] = React.useState<UserFilter>("todos");
+    const [collegeFilter, setCollegeFilter] = React.useState(ALL_COLLEGES_VALUE);
+    const [colleges, setColleges] = React.useState<ColegioCollegeRow[]>([]);
     const [searchQuery, setSearchQuery] = React.useState("");
     const [colegioNombre, setColegioNombre] = React.useState<string | null>(null);
     const [selectedUser, setSelectedUser] = React.useState<AdminUser | null>(null);
@@ -123,7 +136,14 @@ export default function UserManagement() {
         setListError(null);
         setLoading(true);
         try {
-            const res = await fetch(`/api/admin/users?filter=${filter}`, { credentials: "include" });
+            const params = new URLSearchParams();
+            if (collegeFilter !== ALL_COLLEGES_VALUE) {
+                params.set("filter", "colegio");
+                params.set("collegeId", collegeFilter);
+            } else {
+                params.set("filter", filter);
+            }
+            const res = await fetch(`/api/admin/users?${params}`, { credentials: "include" });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
                 setListError(typeof data.error === "string" ? data.error : "No se pudo cargar la lista");
@@ -139,16 +159,58 @@ export default function UserManagement() {
         } finally {
             setLoading(false);
         }
-    }, [filter]);
+    }, [filter, collegeFilter]);
+
+    React.useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const res = await fetch("/api/admin/colegio-discount/colleges", {
+                    credentials: "include",
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || cancelled) return;
+                const rows = Array.isArray(data.colleges) ? data.colleges : [];
+                setColleges(
+                    rows
+                        .map((c: Record<string, unknown>) => ({
+                            id: String(c.id ?? ""),
+                            nombreColegio: String(c.nombreColegio ?? ""),
+                            enabled: c.enabled === true,
+                            discountPercent: typeof c.discountPercent === "number" ? c.discountPercent : 0,
+                            memberCount: typeof c.memberCount === "number" ? c.memberCount : 0,
+                            legalmevColegioId:
+                                typeof c.legalmevColegioId === "string" ? c.legalmevColegioId : undefined,
+                            legalmevMemberCount:
+                                typeof c.legalmevMemberCount === "number" ? c.legalmevMemberCount : undefined,
+                        }))
+                        .filter((c: ColegioCollegeRow) => c.id && c.nombreColegio)
+                        .sort((a: ColegioCollegeRow, b: ColegioCollegeRow) =>
+                            a.nombreColegio.localeCompare(b.nombreColegio, "es"),
+                        ),
+                );
+            } catch {
+                /* sin colegios en selector */
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     React.useEffect(() => {
         void loadUsers();
     }, [loadUsers]);
 
-    const filteredUsers = React.useMemo(
-      () => users.filter((u) => matchesFreeSearch(u, searchQuery)),
-      [users, searchQuery],
-    );
+    const filteredUsers = React.useMemo(() => {
+      const list = users.filter((u) => matchesFreeSearch(u, searchQuery));
+      return [...list].sort(
+        (a, b) => b.fechaRegistro.getTime() - a.fechaRegistro.getTime(),
+      );
+    }, [users, searchQuery]);
+
+    const viewingCollege = collegeFilter !== ALL_COLLEGES_VALUE;
+    const selectedCollege = colleges.find((c) => c.id === collegeFilter);
 
     const handleToggleSuspend = async (user: AdminUser) => {
         if (!user.id) return;
@@ -348,21 +410,53 @@ export default function UserManagement() {
               Usuarios
             </CardTitle>
             <CardDescription className="mt-1.5 max-w-2xl">
-              La pestaña <strong>Colegio</strong> muestra la nómina de LegalMev (matriculados) y si ya tienen cuenta en
-              Notificas. Podés regalar envíos, suspender y ver historial solo en quienes tienen cuenta.
+              Por defecto se listan todas las cuentas Notificas, del registro más reciente al más antiguo.
+              Usá el filtro de colegio para ver la nómina de un convenio puntual (LegalMev o lista cargada).
             </CardDescription>
           </div>
-          <Tabs value={filter} onValueChange={(v) => setFilter(v as UserFilter)}>
+          <Tabs
+            value={filter}
+            onValueChange={(v) => setFilter(v as UserFilter)}
+          >
             <TabsList>
-              <TabsTrigger value="colegio">Colegio</TabsTrigger>
-              <TabsTrigger value="todos">Todos</TabsTrigger>
-              <TabsTrigger value="solo_cuenta">Solo Notificas</TabsTrigger>
+              <TabsTrigger value="todos" disabled={viewingCollege}>
+                Todos
+              </TabsTrigger>
+              <TabsTrigger value="solo_cuenta" disabled={viewingCollege}>
+                Solo Notificas
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
-        {filter === "colegio" && colegioNombre ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <div className="space-y-1.5 sm:min-w-[280px]">
+            <Label htmlFor="college-filter" className="text-xs text-muted-foreground">
+              Colegio con convenio
+            </Label>
+            <Select value={collegeFilter} onValueChange={setCollegeFilter}>
+              <SelectTrigger id="college-filter" className="w-full sm:w-[320px]">
+                <SelectValue placeholder="Todos los colegios" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_COLLEGES_VALUE}>Todos los colegios</SelectItem>
+                {colleges.map((college) => (
+                  <SelectItem key={college.id} value={college.id}>
+                    {college.nombreColegio}
+                    {!college.enabled ? " (inactivo)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {viewingCollege && (colegioNombre || selectedCollege) ? (
           <p className="text-sm text-primary font-medium">
-            Nómina: {colegioNombre} — {users.length} fila{users.length === 1 ? "" : "s"}
+            Nómina: {colegioNombre ?? selectedCollege?.nombreColegio} — {users.length} fila
+            {users.length === 1 ? "" : "s"}
+          </p>
+        ) : !viewingCollege ? (
+          <p className="text-sm text-muted-foreground">
+            {users.length} cuenta{users.length === 1 ? "" : "s"} Notificas · ordenadas por registro (más nuevas primero)
           </p>
         ) : null}
         <div className="relative max-w-xl">
@@ -410,8 +504,8 @@ export default function UserManagement() {
           </div>
         ) : users.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            {filter === "colegio"
-              ? "No hay matriculados en la nómina del colegio. Vinculá LegalMev en Planes → Colegios y actualizá la base."
+            {viewingCollege
+              ? "No hay matriculados en la nómina de este colegio. Vinculá LegalMev o cargá la lista en Planes → Colegios."
               : "No hay usuarios para mostrar."}
           </p>
         ) : filteredUsers.length === 0 ? (

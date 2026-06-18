@@ -22,10 +22,53 @@ export type AdminUserListRow = {
   fechaRegistro: string;
   /** Matriculado en nómina del colegio (LegalMev o lista local). */
   enNominaColegio: boolean;
+  colegioId?: string;
   colegioNombre?: string;
   colegioMemberEstado?: "activo" | "suspendido";
   tieneCuentaNotificas: boolean;
 };
+
+function sortByRegistroDesc(a: AdminUserListRow, b: AdminUserListRow): number {
+  return new Date(b.fechaRegistro).getTime() - new Date(a.fechaRegistro).getTime();
+}
+
+type CollegeMembership = {
+  collegeId: string;
+  nombreColegio: string;
+  estado: "activo" | "suspendido";
+};
+
+/** Mapa email → colegio (nómina local en Firestore). */
+async function buildCollegeMembershipMap(): Promise<Map<string, CollegeMembership>> {
+  const map = new Map<string, CollegeMembership>();
+  await ensureColegiosMigratedFromLegacy();
+  const colleges = await listColegioColleges();
+  for (const college of colleges) {
+    const members = await loadLocalCollegeMembers(college.id);
+    for (const m of members) {
+      map.set(m.email, {
+        collegeId: college.id,
+        nombreColegio: college.nombreColegio,
+        estado: m.estado,
+      });
+    }
+  }
+  return map;
+}
+
+function applyCollegeMembership(
+  user: AdminUserListRow,
+  membership: CollegeMembership | undefined,
+): AdminUserListRow {
+  if (!membership) return user;
+  return {
+    ...user,
+    enNominaColegio: true,
+    colegioId: membership.collegeId,
+    colegioNombre: membership.nombreColegio,
+    colegioMemberEstado: membership.estado,
+  };
+}
 
 function toIso(v: unknown): string {
   if (v instanceof Timestamp) return v.toDate().toISOString();
@@ -100,24 +143,24 @@ export async function listAdminUsersMerged(
   const filter = options.filter ?? "todos";
   const byEmail = await loadNotificasUsersByEmail();
 
-  if (filter === "solo_cuenta") {
-    const users = [...byEmail.values()].sort(
-      (a, b) => new Date(b.fechaRegistro).getTime() - new Date(a.fechaRegistro).getTime(),
-    );
+  if (filter === "solo_cuenta" || filter === "todos") {
+    const collegeByEmail = await buildCollegeMembershipMap();
+    const users = [...byEmail.values()]
+      .map((u) => applyCollegeMembership(u, collegeByEmail.get(u.email)))
+      .sort(sortByRegistroDesc);
     return { users };
   }
 
   await ensureColegiosMigratedFromLegacy();
   const colleges = await listColegioColleges();
-  const college =
-    (options.collegeId
-      ? colleges.find((c) => c.id === options.collegeId)
-      : undefined) ??
-    colleges.find((c) => c.legalmevColegioId) ??
-    colleges.find((c) => /san\s*nicol/i.test(c.nombreColegio)) ??
-    colleges[0];
 
-  if (!college && filter === "colegio") {
+  if (!options.collegeId) {
+    return { users: [] };
+  }
+
+  const college = colleges.find((c) => c.id === options.collegeId);
+
+  if (!college) {
     return { users: [] };
   }
 
@@ -139,47 +182,35 @@ export async function listAdminUsersMerged(
 
   const merged: AdminUserListRow[] = [];
 
-  if (filter === "colegio" || filter === "todos") {
-    for (const m of roster) {
-      const existing = byEmail.get(m.email);
-      if (existing) {
-        merged.push({
-          ...existing,
-          enNominaColegio: true,
-          colegioNombre,
-          colegioMemberEstado: m.estado,
-          tieneCuentaNotificas: true,
-        });
-        byEmail.delete(m.email);
-      } else {
-        merged.push({
-          id: "",
-          nombre: m.nombre,
-          email: m.email,
-          estado: m.estado,
-          enviosDisponibles: 0,
-          fechaRegistro: new Date(0).toISOString(),
-          enNominaColegio: true,
-          colegioNombre,
-          colegioMemberEstado: m.estado,
-          tieneCuentaNotificas: false,
-        });
-      }
+  for (const m of roster) {
+    const existing = byEmail.get(m.email);
+    if (existing) {
+      merged.push({
+        ...existing,
+        enNominaColegio: true,
+        colegioId: college.id,
+        colegioNombre,
+        colegioMemberEstado: m.estado,
+        tieneCuentaNotificas: true,
+      });
+    } else {
+      merged.push({
+        id: "",
+        nombre: m.nombre,
+        email: m.email,
+        estado: m.estado,
+        enviosDisponibles: 0,
+        fechaRegistro: new Date(0).toISOString(),
+        enNominaColegio: true,
+        colegioId: college.id,
+        colegioNombre,
+        colegioMemberEstado: m.estado,
+        tieneCuentaNotificas: false,
+      });
     }
   }
 
-  if (filter === "todos") {
-    for (const u of byEmail.values()) {
-      merged.push(u);
-    }
-  }
-
-  merged.sort((a, b) => {
-    if (a.tieneCuentaNotificas !== b.tieneCuentaNotificas) {
-      return a.tieneCuentaNotificas ? -1 : 1;
-    }
-    return new Date(b.fechaRegistro).getTime() - new Date(a.fechaRegistro).getTime();
-  });
+  merged.sort(sortByRegistroDesc);
 
   return { users: merged, colegioNombre };
 }

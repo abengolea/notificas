@@ -18,7 +18,7 @@ import {
 /** Enlaces del panel admin (barra superior + menú móvil). */
 export const adminNavLinks = [
   { href: "/admin", label: "Resumen" },
-  { href: "/admin/tickets", label: "Tickets" },
+  { href: "/admin/tickets", label: "Reclamos" },
   { href: "/admin/users", label: "Usuarios" },
   { href: "/admin/empresas", label: "Empresa" },
   { href: "/admin/plans", label: "Planes" },
