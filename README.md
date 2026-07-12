@@ -144,6 +144,14 @@ Scripts/
 firebase deploy --only apphosting
 ```
 
+3. **Permisos de deploy Firestore** (reglas + índices; solo el titular del proyecto):
+```bash
+gcloud auth login   # cuenta titular, p. ej. abengolea1@gmail.com
+npm run grant:firestore-deploy-access
+# firebase deploy --only firestore --project notificas-f9953
+```
+Configuración en `firebase-deploy-access.json` (`adrianbengolea@notificas.com` y proyectos bajo `abengolea1@gmail.com`).
+
 ### Deploy Tradicional
 ```bash
 npm run build
