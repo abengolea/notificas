@@ -106,6 +106,7 @@ type PageMetadataOptions = {
   path: string;
   keywords?: string[];
   noIndex?: boolean;
+  /** Si se omite, Next usa `opengraph-image.tsx` / `twitter-image.tsx` del app router. */
   ogImage?: string;
 };
 
@@ -115,10 +116,10 @@ export function createPageMetadata({
   path,
   keywords,
   noIndex = false,
-  ogImage = "/notificasLogo.jpg",
+  ogImage,
 }: PageMetadataOptions): Metadata {
   const url = absoluteUrl(path);
-  const imageUrl = absoluteUrl(ogImage);
+  const imageUrl = ogImage ? absoluteUrl(ogImage) : undefined;
 
   return {
     title,
@@ -134,20 +135,24 @@ export function createPageMetadata({
       siteName: SITE_NAME,
       locale: "es_AR",
       type: "website",
-      images: [
-        {
-          url: imageUrl,
-          width: 1200,
-          height: 630,
-          alt: `${SITE_NAME} — ${SITE_TAGLINE}`,
-        },
-      ],
+      ...(imageUrl
+        ? {
+            images: [
+              {
+                url: imageUrl,
+                width: 1200,
+                height: 630,
+                alt: `${SITE_NAME} — ${SITE_TAGLINE}`,
+              },
+            ],
+          }
+        : {}),
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: [imageUrl],
+      ...(imageUrl ? { images: [imageUrl] } : {}),
     },
     robots: noIndex
       ? { index: false, follow: false, googleBot: { index: false, follow: false } }
