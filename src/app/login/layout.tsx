@@ -1,0 +1,17 @@
+import type { Metadata } from "next";
+import { createPageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = createPageMetadata({
+  title: "Iniciar sesión",
+  description:
+    "Accedé a tu cuenta de Notificas para enviar notificaciones fehacientes digitales y gestionar certificados.",
+  path: "/login",
+});
+
+export default function LoginLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return children;
+}

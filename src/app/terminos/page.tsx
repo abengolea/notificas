@@ -1,13 +1,26 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LandingHeader } from '@/components/landing-header';
+import { JsonLd } from '@/components/json-ld';
+import { createPageMetadata } from '@/lib/seo';
+import { breadcrumbJsonLd } from '@/lib/structured-data';
 
-export const metadata = {
-  title: 'Términos y Condiciones — Notificas',
-};
+export const metadata: Metadata = createPageMetadata({
+  title: 'Términos y Condiciones',
+  description:
+    'Términos y condiciones del servicio de notificaciones fehacientes digitales de Notificas SRL.',
+  path: '/terminos',
+});
 
 export default function TerminosPage() {
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
+      <JsonLd
+        data={breadcrumbJsonLd([
+          { name: 'Inicio', path: '/' },
+          { name: 'Términos y Condiciones', path: '/terminos' },
+        ])}
+      />
       <LandingHeader />
       <main className="flex-1 container max-w-3xl px-4 py-12">
         <h1 className="text-3xl font-bold mb-2">Términos y Condiciones</h1>

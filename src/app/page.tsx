@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -5,6 +6,35 @@ import { CheckCircle, ShieldCheck, Cpu, ArrowRight, Mail, Send, Phone, Search } 
 import { FaqSection } from '@/components/faq-section';
 import { FooterContactForm } from '@/components/footer-contact-form';
 import { LandingHeader } from '@/components/landing-header';
+import { JsonLd } from '@/components/json-ld';
+import { createPageMetadata } from '@/lib/seo';
+import {
+  faqPageJsonLd,
+  organizationJsonLd,
+  serviceJsonLd,
+  websiteJsonLd,
+} from '@/lib/structured-data';
+
+const HOME_TITLE =
+  'Notificas | Notificaciones fehacientes digitales certificadas en blockchain';
+const HOME_DESCRIPTION =
+  'Enviá notificaciones fehacientes digitales con valor probatorio. Certificá envío, recepción y lectura en Polygon. Alternativa digital a la carta documento en Argentina.';
+
+export const metadata: Metadata = {
+  ...createPageMetadata({
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+    path: '/',
+    keywords: [
+      'notificaciones fehacientes',
+      'carta documento digital',
+      'notificación certificada',
+      'blockchain Polygon',
+      'Notificas Argentina',
+    ],
+  }),
+  title: { absolute: HOME_TITLE },
+};
 
 const features = [
   {
@@ -53,13 +83,17 @@ const useCases = [
 export default function LandingPage() {
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
+      <JsonLd data={organizationJsonLd()} />
+      <JsonLd data={websiteJsonLd()} />
+      <JsonLd data={serviceJsonLd()} />
+      <JsonLd data={faqPageJsonLd()} />
       <LandingHeader />
 
       <main className="flex-1">
         <section className="bg-muted/20 px-4 py-14 sm:py-20 md:py-32">
           <div className="container text-center">
             <h1 className="mb-6 text-balance text-3xl font-bold tracking-tighter sm:text-4xl md:text-6xl">
-              Comunicaciones fehacientes, con respaldo blockchain.
+              Notificas: notificaciones fehacientes digitales con respaldo blockchain
             </h1>
             <p className="mx-auto mb-8 max-w-3xl text-pretty text-base text-muted-foreground sm:text-lg md:text-xl">
               El contenido, envío, recepción y lectura de cada comunicación quedan registrados de forma inmutable en blockchain. Usamos la red Polygon: pública, descentralizada y verificable por cualquier persona.
