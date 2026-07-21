@@ -1,0 +1,61 @@
+name: Deploy Firebase App Hosting
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Backend a desplegar'
+        required: true
+        type: choice
+        options:
+          - notificas-stagin
+          - notificas
+        default: notificas-stagin
+      production_authorization:
+        description: 'Solo para producción (notificas). Exacto: AUTORIZO DEPLOY A PRODUCCIÓN: Notificas'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  deploy-apphosting:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target == 'notificas' && 'production' || 'staging' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate production gate
+        if: inputs.target == 'notificas'
+        env:
+          PRODUCTION_AUTHORIZATION: ${{ inputs.production_authorization }}
+        run: |
+          if [ "$PRODUCTION_AUTHORIZATION" != "AUTORIZO DEPLOY A PRODUCCIÓN: Notificas" ]; then
+            echo "Falta autorización exacta para producción."
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: notificas-f9953
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Install Firebase CLI
+        run: npm i -g firebase-tools
+
+      - name: Deploy App Hosting backend
+        run: |
+          echo "Desplegando App Hosting backend: ${{ inputs.target }}"
+          firebase deploy --only "apphosting:${{ inputs.target }}" \
+            --project notificas-f9953 \
+            --non-interactive
