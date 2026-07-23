@@ -6,6 +6,7 @@ import {
   isLegalMevColegioConfigured,
   listLegalMevColegios,
   verifyLegalMevColegioMember,
+  verifyLegalMevRegisteredUser,
 } from "@/lib/legalmev-colegio-client";
 
 /** Config global antigua (solo migración). */
@@ -428,6 +429,7 @@ export async function getColegioConfig(): Promise<ColegioDiscountConfig> {
 
 /**
  * Lista + descuento activo: el mayor % entre colegios donde el mail figura y está habilitado.
+ * Si no hay convenio, aplica descuento por usuario registrado en LegalMev (20%, sin envíos gratis).
  * Si está en nómina pero sin descuento activo, devuelve el nombre de ese colegio (orden alfabético).
  */
 export async function resolveColegioDiscountForEmail(email: string): Promise<{
@@ -436,6 +438,8 @@ export async function resolveColegioDiscountForEmail(email: string): Promise<{
   enabled: boolean;
   onList: boolean;
   nombreColegio: string;
+  /** Origen del descuento aplicado. */
+  source: "colegio" | "legalmev" | null;
 }> {
   await ensureColegiosMigratedFromLegacy();
   const norm = normalizeColegioEmail(email);
@@ -447,6 +451,7 @@ export async function resolveColegioDiscountForEmail(email: string): Promise<{
       enabled: false,
       onList: false,
       nombreColegio: fb,
+      source: null,
     };
   }
 
@@ -499,17 +504,6 @@ export async function resolveColegioDiscountForEmail(email: string): Promise<{
     }),
   );
 
-  if (withMembership.length === 0) {
-    const fb = await getColegioFallbackBannerNombre();
-    return {
-      eligible: false,
-      discountPercent: 0,
-      enabled: false,
-      onList: false,
-      nombreColegio: fb,
-    };
-  }
-
   const applicable = withMembership.filter((x) => x.enabled && x.discountPercent > 0);
 
   if (applicable.length > 0) {
@@ -521,6 +515,38 @@ export async function resolveColegioDiscountForEmail(email: string): Promise<{
       enabled: true,
       onList: true,
       nombreColegio: best.nombreColegio,
+      source: "colegio",
+    };
+  }
+
+  // Sin descuento de colegio: 20% si es usuario registrado en LegalMev (sin envíos gratis).
+  if (isLegalMevColegioConfigured()) {
+    const lmUser = await verifyLegalMevRegisteredUser(norm);
+    if (
+      lmUser.discountTier === "legalmev" &&
+      lmUser.isRegistered &&
+      lmUser.discountPercent > 0
+    ) {
+      return {
+        eligible: true,
+        discountPercent: lmUser.discountPercent,
+        enabled: true,
+        onList: withMembership.length > 0,
+        nombreColegio: "LegalMev",
+        source: "legalmev",
+      };
+    }
+  }
+
+  if (withMembership.length === 0) {
+    const fb = await getColegioFallbackBannerNombre();
+    return {
+      eligible: false,
+      discountPercent: 0,
+      enabled: false,
+      onList: false,
+      nombreColegio: fb,
+      source: null,
     };
   }
 
@@ -534,5 +560,6 @@ export async function resolveColegioDiscountForEmail(email: string): Promise<{
     enabled: false,
     onList: true,
     nombreColegio: sorted[0].nombreColegio,
+    source: null,
   };
 }

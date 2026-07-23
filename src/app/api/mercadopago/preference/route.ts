@@ -155,6 +155,7 @@ export async function POST(request: NextRequest) {
       price: finalPrice,
       listPrice,
       colegioDiscountPercent: discountPct > 0 ? discountPct : null,
+      discountSource: discountPct > 0 ? (colegio.source ?? null) : null,
       credits: planData.creditos,
       status: 'pending',
       paymentId: null,
@@ -169,6 +170,7 @@ export async function POST(request: NextRequest) {
       initPoint: preference.init_point,
       sandboxInitPoint: preference.sandbox_init_point,
       colegioDiscountApplied: discountPct > 0,
+      discountSource: discountPct > 0 ? (colegio.source ?? null) : null,
       listPrice,
       finalPrice,
     });

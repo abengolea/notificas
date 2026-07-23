@@ -52,6 +52,7 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
   const [colegioPct, setColegioPct] = useState(0);
   const [colegioEligible, setColegioEligible] = useState(false);
   const [colegioNombre, setColegioNombre] = useState(COLEGIO_NOMBRE_FALLBACK_CLIENT);
+  const [discountSource, setDiscountSource] = useState<'colegio' | 'legalmev' | null>(null);
   const [colegioBannerLoading, setColegioBannerLoading] = useState(true);
   const { toast } = useToast();
 
@@ -182,6 +183,7 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
         setColegioEligible(false);
         setColegioPct(0);
         setColegioNombre(COLEGIO_NOMBRE_FALLBACK_CLIENT);
+        setDiscountSource(null);
         return;
       }
       try {
@@ -201,20 +203,25 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
           typeof j.nombreColegio === 'string' && j.nombreColegio.trim()
             ? j.nombreColegio.trim()
             : COLEGIO_NOMBRE_FALLBACK_CLIENT;
+        const source =
+          j.source === 'colegio' || j.source === 'legalmev' ? (j.source as 'colegio' | 'legalmev') : null;
         if (res.ok) {
           setColegioEligible(Boolean(j.eligible));
           setColegioPct(typeof j.discountPercent === 'number' ? j.discountPercent : 0);
           setColegioNombre(nom);
+          setDiscountSource(source);
         } else {
           setColegioEligible(false);
           setColegioPct(0);
           setColegioNombre(nom);
+          setDiscountSource(null);
         }
       } catch {
         if (!cancelled) {
           setColegioEligible(false);
           setColegioPct(0);
           setColegioNombre(COLEGIO_NOMBRE_FALLBACK_CLIENT);
+          setDiscountSource(null);
         }
       } finally {
         if (!cancelled) setColegioBannerLoading(false);
@@ -505,11 +512,21 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
               {!colegioBannerLoading && colegioEligible && colegioPct > 0 ? (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
                   <Badge variant="secondary" className="bg-primary/15 text-primary hover:bg-primary/20">
-                    {colegioNombre}
+                    {discountSource === 'legalmev' ? 'LegalMev' : colegioNombre}
                   </Badge>
                   <span className="text-muted-foreground">
-                    Tu cuenta tiene un <strong className="text-foreground">{colegioPct}%</strong> de descuento sobre el
-                    precio de lista en todos los planes.
+                    {discountSource === 'legalmev' ? (
+                      <>
+                        Por estar registrado en LegalMev tenés un{' '}
+                        <strong className="text-foreground">{colegioPct}%</strong> de descuento sobre el
+                        precio de lista en todos los planes.
+                      </>
+                    ) : (
+                      <>
+                        Tu cuenta tiene un <strong className="text-foreground">{colegioPct}%</strong> de
+                        descuento sobre el precio de lista en todos los planes.
+                      </>
+                    )}
                   </span>
                 </div>
               ) : null}
@@ -517,7 +534,8 @@ export default function WalletClient({ user, transactions, planes }: WalletClien
                 <p className="mt-2 text-xs text-muted-foreground">
                   El descuento para matriculados de{' '}
                   <strong className="text-foreground">{colegioNombre}</strong> se reconoce si el correo de tu sesión está
-                  en la nómina que carga el administrador.
+                  en la nómina que carga el administrador. Si estás registrado en LegalMev, también podés
+                  acceder a un 20% de descuento.
                 </p>
               ) : null}
             </CardHeader>
