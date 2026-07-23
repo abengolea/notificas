@@ -115,3 +115,16 @@ env:
     secret: ADMIN_SESSION_SECRET
     availability:
       - RUNTIME
+  # Integración LegalMev (descuento colegio / usuarios registrados)
+  - variable: LEGALMEV_URL
+    value: "https://www.legalmev.com.ar"
+    availability:
+      - RUNTIME
+  - variable: NOTIFICAS_LEGALMEV_SHARED_SECRET
+    secret: NOTIFICAS_LEGALMEV_SHARED_SECRET
+    availability:
+      - RUNTIME
+  - variable: LEGALMEV_REGISTERED_DISCOUNT_PERCENT
+    value: "20"
+    availability:
+      - RUNTIME
