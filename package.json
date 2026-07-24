@@ -29,7 +29,8 @@
     "repair:legacy-csv-corruption": "node scripts/repair-legacy-csv-email-corruption.js",
     "export:users-excel": "node scripts/export-firestore-users-to-xlsx.js",
     "script:send-reset-link": "node scripts/send-password-reset-link.js",
-    "deploy:functions": "node scripts/deploy-functions.js"
+    "deploy:functions": "node scripts/deploy-functions.js",
+    "grant:firestore-deploy-access": "bash scripts/grant-firestore-deploy-access.sh"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.13.0",
