@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-05-27T19:48:31.391Z",
+  "dryRun": false,
+  "min": 31,
+  "divisor": 200,
+  "limit": 1,
+  "eligibleCount": 164,
+  "count": 1,
+  "rows": [
+    {
+      "uid": "loG5sx002CUeSn9Q9yDjN5DaVR63",
+      "email": "abengolea1abengolea1@gmail.comgmail.com",
+      "nombre": "",
+      "antes": 33650,
+      "despues": 169
+    }
+  ]
+}

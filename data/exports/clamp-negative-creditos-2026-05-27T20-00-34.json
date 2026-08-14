@@ -1,0 +1,25 @@
+{
+  "generatedAt": "2026-05-27T20:00:36.457Z",
+  "dryRun": true,
+  "count": 3,
+  "rows": [
+    {
+      "uid": "S7EeEtpQvlTGmtciUuT3XyoHnkG2",
+      "email": "info@ucu.org.ar",
+      "antes": -6500,
+      "despues": 0
+    },
+    {
+      "uid": "Qw4uXxWdxpYkvKF8Z1N0RAR1DZE3",
+      "email": "diegoalberione@gmail.com",
+      "antes": -1350,
+      "despues": 0
+    },
+    {
+      "uid": "W2mYeO8Jp6X9oMfd8MCgmjm7Bru1",
+      "email": "mirtablassi@hotmail.com",
+      "antes": -600,
+      "despues": 0
+    }
+  ]
+}

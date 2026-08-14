@@ -1,0 +1,129 @@
+{
+  "generatedAt": "2026-05-27T20:35:50.589Z",
+  "dryRun": true,
+  "cantidad": 3,
+  "bonusTag": "colegio_bonus_san_nicol_v1",
+  "colegio": {
+    "id": "legacy_v1",
+    "nombre": "Colegio de Abogados de San Nicolás"
+  },
+  "rosterTotal": 1085,
+  "activos": 1085,
+  "sinCuenta": 1075,
+  "yaOtorgado": 0,
+  "count": 10,
+  "rows": [
+    {
+      "email": "sabriabal@hotmail.com",
+      "nombre": "ABAL SABRINA MADELAINE",
+      "estado": "activo",
+      "uid": "QIJv61f9XAPdGeIhrmAqZk1eIrd2"
+    },
+    {
+      "email": "abengolea1@gmail.com",
+      "nombre": "BENGOLEA Adrian",
+      "estado": "activo",
+      "uid": "NpUO7WquNXbLVs4yZG4ZCtuI5nw2"
+    },
+    {
+      "email": "ignacio@estudiojuridicobengolea.com.ar",
+      "nombre": "BENGOLEA Ignacio",
+      "estado": "activo",
+      "uid": "MxD3dEF6afUJ9q0ZcV2c1u998Bf1"
+    },
+    {
+      "email": "dr.bilbaofrancisco@gmail.com",
+      "nombre": "BILBAO FRANCISCO",
+      "estado": "activo",
+      "uid": "LCOt8py10SVm7zy2ABpiKc0MQfV2"
+    },
+    {
+      "email": "abogadagonzalezmoisello@gmail.com",
+      "nombre": "GONZALEZ MOISELLO MARIA TERESITA",
+      "estado": "activo",
+      "uid": "L8nGPKaP6bU9ShvRKvYtuGXW5U02"
+    },
+    {
+      "email": "mhiuvale@gmail.com",
+      "nombre": "IUVALE Maria Hilda",
+      "estado": "activo",
+      "uid": "H6buB5GrgiY6bQfdsdPeaUiAM7h2"
+    },
+    {
+      "email": "lisandrolitta@gmail.com",
+      "nombre": "LITTA PONS LISANDRO NAHUEL",
+      "estado": "activo",
+      "uid": "Aa7zOO9BREVLbtTT3r7rORYNlCl2"
+    },
+    {
+      "email": "alejo_maiztegui@hotmail.com",
+      "nombre": "MAIZTEGUI ALEJO LUIS",
+      "estado": "activo",
+      "uid": "AzMVZKb5KXfRUxL3kKvyNi0rft43"
+    },
+    {
+      "email": "lucia-rossi@outlook.com",
+      "nombre": "ROSSI MARIA LUCIA",
+      "estado": "activo",
+      "uid": "7OLIJXAGPbXb9UPHFXKTh8EHnZa2"
+    },
+    {
+      "email": "nicolasviola5@gmail.com",
+      "nombre": "VIOLA NICOLAS SEBASTIAN",
+      "estado": "activo",
+      "uid": "td3KquLkxYMoPXnks3ITRus4u922"
+    }
+  ],
+  "sinCuentaEmails": [
+    "daiananabadie@gmail.com",
+    "carlosfedericoabdala@hotmail.com",
+    "estudioabonjo@yahoo.com.ar",
+    "sandrabrego@yahoo.com.ar",
+    "martiacastello@hotmail.com",
+    "acebalsofi@gmail.com",
+    "marieacosta-14@hotmail.com",
+    "cefenamun@live.com",
+    "arieladeff68@gmail.com",
+    "monicaadorni99@gmail.com",
+    "juliaagotegaray@gmail.com.ar",
+    "arielaguero@live.com.ar",
+    "arielaguerri@outlook.com",
+    "angialadro@hotmail.com",
+    "alaisalejandra25@gmail.com",
+    "dradevoraalba@yahoo.com.ar",
+    "pamealbarracin123.pupe@gmail.com",
+    "juanignacioalbarracin@gmail.com",
+    "noelia.albes1@gmail.com",
+    "gustavonicolasalbornoz@gmail.com",
+    "aldaydaniela@hotmail.com",
+    "jbaldazabal@hotmail.com",
+    "sergioaldazabal@yahoo.com.ar",
+    "estudioales30@gmail.com",
+    "alesiofederico22@gmail.com",
+    "nicolasalfano1@hotmail.com",
+    "martinjesus.alfaro@gmail.com",
+    "camilaalfonso.93@gmail.com",
+    "valealgacibiur@hotmail.com",
+    "estudioestebanali@gmail.com",
+    "mariacarlaalmaraz@gmail.com",
+    "a.nazarenoalmaraz@gmail.com",
+    "altubesonia@gmail.com",
+    "antoamarillopueblas@gmail.com",
+    "ambrosioasoc@yahoo.com.ar",
+    "gaspar_amoedo6@hotmail.com",
+    "marcos.andrin@gmail.com",
+    "estudiojuridicoandrin@gmail.com",
+    "angelozziadrian@gmail.com",
+    "joseluisangilidi@yahoo.com.ar",
+    "priscilaangilidi@hotmail.com",
+    "fernanda_doc@hotmail.com",
+    "ara_estefa@hotmail.com",
+    "adrianaarancegui@gmail.com",
+    "melisaarce89@hotmail.com",
+    "arcesd@gmail.com",
+    "daniela_ardisson@hotmail.com",
+    "juanardissono@gmail.com",
+    "arellanomaru86@gmail.com",
+    "albertoarevalosn@yahoo.com.ar"
+  ]
+}

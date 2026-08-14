@@ -1,0 +1,1159 @@
+{
+  "generatedAt": "2026-05-27T19:52:22.216Z",
+  "dryRun": false,
+  "min": 31,
+  "divisor": 200,
+  "limit": null,
+  "eligibleCount": 164,
+  "count": 164,
+  "rows": [
+    {
+      "uid": "58AaKx3kHPf49dyayw5FocgOkqd2",
+      "email": "drhugo.olearo@hotmail.com.ar",
+      "nombre": "",
+      "antes": 17200,
+      "despues": 86
+    },
+    {
+      "uid": "yTLkj9f9R7MKRSLZFrtG4LiMaOo1",
+      "email": "consultaomicpergamino@gmail.com",
+      "nombre": "",
+      "antes": 16600,
+      "despues": 83
+    },
+    {
+      "uid": "0P0Ez3I8oeRSgVGqFll4faGaVEa2",
+      "email": "notifications@post.binance.com",
+      "nombre": "",
+      "antes": 10000,
+      "despues": 50
+    },
+    {
+      "uid": "2YWKqXorIPgg9RZSKOqbalMuXaf2",
+      "email": "pruebanotificas@gmail.com",
+      "nombre": "",
+      "antes": 10000,
+      "despues": 50
+    },
+    {
+      "uid": "ADiEuO4gm2ZypMILgKsEFSJPSp33",
+      "email": "info@aconoa.org",
+      "nombre": "",
+      "antes": 10000,
+      "despues": 50
+    },
+    {
+      "uid": "STRBxwrcPeVrShEDNDearbmA1io2",
+      "email": "cpurhprov@gmail.com",
+      "nombre": "",
+      "antes": 10000,
+      "despues": 50
+    },
+    {
+      "uid": "doZgZup6JINJjnULPyYwh0QrFji1",
+      "email": "info@sgsworld.com.ar",
+      "nombre": "",
+      "antes": 10000,
+      "despues": 50
+    },
+    {
+      "uid": "guYCHRlvj1eFZ871KaDvYHOZYgn1",
+      "email": "consal@consal.org.ar",
+      "nombre": "",
+      "antes": 10000,
+      "despues": 50
+    },
+    {
+      "uid": "hT0zrwlRcKMLVcCNKMjrYVdRmU52",
+      "email": "reclamos@adecua.org.ar",
+      "nombre": "",
+      "antes": 10000,
+      "despues": 50
+    },
+    {
+      "uid": "pwK2gHDCgKOJGLnXtmZk87u87A73",
+      "email": "info@justiciacolectiva.org.ar",
+      "nombre": "",
+      "antes": 10000,
+      "despues": 50
+    },
+    {
+      "uid": "fHBRpSP0ZeNFMjT1GbgPrbwFiug1",
+      "email": "analiazygier@diariojudicial.com",
+      "nombre": "",
+      "antes": 9800,
+      "despues": 49
+    },
+    {
+      "uid": "Us6QAtCglvTDYd6tJO1aYpDgT3o1",
+      "email": "ecappello@cappe-law.com",
+      "nombre": "",
+      "antes": 8900,
+      "despues": 45
+    },
+    {
+      "uid": "P8nyJknqP9Ok5ii2UW6bBGvEtsx1",
+      "email": "notificaciones@sgsworld.com.ar",
+      "nombre": "",
+      "antes": 8150,
+      "despues": 41
+    },
+    {
+      "uid": "pZu56XpA29X9IXNNyzYzBX2Uily1",
+      "email": "contactocontacto@notificas.comnotificas.com",
+      "nombre": "",
+      "antes": 7600,
+      "despues": 38
+    },
+    {
+      "uid": "PbjexxeXXqZRHgbhhjzQqAH4SWh1",
+      "email": "ajp.breit@gmail.com",
+      "nombre": "",
+      "antes": 7500,
+      "despues": 38
+    },
+    {
+      "uid": "RnqB30U4sJSQZhy6LNGj9oZ3D9k1",
+      "email": "cappelloesteban@gmail.com",
+      "nombre": "",
+      "antes": 6400,
+      "despues": 32
+    },
+    {
+      "uid": "2oNeCfmn7ANmNwLrzBSX7AxQ7MA3",
+      "email": "santicarlen@gmail.com",
+      "nombre": "",
+      "antes": 6000,
+      "despues": 30
+    },
+    {
+      "uid": "9mjGAYKNLCZvuo2w17pZ9gI30z82",
+      "email": "rominaschmukler@gmail.com",
+      "nombre": "",
+      "antes": 6000,
+      "despues": 30
+    },
+    {
+      "uid": "DQGG2fY85ZbuBcwqmSD8GAvaruM2",
+      "email": "adrianloureda@gmail.com",
+      "nombre": "",
+      "antes": 6000,
+      "despues": 30
+    },
+    {
+      "uid": "eqsVuYWaHbg83aRm0OVRqGeqtRz2",
+      "email": "rodrigomolinasalinas@gmail.com",
+      "nombre": "",
+      "antes": 6000,
+      "despues": 30
+    },
+    {
+      "uid": "jEgPSkVI9aQfdbN9jRpbzEj5p8V2",
+      "email": "diegogv09@gmail.com",
+      "nombre": "",
+      "antes": 6000,
+      "despues": 30
+    },
+    {
+      "uid": "3IdohHIBz6OzJlz8SH3v8kfuqpC2",
+      "email": "rominaraquelpaita@gmail.com",
+      "nombre": "",
+      "antes": 5000,
+      "despues": 25
+    },
+    {
+      "uid": "An9WphWUvFZfNdfJNm3Hok2a3OH2",
+      "email": "ipssrlrh@gmail.com",
+      "nombre": "",
+      "antes": 5000,
+      "despues": 25
+    },
+    {
+      "uid": "AnsBqk4yQbhWefZls0Tikj7CnxA3",
+      "email": "ulisescastreje@gmail.com",
+      "nombre": "",
+      "antes": 5000,
+      "despues": 25
+    },
+    {
+      "uid": "G9NkB1ITwHZ6tj6lHjY2NzWvje03",
+      "email": "facundo.montenegro@yahoo.com.ar",
+      "nombre": "",
+      "antes": 5000,
+      "despues": 25
+    },
+    {
+      "uid": "J7fey1qAgAUZ5Xnupaxs6P4rOp12",
+      "email": "estggvicente@gmail.com",
+      "nombre": "",
+      "antes": 5000,
+      "despues": 25
+    },
+    {
+      "uid": "RpyhqMzvWCeQANSci4hKlIZVdUA3",
+      "email": "imorelli982@gmail.com",
+      "nombre": "",
+      "antes": 5000,
+      "despues": 25
+    },
+    {
+      "uid": "e2zIDAOmVah9eQdM4Foe6JrycZL2",
+      "email": "franciscoansa111@gmail.com",
+      "nombre": "",
+      "antes": 5000,
+      "despues": 25
+    },
+    {
+      "uid": "egkZY3oEbcaSZEpjrdTo9jZZX5i2",
+      "email": "acostastelzer@gmail.com",
+      "nombre": "",
+      "antes": 5000,
+      "despues": 25
+    },
+    {
+      "uid": "u7MZBHg4ahc9UL3j5iwZY2shRSx1",
+      "email": "rrhh@fudy.com.ar",
+      "nombre": "",
+      "antes": 4850,
+      "despues": 25
+    },
+    {
+      "uid": "nNxsyG5OTVPir2wFt9nOJCA4VKw2",
+      "email": "estudiojuridico.gabad@gmail.com",
+      "nombre": "",
+      "antes": 4600,
+      "despues": 23
+    },
+    {
+      "uid": "B6Y33Ao4KhZ8iN32fEFT0TUa2kR2",
+      "email": "marielaarranz@hotmail.com",
+      "nombre": "",
+      "antes": 3700,
+      "despues": 19
+    },
+    {
+      "uid": "1WAzYinq4FWAoFaE8lFF9pyLq5t1",
+      "email": "rominawust@gmail.com",
+      "nombre": "",
+      "antes": 3000,
+      "despues": 15
+    },
+    {
+      "uid": "S8999JMubWa3gPfF5FYWoMIxzn33",
+      "email": "legales@gdnargentina.com",
+      "nombre": "",
+      "antes": 3000,
+      "despues": 15
+    },
+    {
+      "uid": "0SWWKhxI06hN0vNLTcGxFyf65Ij1",
+      "email": "adrianaperello@yahoo.com.ar",
+      "nombre": "",
+      "antes": 2500,
+      "despues": 13
+    },
+    {
+      "uid": "RK09IU9kobgUd3SBY1bYLOHbfUa2",
+      "email": "silvanatoledo8@gmail.com",
+      "nombre": "",
+      "antes": 2500,
+      "despues": 13
+    },
+    {
+      "uid": "r1UPJcCY76VYYHv3AkuJAQUly8n1",
+      "email": "enriquejvazquez@hotmail.com",
+      "nombre": "",
+      "antes": 2200,
+      "despues": 11
+    },
+    {
+      "uid": "1k8BPI81CIVokXU0Q7JemkdBooM2",
+      "email": "martinezlaredo@gmail.com",
+      "nombre": "",
+      "antes": 2000,
+      "despues": 10
+    },
+    {
+      "uid": "DDsEWtUlVyPxdRlGzrIZIlIf7dp2",
+      "email": "andres.avaras@gmail.com",
+      "nombre": "",
+      "antes": 2000,
+      "despues": 10
+    },
+    {
+      "uid": "RCdNOf4CfdYG9RJN77AF54rJZz53",
+      "email": "claudiakilibarda@gmail.com",
+      "nombre": "",
+      "antes": 2000,
+      "despues": 10
+    },
+    {
+      "uid": "Sm46suXSulasW8JwRqiuoOB04Yo1",
+      "email": "jorge@estudioknoblovits.com",
+      "nombre": "",
+      "antes": 2000,
+      "despues": 10
+    },
+    {
+      "uid": "VPzN9EsBrdMHlZ8Q12Jv30VrJmY2",
+      "email": "drescuderolescano@hotmail.com",
+      "nombre": "",
+      "antes": 2000,
+      "despues": 10
+    },
+    {
+      "uid": "Zm1OlWASe2OPieuC2gI32agT94z1",
+      "email": "hernan.gini@walmart.com",
+      "nombre": "",
+      "antes": 2000,
+      "despues": 10
+    },
+    {
+      "uid": "bhfNMB2FgOfhsxAKoxUxY3FKctD2",
+      "email": "gperret@adonix.global",
+      "nombre": "",
+      "antes": 2000,
+      "despues": 10
+    },
+    {
+      "uid": "kqfVwNJ4xKWTgDRyfpiSrUIisSu2",
+      "email": "bergaglio.nestor@gmail.com",
+      "nombre": "",
+      "antes": 2000,
+      "despues": 10
+    },
+    {
+      "uid": "mgKNCJuXAVNkgUJVTWncbOCuF213",
+      "email": "adelamperezdelviso@gmail.com",
+      "nombre": "",
+      "antes": 2000,
+      "despues": 10
+    },
+    {
+      "uid": "Hk0145zF0XbdlY53unwnSkS2kIz2",
+      "email": "chamorroestudio@yahoo.com.ar",
+      "nombre": "",
+      "antes": 1850,
+      "despues": 10
+    },
+    {
+      "uid": "Yjj3XasJSrVVTLAyzsabo12L3wv2",
+      "email": "christalinas@hotmail.com",
+      "nombre": "",
+      "antes": 1650,
+      "despues": 9
+    },
+    {
+      "uid": "J0TbKqoW1Ee2lbyMGzP5kg23e3M2",
+      "email": "almargarita34@gmail.com",
+      "nombre": "",
+      "antes": 1200,
+      "despues": 6
+    },
+    {
+      "uid": "l3xJIrkZFLOhCjWLOxs3COIrKun1",
+      "email": "administracion@agropatagonico.com",
+      "nombre": "",
+      "antes": 1200,
+      "despues": 6
+    },
+    {
+      "uid": "19d5nWWlvpaPoyIcFzCYd409mjI3",
+      "email": "ezequielrgalvan@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "1F7zRnMLqqMUreWKyqypYmaIA922",
+      "email": "javiermartus@hotmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "1pND7EIgG5PuiiCpd5eXJHHXERB3",
+      "email": "drcastrovidart@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "1vtVKvSQZZPtXgFjuPAoS6NCvg72",
+      "email": "leonelsosa_86@live.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "3ltG6UDjivU2h5Am8a7A8VC27Qu2",
+      "email": "estudiojuridicovictoriavillegas@hotmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "51rV3JmOffgZosycHqoF477rFH73",
+      "email": "estudioalr@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "5bKm2NgZEuV6nt034iv3X7zTbXJ3",
+      "email": "gabrielaperret@hotmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "71zsEbGByyM1jhspuQmtjWZxZnj2",
+      "email": "inegesteira@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "7OLIJXAGPbXb9UPHFXKTh8EHnZa2",
+      "email": "lucia-rossi@outlook.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "7jTjeM6lzWXjKaDgfG1XYsTDTVf2",
+      "email": "elsavivianagraf@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "8FLTuRuOGKTaOwdkkapsNB6xSWM2",
+      "email": "florscorres@hotmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "8Xw5k7qHTtPZQ6VApOlWVnKwwWv1",
+      "email": "federicocoraglio+1@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "95g3PwHQxhafcIjEfH5QYbUayCN2",
+      "email": "jcmpabogado@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "Akm6ziYXzdWh1ZljVJUWdJokt3o1",
+      "email": "tomivega2@hotmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "CoZTcp3wEjMs4wHH5Sy3ppsgXKJ2",
+      "email": "gc@estudiolarivey.com.ar",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "E4YKgeO72hSAsE6X7kubpPgoTqk1",
+      "email": "gracielanoemialfonso@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "Fdtm83HjmwNlOcy8b5q7t3mRrvr2",
+      "email": "abogadoscarballoyasociados@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "GJj0S6wb7EV13g8rmfvwuSnXGrB2",
+      "email": "escribanadebenedictis@dbrescribanos.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "GM1bRdoW9MhYTzVhxq7E2iEOms83",
+      "email": "gallardo140sa@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "HCsnKGosYRfkatxgNsDBjxia2VW2",
+      "email": "gioiosamelina@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "HTDRJamBw7hqDthLbblVpC4x7gH2",
+      "email": "jcaballin.francisco@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "Hs3HgbQCRRWWCgGdlQiPjdyUG8T2",
+      "email": "ezedearce@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "IZ67eFRDTEM7Lqb1IZHN3oMJBX82",
+      "email": "folikgiovanni@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "IhTCZyUdNNNWMjPMzPNdFiWC7qz2",
+      "email": "lucianaguevara@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "Ir3rCLngc0ZmLaRT0VRrRnanSr82",
+      "email": "estudioggb@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "Jdt05NhCLWWun8QEK7YaHvcncng1",
+      "email": "santiagokillinger@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "LCOt8py10SVm7zy2ABpiKc0MQfV2",
+      "email": "dr.bilbaofrancisco@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "MfFt7qiG96XsUQTVyJHMy1UWVwf1",
+      "email": "flia_marcon@hotmail.es",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "NTeRj1pcS8UF3bBDjtNYK8UnFfi2",
+      "email": "letyramella@yahoo.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "O7e1LaHJCfgIcT3V9VlS7xS3U6e2",
+      "email": "jorge.mezger@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "Oe7jmDH30iScZH9WRSfvHwaBNQe2",
+      "email": "dantew222015@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "QIJv61f9XAPdGeIhrmAqZk1eIrd2",
+      "email": "sabriabal@hotmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "QnB6OmFvDrYBGG8nsSUM4HAwFTz1",
+      "email": "marquezgaunaluis@hotmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "R94tMklgD2b7XkK9QQlIAKfAUuQ2",
+      "email": "abogadagonzalezmoisello@gamil.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "TrE50wP8S0PZsXWZGp0Y92W3jyh1",
+      "email": "albanobporporatto@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "VaCpeYvUcIOtVuauH9moKWDr5kz2",
+      "email": "flaviazappacosta@yahoo.com.ar",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "YO4aj7riHYZDiQzgH7YyabmK0Cu1",
+      "email": "hrbstudiopro@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "YjqSftcH6sWw2W1VRzW9W4uxWfu2",
+      "email": "gustavohauteberque@hotmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "Ykq7FDdD1OREKu0GySgItAJaGL33",
+      "email": "marialauratesone@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "ZYsbLNphZDdlDmmydSfTK6dvzs52",
+      "email": "maticenturionn@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "aiQbHUIfqxZebyTO3JXia1pJIMe2",
+      "email": "claudiojeandet@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "axfripCCdybpnnoQrnBOWNtJWm12",
+      "email": "probramail@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "b1VpsbhtqAhsuw9dR9i0oH1ig363",
+      "email": "caceresmatias@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "b9pAizyGVphJa3DRT5zVW1YsD1w1",
+      "email": "clugaro@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "c9keWi3mqDcna2pXJIQAdjfvvd72",
+      "email": "juanpabloliotta@live.com.ar",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "crwS5AGLkLQ6zNQxYg4icLZWZcW2",
+      "email": "bortoluzzimelisa@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "e6mSnteszwdgslx98M48ysX5tGf1",
+      "email": "fmaurello@cid-schejter.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "eT4r5cyxH9cTY9xuKDvIWyjPg6s1",
+      "email": "mariajosepucurull@hotmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "flMUHOcizAZ8lLijqJUWRAGEeF32",
+      "email": "cristianhermes@hotmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "fz5ClK38FvMpEt8nP7FbNBD100i2",
+      "email": "evelyncasa@hotmail.com.ar",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "h64AdUl2sta1JRSzUqtUgwmS6h33",
+      "email": "emaperalta2310@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "hBJXY3MYiVWmONLgqv9EkJBibiF3",
+      "email": "estudioagundez@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "hyxNNrShKFVwr5y7rJLu98pmSkv2",
+      "email": "dcalvosuarez@hotmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "ie2MkjgPsUNyyqdG3znHNpggBt53",
+      "email": "vettulo.sma@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "igZQrVe2yNY3ky1Jru8MsrcNLWG2",
+      "email": "estudio@bengolealamas.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "iul4KKcil9fDlIY38p5tbNTLf513",
+      "email": "romiidejordaine@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "jMdwzERKlTT4qFNj6RHfI9dz2Im1",
+      "email": "marucasero15@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "jdPlqg4KDrWgpje78Dwoo3HA7j43",
+      "email": "justiciacalificada@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "mHdKuo7FH0OP9wVY6ucBp17YzHG3",
+      "email": "abogadoargibay@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "mNvIA3ejuXPw84pjIzubxCXnrNk1",
+      "email": "abengolea@ucu.org.ar",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "mVaPC6SwAgeGgWj02Glw5UjiMkN2",
+      "email": "jdacrich@yahoo.com.ar",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "msyJmwBt4AOMNG7BxpFCyVJjEa73",
+      "email": "gberterreche@estudioberterreche.com.ar",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "nh82Zn0qIdZOmI0FW0hLQf8gKv33",
+      "email": "saltachino@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "nzWdbopjOIchYOVgI7cKDIJrRSb2",
+      "email": "f_manavella@hotmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "p9vQ2X79ElSxaNM9NkyroPXMPiC3",
+      "email": "analia.zygier@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "pFxUXmZ51KgmBWDeJ9pl4KwoFRF3",
+      "email": "jose.smiraglia@fibertel.com.ar",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "pyzxyvBkD4gLf4ALUzjtXh9182U2",
+      "email": "marianosastre90@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "qruiRCJq6Nd5koNQMsknm7qZDnp1",
+      "email": "mybestudiojuridico@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "uSOQDVxiVNaXJnzMK2Zzd5SOf282",
+      "email": "camporacatalina@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "vAHCcIkPdgNiNBjEuhNY7QiGCD93",
+      "email": "sbielat@zbestudiojuridico.com.ar",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "vJgkpiElTaX63ChIugGTOO2dbEs2",
+      "email": "aribiren@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "wFqlzWckBbfX23sNHK5uMmBI0is1",
+      "email": "nancy_m_melgarejo@hotmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "wVvMylyhGUTJEeQF89qLXhn8gzc2",
+      "email": "mirtablassi@hoymail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "xLO0AHC4QUQeTm38DQW5qJK6LNp2",
+      "email": "abalosschenone@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "zChjBkP1aDWuQWU5DwguWI8F11r1",
+      "email": "matyasdiaz@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "zLZX0o4VoaWrPzJTJoEwmGfeBjx2",
+      "email": "jair126@gmail.com",
+      "nombre": "",
+      "antes": 1000,
+      "despues": 5
+    },
+    {
+      "uid": "NpUO7WquNXbLVs4yZG4ZCtuI5nw2",
+      "email": "abengolea1@gmail.com",
+      "nombre": "",
+      "antes": 939,
+      "despues": 5
+    },
+    {
+      "uid": "25bM3ljTkTcrGl71Yg1EXvEZe0b2",
+      "email": "eduardoadriane@gmail.com",
+      "nombre": "",
+      "antes": 850,
+      "despues": 5
+    },
+    {
+      "uid": "2zwoFiVjP8V0uiuqmbISc0cI9dX2",
+      "email": "abengolea@hotmail.com",
+      "nombre": "",
+      "antes": 850,
+      "despues": 5
+    },
+    {
+      "uid": "9N7ELCszqwNTMyluzI91cDxRH0h2",
+      "email": "heck.r.barrios@gmail.com",
+      "nombre": "",
+      "antes": 850,
+      "despues": 5
+    },
+    {
+      "uid": "FDoJr3g8Ojcv42FDGfKK5SkjlhE3",
+      "email": "proyect_martintorres@hotmail.com",
+      "nombre": "",
+      "antes": 850,
+      "despues": 5
+    },
+    {
+      "uid": "GKEi6jwbJ9dLECethtxFRo9ykMI2",
+      "email": "estudiocasalonguebove@gmail.com",
+      "nombre": "",
+      "antes": 850,
+      "despues": 5
+    },
+    {
+      "uid": "L8Vt45B4ruN01PHEFCJQUm2htUG2",
+      "email": "campalwal@gmail.com",
+      "nombre": "",
+      "antes": 850,
+      "despues": 5
+    },
+    {
+      "uid": "LsJcr0emI9Uk0B93VfsyLl064Kg2",
+      "email": "laupezzatti@gmail.com",
+      "nombre": "",
+      "antes": 850,
+      "despues": 5
+    },
+    {
+      "uid": "RXGR33UZvwan352SiVeCcHUfUv82",
+      "email": "ferrariosantiago@gmail.com",
+      "nombre": "",
+      "antes": 850,
+      "despues": 5
+    },
+    {
+      "uid": "f7yxmj0GENdAwRNzGZcLLTysri13",
+      "email": "adolfobarberis@gmail.com",
+      "nombre": "",
+      "antes": 850,
+      "despues": 5
+    },
+    {
+      "uid": "gDbV0gUu5bfTKnAofOZDqDnLP9x1",
+      "email": "holearo@cpacf.org.ar",
+      "nombre": "",
+      "antes": 850,
+      "despues": 5
+    },
+    {
+      "uid": "iB713MIAjQNdJTJNBzPa3iG2Fmj2",
+      "email": "dramacatena@gmail.com",
+      "nombre": "",
+      "antes": 850,
+      "despues": 5
+    },
+    {
+      "uid": "kHlN0HhirkSAj3Rs0V5MHpagP8P2",
+      "email": "dafernandezfierro@gmail.com",
+      "nombre": "",
+      "antes": 850,
+      "despues": 5
+    },
+    {
+      "uid": "muFYbRJRTcXtvMekRyBFRf42JQ52",
+      "email": "cinramirez968@gmail.com",
+      "nombre": "",
+      "antes": 850,
+      "despues": 5
+    },
+    {
+      "uid": "nKXJCr0456WSPJ67598VZ5qzjYa2",
+      "email": "alejandro.batista@legaltic.com.ar",
+      "nombre": "",
+      "antes": 850,
+      "despues": 5
+    },
+    {
+      "uid": "p45ZXUpEbnYEKOmgJ8lwxm9lSXH2",
+      "email": "correo@leonardodealmeida.com.ar",
+      "nombre": "",
+      "antes": 850,
+      "despues": 5
+    },
+    {
+      "uid": "9goCylOp3YgLwlPFYHb0httmW923",
+      "email": "santiago@gomezyasoc.com.ar",
+      "nombre": "",
+      "antes": 800,
+      "despues": 4
+    },
+    {
+      "uid": "IU1NXSsY7oWfrKr2yHSfAtoq39X2",
+      "email": "estudio@bengolealamas.com.ar",
+      "nombre": "",
+      "antes": 800,
+      "despues": 4
+    },
+    {
+      "uid": "Ic0fetOGDFX6pedgoV4DC05E9Aa2",
+      "email": "jorgeoscar.rossi@gmail.com",
+      "nombre": "",
+      "antes": 800,
+      "despues": 4
+    },
+    {
+      "uid": "MxD3dEF6afUJ9q0ZcV2c1u998Bf1",
+      "email": "ignacio@estudiojuridicobengolea.com.ar",
+      "nombre": "",
+      "antes": 800,
+      "despues": 4
+    },
+    {
+      "uid": "bclwI4Jdj8RNo8o7xyqKKQRYRq12",
+      "email": "tdabsn@gmail.com",
+      "nombre": "",
+      "antes": 800,
+      "despues": 4
+    },
+    {
+      "uid": "fLC6fwKKtyUaKyw4LQc5VkBDW9b2",
+      "email": "alemandaestudio@gmail.com",
+      "nombre": "",
+      "antes": 800,
+      "despues": 4
+    },
+    {
+      "uid": "oMXkeb7pCoReJduriXPEcjPMM1B2",
+      "email": "mgelcich@gmail.com",
+      "nombre": "",
+      "antes": 800,
+      "despues": 4
+    },
+    {
+      "uid": "wj3rFIld2YhbxCJAP3lJh97Sz8q1",
+      "email": "alej_ias@hotmail.com",
+      "nombre": "",
+      "antes": 800,
+      "despues": 4
+    },
+    {
+      "uid": "xBi0TM5V6xVBBUMpp2tCZRb9A4E2",
+      "email": "jgmarduel@gmail.com",
+      "nombre": "",
+      "antes": 800,
+      "despues": 4
+    },
+    {
+      "uid": "0pRqvzIyIFg1zFVvQzSApl2csw92",
+      "email": "ricabade@gmail.com",
+      "nombre": "",
+      "antes": 750,
+      "despues": 4
+    },
+    {
+      "uid": "G9SihAbH7tQcu4LLjNzw7CKID6B2",
+      "email": "fedousseturquiza@gmail.com",
+      "nombre": "",
+      "antes": 700,
+      "despues": 4
+    },
+    {
+      "uid": "a0B74J63XIZhDgthGRab2A54hRP2",
+      "email": "elsaneliorellana@gmail.com",
+      "nombre": "",
+      "antes": 700,
+      "despues": 4
+    },
+    {
+      "uid": "fkwpPVq4qyaAIE4mg1guFgxrncS2",
+      "email": "evecchi@zafirus.tech",
+      "nombre": "",
+      "antes": 700,
+      "despues": 4
+    },
+    {
+      "uid": "uEocfS2EkwXf8zQWOWj4iQjI3m82",
+      "email": "romisbg@hotmail.com",
+      "nombre": "",
+      "antes": 700,
+      "despues": 4
+    },
+    {
+      "uid": "AXe6Yu7wUrhcJrrv2VgnchA4wb02",
+      "email": "mbalestrinit@gmail.com",
+      "nombre": "",
+      "antes": 650,
+      "despues": 4
+    },
+    {
+      "uid": "YBMqgqXLSfP9Dn47P9rIByaBtDa2",
+      "email": "hernanalbisuhernanalbisu@gmail.comgmail.com",
+      "nombre": "",
+      "antes": 550,
+      "despues": 3
+    },
+    {
+      "uid": "Iz9lNMebYhS3urplCJWXQQnYpHf2",
+      "email": "paula4alva@gmail.com",
+      "nombre": "",
+      "antes": 400,
+      "despues": 2
+    },
+    {
+      "uid": "clfmqvinBEhljJ1JITQ2lNRPKQF2",
+      "email": "danielvitella@gmail.com",
+      "nombre": "",
+      "antes": 400,
+      "despues": 2
+    },
+    {
+      "uid": "loG5sx002CUeSn9Q9yDjN5DaVR63",
+      "email": "abengolea1abengolea1@gmail.comgmail.com",
+      "nombre": "",
+      "antes": 169,
+      "despues": 1
+    },
+    {
+      "uid": "MxrrT46OEuZee3Xjt2PWhVvXtJl2",
+      "email": "federicocoraglio@gmail.com",
+      "nombre": "",
+      "antes": 100,
+      "despues": 1
+    },
+    {
+      "uid": "qFxkzqxtDJNaVREqrF9KO6eXFbD3",
+      "email": "gperret@adonixargentina.com",
+      "nombre": "",
+      "antes": 100,
+      "despues": 1
+    },
+    {
+      "uid": "td3KquLkxYMoPXnks3ITRus4u922",
+      "email": "nicolasviola5@gmail.com",
+      "nombre": "",
+      "antes": 100,
+      "despues": 1
+    }
+  ]
+}
