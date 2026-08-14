@@ -128,3 +128,16 @@ env:
     value: "20"
     availability:
       - RUNTIME
+  # Cola asíncrona de campañas (Cloud Tasks)
+  - variable: CAMPAIGN_WORKER_SECRET
+    secret: CAMPAIGN_WORKER_SECRET
+    availability:
+      - RUNTIME
+  - variable: CLOUD_TASKS_QUEUE
+    value: "campaign-notifications"
+    availability:
+      - RUNTIME
+  - variable: CLOUD_TASKS_LOCATION
+    value: "us-central1"
+    availability:
+      - RUNTIME
