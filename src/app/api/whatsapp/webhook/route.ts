@@ -120,4 +120,45 @@ async function processStatus(status: any) {
 
   await mailRef.update(update);
   console.log(`✅ whatsapp_${statusType} registrado en mail/${mailDocId}`);
+
+  // Propagar estado al campaign_message correspondiente
+  await syncCampaignMessage(db, mailDocId, statusType);
+}
+
+async function syncCampaignMessage(db: ReturnType<typeof getAdminDb>, mailId: string, statusType: string) {
+  try {
+    const snap = await db.collection('campaign_messages').where('mailId', '==', mailId).limit(1).get();
+    if (snap.empty) return;
+
+    const ref = snap.docs[0].ref;
+    const data = snap.docs[0].data();
+    const campId = String(data.campaignId || '');
+
+    if (statusType === 'read' && data.estado !== 'leido') {
+      await db.runTransaction(async (t) => {
+        const fresh = await t.get(ref);
+        if (fresh.data()?.estado === 'leido') return;
+        t.update(ref, { estado: 'leido', leidoAt: FieldValue.serverTimestamp() });
+        if (campId) t.update(db.collection('campaigns').doc(campId), { 'stats.leidos': FieldValue.increment(1) });
+      });
+    } else if (statusType === 'delivered' && data.estado === 'pendiente') {
+      await ref.update({ estado: 'enviado', enviadoAt: FieldValue.serverTimestamp() });
+    } else if (statusType === 'failed' && data.estado !== 'error') {
+      await db.runTransaction(async (t) => {
+        const fresh = await t.get(ref);
+        if (fresh.data()?.estado === 'error') return;
+        const wasEnviado = fresh.data()?.estado === 'enviado';
+        t.update(ref, { estado: 'error', errorMsg: 'WhatsApp delivery failed' });
+        if (campId && wasEnviado) {
+          t.update(db.collection('campaigns').doc(campId), {
+            'stats.enviados': FieldValue.increment(-1),
+            'stats.errores': FieldValue.increment(1),
+          });
+        }
+      });
+    }
+    console.log(`✅ campaign_message sincronizado: ${statusType} para mail/${mailId}`);
+  } catch (e: any) {
+    console.error('⚠️ Error sincronizando campaign_message desde WA webhook:', e?.message);
+  }
 }
