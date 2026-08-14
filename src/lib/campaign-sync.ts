@@ -59,15 +59,47 @@ function mapCampaignMessage(id: string, data: DocumentData): CampaignMessage {
   };
 }
 
+/** Genera CampaignMessages sintéticos desde recipientData cuando la colección está vacía. */
+function fallbackMessages(campaign: Campaign): CampaignMessage[] {
+  const data = campaign.recipientData ?? [];
+  const emails = campaign.recipientEmails ?? [];
+
+  if (data.length > 0) {
+    return data.map((r, i) => ({
+      id: `fallback-${i}`,
+      campaignId: campaign.id,
+      orgId: campaign.orgId,
+      mailId: '',
+      recipientEmail: r.email ?? '',
+      recipientNombre: r.nombre ?? '',
+      recipientDni: r.dni,
+      recipientLegajo: r.legajo,
+      estado: 'enviado' as const,
+    }));
+  }
+
+  return emails.map((email, i) => ({
+    id: `fallback-${i}`,
+    campaignId: campaign.id,
+    orgId: campaign.orgId,
+    mailId: '',
+    recipientEmail: email,
+    recipientNombre: email,
+    estado: 'enviado' as const,
+  }));
+}
+
 export function useCampaignProgress(campaignId: string | null) {
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [messages, setMessages] = useState<CampaignMessage[]>([]);
+  const [messagesLoaded, setMessagesLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!campaignId) {
       setCampaign(null);
       setMessages([]);
+      setMessagesLoaded(false);
       setLoading(false);
       return;
     }
@@ -94,10 +126,12 @@ export function useCampaignProgress(campaignId: string | null) {
         const list = snap.docs.map((d) => mapCampaignMessage(d.id, d.data()));
         list.sort((a, b) => a.recipientEmail.localeCompare(b.recipientEmail));
         setMessages(list);
+        setMessagesLoaded(true);
         setLoading(false);
       },
       () => {
         setMessages([]);
+        setMessagesLoaded(true);
         setLoading(false);
       }
     );
@@ -108,7 +142,13 @@ export function useCampaignProgress(campaignId: string | null) {
     };
   }, [campaignId]);
 
+  // Si la colección campaign_messages está vacía y ya cargó, usar recipientData como fallback.
+  const effectiveMessages = useMemo(() => {
+    if (!messagesLoaded || messages.length > 0 || !campaign) return messages;
+    return fallbackMessages(campaign);
+  }, [messages, messagesLoaded, campaign]);
+
   const stats = useMemo(() => campaign?.stats ?? null, [campaign]);
 
-  return { campaign, messages, stats, loading };
+  return { campaign, messages: effectiveMessages, stats, loading };
 }
