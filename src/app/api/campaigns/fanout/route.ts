@@ -8,6 +8,9 @@ import type { RecipientEntry } from '@/lib/types';
 const FANOUT_PAGE = 500;
 // Destinatarios que recibe cada worker de envío.
 const SEND_BATCH = 20;
+// Límite de mensajes a encolar en una sola tanda (0 = sin límite).
+// Configurable por campaña vía campaign.tandaSize para warm-up progresivo.
+const DEFAULT_TANDA_SIZE = 0;
 
 function verifyWorkerSecret(request: NextRequest): boolean {
   const secret = process.env.CAMPAIGN_WORKER_SECRET;
@@ -27,7 +30,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'JSON inválido' }, { status: 400 });
   }
 
-  const { campaignId, offset } = body;
+  const { campaignId, offset, tandaSize } = body as {
+    campaignId: string;
+    offset: number;
+    tandaSize?: number;
+  };
   if (!campaignId || typeof offset !== 'number') {
     return NextResponse.json({ error: 'Parámetros requeridos: campaignId, offset' }, { status: 400 });
   }
@@ -43,6 +50,14 @@ export async function POST(request: NextRequest) {
   if (campaign.estado === 'cancelada') {
     return NextResponse.json({ skipped: true, reason: 'cancelada' });
   }
+
+  // Límite de tanda: campaign.tandaSize tiene prioridad, luego el param del task, luego sin límite.
+  const effectiveTandaSize: number =
+    (typeof campaign.tandaSize === 'number' && campaign.tandaSize > 0)
+      ? campaign.tandaSize
+      : (typeof tandaSize === 'number' && tandaSize > 0)
+      ? tandaSize
+      : DEFAULT_TANDA_SIZE;
 
   // Cargar destinatarios: soporta recipientData en doc o recipient_lists (para volúmenes grandes).
   let allRecipients: RecipientEntry[] = [];
@@ -66,15 +81,21 @@ export async function POST(request: NextRequest) {
     return await processFanoutPage(db, campaign, campaignId, allRecipients, offset);
   }
 
-  // Slice para esta página del fanout.
-  const page = allRecipients.slice(offset, offset + FANOUT_PAGE);
+  // Slice para esta página del fanout, respetando el límite de tanda.
+  const pageLimit = effectiveTandaSize > 0
+    ? Math.min(FANOUT_PAGE, effectiveTandaSize - offset)
+    : FANOUT_PAGE;
+
+  const page = allRecipients.slice(offset, offset + pageLimit);
   if (page.length === 0) {
     return NextResponse.json({ done: true, offset });
   }
 
-  // Encolar próximo fanout si quedan más.
-  if (offset + FANOUT_PAGE < allRecipients.length) {
-    await enqueueCampaignFanout(campaignId, offset + FANOUT_PAGE);
+  // Encolar próximo fanout solo si no hay límite de tanda o no lo alcanzamos aún.
+  const nextOffset = offset + page.length;
+  const tandaAgotada = effectiveTandaSize > 0 && nextOffset >= effectiveTandaSize;
+  if (nextOffset < allRecipients.length && !tandaAgotada) {
+    await enqueueCampaignFanout(campaignId, nextOffset);
   }
 
   return await processFanoutPage(db, campaign, campaignId, page, offset);
