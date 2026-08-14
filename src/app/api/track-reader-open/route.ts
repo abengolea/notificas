@@ -27,7 +27,6 @@ async function certifyFirstReadInBackground(
   contentHash: string | undefined,
 ): Promise<void> {
   try {
-    // Verificar idempotencia: no certificar si ya tiene TX de recepción
     const snap = await adminDb.collection('mail').doc(docId).get();
     const existing = snap.data()?.polygonCertifications || {};
     if (existing.receive) {
@@ -35,7 +34,6 @@ async function certifyFirstReadInBackground(
       return;
     }
 
-    // Certificar con referencia al send: RECEIVE|docId|recipient|contentHash|sendTxHash|timestamp
     const txHash = await Promise.race([
       certificarRecepcion(docId, recipientId, sendTxHash, contentHash),
       new Promise<never>((_, reject) =>
@@ -48,8 +46,40 @@ async function certifyFirstReadInBackground(
       'polygonCertifications.updatedAt': new Date(),
     });
     console.log('🔗 Primera lectura certificada en Polygon:', txHash);
+
+    // Propagar TX de lectura al campaign_message correspondiente
+    const msgSnap = await adminDb.collection('campaign_messages').where('mailId', '==', docId).limit(1).get();
+    if (!msgSnap.empty) {
+      await msgSnap.docs[0].ref.update({ txHashLectura: txHash });
+    }
   } catch (err: any) {
     console.error('⚠️ Error certificando FIRST_READ en Polygon (no afecta la apertura):', err?.message);
+  }
+}
+
+/** Marca campaign_message como leído y actualiza stats de campaña. */
+async function syncCampaignMessageRead(mailId: string): Promise<void> {
+  try {
+    const msgSnap = await adminDb.collection('campaign_messages').where('mailId', '==', mailId).limit(1).get();
+    if (msgSnap.empty) return;
+
+    const msgRef = msgSnap.docs[0].ref;
+    const msgData = msgSnap.docs[0].data();
+    if (msgData.estado === 'leido') return; // ya procesado
+
+    await adminDb.runTransaction(async (t) => {
+      const fresh = await t.get(msgRef);
+      if (!fresh.exists || fresh.data()?.estado === 'leido') return;
+      t.update(msgRef, { estado: 'leido', leidoAt: new Date() });
+      const campId = String(fresh.data()?.campaignId || '');
+      if (campId) {
+        t.update(adminDb.collection('campaigns').doc(campId), {
+          'stats.leidos': FieldValue.increment(1),
+        });
+      }
+    });
+  } catch (err: any) {
+    console.error('⚠️ Error sincronizando leído en campaign_message:', err?.message);
   }
 }
 
@@ -169,6 +199,10 @@ export async function POST(request: NextRequest) {
         txResult.sendTxHash,
         txResult.contentHash,
       );
+    }
+
+    if (txResult.wasFirstOpen) {
+      void syncCampaignMessageRead(messageId);
     }
 
     return NextResponse.json(
