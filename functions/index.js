@@ -130,26 +130,55 @@ Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@noti
     };
   }
 
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      console.error('❌ Error WhatsApp API:', res.status, JSON.stringify(data, null, 2));
+  const MAX_ATTEMPTS = 4;
+  const BASE_DELAY_MS = 1000;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let res, data;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      data = await res.json();
+    } catch (err) {
+      console.error(`❌ WhatsApp fetch error (intento ${attempt}/${MAX_ATTEMPTS}):`, err.message);
+      if (attempt === MAX_ATTEMPTS) return { error: { message: err.message } };
+      await new Promise(r => setTimeout(r, BASE_DELAY_MS * Math.pow(2, attempt - 1)));
+      continue;
+    }
+
+    if (res.ok) {
+      console.log('📱 WhatsApp enviado:', data.messages?.[0]?.id);
+      return data.messages?.[0]?.id;
+    }
+
+    const errorCode = data?.error?.code;
+    const isRateLimit = res.status === 429 || errorCode === 130429 || errorCode === 131056;
+    const isServerError = res.status >= 500;
+    const isRetryable = isRateLimit || isServerError;
+
+    console.error(`❌ WhatsApp API error (intento ${attempt}/${MAX_ATTEMPTS}): HTTP ${res.status} código ${errorCode}`, JSON.stringify(data?.error));
+
+    if (!isRetryable || attempt === MAX_ATTEMPTS) {
       return { error: data };
     }
-    console.log('📱 WhatsApp enviado:', data.messages?.[0]?.id);
-    return data.messages?.[0]?.id;
-  } catch (err) {
-    console.error('❌ Error al enviar WhatsApp:', err.message);
-    return { error: { message: err.message } };
+
+    // Respetar Retry-After de Meta si viene en el header; si no, backoff exponencial.
+    const retryAfterSec = parseInt(res.headers.get('Retry-After') || '0', 10);
+    const delayMs = retryAfterSec > 0
+      ? retryAfterSec * 1000
+      : BASE_DELAY_MS * Math.pow(2, attempt - 1);
+
+    console.warn(`⏳ WhatsApp rate limit / error servidor — esperando ${delayMs}ms antes del intento ${attempt + 1}`);
+    await new Promise(r => setTimeout(r, delayMs));
   }
+
+  return { error: { message: 'Max reintentos WhatsApp alcanzado' } };
 }
 
 const REGION = 'us-central1';
