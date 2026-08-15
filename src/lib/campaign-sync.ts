@@ -66,6 +66,8 @@ function mapCampaignMessage(id: string, data: DocumentData): CampaignMessage {
     waEntregadoAt: data.waEntregadoAt,
     waLeidoAt: data.waLeidoAt,
     waTxEnvio: data.waTxEnvio,
+    waTxEntregado: data.waTxEntregado,
+    waTxLeido: data.waTxLeido,
     waError: data.waError,
   };
 }

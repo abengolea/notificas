@@ -241,5 +241,7 @@ export interface CampaignMessage {
   waEntregadoAt?: unknown;
   waLeidoAt?: unknown;
   waTxEnvio?: string;
+  waTxEntregado?: string;
+  waTxLeido?: string;
   waError?: string;
 }

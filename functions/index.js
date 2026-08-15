@@ -1836,6 +1836,39 @@ async function processWhatsAppStatus(status) {
     certifyPolygonEventOnce(mailDocId, data, 'read', 'whatsapp_read');
   }
   console.log(`✅ whatsapp_${statusType} registrado en mail/${mailDocId}`);
+
+  // Actualizar campaign_message con el estado WA
+  try {
+    const cmSnap = await db.collection('campaign_messages').where('mailId', '==', mailDocId).limit(1).get();
+    if (!cmSnap.empty) {
+      const cmRef = cmSnap.docs[0].ref;
+      const cmUpdate = {};
+      const poly = data.polygonCertifications || {};
+      if (statusType === 'delivered') {
+        cmUpdate.waEstado = 'entregado';
+        cmUpdate.waEntregadoAt = FieldValue.serverTimestamp();
+        cmUpdate.estado = 'enviado';
+        if (poly.send)    cmUpdate.waTxEnvio     = poly.send;
+        if (poly.receive) cmUpdate.waTxEntregado = poly.receive;
+      } else if (statusType === 'read') {
+        cmUpdate.waEstado = 'leido';
+        cmUpdate.waLeidoAt = FieldValue.serverTimestamp();
+        cmUpdate.estado = 'leido';
+        cmUpdate.leidoAt = FieldValue.serverTimestamp();
+        if (poly.send)    cmUpdate.waTxEnvio     = poly.send;
+        if (poly.receive) cmUpdate.waTxEntregado = poly.receive;
+        if (poly.read)    cmUpdate.waTxLeido     = poly.read;
+      } else if (statusType === 'failed') {
+        cmUpdate.waEstado = 'error';
+        cmUpdate.waError = status.errors?.[0]?.title || 'Error de entrega WA';
+        cmUpdate.estado = 'error';
+      }
+      await cmRef.update(cmUpdate);
+      console.log(`✅ campaign_message actualizado: ${cmSnap.docs[0].id} → waEstado=${cmUpdate.waEstado}`);
+    }
+  } catch (e) {
+    console.warn('⚠️ Error actualizando campaign_message desde webhook WA:', e.message);
+  }
 }
 
 exports.whatsappWebhook = onRequest(

@@ -533,11 +533,24 @@ export function CampaignDashboard() {
                         {fmtTs(m.waLeidoAt) ?? "—"}
                       </TableCell>
                       <TableCell>
-                        {m.waTxEnvio ? (
-                          <a href={`https://polygonscan.com/tx/${m.waTxEnvio}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary text-xs font-mono">
-                            {m.waTxEnvio.slice(0, 6)}…{m.waTxEnvio.slice(-4)} <ExternalLink className="h-3 w-3" />
-                          </a>
-                        ) : "—"}
+                        <div className="flex flex-col gap-1">
+                          {m.waTxEnvio && (
+                            <a href={`https://polygonscan.com/tx/${m.waTxEnvio}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary text-xs font-mono">
+                              <span className="text-muted-foreground mr-1">env</span>{m.waTxEnvio.slice(0, 6)}…{m.waTxEnvio.slice(-4)} <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                          {m.waTxEntregado && (
+                            <a href={`https://polygonscan.com/tx/${m.waTxEntregado}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary text-xs font-mono">
+                              <span className="text-muted-foreground mr-1">ent</span>{m.waTxEntregado.slice(0, 6)}…{m.waTxEntregado.slice(-4)} <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                          {m.waTxLeido && (
+                            <a href={`https://polygonscan.com/tx/${m.waTxLeido}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary text-xs font-mono">
+                              <span className="text-muted-foreground mr-1">leí</span>{m.waTxLeido.slice(0, 6)}…{m.waTxLeido.slice(-4)} <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                          {!m.waTxEnvio && !m.waTxEntregado && !m.waTxLeido && "—"}
+                        </div>
                       </TableCell>
                     </>
                   )}
