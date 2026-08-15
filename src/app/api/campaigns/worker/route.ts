@@ -51,6 +51,11 @@ async function certifyInBackground(mailId: string): Promise<void> {
       'polygonCertifications.contentHash': contentHash,
       'polygonCertifications.updatedAt': new Date(),
     });
+    // Propagar TX envío al campaign_message
+    const msgSnap = await db.collection('campaign_messages').where('mailId', '==', mailId).limit(1).get();
+    if (!msgSnap.empty) {
+      await msgSnap.docs[0].ref.update({ txHashEnvio: txHash, emailTxEnvio: txHash });
+    }
   } catch (err: any) {
     console.error('⚠️ [worker] Error certificando Polygon:', err?.message);
   }
@@ -67,10 +72,9 @@ async function processMessage(
   if (!msgSnap.exists) return;
 
   const msg = msgSnap.data()!;
-
-  // Idempotencia: si ya fue enviado, no hacer nada.
   if (msg.estado === 'enviado' || msg.estado === 'leido') return;
 
+  const canal: string = campaign.canal || 'email';
   const email = String(msg.recipientEmail || '').toLowerCase();
   const row: RecipientEntry = {
     email,
@@ -95,7 +99,7 @@ async function processMessage(
   });
   const adjuntos = attachmentsFor(campaign, email);
 
-  // Crear mail doc si todavía no existe (idempotente: si ya existe, reusar).
+  // Crear mail doc si todavía no existe (idempotente).
   let mailId = typeof msg.mailId === 'string' ? msg.mailId : null;
   if (!mailId) {
     mailId = await createMailDocumentAdmin({
@@ -112,46 +116,53 @@ async function processMessage(
       campaignId,
       attachments: adjuntos.length ? adjuntos : undefined,
     });
-    // Persistir mailId antes de enviar para que reintentos sean idempotentes.
     await msgRef.update({ mailId, estado: 'pendiente' });
   }
 
-  // Llamar a la Cloud Function de envío (SMTP + WhatsApp).
+  // Invocar Cloud Function (maneja internamente email y/o WA según lo que tenga el mail doc).
   const cfResult = await invokeSendEmail(mailId);
 
   if (!cfResult.ok) {
-    await msgRef.update({
+    const errUpdate: Record<string, unknown> = {
       estado: 'error',
       errorMsg: cfResult.error || 'Error en Cloud Function de envío',
-    });
+    };
+    if (canal === 'email' || canal === 'ambos') errUpdate.emailEstado = 'error';
+    if (canal === 'whatsapp' || canal === 'ambos') errUpdate.waEstado = 'error';
+    await msgRef.update(errUpdate);
     return;
   }
 
-  // Certificar en Polygon sin bloquear el worker.
   void certifyInBackground(mailId);
 
-  // Descontar crédito y marcar enviado en una transacción atómica.
+  // Descontar crédito y marcar enviado.
   const userRef = db.collection('users').doc(uid);
   await db.runTransaction(async (t) => {
     const msgT = await t.get(msgRef);
     const m = msgT.data()!;
-    // Doble chequeo dentro de la transacción para evitar cobros duplicados.
     if (m.estado === 'enviado' || m.estado === 'leido') return;
     if (!m.creditApplied) {
       const uSnap = await t.get(userRef);
       const c = normalizeEnviosDisponibles(uSnap.data()?.creditos);
       if (c < 1) throw new Error('Sin envíos disponibles');
-      t.update(userRef, {
-        creditos: FieldValue.increment(-1),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+      t.update(userRef, { creditos: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() });
     }
-    t.update(msgRef, {
+    const now = FieldValue.serverTimestamp();
+    const channelUpdate: Record<string, unknown> = {
       creditApplied: true,
       estado: 'enviado',
-      enviadoAt: FieldValue.serverTimestamp(),
+      enviadoAt: now,
       errorMsg: null,
-    });
+    };
+    if (canal === 'email' || canal === 'ambos') {
+      channelUpdate.emailEstado = 'enviado';
+      channelUpdate.emailEnviadoAt = now;
+    }
+    if (canal === 'whatsapp' || canal === 'ambos') {
+      channelUpdate.waEstado = 'enviado';
+      channelUpdate.waEnviadoAt = now;
+    }
+    t.update(msgRef, channelUpdate);
   });
 }
 

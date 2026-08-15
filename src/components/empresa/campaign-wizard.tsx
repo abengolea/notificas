@@ -15,7 +15,7 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { normalizeEnviosDisponibles } from "@/lib/envios";
-import type { CampaignAttachment, RecipientEntry, RecipientList as RecipientListType } from "@/lib/types";
+import type { CampaignAttachment, CanalCampaign, RecipientEntry, RecipientList as RecipientListType } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -48,7 +48,7 @@ import {
   campaignBodyToHtmlFragment,
   personalizeCampaignText,
 } from "@/lib/campaign-email-html";
-import { Loader2 } from "lucide-react";
+import { Loader2, Mail, MessageCircle, Layers } from "lucide-react";
 import { maxRecipientsForPlan } from "@/lib/org-limits-client";
 import { assignFilesToRecipientsGreedy, scoreFileForRecipient } from "@/lib/campaign-attachment-match";
 
@@ -89,6 +89,7 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
   const [pasteEmails, setPasteEmails] = useState("");
   const [csvChunk, setCsvChunk] = useState("");
   const [recipients, setRecipients] = useState<RecipientEntry[]>([]);
+  const [canal, setCanal] = useState<CanalCampaign>("email");
   const [campaniaNombre, setCampaniaNombre] = useState("");
   const [asunto, setAsunto] = useState("");
   const [cuerpo, setCuerpo] = useState("");
@@ -308,6 +309,7 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
       const base = {
         orgId,
         createdBy: user.uid,
+        canal,
         nombre: campaniaNombre.trim(),
         asunto: asunto.trim(),
         cuerpo: cuerpo.trim(),
@@ -460,11 +462,45 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
+              <Label>Canal de envío</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    { value: "email", label: "Email", icon: Mail, desc: "Notificación por correo con certificación Polygon" },
+                    { value: "whatsapp", label: "WhatsApp", icon: MessageCircle, desc: "Mensaje de WhatsApp con registro blockchain" },
+                    { value: "ambos", label: "Ambos", icon: Layers, desc: "Email + WhatsApp simultáneo" },
+                  ] as const
+                ).map(({ value, label, icon: Icon, desc }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setCanal(value)}
+                    className={`flex flex-col items-start gap-1 rounded-md border p-3 text-left transition-colors ${
+                      canal === value
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "border-border hover:border-primary/50"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span className="text-sm font-medium">{label}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-tight">{desc}</p>
+                  </button>
+                ))}
+              </div>
+              {canal === "whatsapp" || canal === "ambos" ? (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  WhatsApp requiere que los destinatarios tengan campo <strong>telefono</strong> en el CSV y un template aprobado por Meta.
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
               <Label>Nombre interno de la campaña</Label>
               <Input value={campaniaNombre} onChange={(e) => setCampaniaNombre(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Asunto</Label>
+              <Label>Asunto{canal === "whatsapp" ? " (solo para email / referencia interna)" : ""}</Label>
               <Input value={asunto} onChange={(e) => setAsunto(e.target.value)} />
             </div>
             <div className="space-y-2">

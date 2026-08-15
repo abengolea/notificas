@@ -50,7 +50,7 @@ async function certifyFirstReadInBackground(
     // Propagar TX de lectura al campaign_message correspondiente
     const msgSnap = await adminDb.collection('campaign_messages').where('mailId', '==', docId).limit(1).get();
     if (!msgSnap.empty) {
-      await msgSnap.docs[0].ref.update({ txHashLectura: txHash });
+      await msgSnap.docs[0].ref.update({ txHashLectura: txHash, emailTxLectura: txHash });
     }
   } catch (err: any) {
     console.error('⚠️ Error certificando FIRST_READ en Polygon (no afecta la apertura):', err?.message);
@@ -65,18 +65,31 @@ async function syncCampaignMessageRead(mailId: string): Promise<void> {
 
     const msgRef = msgSnap.docs[0].ref;
     const msgData = msgSnap.docs[0].data();
-    if (msgData.estado === 'leido') return; // ya procesado
+    if (msgData.emailEstado === 'leido') return;
+
+    const campId = String(msgData.campaignId || '');
+    const canal = campId
+      ? ((await adminDb.collection('campaigns').doc(campId).get()).data()?.canal || 'email')
+      : 'email';
 
     await adminDb.runTransaction(async (t) => {
       const fresh = await t.get(msgRef);
-      if (!fresh.exists || fresh.data()?.estado === 'leido') return;
-      t.update(msgRef, { estado: 'leido', leidoAt: new Date() });
-      const campId = String(fresh.data()?.campaignId || '');
-      if (campId) {
-        t.update(adminDb.collection('campaigns').doc(campId), {
-          'stats.leidos': FieldValue.increment(1),
-        });
+      const fd = fresh.data();
+      if (!fd || fd.emailEstado === 'leido') return;
+      const update: Record<string, unknown> = {
+        emailEstado: 'leido',
+        emailLeidoAt: new Date(),
+      };
+      // Para solo-email o cuando WA ya está leído, subir estado global
+      const waOk = canal !== 'ambos' || fd.waEstado === 'leido';
+      if (fd.estado !== 'leido' && waOk) {
+        update.estado = 'leido';
+        update.leidoAt = new Date();
+        if (campId) {
+          t.update(adminDb.collection('campaigns').doc(campId), { 'stats.leidos': FieldValue.increment(1) });
+        }
       }
+      t.update(msgRef, update);
     });
   } catch (err: any) {
     console.error('⚠️ Error sincronizando leído en campaign_message:', err?.message);

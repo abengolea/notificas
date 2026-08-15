@@ -134,27 +134,57 @@ async function syncCampaignMessage(db: ReturnType<typeof getAdminDb>, mailId: st
     const data = snap.docs[0].data();
     const campId = String(data.campaignId || '');
 
-    if (statusType === 'read' && data.estado !== 'leido') {
+    const canal: string = (await db.collection('campaigns').doc(campId).get()).data()?.canal || 'email';
+    const isWaChannel = canal === 'whatsapp' || canal === 'ambos';
+
+    if (statusType === 'read') {
       await db.runTransaction(async (t) => {
         const fresh = await t.get(ref);
-        if (fresh.data()?.estado === 'leido') return;
-        t.update(ref, { estado: 'leido', leidoAt: FieldValue.serverTimestamp() });
-        if (campId) t.update(db.collection('campaigns').doc(campId), { 'stats.leidos': FieldValue.increment(1) });
-      });
-    } else if (statusType === 'delivered' && data.estado === 'pendiente') {
-      await ref.update({ estado: 'enviado', enviadoAt: FieldValue.serverTimestamp() });
-    } else if (statusType === 'failed' && data.estado !== 'error') {
-      await db.runTransaction(async (t) => {
-        const fresh = await t.get(ref);
-        if (fresh.data()?.estado === 'error') return;
-        const wasEnviado = fresh.data()?.estado === 'enviado';
-        t.update(ref, { estado: 'error', errorMsg: 'WhatsApp delivery failed' });
-        if (campId && wasEnviado) {
-          t.update(db.collection('campaigns').doc(campId), {
-            'stats.enviados': FieldValue.increment(-1),
-            'stats.errores': FieldValue.increment(1),
-          });
+        const fd = fresh.data();
+        if (!fd) return;
+        const update: Record<string, unknown> = {};
+        if (isWaChannel) {
+          update.waEstado = 'leido';
+          update.waLeidoAt = FieldValue.serverTimestamp();
         }
+        // Para campaña solo-WA, el estado principal también sube a leido
+        if (canal === 'whatsapp' && fd.estado !== 'leido') {
+          update.estado = 'leido';
+          update.leidoAt = FieldValue.serverTimestamp();
+          if (campId) t.update(db.collection('campaigns').doc(campId), { 'stats.leidos': FieldValue.increment(1) });
+        }
+        // Para ambos: estado global a leido solo si email también está leido
+        if (canal === 'ambos' && fd.emailEstado === 'leido' && fd.estado !== 'leido') {
+          update.estado = 'leido';
+          update.leidoAt = FieldValue.serverTimestamp();
+          if (campId) t.update(db.collection('campaigns').doc(campId), { 'stats.leidos': FieldValue.increment(1) });
+        }
+        t.update(ref, update);
+      });
+    } else if (statusType === 'delivered') {
+      const update: Record<string, unknown> = {};
+      if (isWaChannel) { update.waEstado = 'entregado'; update.waEntregadoAt = FieldValue.serverTimestamp(); }
+      if (data.estado === 'pendiente') { update.estado = 'enviado'; update.enviadoAt = FieldValue.serverTimestamp(); }
+      if (Object.keys(update).length) await ref.update(update);
+    } else if (statusType === 'failed') {
+      await db.runTransaction(async (t) => {
+        const fresh = await t.get(ref);
+        const fd = fresh.data();
+        if (!fd) return;
+        const update: Record<string, unknown> = {};
+        if (isWaChannel) { update.waEstado = 'error'; update.waError = 'WhatsApp delivery failed'; }
+        // Para solo-WA, el estado global también es error
+        if (canal === 'whatsapp' && fd.estado !== 'error') {
+          update.estado = 'error';
+          update.errorMsg = 'WhatsApp delivery failed';
+          if (campId && fd.estado === 'enviado') {
+            t.update(db.collection('campaigns').doc(campId), {
+              'stats.enviados': FieldValue.increment(-1),
+              'stats.errores': FieldValue.increment(1),
+            });
+          }
+        }
+        t.update(ref, update);
       });
     }
     console.log(`✅ campaign_message sincronizado: ${statusType} para mail/${mailId}`);

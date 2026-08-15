@@ -189,6 +189,7 @@ export interface Campaign {
   recipientEmails: string[];
   recipientData: RecipientEntry[];
   recipientCount: number;
+  canal?: CanalCampaign;
   estado: 'borrador' | 'enviando' | 'completada' | 'cancelada';
   stats: {
     total: number;
@@ -203,6 +204,8 @@ export interface Campaign {
   completedAt?: unknown;
 }
 
+export type CanalCampaign = 'email' | 'whatsapp' | 'ambos';
+
 export interface CampaignMessage {
   id: string;
   campaignId: string;
@@ -212,10 +215,26 @@ export interface CampaignMessage {
   recipientNombre: string;
   recipientDni?: string;
   recipientLegajo?: string;
+  recipientTelefono?: string;
+  // Estado unificado (para campañas single-canal o compatibilidad legacy)
   estado: 'pendiente' | 'enviado' | 'leido' | 'error';
   enviadoAt?: unknown;
   leidoAt?: unknown;
   txHashEnvio?: string;
   txHashLectura?: string;
   errorMsg?: string;
+  // Canal email
+  emailEstado?: 'pendiente' | 'enviado' | 'leido' | 'error';
+  emailEnviadoAt?: unknown;
+  emailLeidoAt?: unknown;
+  emailTxEnvio?: string;
+  emailTxLectura?: string;
+  emailError?: string;
+  // Canal WhatsApp
+  waEstado?: 'pendiente' | 'enviado' | 'entregado' | 'leido' | 'error';
+  waEnviadoAt?: unknown;
+  waEntregadoAt?: unknown;
+  waLeidoAt?: unknown;
+  waTxEnvio?: string;
+  waError?: string;
 }

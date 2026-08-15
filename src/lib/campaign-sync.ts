@@ -10,7 +10,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Campaign, CampaignMessage } from '@/lib/types';
+import type { Campaign, CampaignMessage, CanalCampaign } from '@/lib/types';
 
 function mapCampaign(id: string, data: DocumentData): Campaign {
   return {
@@ -25,6 +25,7 @@ function mapCampaign(id: string, data: DocumentData): Campaign {
     recipientEmails: Array.isArray(data.recipientEmails) ? data.recipientEmails : [],
     recipientData: Array.isArray(data.recipientData) ? data.recipientData : [],
     recipientCount: typeof data.recipientCount === 'number' ? data.recipientCount : 0,
+    canal: (data.canal as CanalCampaign) || 'email',
     estado: data.estado as Campaign['estado'],
     stats: {
       total: data.stats?.total ?? 0,
@@ -50,12 +51,25 @@ function mapCampaignMessage(id: string, data: DocumentData): CampaignMessage {
     recipientNombre: String(data.recipientNombre ?? ''),
     recipientDni: data.recipientDni,
     recipientLegajo: data.recipientLegajo,
+    recipientTelefono: data.recipientTelefono,
     estado: data.estado as CampaignMessage['estado'],
     enviadoAt: data.enviadoAt,
     leidoAt: data.leidoAt,
     txHashEnvio: data.txHashEnvio,
     txHashLectura: data.txHashLectura,
     errorMsg: data.errorMsg,
+    emailEstado: data.emailEstado,
+    emailEnviadoAt: data.emailEnviadoAt,
+    emailLeidoAt: data.emailLeidoAt,
+    emailTxEnvio: data.emailTxEnvio,
+    emailTxLectura: data.emailTxLectura,
+    emailError: data.emailError,
+    waEstado: data.waEstado,
+    waEnviadoAt: data.waEnviadoAt,
+    waEntregadoAt: data.waEntregadoAt,
+    waLeidoAt: data.waLeidoAt,
+    waTxEnvio: data.waTxEnvio,
+    waError: data.waError,
   };
 }
 

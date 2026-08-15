@@ -24,7 +24,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Download, Loader2, RefreshCw, Play, ExternalLink } from "lucide-react";
+import { Download, Loader2, RefreshCw, Play, ExternalLink, Mail, MessageCircle } from "lucide-react";
 
 function campaignEstadoBadge(estado: string) {
   switch (estado) {
@@ -349,11 +349,21 @@ export function CampaignDashboard() {
             <TableRow>
               <TableHead className="w-10" />
               <TableHead>Nombre</TableHead>
-              <TableHead>Email</TableHead>
               <TableHead>DNI / Legajo</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead>TX envío</TableHead>
-              <TableHead>TX lectura</TableHead>
+              {(campaign.canal === "email" || campaign.canal === "ambos" || !campaign.canal) && (
+                <>
+                  <TableHead><span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />Estado email</span></TableHead>
+                  <TableHead><span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />TX envío</span></TableHead>
+                  <TableHead><span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />TX lectura</span></TableHead>
+                </>
+              )}
+              {(campaign.canal === "whatsapp" || campaign.canal === "ambos") && (
+                <>
+                  <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />Estado WA</span></TableHead>
+                  <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />Entregado</span></TableHead>
+                  <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />Leído WA</span></TableHead>
+                </>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -366,40 +376,46 @@ export function CampaignDashboard() {
                     onCheckedChange={(c) => toggleRow(m.id, m, c === true)}
                   />
                 </TableCell>
-                <TableCell>{m.recipientNombre}</TableCell>
-                <TableCell className="max-w-[140px] truncate">{m.recipientEmail}</TableCell>
+                <TableCell>
+                  <div className="font-medium">{m.recipientNombre}</div>
+                  <div className="text-xs text-muted-foreground truncate max-w-[160px]">{m.recipientEmail}</div>
+                  {m.recipientTelefono && (
+                    <div className="text-xs text-muted-foreground">{m.recipientTelefono}</div>
+                  )}
+                </TableCell>
                 <TableCell className="text-xs">
                   {m.recipientDni || "—"} / {m.recipientLegajo || "—"}
                 </TableCell>
-                <TableCell>{msgEstadoBadge(m.estado)}</TableCell>
-                <TableCell>
-                  {m.txHashEnvio ? (
-                    <a
-                      href={`https://polygonscan.com/tx/${m.txHashEnvio}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-primary text-xs"
-                    >
-                      Ver <ExternalLink className="h-3 w-3" />
-                    </a>
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
-                <TableCell>
-                  {m.txHashLectura ? (
-                    <a
-                      href={`https://polygonscan.com/tx/${m.txHashLectura}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-primary text-xs"
-                    >
-                      Ver <ExternalLink className="h-3 w-3" />
-                    </a>
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
+                {(campaign.canal === "email" || campaign.canal === "ambos" || !campaign.canal) && (
+                  <>
+                    <TableCell>{msgEstadoBadge(m.emailEstado || m.estado)}</TableCell>
+                    <TableCell>
+                      {(m.emailTxEnvio || m.txHashEnvio) ? (
+                        <a href={`https://polygonscan.com/tx/${m.emailTxEnvio || m.txHashEnvio}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary text-xs">
+                          Ver <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : "—"}
+                    </TableCell>
+                    <TableCell>
+                      {(m.emailTxLectura || m.txHashLectura) ? (
+                        <a href={`https://polygonscan.com/tx/${m.emailTxLectura || m.txHashLectura}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary text-xs">
+                          Ver <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : "—"}
+                    </TableCell>
+                  </>
+                )}
+                {(campaign.canal === "whatsapp" || campaign.canal === "ambos") && (
+                  <>
+                    <TableCell>{msgEstadoBadge(m.waEstado || m.estado)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {m.waEntregadoAt ? "✓" : "—"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {m.waLeidoAt ? "✓" : "—"}
+                    </TableCell>
+                  </>
+                )}
               </TableRow>
             ))}
           </TableBody>
