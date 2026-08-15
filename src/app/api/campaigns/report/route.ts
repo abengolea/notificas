@@ -61,7 +61,17 @@ export async function GET(request: NextRequest) {
       leidoAt?: unknown;
       txHashEnvio?: string;
       txHashLectura?: string;
+      waEstado?: string;
+      waEntregadoAt?: unknown;
+      waLeidoAt?: unknown;
+      waTxEnvio?: string;
+      waTxEntregado?: string;
+      waTxLeido?: string;
     };
+
+    function isSyntheticEmail(email: string) {
+      return email.endsWith('@notificas.internal') || email.endsWith('@wa.internal');
+    }
 
     let allRows: Row[];
 
@@ -79,10 +89,15 @@ export async function GET(request: NextRequest) {
           leidoAt: m.leidoAt,
           txHashEnvio: m.txHashEnvio || m.emailTxEnvio,
           txHashLectura: m.txHashLectura || m.emailTxLectura,
+          waEstado: m.waEstado,
+          waEntregadoAt: m.waEntregadoAt,
+          waLeidoAt: m.waLeidoAt,
+          waTxEnvio: m.waTxEnvio,
+          waTxEntregado: m.waTxEntregado,
+          waTxLeido: m.waTxLeido,
         };
       });
     } else {
-      // Fallback: recipientData del doc de campaña (campañas pre-async o sin fanout)
       const recipientData = Array.isArray(campaign.recipientData) ? campaign.recipientData : [];
       allRows = recipientData.map((r: Record<string, string>) => ({
         recipientNombre: String(r.nombre || ''),
@@ -90,11 +105,10 @@ export async function GET(request: NextRequest) {
         recipientDni: r.dni,
         recipientLegajo: r.legajo,
         recipientTelefono: r.telefono,
-        estado: 'enviado', // asumimos enviado si la campaña está completada
+        estado: 'enviado',
       }));
     }
 
-    // Filtrar por estado y nombre
     const filtered = allRows.filter((r) => {
       if (estadoFilter !== 'todos' && r.estado !== estadoFilter) return false;
       if (nombreFilter) {
@@ -104,21 +118,21 @@ export async function GET(request: NextRequest) {
       return true;
     });
 
-    // Ordenar por nombre
     filtered.sort((a, b) => a.recipientNombre.localeCompare(b.recipientNombre, 'es'));
 
     const totalFiltrados = filtered.length;
     const truncated = filtered.slice(0, limit);
 
     const canal: string = campaign.canal || 'email';
-    const showWa = canal === 'whatsapp' || canal === 'ambos';
-    const showEmail = canal === 'email' || canal === 'ambos' || !canal;
+    const showWa    = canal === 'whatsapp' || canal === 'ambos';
+    const showEmail = canal === 'email'    || canal === 'ambos' || !canal;
 
-    // Construir filas PDF
+    function shortTx(tx?: string) { return tx ? `${tx.slice(0, 10)}…${tx.slice(-6)}` : '—'; }
+
     const tableHead: string[] = ['#', 'Nombre', 'DNI', 'Legajo'];
-    if (showWa) tableHead.push('Teléfono');
+    if (showWa)    tableHead.push('Teléfono');
     if (showEmail) tableHead.push('Estado', 'Enviado', 'Leído', 'TX envío', 'TX lectura');
-    else tableHead.push('Estado WA', 'Entregado', 'Leído WA');
+    if (showWa)    tableHead.push('Estado WA', 'Entregado WA', 'Leído WA', 'TX env WA', 'TX ent WA', 'TX leí WA');
 
     const tableBody = truncated.map((m, i) => {
       const base = [
@@ -129,15 +143,25 @@ export async function GET(request: NextRequest) {
       ];
       if (showWa) base.push(m.recipientTelefono || '—');
       if (showEmail) {
+        const emailDisplay = m.recipientEmail && !isSyntheticEmail(m.recipientEmail) ? m.recipientEmail : '—';
         base.push(
           m.estado,
           formatTs(m.enviadoAt),
           formatTs(m.leidoAt),
-          m.txHashEnvio ? m.txHashEnvio.slice(0, 12) + '…' : '—',
-          m.txHashLectura ? m.txHashLectura.slice(0, 12) + '…' : '—',
+          shortTx(m.txHashEnvio),
+          shortTx(m.txHashLectura),
         );
-      } else {
-        base.push(m.estado, formatTs(m.enviadoAt), formatTs(m.leidoAt));
+        void emailDisplay;
+      }
+      if (showWa) {
+        base.push(
+          m.waEstado || m.estado || '—',
+          formatTs(m.waEntregadoAt),
+          formatTs(m.waLeidoAt),
+          shortTx(m.waTxEnvio),
+          shortTx(m.waTxEntregado),
+          shortTx(m.waTxLeido),
+        );
       }
       return base;
     });
