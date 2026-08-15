@@ -23,6 +23,8 @@ export type CreateMailAdminParams = {
   recipientName?: string;
   recipientEmail?: string;
   recipientPhone?: string;
+  recipientDni?: string;
+  recipientLegajo?: string;
   senderName?: string;
   createdBy: string;
   campaignId?: string;
@@ -30,6 +32,10 @@ export type CreateMailAdminParams = {
   attachments?: CampaignAttachment[];
   /** Si true, la Cloud Function sendEmail envía correo simple (p. ej. formulario web). */
   contactRequest?: boolean;
+  // Template WhatsApp específico de la campaña
+  waTemplateName?: string;
+  waTemplateLang?: string;
+  waTemplateVariables?: string[] | null;
 };
 
 /** Crea un documento en `mail` con Admin SDK (equivalente a scheduleEmail sin auto-fetch). */
@@ -44,12 +50,17 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
     recipientName,
     recipientEmail,
     recipientPhone,
+    recipientDni,
+    recipientLegajo,
     senderName,
     createdBy,
     campaignId,
     campaignMessageId,
     attachments,
     contactRequest,
+    waTemplateName,
+    waTemplateLang,
+    waTemplateVariables,
   } = params;
 
   const db = getAdminDb();
@@ -84,6 +95,11 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
   const recNorm = normalizedEmailIdentity(recipientEmail);
   if (recNorm) payload.recipientEmail = recNorm;
   if (recipientPhone) payload.recipientPhone = recipientPhone;
+  if (recipientDni) payload.recipientDni = recipientDni;
+  if (recipientLegajo) payload.recipientLegajo = recipientLegajo;
+  if (waTemplateName) payload.waTemplateName = waTemplateName;
+  if (waTemplateLang) payload.waTemplateLang = waTemplateLang;
+  if (waTemplateVariables) payload.waTemplateVariables = waTemplateVariables;
   const sendNorm = normalizedEmailIdentity(senderName);
   if (sendNorm) payload.senderName = sendNorm;
   payload.createdBy = createdBy;

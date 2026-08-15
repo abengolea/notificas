@@ -190,6 +190,11 @@ export interface Campaign {
   recipientData: RecipientEntry[];
   recipientCount: number;
   canal?: CanalCampaign;
+  // Template de WhatsApp específico para esta campaña (sobreescribe el global)
+  waTemplateName?: string;
+  waTemplateLang?: string;
+  // Variables del template: ['nombre', 'dni', 'legajo'] → {{1}}, {{2}}, {{3}}
+  waTemplateVariables?: string[];
   estado: 'borrador' | 'enviando' | 'completada' | 'cancelada';
   stats: {
     total: number;

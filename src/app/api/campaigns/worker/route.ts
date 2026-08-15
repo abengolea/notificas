@@ -112,9 +112,17 @@ async function processMessage(
       recipientName: row.nombre || email.split('@')[0],
       recipientEmail: email,
       recipientPhone: row.telefono?.trim() || undefined,
+      recipientDni: row.dni || undefined,
+      recipientLegajo: row.legajo || undefined,
       createdBy: uid,
       campaignId,
       attachments: adjuntos.length ? adjuntos : undefined,
+      // Template WA específico de la campaña
+      ...(campaign.waTemplateName ? {
+        waTemplateName: campaign.waTemplateName,
+        waTemplateLang: campaign.waTemplateLang || 'es_AR',
+        waTemplateVariables: campaign.waTemplateVariables || null,
+      } : {}),
     });
     await msgRef.update({ mailId, estado: 'pendiente' });
   }

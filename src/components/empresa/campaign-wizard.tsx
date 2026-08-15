@@ -115,6 +115,9 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
   const [csvChunk, setCsvChunk] = useState("");
   const [recipients, setRecipients] = useState<RecipientEntry[]>([]);
   const [canal, setCanal] = useState<CanalCampaign>("email");
+  const [waTemplateName, setWaTemplateName] = useState("");
+  const [waTemplateLang, setWaTemplateLang] = useState("es_AR");
+  const [waTemplateVariables, setWaTemplateVariables] = useState<string[]>(["nombre", "dni", "legajo"]);
   const [campaniaNombre, setCampaniaNombre] = useState("");
   const [asunto, setAsunto] = useState("");
   const [cuerpo, setCuerpo] = useState("");
@@ -339,6 +342,11 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
         orgId,
         createdBy: user.uid,
         canal,
+        ...(canal !== "email" && waTemplateName.trim() ? {
+          waTemplateName: waTemplateName.trim(),
+          waTemplateLang: waTemplateLang.trim() || "es_AR",
+          waTemplateVariables,
+        } : {}),
         nombre: campaniaNombre.trim(),
         asunto: asunto.trim(),
         cuerpo: cuerpo.trim(),
@@ -553,8 +561,96 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
               <Label>{canal === "whatsapp" ? "Asunto (referencia interna)" : "Asunto"}</Label>
               <Input value={asunto} onChange={(e) => setAsunto(e.target.value)} />
             </div>
+
+            {/* Configuración de template WhatsApp */}
+            {(canal === "whatsapp" || canal === "ambos") && (
+              <div className="rounded-md border p-4 space-y-4">
+                <div>
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4" />
+                    Template de WhatsApp
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Meta solo permite mensajes con templates aprobados. Si no tenés uno aprobado todavía,
+                    podés dejarlo vacío y completarlo después antes de enviar.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Nombre del template (aprobado en Meta)</Label>
+                    <Input
+                      placeholder="ej: mora_notificacion_v1"
+                      value={waTemplateName}
+                      onChange={(e) => setWaTemplateName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Idioma</Label>
+                    <Select value={waTemplateLang} onValueChange={setWaTemplateLang}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="es_AR">Español (Argentina)</SelectItem>
+                        <SelectItem value="es">Español</SelectItem>
+                        <SelectItem value="es_MX">Español (México)</SelectItem>
+                        <SelectItem value="en_US">English (US)</SelectItem>
+                        <SelectItem value="pt_BR">Português (Brasil)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">
+                    Variables del template — ¿qué campo va en cada <code>{"{{N}}"}</code>?
+                  </Label>
+                  <div className="space-y-2">
+                    {waTemplateVariables.map((v, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground w-10 shrink-0 font-mono">{`{{${i + 1}}}`}</span>
+                        <Select
+                          value={v}
+                          onValueChange={(val) => setWaTemplateVariables((prev) => prev.map((x, j) => j === i ? val : x))}
+                        >
+                          <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="nombre">nombre</SelectItem>
+                            <SelectItem value="dni">dni</SelectItem>
+                            <SelectItem value="legajo">legajo</SelectItem>
+                            <SelectItem value="email">email</SelectItem>
+                            <SelectItem value="telefono">telefono</SelectItem>
+                            <SelectItem value="url_lectura">url de lectura (link al mensaje)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button" variant="ghost" size="sm"
+                          className="text-destructive h-8 px-2"
+                          onClick={() => setWaTemplateVariables((prev) => prev.filter((_, j) => j !== i))}
+                          disabled={waTemplateVariables.length <= 1}
+                        >✕</Button>
+                      </div>
+                    ))}
+                    {waTemplateVariables.length < 8 && (
+                      <Button
+                        type="button" variant="outline" size="sm"
+                        onClick={() => setWaTemplateVariables((prev) => [...prev, "nombre"])}
+                      >
+                        + Agregar variable
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    El orden debe coincidir exactamente con las variables definidas en el template aprobado por Meta.
+                  </p>
+                </div>
+                {waTemplateName.trim() && (
+                  <div className="rounded-md bg-muted/50 p-2 text-xs font-mono text-muted-foreground">
+                    Preview de llamada a Meta: template=<strong>{waTemplateName}</strong>, variables=[{waTemplateVariables.map((v, i) => `{{${i+1}}}→${v}`).join(", ")}]
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="space-y-2">
-              <Label>Cuerpo (texto o HTML simple)</Label>
+              <Label>Cuerpo{canal !== "email" ? " (referencia interna / vista previa email)" : ""}</Label>
               <Textarea value={cuerpo} onChange={(e) => setCuerpo(e.target.value)} rows={10} />
             </div>
             <div className="rounded-md border p-4 space-y-3">

@@ -78,7 +78,20 @@ function formatWhatsAppSenderDisplay(senderName, fromEmail) {
  * Sugerencia de cuerpo para alinear con el mensaje libre:
  * "Estimado/a {{1}},\n\nLe informamos que {{2}} le ha enviado una notificación digital certificada a través de Notificas.com.\n\nAcceda al contenido aquí:\n{{3}}\n\nSi no reconoce este envío, ignore este mensaje. Consultas: contacto@notificas.com\n\n— Notificas.com"
  */
-async function sendWhatsAppNotification(accessToken, phoneNumberId, templateName, templateLang, toPhone, readerUrl, senderName, recipientName) {
+/**
+ * @param {object} opts
+ * @param {string} opts.accessToken
+ * @param {string} opts.phoneNumberId
+ * @param {string|null} opts.templateName  - nombre del template aprobado en Meta
+ * @param {string} opts.templateLang
+ * @param {string} opts.toPhone
+ * @param {string} opts.readerUrl          - URL del lector de la notificación
+ * @param {string} opts.senderName
+ * @param {string} opts.recipientName
+ * @param {string[]|null} opts.templateVariables - campos del destinatario en orden: ['nombre','dni',...]
+ * @param {object} opts.recipientData      - datos del destinatario para resolver variables
+ */
+async function sendWhatsAppNotification({ accessToken, phoneNumberId, templateName, templateLang, toPhone, readerUrl, senderName, recipientName, templateVariables, recipientData }) {
   if (!accessToken || !phoneNumberId) {
     console.warn('⚠️ WhatsApp: secrets no configurados en Secret Manager');
     return null;
@@ -89,11 +102,35 @@ async function sendWhatsAppNotification(accessToken, phoneNumberId, templateName
     return null;
   }
 
-  // Meta exige TEMPLATES para iniciar conversación (fuera de ventana 24h)
   const url = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
   let payload;
   if (templateName) {
-    // Parámetros ya formateados: {{1}} destinatario, {{2}} remitente, {{3}} url
+    // Resolver variables del template según campaignTemplateVariables
+    // Si hay templateVariables custom, usarlas; si no, fallback a [destinatario, remitente, url]
+    let parameters;
+    if (templateVariables && templateVariables.length > 0) {
+      const rd = recipientData || {};
+      parameters = templateVariables.map((field) => {
+        let value;
+        switch (field) {
+          case 'nombre':      value = rd.nombre || recipientName || ''; break;
+          case 'dni':         value = rd.dni || ''; break;
+          case 'legajo':      value = rd.legajo || ''; break;
+          case 'email':       value = rd.email || ''; break;
+          case 'telefono':    value = rd.telefono || toPhone || ''; break;
+          case 'url_lectura': value = readerUrl; break;
+          default:            value = rd[field] || '';
+        }
+        return { type: 'text', text: String(value).substring(0, 1024) };
+      });
+    } else {
+      // Fallback legacy: {{1}} destinatario, {{2}} remitente, {{3}} url
+      parameters = [
+        { type: 'text', text: recipientName.substring(0, 50) },
+        { type: 'text', text: senderName.substring(0, 50) },
+        { type: 'text', text: readerUrl },
+      ];
+    }
     payload = {
       messaging_product: 'whatsapp',
       to,
@@ -101,15 +138,8 @@ async function sendWhatsAppNotification(accessToken, phoneNumberId, templateName
       template: {
         name: templateName,
         language: { code: templateLang || 'es_AR' },
-        components: [{
-          type: 'body',
-          parameters: [
-            { type: 'text', text: recipientName.substring(0, 50) },
-            { type: 'text', text: senderName.substring(0, 50) },
-            { type: 'text', text: readerUrl }
-          ]
-        }]
-      }
+        components: [{ type: 'body', parameters }],
+      },
     };
   } else {
     const body = `Estimado/a ${recipientName},
@@ -701,10 +731,13 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
             whatsappError = 'Secrets WHATSAPP_ACCESS_TOKEN o WHATSAPP_PHONE_NUMBER_ID no configurados';
             console.warn('⚠️', whatsappError);
           } else {
-            const templateName = whatsappTemplateName.value()?.trim() || '';
-            const templateLang = whatsappTemplateLanguage.value()?.trim() || 'es_AR';
-            // Mismo formato que el CTA del correo (linkRedirect sin `u`): más corto, menos `&`
-            // (evita cortes de enlace en WhatsApp) y evita depender de base64 en la URL.
+            // Template: usa el de la campaña si existe, si no el global configurado en la CF
+            const campaignTemplateName = emailData.waTemplateName?.trim() || '';
+            const globalTemplateName   = whatsappTemplateName.value()?.trim() || '';
+            const resolvedTemplate     = campaignTemplateName || globalTemplateName || null;
+            const resolvedLang         = emailData.waTemplateLang?.trim() || whatsappTemplateLanguage.value()?.trim() || 'es_AR';
+            const resolvedVariables    = Array.isArray(emailData.waTemplateVariables) ? emailData.waTemplateVariables : null;
+
             const whatsappLink = (() => {
               const waDigits = formatPhoneForWhatsApp(recipientPhone);
               const rParam =
@@ -715,16 +748,24 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
             })();
             const waRecipient = formatWhatsAppRecipientDisplay(emailData.recipientName);
             const waSender = formatWhatsAppSenderDisplay(emailData.senderName || from, from);
-            const resultWA = await sendWhatsAppNotification(
-              token,
-              phoneId,
-              templateName || null,
-              templateLang,
-              recipientPhone,
-              whatsappLink,
-              waSender,
-              waRecipient
-            );
+            const resultWA = await sendWhatsAppNotification({
+              accessToken: token,
+              phoneNumberId: phoneId,
+              templateName: resolvedTemplate,
+              templateLang: resolvedLang,
+              toPhone: recipientPhone,
+              readerUrl: whatsappLink,
+              senderName: waSender,
+              recipientName: waRecipient,
+              templateVariables: resolvedVariables,
+              recipientData: {
+                nombre: emailData.recipientName || '',
+                email: emailData.recipientEmail || '',
+                telefono: recipientPhone,
+                dni: emailData.recipientDni || '',
+                legajo: emailData.recipientLegajo || '',
+              },
+            });
             if (resultWA && typeof resultWA === 'string') {
               whatsappId = resultWA;
               // Guardar wamid + movimiento (fire-and-forget para no bloquear la respuesta)
