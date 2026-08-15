@@ -53,31 +53,56 @@ import { maxRecipientsForPlan } from "@/lib/org-limits-client";
 import { assignFilesToRecipientsGreedy, scoreFileForRecipient } from "@/lib/campaign-attachment-match";
 
 function parseEmailsBlock(text: string): RecipientEntry[] {
-  const parts = text
-    .split(/[\s,;\n]+/)
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
+  const parts = text.split(/[\s,;\n]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
   const uniq = [...new Set(parts)];
   return uniq
     .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     .map((email) => ({ email, nombre: email.split("@")[0] }));
 }
 
-function parseCsvQuick(text: string): RecipientEntry[] {
+function parseCsvQuick(text: string, canal: CanalCampaign): RecipientEntry[] {
   const lines = text.split(/\r?\n/).filter(Boolean);
   if (!lines.length) return [];
   const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
-  const iEmail = headers.indexOf("email");
-  const iNombre = headers.indexOf("nombre");
-  if (iEmail < 0 || iNombre < 0) return [];
+  const iNombre   = headers.indexOf("nombre");
+  const iEmail    = headers.indexOf("email");
+  const iTelefono = headers.indexOf("telefono");
+  const iDni      = headers.indexOf("dni");
+  const iLegajo   = headers.indexOf("legajo");
+
+  const needEmail = canal === "email" || canal === "ambos";
+  const needPhone = canal === "whatsapp" || canal === "ambos";
+
+  if (iNombre < 0) return [];
+  if (needEmail && iEmail < 0) return [];
+  if (needPhone && iTelefono < 0) return [];
+
   const out: RecipientEntry[] = [];
   for (let r = 1; r < lines.length; r++) {
     const cells = lines[r].split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
-    const email = (cells[iEmail] || "").toLowerCase();
-    const nombre = cells[iNombre] || "";
-    if (email && nombre) out.push({ email, nombre });
+    const nombre   = cells[iNombre] || "";
+    const email    = iEmail >= 0    ? (cells[iEmail] || "").toLowerCase()  : `sin-email-${r}@wa.internal`;
+    const telefono = iTelefono >= 0 ? cells[iTelefono] || undefined        : undefined;
+    const dni      = iDni >= 0      ? cells[iDni] || undefined             : undefined;
+    const legajo   = iLegajo >= 0   ? cells[iLegajo] || undefined          : undefined;
+    if (!nombre) continue;
+    if (needEmail && !email.includes("@")) continue;
+    if (needPhone && !telefono) continue;
+    out.push({ email, nombre, telefono, dni, legajo });
   }
   return out;
+}
+
+function csvPlaceholder(canal: CanalCampaign): string {
+  if (canal === "whatsapp") return "nombre,telefono,dni,legajo\nJuan García,+5491112345678,30123456,GCL-00001";
+  if (canal === "ambos")    return "nombre,email,telefono,dni,legajo\nJuan García,juan@ejemplo.com,+5491112345678,30123456,GCL-00001";
+  return "nombre,email,dni,legajo\nJuan García,juan@ejemplo.com,30123456,GCL-00001";
+}
+
+function csvCamposRequeridos(canal: CanalCampaign): string {
+  if (canal === "whatsapp") return "nombre, telefono";
+  if (canal === "ambos")    return "nombre, email, telefono";
+  return "nombre, email";
 }
 
 export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: string }) {
@@ -221,7 +246,11 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
   }, [files, recipients, pairByRecipient, recvSig, fileNamesSig, toast]);
 
   function mergeRecipientsFromInputs(mode: "paste" | "csv") {
-    const next = mode === "paste" ? parseEmailsBlock(pasteEmails) : parseCsvQuick(csvChunk);
+    const next = mode === "paste" ? parseEmailsBlock(pasteEmails) : parseCsvQuick(csvChunk, canal);
+    if (next.length === 0) {
+      toast({ title: "No se encontraron destinatarios válidos", description: `El CSV debe tener columnas: ${csvCamposRequeridos(canal)}`, variant: "destructive" });
+      return;
+    }
     const map = new Map<string, RecipientEntry>();
     recipients.forEach((r) => map.set(r.email.toLowerCase(), r));
     next.forEach((r) => map.set(r.email.toLowerCase(), r));
@@ -382,57 +411,109 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
     }
   }
 
+  const STEPS = ["Canal", "Destinatarios", "Mensaje", "Confirmación"];
+
   return (
     <div className="max-w-3xl space-y-8">
       <div>
         <div className="flex justify-between text-xs text-muted-foreground mb-2">
-          <span>Paso {step} de 4</span>
+          <span>Paso {step} de {STEPS.length} — {STEPS[step - 1]}</span>
         </div>
-        <Progress value={(step / 4) * 100} className="h-2" />
+        <Progress value={(step / STEPS.length) * 100} className="h-2" />
       </div>
 
+      {/* PASO 1: Canal */}
       {step === 1 && (
         <Card>
           <CardHeader>
-            <CardTitle>Destinatarios</CardTitle>
-            <CardDescription>Elegí una lista guardada, pegá CSV o emails.</CardDescription>
+            <CardTitle>¿Por qué canal enviás?</CardTitle>
+            <CardDescription>El canal determina qué campos son obligatorios en el CSV de destinatarios.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <Label>Lista guardada</Label>
-              <Select value={listId || "__none__"} onValueChange={(v) => setListId(v === "__none__" ? "" : v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Ninguna" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">— Ninguna —</SelectItem>
-                  {lists.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.nombre} ({l.count})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-3 gap-3">
+              {(
+                [
+                  { value: "email",     label: "Email",     icon: Mail,          desc: "Notificación por correo con certificación Polygon" },
+                  { value: "whatsapp",  label: "WhatsApp",  icon: MessageCircle, desc: "Mensaje WA con registro blockchain" },
+                  { value: "ambos",     label: "Ambos",     icon: Layers,        desc: "Email + WhatsApp simultáneo" },
+                ] as const
+              ).map(({ value, label, icon: Icon, desc }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => { setCanal(value); setRecipients([]); }}
+                  className={`flex flex-col items-start gap-2 rounded-md border p-4 text-left transition-colors ${
+                    canal === value ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-primary/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Icon className="h-5 w-5 shrink-0" />
+                    <span className="font-medium">{label}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-tight">{desc}</p>
+                </button>
+              ))}
             </div>
-            <Tabs defaultValue="paste">
+            <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
+              <p className="font-medium">Campos requeridos en el CSV:</p>
+              <p className="text-muted-foreground font-mono text-xs">{csvCamposRequeridos(canal)}{canal !== "email" ? ", dni, legajo (opcionales)" : ", dni, legajo (opcionales)"}</p>
+              {(canal === "whatsapp" || canal === "ambos") && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                  WhatsApp requiere un template aprobado por Meta. El campo <strong>telefono</strong> debe incluir código de país (+54…).
+                </p>
+              )}
+            </div>
+            <Button onClick={() => setStep(2)}>Siguiente</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* PASO 2: Destinatarios */}
+      {step === 2 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Destinatarios</CardTitle>
+            <CardDescription>
+              Canal: <strong>{canal === "email" ? "Email" : canal === "whatsapp" ? "WhatsApp" : "Email + WhatsApp"}</strong>
+              {" · "}Campos requeridos: <code className="text-xs">{csvCamposRequeridos(canal)}</code>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {lists.length > 0 && (
+              <div className="space-y-2">
+                <Label>Lista guardada</Label>
+                <Select value={listId || "__none__"} onValueChange={(v) => setListId(v === "__none__" ? "" : v)}>
+                  <SelectTrigger><SelectValue placeholder="Ninguna" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Ninguna —</SelectItem>
+                    {lists.map((l) => (
+                      <SelectItem key={l.id} value={l.id}>{l.nombre} ({l.count})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <Tabs defaultValue={canal === "whatsapp" ? "csv" : "paste"}>
               <TabsList>
-                <TabsTrigger value="paste">Emails pegados</TabsTrigger>
-                <TabsTrigger value="csv">CSV en texto</TabsTrigger>
+                {canal === "email" && <TabsTrigger value="paste">Emails pegados</TabsTrigger>}
+                <TabsTrigger value="csv">CSV</TabsTrigger>
               </TabsList>
-              <TabsContent value="paste" className="space-y-2">
-                <Textarea
-                  placeholder="email1@x.com, email2@y.com"
-                  value={pasteEmails}
-                  onChange={(e) => setPasteEmails(e.target.value)}
-                  rows={4}
-                />
-                <Button type="button" variant="secondary" onClick={() => mergeRecipientsFromInputs("paste")}>
-                  Agregar pegados
-                </Button>
-              </TabsContent>
+              {canal === "email" && (
+                <TabsContent value="paste" className="space-y-2">
+                  <Textarea
+                    placeholder="email1@x.com, email2@y.com"
+                    value={pasteEmails}
+                    onChange={(e) => setPasteEmails(e.target.value)}
+                    rows={4}
+                  />
+                  <Button type="button" variant="secondary" onClick={() => mergeRecipientsFromInputs("paste")}>
+                    Agregar emails
+                  </Button>
+                </TabsContent>
+              )}
               <TabsContent value="csv" className="space-y-2">
                 <Textarea
-                  placeholder={"nombre,email\nJuan,ejemplo@dominio.com"}
+                  placeholder={csvPlaceholder(canal)}
                   value={csvChunk}
                   onChange={(e) => setCsvChunk(e.target.value)}
                   rows={6}
@@ -443,64 +524,33 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
               </TabsContent>
             </Tabs>
             <div className="text-sm text-muted-foreground">
-              Total: {preview.n} — Ej.: {preview.sample.join(", ") || "—"}
+              Total cargados: <strong>{preview.n}</strong>
+              {preview.sample.length > 0 && <> — {preview.sample.join(", ")}{preview.n > 3 ? "…" : ""}</>}
             </div>
-            <Button onClick={() => setStep(2)} disabled={!recipients.length}>
-              Siguiente
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setStep(1)}>Atrás</Button>
+              <Button onClick={() => setStep(3)} disabled={!recipients.length}>Siguiente</Button>
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {step === 2 && (
+      {/* PASO 3: Mensaje */}
+      {step === 3 && (
         <Card>
           <CardHeader>
             <CardTitle>Mensaje</CardTitle>
             <CardDescription>
-              Variables: {"{{nombre}}"}, {"{{dni}}"}, {"{{legajo}}"}
+              Variables disponibles: {"{{nombre}}"}, {"{{dni}}"}, {"{{legajo}}"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Canal de envío</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {(
-                  [
-                    { value: "email", label: "Email", icon: Mail, desc: "Notificación por correo con certificación Polygon" },
-                    { value: "whatsapp", label: "WhatsApp", icon: MessageCircle, desc: "Mensaje de WhatsApp con registro blockchain" },
-                    { value: "ambos", label: "Ambos", icon: Layers, desc: "Email + WhatsApp simultáneo" },
-                  ] as const
-                ).map(({ value, label, icon: Icon, desc }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setCanal(value)}
-                    className={`flex flex-col items-start gap-1 rounded-md border p-3 text-left transition-colors ${
-                      canal === value
-                        ? "border-primary bg-primary/5 ring-1 ring-primary"
-                        : "border-border hover:border-primary/50"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Icon className="h-4 w-4 shrink-0" />
-                      <span className="text-sm font-medium">{label}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground leading-tight">{desc}</p>
-                  </button>
-                ))}
-              </div>
-              {canal === "whatsapp" || canal === "ambos" ? (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  WhatsApp requiere que los destinatarios tengan campo <strong>telefono</strong> en el CSV y un template aprobado por Meta.
-                </p>
-              ) : null}
-            </div>
             <div className="space-y-2">
               <Label>Nombre interno de la campaña</Label>
               <Input value={campaniaNombre} onChange={(e) => setCampaniaNombre(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Asunto{canal === "whatsapp" ? " (solo para email / referencia interna)" : ""}</Label>
+              <Label>{canal === "whatsapp" ? "Asunto (referencia interna)" : "Asunto"}</Label>
               <Input value={asunto} onChange={(e) => setAsunto(e.target.value)} />
             </div>
             <div className="space-y-2">
@@ -535,10 +585,8 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
               maxSizeMB={10}
             />
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(1)}>
-                Atrás
-              </Button>
-              <Button onClick={() => setStep(3)} disabled={!asunto.trim() || !cuerpo.trim() || !campaniaNombre.trim()}>
+              <Button variant="outline" onClick={() => setStep(2)}>Atrás</Button>
+              <Button onClick={() => setStep(4)} disabled={!asunto.trim() || !cuerpo.trim() || !campaniaNombre.trim()}>
                 Siguiente
               </Button>
             </div>
@@ -546,31 +594,32 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
         </Card>
       )}
 
-      {step === 3 && (
+      {/* PASO 4: Revisión + Confirmación */}
+      {step === 4 && (
         <Card>
           <CardHeader>
-            <CardTitle>Revisión</CardTitle>
+            <CardTitle>Revisión y confirmación</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm">
-              <strong>{recipients.length}</strong> destinatarios — Asunto: {asunto}
-            </p>
-            {pairByRecipient && files.length > 0 ? (
+            {/* Resumen */}
+            <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
+              <div className="flex gap-4 flex-wrap">
+                <span><strong>Canal:</strong> {canal === "email" ? "Email" : canal === "whatsapp" ? "WhatsApp" : "Email + WhatsApp"}</span>
+                <span><strong>Destinatarios:</strong> {recipients.length}</span>
+                <span><strong>Asunto:</strong> {asunto}</span>
+              </div>
+            </div>
+
+            {/* Emparejamiento de adjuntos */}
+            {pairByRecipient && files.length > 0 && (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm font-medium">Emparejamiento de adjuntos</p>
-                  <Button type="button" variant="outline" size="sm" onClick={suggestPairingAgain}>
-                    Sugerir de nuevo
-                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={suggestPairingAgain}>Sugerir de nuevo</Button>
                 </div>
-                {recipients.some((r) => {
-                  const ix = pairingSelections[r.email.trim().toLowerCase()];
-                  return ix === undefined || ix === null;
-                }) ? (
-                  <p className="text-sm text-destructive">
-                    Hay destinatarios sin archivo asignado. Asignálos antes de enviar en modo personalizado.
-                  </p>
-                ) : null}
+                {recipients.some((r) => { const ix = pairingSelections[r.email.trim().toLowerCase()]; return ix === undefined || ix === null; }) && (
+                  <p className="text-sm text-destructive">Hay destinatarios sin archivo asignado.</p>
+                )}
                 <div className="max-h-72 overflow-auto rounded-md border text-sm">
                   <table className="w-full text-left">
                     <thead className="sticky top-0 z-[1] bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/80">
@@ -586,34 +635,17 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
                         const k = r.email.trim().toLowerCase();
                         const idx = pairingSelections[k];
                         const selStr = typeof idx === 'number' ? String(idx) : '__none__';
-                        const coincide =
-                          typeof idx === 'number' ? scoreFileForRecipient(files[idx].name, r).label : '—';
+                        const coincide = typeof idx === 'number' ? scoreFileForRecipient(files[idx].name, r).label : '—';
                         return (
                           <tr key={k} className="border-t border-border">
                             <td className="p-2 align-middle">{r.nombre}</td>
                             <td className="p-2 align-middle text-muted-foreground break-all">{r.email}</td>
                             <td className="p-2 align-middle min-w-[12rem]">
-                              <Select
-                                value={selStr}
-                                onValueChange={(v) =>
-                                  setPairingSelections((prev) => ({
-                                    ...prev,
-                                    [k]: v === '__none__' ? null : Number.parseInt(v, 10),
-                                  }))
-                                }
-                              >
-                                <SelectTrigger className="h-9 w-full max-w-[min(260px,100%)]">
-                                  <SelectValue placeholder="Sin archivo" />
-                                </SelectTrigger>
+                              <Select value={selStr} onValueChange={(v) => setPairingSelections((prev) => ({ ...prev, [k]: v === '__none__' ? null : Number.parseInt(v, 10) }))}>
+                                <SelectTrigger className="h-9 w-full max-w-[min(260px,100%)]"><SelectValue placeholder="Sin archivo" /></SelectTrigger>
                                 <SelectContent className="max-h-60">
                                   <SelectItem value="__none__">— Sin archivo —</SelectItem>
-                                  {files.map((f, i) => (
-                                    <SelectItem key={`${i}-${f.name}`} value={String(i)}>
-                                      <span className="truncate max-w-[220px]" title={f.name}>
-                                        {f.name}
-                                      </span>
-                                    </SelectItem>
-                                  ))}
+                                  {files.map((f, i) => <SelectItem key={`${i}-${f.name}`} value={String(i)}><span className="truncate max-w-[220px]" title={f.name}>{f.name}</span></SelectItem>)}
                                 </SelectContent>
                               </Select>
                             </td>
@@ -625,51 +657,34 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
                   </table>
                 </div>
               </div>
-            ) : null}
-            <div
-              className="border rounded-md p-3 max-h-64 overflow-auto text-xs bg-muted/30 prose prose-sm max-w-none"
-              dangerouslySetInnerHTML={{ __html: firstHtml }}
-            />
-            <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
-              Cada destinatario recibirá una notificación individual certificada en Polygon. Consumo:{" "}
-              <strong>1 envío</strong> por envío exitoso. Tu saldo: <strong>{creditos}</strong>.
-              {!scheduleIso && creditos < recipients.length ? (
-                <span className="text-destructive block mt-1">Saldo insuficiente para enviar ahora.</span>
-              ) : null}
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(2)}>
-                Atrás
-              </Button>
-              <Button onClick={() => setStep(4)}>Siguiente</Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            )}
 
-      {step === 4 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Confirmación</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Programar envío (opcional)</Label>
-              <Input type="datetime-local" value={scheduleIso} onChange={(e) => setScheduleIso(e.target.value)} />
-              <p className="text-xs text-muted-foreground">
-                Si indicás fecha futura, la campaña queda en borrador hasta que inicies el envío desde el detalle.
-              </p>
+            {/* Preview del primer mensaje */}
+            {(canal === "email" || canal === "ambos") && firstHtml && (
+              <div className="border rounded-md p-3 max-h-64 overflow-auto text-xs bg-muted/30 prose prose-sm max-w-none"
+                dangerouslySetInnerHTML={{ __html: firstHtml }} />
+            )}
+
+            {/* Créditos y programación */}
+            <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm space-y-2">
+              <p>Consumo: <strong>1 envío</strong> por destinatario exitoso. Tu saldo: <strong>{creditos}</strong>.</p>
+              {creditos < recipients.length && (
+                <p className="text-destructive">Saldo insuficiente — necesitás {recipients.length - creditos} envíos más.</p>
+              )}
+              <div className="space-y-1 pt-1">
+                <Label className="text-xs">Programar envío (opcional)</Label>
+                <Input type="datetime-local" value={scheduleIso} onChange={(e) => setScheduleIso(e.target.value)} className="max-w-xs" />
+                <p className="text-xs text-muted-foreground">Sin fecha → envío inmediato. Con fecha futura → queda en borrador.</p>
+              </div>
             </div>
+
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => setStep(3)}>
-                Atrás
-              </Button>
+              <Button variant="outline" onClick={() => setStep(3)}>Atrás</Button>
               <Button variant="secondary" disabled={submitting} onClick={() => setConfirmOpen(true)}>
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 Enviar ahora
               </Button>
-              <Button variant="outline" disabled={submitting} onClick={() => runSubmit(false)}>
-                Solo guardar borrador
-              </Button>
+              <Button variant="outline" disabled={submitting} onClick={() => runSubmit(false)}>Guardar borrador</Button>
             </div>
           </CardContent>
         </Card>
