@@ -478,6 +478,12 @@ exports.sendEmail = onRequest(
         });
         if (waId && typeof waId === 'string') {
           await docRef.update({ whatsappMessageId: waId });
+          // Índice para lookup rápido desde el webhook de delivery
+          getFirestore().doc(`whatsapp_ids/${waId}`).set({
+            mailDocId: docId,
+            recipientPhone: formatPhoneForWhatsApp(recipientPhone) || recipientPhone,
+            createdAt: FieldValue.serverTimestamp(),
+          }).catch(e => console.warn('⚠️ Error guardando whatsapp_ids (waOnly):', e.message));
           console.log('📱 WhatsApp WA-only enviado:', waId);
         } else if (waId && waId.error) {
           console.error('❌ WhatsApp WA-only error:', JSON.stringify(waId.error));
