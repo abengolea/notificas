@@ -459,6 +459,7 @@ export function CampaignDashboard() {
                   <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />Estado WA</span></TableHead>
                   <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />Entregado</span></TableHead>
                   <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />Leído WA</span></TableHead>
+                  <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />TX blockchain</span></TableHead>
                 </>
               )}
             </TableRow>
@@ -466,7 +467,7 @@ export function CampaignDashboard() {
           <TableBody>
             {msgLoading ? (
               Array.from({ length: 8 }).map((_, i) => {
-                const cols = 3 + (showEmail ? 3 : 0) + (showWa ? 3 : 0);
+                const cols = 3 + (showEmail ? 3 : 0) + (showWa ? 4 : 0);
                 return (
                   <TableRow key={i}>
                     {Array.from({ length: cols }).map((_, j) => (
@@ -477,7 +478,7 @@ export function CampaignDashboard() {
               })
             ) : messages.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3 + (showEmail ? 3 : 0) + (showWa ? 3 : 0)} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={3 + (showEmail ? 3 : 0) + (showWa ? 4 : 0)} className="text-center text-muted-foreground py-8">
                   No hay mensajes con el filtro seleccionado.
                 </TableCell>
               </TableRow>
@@ -530,6 +531,13 @@ export function CampaignDashboard() {
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {fmtTs(m.waLeidoAt) ?? "—"}
+                      </TableCell>
+                      <TableCell>
+                        {m.waTxEnvio ? (
+                          <a href={`https://polygonscan.com/tx/${m.waTxEnvio}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary text-xs font-mono">
+                            {m.waTxEnvio.slice(0, 6)}…{m.waTxEnvio.slice(-4)} <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : "—"}
                       </TableCell>
                     </>
                   )}
