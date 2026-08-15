@@ -478,12 +478,17 @@ exports.sendEmail = onRequest(
         });
         if (waId && typeof waId === 'string') {
           await docRef.update({ whatsappMessageId: waId });
-          // Índice para lookup rápido desde el webhook de delivery
-          getFirestore().doc(`whatsapp_ids/${waId}`).set({
-            mailDocId: docId,
-            recipientPhone: formatPhoneForWhatsApp(recipientPhone) || recipientPhone,
-            createdAt: FieldValue.serverTimestamp(),
-          }).catch(e => console.warn('⚠️ Error guardando whatsapp_ids (waOnly):', e.message));
+          // Índice para lookup rápido desde el webhook de delivery — DEBE ser await.
+          // En Cloud Run las promesas fire-and-forget se matan al responder HTTP.
+          try {
+            await getFirestore().doc(`whatsapp_ids/${waId}`).set({
+              mailDocId: docId,
+              recipientPhone: formatPhoneForWhatsApp(recipientPhone) || recipientPhone,
+              createdAt: FieldValue.serverTimestamp(),
+            });
+          } catch (e) {
+            console.warn('⚠️ Error guardando whatsapp_ids (waOnly):', e.message);
+          }
           console.log('📱 WhatsApp WA-only enviado:', waId);
         } else if (waId && waId.error) {
           console.error('❌ WhatsApp WA-only error:', JSON.stringify(waId.error));
@@ -846,12 +851,17 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
                 'tracking.whatsappMessageId': whatsappId,
                 'tracking.movements': FieldValue.arrayUnion(waMovement),
               }).catch(e => console.warn('⚠️ Error guardando whatsappMessageId:', e.message));
-              // Índice para lookup rápido desde el webhook de delivery
-              getFirestore().doc(`whatsapp_ids/${whatsappId}`).set({
-                mailDocId: docId,
-                recipientPhone: formatPhoneForWhatsApp(recipientPhone) || recipientPhone,
-                createdAt: FieldValue.serverTimestamp(),
-              }).catch(e => console.warn('⚠️ Error guardando whatsapp_ids:', e.message));
+              // Índice para lookup rápido desde el webhook de delivery — DEBE ser await.
+              // En Cloud Run las promesas fire-and-forget se matan al responder HTTP.
+              try {
+                await getFirestore().doc(`whatsapp_ids/${whatsappId}`).set({
+                  mailDocId: docId,
+                  recipientPhone: formatPhoneForWhatsApp(recipientPhone) || recipientPhone,
+                  createdAt: FieldValue.serverTimestamp(),
+                });
+              } catch (e) {
+                console.warn('⚠️ Error guardando whatsapp_ids:', e.message);
+              }
             } else if (resultWA && resultWA.error) {
               const err = resultWA.error;
               // Meta: { error: { message: "..." } }

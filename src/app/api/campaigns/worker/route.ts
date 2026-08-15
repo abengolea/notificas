@@ -76,9 +76,11 @@ async function processMessage(
 
   const canal: string = campaign.canal || 'email';
   const emailRaw = String(msg.recipientEmail || '').toLowerCase();
-  const waOnly = canal === 'whatsapp' && !emailRaw;
-  // Para campañas WA-only sin email real usamos dirección interna solo para el mail doc de tracking.
-  const email = emailRaw || (waOnly ? `wa-${(msg.recipientTelefono || '').replace(/\D/g, '')}@notificas.internal` : '');
+  // Tratar emails sintéticos (generados por CSV parser cuando no hay email real) como "sin email".
+  const isSyntheticEmail = emailRaw.endsWith('@notificas.internal') || emailRaw.endsWith('@wa.internal');
+  const waOnly = canal === 'whatsapp' && (!emailRaw || isSyntheticEmail);
+  // Para campañas WA-only usamos dirección interna solo para el mail doc de tracking.
+  const email = (!waOnly && emailRaw) ? emailRaw : `wa-${(msg.recipientTelefono || '').replace(/\D/g, '')}@notificas.internal`;
   const row: RecipientEntry = {
     email: emailRaw,
     nombre: msg.recipientNombre || email.split('@')[0],
