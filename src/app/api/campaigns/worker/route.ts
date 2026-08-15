@@ -16,7 +16,7 @@ import type { CampaignAttachment, RecipientEntry } from '@/lib/types';
 function verifyWorkerSecret(request: NextRequest): boolean {
   const secret = (process.env.CAMPAIGN_WORKER_SECRET || '').trim();
   if (!secret) return false;
-  return request.headers.get('X-Worker-Secret') === secret;
+  return (request.headers.get('X-Worker-Secret') || '').trim() === secret;
 }
 
 function attachmentsFor(campaign: FirebaseFirestore.DocumentData, emailKey: string): CampaignAttachment[] {

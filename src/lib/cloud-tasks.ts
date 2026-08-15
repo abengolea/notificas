@@ -90,7 +90,7 @@ async function enqueueLocal(path: string, payload: unknown): Promise<void> {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Worker-Secret': process.env.CAMPAIGN_WORKER_SECRET || '',
+      'X-Worker-Secret': (process.env.CAMPAIGN_WORKER_SECRET || '').trim(),
     },
     body: JSON.stringify(payload),
   });
@@ -118,7 +118,7 @@ async function enqueueTask(path: string, payload: unknown, taskId?: string): Pro
       url,
       headers: {
         'Content-Type':    'application/json',
-        'X-Worker-Secret': process.env.CAMPAIGN_WORKER_SECRET || '',
+        'X-Worker-Secret': (process.env.CAMPAIGN_WORKER_SECRET || '').trim(),
       },
       body: Buffer.from(JSON.stringify(payload)).toString('base64'),
     },
