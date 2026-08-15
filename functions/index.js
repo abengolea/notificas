@@ -1863,8 +1863,27 @@ async function processWhatsAppStatus(status) {
         cmUpdate.waError = status.errors?.[0]?.title || 'Error de entrega WA';
         cmUpdate.estado = 'error';
       }
+      const cmPrev = cmSnap.docs[0].data();
       await cmRef.update(cmUpdate);
       console.log(`✅ campaign_message actualizado: ${cmSnap.docs[0].id} → waEstado=${cmUpdate.waEstado}`);
+
+      // Actualizar contadores campaign.stats
+      const campaignId = cmPrev.campaignId;
+      if (campaignId) {
+        const statsUpdate = {};
+        const prevEstado = cmPrev.estado;
+        if (statusType === 'read' && prevEstado !== 'leido') {
+          statsUpdate['stats.leidos'] = FieldValue.increment(1);
+          if (prevEstado === 'pendiente') statsUpdate['stats.pendientes'] = FieldValue.increment(-1);
+        } else if (statusType === 'failed' && prevEstado !== 'error') {
+          statsUpdate['stats.errores'] = FieldValue.increment(1);
+          if (prevEstado === 'pendiente') statsUpdate['stats.pendientes'] = FieldValue.increment(-1);
+        }
+        if (Object.keys(statsUpdate).length > 0) {
+          db.collection('campaigns').doc(campaignId).update(statsUpdate)
+            .catch(e => console.warn('⚠️ Error actualizando stats campaña desde webhook WA:', e.message));
+        }
+      }
     }
   } catch (e) {
     console.warn('⚠️ Error actualizando campaign_message desde webhook WA:', e.message);
