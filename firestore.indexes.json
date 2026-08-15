@@ -92,14 +92,25 @@
       "collectionGroup": "campaign_messages",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "campaignId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "recipientEmail",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "campaignId", "order": "ASCENDING" },
+        { "fieldPath": "recipientEmail", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "campaign_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "campaignId", "order": "ASCENDING" },
+        { "fieldPath": "recipientNombre", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "campaign_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "campaignId", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "recipientNombre", "order": "ASCENDING" }
       ]
     },
     {

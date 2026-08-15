@@ -2,11 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  collection,
   doc,
   onSnapshot,
-  query,
-  where,
   type DocumentData,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -103,23 +100,23 @@ function fallbackMessages(campaign: Campaign): CampaignMessage[] {
   }));
 }
 
+/**
+ * Suscripción ligera: solo el doc de campaña (stats, estado).
+ * Los mensajes se cargan por API paginada para soportar 150k+ destinatarios.
+ */
 export function useCampaignProgress(campaignId: string | null) {
   const [campaign, setCampaign] = useState<Campaign | null>(null);
-  const [messages, setMessages] = useState<CampaignMessage[]>([]);
-  const [messagesLoaded, setMessagesLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!campaignId) {
       setCampaign(null);
-      setMessages([]);
-      setMessagesLoaded(false);
       setLoading(false);
       return;
     }
 
     setLoading(true);
-    const unsubCamp = onSnapshot(
+    const unsub = onSnapshot(
       doc(db, 'campaigns', campaignId),
       (snap) => {
         if (snap.exists()) setCampaign(mapCampaign(snap.id, snap.data()));
@@ -132,37 +129,10 @@ export function useCampaignProgress(campaignId: string | null) {
       }
     );
 
-    const q = query(collection(db, 'campaign_messages'), where('campaignId', '==', campaignId));
-
-    const unsubMsg = onSnapshot(
-      q,
-      (snap) => {
-        const list = snap.docs.map((d) => mapCampaignMessage(d.id, d.data()));
-        list.sort((a, b) => a.recipientEmail.localeCompare(b.recipientEmail));
-        setMessages(list);
-        setMessagesLoaded(true);
-        setLoading(false);
-      },
-      () => {
-        setMessages([]);
-        setMessagesLoaded(true);
-        setLoading(false);
-      }
-    );
-
-    return () => {
-      unsubCamp();
-      unsubMsg();
-    };
+    return unsub;
   }, [campaignId]);
-
-  // Si la colección campaign_messages está vacía y ya cargó, usar recipientData como fallback.
-  const effectiveMessages = useMemo(() => {
-    if (!messagesLoaded || messages.length > 0 || !campaign) return messages;
-    return fallbackMessages(campaign);
-  }, [messages, messagesLoaded, campaign]);
 
   const stats = useMemo(() => campaign?.stats ?? null, [campaign]);
 
-  return { campaign, messages: effectiveMessages, stats, loading };
+  return { campaign, stats, loading };
 }
