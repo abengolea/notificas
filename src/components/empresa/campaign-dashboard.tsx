@@ -24,7 +24,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Download, Loader2, RefreshCw, Play, ExternalLink, Mail, MessageCircle } from "lucide-react";
+import { Download, Loader2, RefreshCw, Play, ExternalLink, Mail, MessageCircle, ChevronDown } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 function campaignEstadoBadge(estado: string) {
   switch (estado) {
@@ -121,22 +129,47 @@ export function CampaignDashboard() {
     }
   }
 
-  async function descargarReporte() {
+  async function descargarReporte(estado: string = "todos") {
     const user = auth.currentUser;
     if (!user) return;
-    const token = await user.getIdToken();
-    const url = `/api/campaigns/report?campaignId=${encodeURIComponent(campaignId)}&orgId=${encodeURIComponent(orgId)}`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) {
-      toast({ title: "No se pudo generar el PDF", variant: "destructive" });
-      return;
+    setBusy(true);
+    try {
+      const token = await user.getIdToken();
+      const url = `/api/campaigns/report?campaignId=${encodeURIComponent(campaignId)}&orgId=${encodeURIComponent(orgId)}&estado=${estado}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) {
+        toast({ title: "No se pudo generar el PDF", variant: "destructive" });
+        return;
+      }
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `reporte-${estado !== "todos" ? estado + "-" : ""}${campaignId.slice(0, 8)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } finally {
+      setBusy(false);
     }
-    const blob = await res.blob();
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `reporte-${campaignId.slice(0, 8)}.pdf`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+  }
+
+  async function descargarCsv() {
+    const user = auth.currentUser;
+    if (!user) return;
+    setBusy(true);
+    try {
+      const token = await user.getIdToken();
+      const url = `/api/campaigns/export?campaignId=${encodeURIComponent(campaignId)}&orgId=${encodeURIComponent(orgId)}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) { toast({ title: "No se pudo generar el CSV", variant: "destructive" }); return; }
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `evidencia-${campaignId.slice(0, 8)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } finally {
+      setBusy(false);
+    }
   }
 
   const iniciarEnvio = useCallback(async () => {
@@ -254,10 +287,27 @@ export function CampaignDashboard() {
               Iniciar envío
             </Button>
           ) : null}
-          <Button variant="outline" onClick={descargarReporte} className="gap-2">
-            <Download className="h-4 w-4" />
-            Descargar reporte legal
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" disabled={busy} className="gap-2">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                Descargar reporte
+                <ChevronDown className="h-3 w-3 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>PDF — máx 500 filas</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => descargarReporte("todos")}>Todos los estados</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => descargarReporte("enviado")}>Solo enviados</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => descargarReporte("leido")}>Solo leídos</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => descargarReporte("error")}>Solo errores</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>CSV — dataset completo</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={descargarCsv}>Evidencia completa (CSV)</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
