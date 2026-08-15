@@ -129,14 +129,19 @@ export function CampaignDashboard() {
     }
   }
 
-  async function descargarReporte(estado: string = "todos") {
+  async function descargarReporte() {
     const user = auth.currentUser;
     if (!user) return;
     setBusy(true);
     try {
       const token = await user.getIdToken();
-      const url = `/api/campaigns/report?campaignId=${encodeURIComponent(campaignId)}&orgId=${encodeURIComponent(orgId)}&estado=${estado}`;
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const params = new URLSearchParams({
+        campaignId,
+        orgId,
+        estado: filter === "all" ? "todos" : filter,
+        ...(q.trim() ? { nombre: q.trim() } : {}),
+      });
+      const res = await fetch(`/api/campaigns/report?${params}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) {
         toast({ title: "No se pudo generar el PDF", variant: "destructive" });
         return;
@@ -144,7 +149,8 @@ export function CampaignDashboard() {
       const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `reporte-${estado !== "todos" ? estado + "-" : ""}${campaignId.slice(0, 8)}.pdf`;
+      const suffix = [filter !== "all" ? filter : "", q.trim() ? "filtrado" : ""].filter(Boolean).join("-");
+      a.download = `reporte-${suffix ? suffix + "-" : ""}${campaignId.slice(0, 8)}.pdf`;
       a.click();
       URL.revokeObjectURL(a.href);
     } finally {
@@ -291,21 +297,33 @@ export function CampaignDashboard() {
             <DropdownMenuTrigger asChild>
               <Button variant="outline" disabled={busy} className="gap-2">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                Descargar reporte
+                Descargar
                 <ChevronDown className="h-3 w-3 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>PDF — máx 500 filas</DropdownMenuLabel>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                PDF — imprime el filtro activo (máx 500 filas)
+              </DropdownMenuLabel>
+              <DropdownMenuItem onClick={descargarReporte} className="gap-2">
+                <Download className="h-4 w-4" />
+                <span>
+                  PDF
+                  {(filter !== "all" || q.trim()) && (
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      ({[filter !== "all" ? filter : "", q.trim() ? `"${q.trim()}"` : ""].filter(Boolean).join(" · ")})
+                    </span>
+                  )}
+                </span>
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => descargarReporte("todos")}>Todos los estados</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => descargarReporte("enviado")}>Solo enviados</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => descargarReporte("leido")}>Solo leídos</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => descargarReporte("error")}>Solo errores</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>CSV — dataset completo</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={descargarCsv}>Evidencia completa (CSV)</DropdownMenuItem>
+              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                CSV — evidencia completa sin límite
+              </DropdownMenuLabel>
+              <DropdownMenuItem onClick={descargarCsv} className="gap-2">
+                <Download className="h-4 w-4" />
+                CSV con TX hashes y WAMID
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

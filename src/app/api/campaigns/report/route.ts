@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     const campaignId = sp.get('campaignId');
     const orgId = sp.get('orgId');
     const estadoFilter = (sp.get('estado') || 'todos') as EstadoFilter;
+    const nombreFilter = (sp.get('nombre') || '').trim().toLowerCase();
     const limitParam = parseInt(sp.get('limit') || String(MAX_ROWS), 10);
     const limit = Math.min(Math.max(1, limitParam), MAX_ROWS);
 
@@ -93,10 +94,15 @@ export async function GET(request: NextRequest) {
       }));
     }
 
-    // Filtrar por estado
-    const filtered = estadoFilter === 'todos'
-      ? allRows
-      : allRows.filter((r) => r.estado === estadoFilter);
+    // Filtrar por estado y nombre
+    const filtered = allRows.filter((r) => {
+      if (estadoFilter !== 'todos' && r.estado !== estadoFilter) return false;
+      if (nombreFilter) {
+        const haystack = `${r.recipientNombre} ${r.recipientEmail}`.toLowerCase();
+        if (!haystack.includes(nombreFilter)) return false;
+      }
+      return true;
+    });
 
     // Ordenar por nombre
     filtered.sort((a, b) => a.recipientNombre.localeCompare(b.recipientNombre, 'es'));
@@ -143,7 +149,10 @@ export async function GET(request: NextRequest) {
     doc.text(`Organización: ${orgNombre}`, 14, 24);
     doc.text(`Campaña: ${String(campaign.nombre || '')}`, 14, 30);
     doc.text(`Asunto: ${String(campaign.asunto || '')}`, 14, 36);
-    const filterLabel = estadoFilter === 'todos' ? 'Todos los estados' : `Estado: ${estadoFilter}`;
+    const filterParts: string[] = [];
+    if (estadoFilter !== 'todos') filterParts.push(`Estado: ${estadoFilter}`);
+    if (nombreFilter) filterParts.push(`Nombre: "${nombreFilter}"`);
+    const filterLabel = filterParts.length ? filterParts.join(' · ') : 'Sin filtros';
     doc.text(`Filtro: ${filterLabel} — ${totalFiltrados} registros${totalFiltrados > limit ? ` (mostrando ${limit} de ${totalFiltrados})` : ''}`, 14, 42);
     doc.text(`Generado: ${new Date().toLocaleString('es-AR')}`, 14, 48);
 
