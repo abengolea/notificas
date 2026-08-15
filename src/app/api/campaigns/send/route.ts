@@ -51,20 +51,33 @@ export async function POST(request: NextRequest) {
     const plan = String(orgGate.data.plan || 'starter');
     const maxRecipients = maxRecipientsForPlan(plan);
 
-    let recipientData: RecipientEntry[] = Array.isArray(campaign.recipientData)
-      ? (campaign.recipientData as RecipientEntry[])
-      : [];
-    if (recipientData.length === 0 && Array.isArray(campaign.recipientEmails)) {
-      recipientData = (campaign.recipientEmails as string[]).map((email) => ({
-        email: String(email).trim().toLowerCase(),
-        nombre: String(email).split('@')[0],
-      }));
+    const useStorage = !!campaign.recipientStoragePath;
+    let recipientData: RecipientEntry[] = [];
+    let totalRecipients: number;
+
+    if (useStorage) {
+      // 150k+: no cargamos todos los destinatarios en memoria.
+      totalRecipients = typeof campaign.recipientCount === 'number' ? campaign.recipientCount : 0;
+      if (totalRecipients === 0) {
+        return NextResponse.json({ error: 'Sin destinatarios (Storage vacío)' }, { status: 400 });
+      }
+    } else {
+      recipientData = Array.isArray(campaign.recipientData)
+        ? (campaign.recipientData as RecipientEntry[])
+        : [];
+      if (recipientData.length === 0 && Array.isArray(campaign.recipientEmails)) {
+        recipientData = (campaign.recipientEmails as string[]).map((email) => ({
+          email: String(email).trim().toLowerCase(),
+          nombre: String(email).split('@')[0],
+        }));
+      }
+      totalRecipients = recipientData.length;
+      if (totalRecipients === 0) {
+        return NextResponse.json({ error: 'Sin destinatarios' }, { status: 400 });
+      }
     }
 
-    if (recipientData.length === 0) {
-      return NextResponse.json({ error: 'Sin destinatarios' }, { status: 400 });
-    }
-    if (recipientData.length > maxRecipients) {
+    if (totalRecipients > maxRecipients) {
       return NextResponse.json(
         { error: `Máximo ${maxRecipients} destinatarios para el plan ${plan}` },
         { status: 400 }
@@ -75,45 +88,62 @@ export async function POST(request: NextRequest) {
     const userSnap = await userRef.get();
     const creditosInicial = normalizeEnviosDisponibles(userSnap.data()?.creditos);
 
-    const loadMsgIndex = async () => {
-      const existingSnap = await db
+    let cobrosEsperados: number;
+    let pendingCount: number;
+
+    if (useStorage) {
+      // Para campañas con Storage: contar mensajes ya exitosos y restar.
+      const successCount = await db
         .collection('campaign_messages')
         .where('campaignId', '==', parsed.data.campaignId)
+        .where('estado', 'in', ['enviado', 'leido'])
+        .count()
         .get();
-      const byEmail = new Map<string, { id: string; estado: MsgState; creditApplied?: boolean; mailId?: string }>();
-      existingSnap.docs.forEach((docItem) => {
-        const data = docItem.data();
-        const em = String(data.recipientEmail || '').toLowerCase();
-        byEmail.set(em, {
-          id: docItem.id,
-          estado: (data.estado as MsgState) || 'pendiente',
-          creditApplied: !!data.creditApplied,
-          mailId: typeof data.mailId === 'string' ? data.mailId : undefined,
+      const successTotal = successCount.data().count;
+      cobrosEsperados = Math.max(0, totalRecipients - successTotal);
+      pendingCount = cobrosEsperados;
+    } else {
+      const loadMsgIndex = async () => {
+        const existingSnap = await db
+          .collection('campaign_messages')
+          .where('campaignId', '==', parsed.data.campaignId)
+          .get();
+        const byEmail = new Map<string, { id: string; estado: MsgState; creditApplied?: boolean; mailId?: string }>();
+        existingSnap.docs.forEach((docItem) => {
+          const data = docItem.data();
+          const em = String(data.recipientEmail || '').toLowerCase();
+          byEmail.set(em, {
+            id: docItem.id,
+            estado: (data.estado as MsgState) || 'pendiente',
+            creditApplied: !!data.creditApplied,
+            mailId: typeof data.mailId === 'string' ? data.mailId : undefined,
+          });
         });
+        return byEmail;
+      };
+
+      const byEmail = await loadMsgIndex();
+
+      const trabajo = recipientData.filter((row) => {
+        const email = row.email.trim().toLowerCase();
+        const cur = byEmail.get(email);
+        if (!cur) return true;
+        if (cur.estado === 'enviado' || cur.estado === 'leido') return false;
+        if (cur.estado === 'error') return true;
+        if (cur.estado === 'pendiente') return true;
+        return false;
       });
-      return { snap: existingSnap, byEmail };
-    };
 
-    const { byEmail } = await loadMsgIndex();
-
-    const trabajo = recipientData.filter((row) => {
-      const email = row.email.trim().toLowerCase();
-      const cur = byEmail.get(email);
-      if (!cur) return true;
-      if (cur.estado === 'enviado' || cur.estado === 'leido') return false;
-      if (cur.estado === 'error') return true;
-      if (cur.estado === 'pendiente') return true;
-      return false;
-    });
-
-    const cobrosEsperados = trabajo.filter((row) => {
-      const email = row.email.trim().toLowerCase();
-      const cur = byEmail.get(email);
-      if (!cur) return true;
-      if (cur.estado === 'error') return true;
-      if (cur.estado === 'pendiente' && !cur.creditApplied) return true;
-      return false;
-    }).length;
+      cobrosEsperados = trabajo.filter((row) => {
+        const email = row.email.trim().toLowerCase();
+        const cur = byEmail.get(email);
+        if (!cur) return true;
+        if (cur.estado === 'error') return true;
+        if (cur.estado === 'pendiente' && !cur.creditApplied) return true;
+        return false;
+      }).length;
+      pendingCount = trabajo.length;
+    }
 
     if (creditosInicial < cobrosEsperados) {
       return NextResponse.json(
@@ -136,7 +166,7 @@ export async function POST(request: NextRequest) {
     // Encolar el fanout que creará los campaign_messages y los workers de envío.
     await enqueueCampaignFanout(parsed.data.campaignId, 0);
 
-    return NextResponse.json({ queued: true, total: recipientData.length, pending: trabajo.length });
+    return NextResponse.json({ queued: true, total: totalRecipients, pending: pendingCount });
   } catch (e: unknown) {
     console.error('POST /api/campaigns/send', e);
     const msg = e instanceof Error ? e.message : 'Error interno';

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
-import { getAdminDb } from '@/lib/firebase-admin';
+import { getAdminDb, getAdminBucket } from '@/lib/firebase-admin';
 import { enqueueCampaignFanout, enqueueCampaignWorker } from '@/lib/cloud-tasks';
 import type { RecipientEntry } from '@/lib/types';
 
@@ -67,13 +67,27 @@ export async function POST(request: NextRequest) {
       ? tandaSize
       : DEFAULT_TANDA_SIZE;
 
-  // Cargar destinatarios: soporta recipientData en doc o recipient_lists (para volúmenes grandes).
+  // Cargar destinatarios: Storage (150k+) → recipientData inline → recipient_lists.
   let allRecipients: RecipientEntry[] = [];
 
-  if (Array.isArray(campaign.recipientData) && campaign.recipientData.length > 0) {
+  if (campaign.recipientStoragePath) {
+    // 150k+: leer chunk desde Firebase Storage.
+    const bucket = getAdminBucket();
+    const chunkIndex = Math.floor(offset / FANOUT_PAGE);
+    const file = bucket.file(`${campaign.recipientStoragePath}/chunk_${chunkIndex}.json`);
+    const [content] = await file.download();
+    const chunkRecipients: RecipientEntry[] = JSON.parse(content.toString('utf-8'));
+
+    const nextChunkIndex = chunkIndex + 1;
+    const hasMoreChunks = nextChunkIndex < (campaign.recipientChunkCount ?? 0);
+    if (hasMoreChunks) {
+      await enqueueCampaignFanout(campaignId, offset + FANOUT_PAGE);
+    }
+    return await processFanoutPage(db, campaign, campaignId, chunkRecipients, offset);
+  } else if (Array.isArray(campaign.recipientData) && campaign.recipientData.length > 0) {
     allRecipients = campaign.recipientData as RecipientEntry[];
   } else if (campaign.recipientListId) {
-    // Para 150k+: leer desde subcolección paginada en recipient_lists.
+    // Fallback: leer desde subcolección paginada en recipient_lists.
     const listSnap = await db
       .collection('recipient_list_entries')
       .where('listId', '==', campaign.recipientListId)
@@ -82,7 +96,6 @@ export async function POST(request: NextRequest) {
       .limit(FANOUT_PAGE)
       .get();
     allRecipients = listSnap.docs.map((d) => d.data() as RecipientEntry);
-    // Para listas paginadas, tratar allRecipients como la página completa.
     if (allRecipients.length === FANOUT_PAGE) {
       await enqueueCampaignFanout(campaignId, offset + FANOUT_PAGE);
     }

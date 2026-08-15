@@ -65,6 +65,13 @@ function parseEmailsBlock(text: string): RecipientEntry[] {
     .map((email) => ({ email, nombre: email.split("@")[0] }));
 }
 
+const PHONE_RE = /^\+?[\d\s\-().]{7,20}$/;
+
+function normalizePhone(raw: string): string {
+  // Elimina espacios y guiones, pero conserva el + inicial
+  return raw.replace(/[\s\-().]/g, '');
+}
+
 function parseCsvQuick(text: string, canal: CanalCampaign): RecipientEntry[] {
   const lines = text.split(/\r?\n/).filter(Boolean);
   if (!lines.length) return [];
@@ -87,12 +94,15 @@ function parseCsvQuick(text: string, canal: CanalCampaign): RecipientEntry[] {
     const cells = lines[r].split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
     const nombre   = cells[iNombre] || "";
     const email    = iEmail >= 0    ? (cells[iEmail] || "").toLowerCase()  : `sin-email-${r}@wa.internal`;
-    const telefono = iTelefono >= 0 ? cells[iTelefono] || undefined        : undefined;
+    const rawPhone = iTelefono >= 0 ? cells[iTelefono] || undefined        : undefined;
+    const telefono = rawPhone ? normalizePhone(rawPhone) : undefined;
     const dni      = iDni >= 0      ? cells[iDni] || undefined             : undefined;
     const legajo   = iLegajo >= 0   ? cells[iLegajo] || undefined          : undefined;
     if (!nombre) continue;
     if (needEmail && !email.includes("@")) continue;
     if (needPhone && !telefono) continue;
+    // Validar formato de teléfono (si se requiere o si viene)
+    if (telefono && !PHONE_RE.test(rawPhone || '')) continue;
     out.push({ email, nombre, telefono, dni, legajo });
   }
   return out;
@@ -341,7 +351,6 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
         });
       }
 
-      const recipientEmails = recipients.map((r) => r.email.toLowerCase());
       const scheduleFuture = Boolean(scheduleIso && new Date(scheduleIso) > new Date());
 
       // Firestore rechaza campos undefined — limpiar antes de guardar.
@@ -354,6 +363,8 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
         return clean;
       });
 
+      // Base del doc: NO incluimos recipientData/recipientEmails para no superar 1MB.
+      // Los destinatarios se suben a Storage y se referencia por path.
       const base = {
         orgId,
         createdBy: user.uid,
@@ -369,8 +380,6 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
         adjuntos: adjuntosGlobales,
         ...(adjuntosPorDestinatario ? { adjuntosPorDestinatario } : {}),
         recipientListId: listId || null,
-        recipientEmails,
-        recipientData: cleanRecipients,
         recipientCount: recipients.length,
         stats: {
           total: recipients.length,
@@ -382,12 +391,28 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
         createdAt: serverTimestamp(),
       };
 
+      // Crear campaña siempre en borrador primero; activar después de subir destinatarios.
+      const refDoc = await addDoc(collection(db, "campaigns"), {
+        ...base,
+        estado: "borrador",
+        ...(scheduleFuture && scheduleIso ? { scheduledAt: new Date(scheduleIso) } : {}),
+        startedAt: null,
+      });
+
+      // Subir destinatarios a Storage vía API (Admin SDK bypasses Storage rules).
+      const token = await user.getIdToken();
+      const uploadRes = await fetch("/api/campaigns/upload-recipients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ campaignId: refDoc.id, orgId, recipients: cleanRecipients }),
+      });
+      if (!uploadRes.ok) {
+        const uploadErr = await uploadRes.json().catch(() => ({}));
+        await updateDoc(refDoc, { estado: "borrador" });
+        throw new Error(uploadErr.error || "No se pudieron subir los destinatarios");
+      }
+
       if (scheduleFuture && scheduleIso) {
-        const refDoc = await addDoc(collection(db, "campaigns"), {
-          ...base,
-          estado: "borrador",
-          scheduledAt: new Date(scheduleIso),
-        });
         toast({
           title: "Campaña programada (borrador)",
           description: "Desde el detalle podrás iniciar el envío cuando corresponda.",
@@ -396,28 +421,19 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
         return;
       }
 
-      const refDoc = await addDoc(collection(db, "campaigns"), {
-        ...base,
-        estado: sendNow ? "enviando" : "borrador",
-        startedAt: sendNow ? serverTimestamp() : null,
-      });
-
       if (sendNow) {
-        const token = await user.getIdToken();
-        const res = await fetch("/api/campaigns/send", {
+        await updateDoc(refDoc, { estado: "enviando", startedAt: serverTimestamp() });
+        const sendRes = await fetch("/api/campaigns/send", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ campaignId: refDoc.id, orgId }),
         });
-        const data = await res.json();
-        if (!res.ok) {
+        const sendData = await sendRes.json();
+        if (!sendRes.ok) {
           await updateDoc(refDoc, { estado: "borrador" });
-          throw new Error(data.error || "Falló el envío");
+          throw new Error(sendData.error || "Falló el envío");
         }
-        toast({ title: "Envío procesado", description: `Enviados: ${data.sent}, errores: ${data.errors}` });
+        toast({ title: "Envío iniciado", description: `${sendData.pending ?? sendData.total ?? 0} mensajes encolados` });
       } else {
         toast({ title: "Borrador guardado" });
       }

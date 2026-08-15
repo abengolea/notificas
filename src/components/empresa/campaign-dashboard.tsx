@@ -33,6 +33,8 @@ import {
   Mail,
   MessageCircle,
   ChevronDown,
+  XCircle,
+  AlertTriangle,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -177,6 +179,8 @@ export function CampaignDashboard() {
 
   const leidoPct =
     stats && stats.enviados > 0 ? Math.round((stats.leidos / stats.enviados) * 100) : 0;
+  const enviadoPct =
+    stats && stats.total > 0 ? Math.round((stats.enviados / stats.total) * 100) : 0;
 
   async function continuarEnvio() {
     const user = auth.currentUser;
@@ -266,6 +270,49 @@ export function CampaignDashboard() {
     }
   }, [campaign, campaignId, orgId, toast]);
 
+  async function cancelarCampana() {
+    const user = auth.currentUser;
+    if (!user || !campaign) return;
+    setBusy(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch("/api/campaigns/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ campaignId, orgId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error");
+      toast({ title: "Campaña cancelada", description: "Los mensajes pendientes no se enviarán." });
+    } catch (e: unknown) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Falló", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reintentarErrores() {
+    const user = auth.currentUser;
+    if (!user || !campaign) return;
+    setBusy(true);
+    try {
+      await updateDoc(doc(db, "campaigns", campaignId), { estado: "enviando" });
+      const token = await user.getIdToken();
+      const res = await fetch("/api/campaigns/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ campaignId, orgId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error");
+      toast({ title: "Reintento iniciado", description: `${data.pending ?? 0} mensajes encolados` });
+    } catch (e: unknown) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Falló", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function reenviarSeleccion() {
     const user = auth.currentUser;
     if (!user || selected.size === 0) return;
@@ -330,6 +377,18 @@ export function CampaignDashboard() {
             <Button variant="secondary" onClick={continuarEnvio} disabled={busy} className="gap-2">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Continuar envío
+            </Button>
+          )}
+          {campaign.estado === "enviando" && (
+            <Button variant="destructive" onClick={cancelarCampana} disabled={busy} className="gap-2">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+              Cancelar campaña
+            </Button>
+          )}
+          {campaign.estado === "completada" && stats && stats.errores > 0 && (
+            <Button variant="outline" onClick={reintentarErrores} disabled={busy} className="gap-2 border-destructive text-destructive hover:bg-destructive/10">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+              Reintentar {stats.errores.toLocaleString("es-AR")} errores
             </Button>
           )}
           {campaign.estado === "borrador" && (
@@ -433,10 +492,13 @@ export function CampaignDashboard() {
             </Card>
           </div>
           {campaign.estado === "enviando" && (
-            <p className="text-sm text-muted-foreground flex items-center gap-2">
-              <RefreshCw className="h-4 w-4 animate-spin" />
-              Enviando… los datos se actualizan en vivo.
-            </p>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Enviando… {enviadoPct}% completado — {stats?.enviados?.toLocaleString("es-AR") ?? 0} de {stats?.total?.toLocaleString("es-AR") ?? 0}
+              </div>
+              <Progress value={enviadoPct} className="h-2" />
+            </div>
           )}
         </>
       )}
@@ -460,12 +522,18 @@ export function CampaignDashboard() {
         />
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-3">
         <Button variant="secondary" disabled={busy || selected.size === 0} onClick={reenviarSeleccion} className="gap-2">
           <RefreshCw className="h-4 w-4" />
           Reenviar seleccionados ({selected.size})
         </Button>
-        <p className="text-xs text-muted-foreground">Solo filas en error pueden seleccionarse.</p>
+        {stats && stats.errores > 0 && campaign.estado !== "enviando" && (
+          <Button variant="outline" disabled={busy} onClick={reintentarErrores} className="gap-2 border-destructive text-destructive hover:bg-destructive/10">
+            <AlertTriangle className="h-4 w-4" />
+            Reintentar todos los errores ({stats.errores.toLocaleString("es-AR")})
+          </Button>
+        )}
+        <p className="text-xs text-muted-foreground">Solo filas en error pueden seleccionarse individualmente.</p>
       </div>
 
       {/* Tabla */}
