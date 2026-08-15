@@ -100,12 +100,11 @@ function useMessages(campaignId: string, estado: string, search: string) {
   const currentPage               = stackLen - 1;
 
   const load = useCallback(async (cursor: string) => {
-    // Esperar hasta que Firebase Auth esté listo
+    // Siempre esperar el primer disparo de onAuthStateChanged (puede ser inmediato si ya cargó)
     const user = await new Promise<typeof auth.currentUser>((resolve) => {
-      if (auth.currentUser !== undefined) { resolve(auth.currentUser); return; }
       const unsub = auth.onAuthStateChanged((u) => { unsub(); resolve(u); });
     });
-    if (!user) return;
+    if (!user) { setLoading(false); return; }
     setLoading(true);
     try {
       const token = await user.getIdToken();
