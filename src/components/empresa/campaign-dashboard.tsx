@@ -55,6 +55,29 @@ function campaignEstadoBadge(estado: string) {
   }
 }
 
+/** Formatea un Timestamp de Firestore (obj con _seconds o string ISO) a hora legible. */
+function fmtTs(ts: unknown): string | null {
+  if (!ts) return null;
+  try {
+    if (typeof ts === 'string') {
+      const d = new Date(ts);
+      return isNaN(d.getTime()) ? null : d.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+    }
+    if (typeof ts === 'object') {
+      const o = ts as Record<string, number>;
+      const secs = o._seconds ?? o.seconds;
+      if (secs != null) {
+        return new Date(secs * 1000).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+      }
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function isSyntheticEmail(email: string) {
+  return email.endsWith('@notificas.internal') || email.endsWith('@wa.internal');
+}
+
 function msgEstadoBadge(estado: string) {
   switch (estado) {
     case "pendiente": return <Badge variant="secondary">pendiente</Badge>;
@@ -442,16 +465,19 @@ export function CampaignDashboard() {
           </TableHeader>
           <TableBody>
             {msgLoading ? (
-              Array.from({ length: 8 }).map((_, i) => (
-                <TableRow key={i}>
-                  {Array.from({ length: showWa && showEmail ? 8 : 6 }).map((_, j) => (
-                    <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
-                  ))}
-                </TableRow>
-              ))
+              Array.from({ length: 8 }).map((_, i) => {
+                const cols = 3 + (showEmail ? 3 : 0) + (showWa ? 3 : 0);
+                return (
+                  <TableRow key={i}>
+                    {Array.from({ length: cols }).map((_, j) => (
+                      <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                    ))}
+                  </TableRow>
+                );
+              })
             ) : messages.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={showWa && showEmail ? 8 : 6} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={3 + (showEmail ? 3 : 0) + (showWa ? 3 : 0)} className="text-center text-muted-foreground py-8">
                   No hay mensajes con el filtro seleccionado.
                 </TableCell>
               </TableRow>
@@ -467,7 +493,7 @@ export function CampaignDashboard() {
                   </TableCell>
                   <TableCell>
                     <div className="font-medium">{m.recipientNombre}</div>
-                    {m.recipientEmail && !m.recipientEmail.endsWith('@notificas.internal') && (
+                    {m.recipientEmail && !isSyntheticEmail(m.recipientEmail) && (
                       <div className="text-xs text-muted-foreground truncate max-w-[160px]">{m.recipientEmail}</div>
                     )}
                     {m.recipientTelefono && (
@@ -499,8 +525,12 @@ export function CampaignDashboard() {
                   {showWa && (
                     <>
                       <TableCell>{msgEstadoBadge(m.waEstado || m.estado)}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{m.waEntregadoAt ? "✓" : "—"}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{m.waLeidoAt ? "✓" : "—"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {fmtTs(m.waEntregadoAt) ?? (m.waLeidoAt ? <span className="text-muted-foreground/50">—</span> : "—")}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {fmtTs(m.waLeidoAt) ?? "—"}
+                      </TableCell>
                     </>
                   )}
                 </TableRow>
