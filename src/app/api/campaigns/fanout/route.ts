@@ -21,7 +21,7 @@ function recipientKey(email: string, telefono: string): string {
 }
 
 function verifyWorkerSecret(request: NextRequest): boolean {
-  const secret = process.env.CAMPAIGN_WORKER_SECRET;
+  const secret = (process.env.CAMPAIGN_WORKER_SECRET || '').trim();
   if (!secret) return false;
   return request.headers.get('X-Worker-Secret') === secret;
 }

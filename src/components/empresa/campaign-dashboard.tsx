@@ -169,7 +169,7 @@ export function CampaignDashboard() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error");
-      toast({ title: "Envío reanudado", description: `Enviados: ${data.sent}, errores: ${data.errors}` });
+      toast({ title: "Envío reanudado", description: `${data.pending ?? data.total ?? 0} mensajes encolados` });
     } catch (e: unknown) {
       toast({ title: "Error", description: e instanceof Error ? e.message : "Falló", variant: "destructive" });
     } finally {
@@ -236,7 +236,7 @@ export function CampaignDashboard() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error");
-      toast({ title: "Envío", description: `Enviados: ${data.sent}, errores: ${data.errors}` });
+      toast({ title: "Envío", description: `${data.pending ?? data.total ?? 0} mensajes encolados` });
     } catch (e: unknown) {
       toast({ title: "Error", description: e instanceof Error ? e.message : "Falló el envío", variant: "destructive" });
     } finally {
@@ -257,7 +257,7 @@ export function CampaignDashboard() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Reenvío fallido");
-      toast({ title: "Reenvío", description: `Enviados: ${data.sent}, errores: ${data.errors}` });
+      toast({ title: "Reenvío", description: `${data.sent ?? 0} enviados, ${data.errors ?? 0} errores` });
       setSelected(new Set());
     } catch (e: unknown) {
       toast({ title: "Error", description: e instanceof Error ? e.message : "No se pudo reenviar", variant: "destructive" });
