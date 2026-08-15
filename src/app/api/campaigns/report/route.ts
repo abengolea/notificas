@@ -180,18 +180,43 @@ export async function GET(request: NextRequest) {
     doc.text(`Filtro: ${filterLabel} — ${totalFiltrados} registros${totalFiltrados > limit ? ` (mostrando ${limit} de ${totalFiltrados})` : ''}`, 14, 42);
     doc.text(`Generado: ${new Date().toLocaleString('es-AR')}`, 14, 48);
 
+    // Contenido del mensaje enviado
+    let msgY = 54;
+    if (showWa && campaign.waTemplateName) {
+      doc.setFontSize(9);
+      doc.setTextColor(80, 80, 80);
+      const vars = Array.isArray(campaign.waTemplateVariables) && campaign.waTemplateVariables.length > 0
+        ? campaign.waTemplateVariables.map((v: string, i: number) => `{{${i+1}}}=${v}`).join('  ')
+        : '';
+      doc.text(`Template WA: ${campaign.waTemplateName}${campaign.waTemplateLang ? ` (${campaign.waTemplateLang})` : ''}${vars ? `   Variables: ${vars}` : ''}`, 14, msgY);
+      msgY += 6;
+      if (campaign.cuerpo) {
+        const lines = doc.splitTextToSize(`Cuerpo: ${campaign.cuerpo}`, 260);
+        doc.text(lines, 14, msgY);
+        msgY += lines.length * 4 + 2;
+      }
+      doc.setTextColor(0, 0, 0);
+    } else if (showEmail && campaign.asunto) {
+      doc.setFontSize(9);
+      doc.setTextColor(80, 80, 80);
+      doc.text(`Asunto: ${campaign.asunto}`, 14, msgY);
+      msgY += 6;
+      doc.setTextColor(0, 0, 0);
+    }
+
     if (totalFiltrados > limit) {
       doc.setFontSize(9);
       doc.setTextColor(180, 0, 0);
       doc.text(
         `⚠ Este PDF muestra solo los primeros ${limit} registros. Para el dataset completo usá "Descargar CSV".`,
-        14, 54
+        14, msgY
       );
       doc.setTextColor(0, 0, 0);
+      msgY += 6;
     }
 
     autoTable(doc, {
-      startY: totalFiltrados > limit ? 60 : 54,
+      startY: msgY,
       head: [tableHead],
       body: tableBody,
       styles: { fontSize: 7 },

@@ -372,6 +372,36 @@ export function CampaignDashboard() {
         </div>
       </div>
 
+      {/* Preview del mensaje enviado */}
+      {showWa && campaign.waTemplateName && (
+        <div className="rounded-md border p-4 bg-muted/30 space-y-1 text-sm">
+          <p className="font-medium flex items-center gap-2"><MessageCircle className="h-4 w-4 text-emerald-500" />Mensaje enviado</p>
+          <p className="text-muted-foreground">
+            Template: <span className="font-mono text-foreground">{campaign.waTemplateName}</span>
+            {campaign.waTemplateLang && <span className="ml-2 text-xs">({campaign.waTemplateLang})</span>}
+          </p>
+          {campaign.waTemplateVariables && campaign.waTemplateVariables.length > 0 && (
+            <p className="text-muted-foreground">
+              Variables: {campaign.waTemplateVariables.map((v, i) => (
+                <span key={i} className="inline-block mr-2">
+                  <span className="text-xs text-muted-foreground">{`{{${i + 1}}}`} = </span>
+                  <span className="font-medium text-foreground">{v}</span>
+                </span>
+              ))}
+            </p>
+          )}
+          {campaign.cuerpo && (
+            <p className="text-muted-foreground mt-2 whitespace-pre-wrap border-t pt-2">{campaign.cuerpo}</p>
+          )}
+        </div>
+      )}
+      {showEmail && !showWa && campaign.asunto && (
+        <div className="rounded-md border p-4 bg-muted/30 space-y-1 text-sm">
+          <p className="font-medium flex items-center gap-2"><Mail className="h-4 w-4" />Mensaje enviado</p>
+          <p className="text-muted-foreground">Asunto: <span className="font-medium text-foreground">{campaign.asunto}</span></p>
+        </div>
+      )}
+
       {/* Stats — vienen del campaign doc (FieldValue.increment, nunca recalculados en cliente) */}
       {stats && (
         <>
