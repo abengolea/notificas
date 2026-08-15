@@ -75,9 +75,12 @@ async function processMessage(
   if (msg.estado === 'enviado' || msg.estado === 'leido') return;
 
   const canal: string = campaign.canal || 'email';
-  const email = String(msg.recipientEmail || '').toLowerCase();
+  const emailRaw = String(msg.recipientEmail || '').toLowerCase();
+  const waOnly = canal === 'whatsapp' && !emailRaw;
+  // Para campañas WA-only sin email real usamos dirección interna solo para el mail doc de tracking.
+  const email = emailRaw || (waOnly ? `wa-${(msg.recipientTelefono || '').replace(/\D/g, '')}@notificas.internal` : '');
   const row: RecipientEntry = {
-    email,
+    email: emailRaw,
     nombre: msg.recipientNombre || email.split('@')[0],
     dni: msg.recipientDni || undefined,
     legajo: msg.recipientLegajo || undefined,
@@ -123,6 +126,8 @@ async function processMessage(
         waTemplateLang: campaign.waTemplateLang || 'es_AR',
         waTemplateVariables: campaign.waTemplateVariables || null,
       } : {}),
+      // Flag para que la CF omita el envío SMTP
+      ...(waOnly ? { waOnly: true } : {}),
     });
     await msgRef.update({ mailId, estado: 'pendiente' });
   }

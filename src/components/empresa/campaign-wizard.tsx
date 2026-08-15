@@ -48,7 +48,12 @@ import {
   campaignBodyToHtmlFragment,
   personalizeCampaignText,
 } from "@/lib/campaign-email-html";
-import { Loader2, Mail, MessageCircle, Layers } from "lucide-react";
+import { Loader2, Mail, MessageCircle, Layers, HelpCircle, Copy, Check } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { maxRecipientsForPlan } from "@/lib/org-limits-client";
 import { assignFilesToRecipientsGreedy, scoreFileForRecipient } from "@/lib/campaign-attachment-match";
 
@@ -129,6 +134,7 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [scheduleIso, setScheduleIso] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [csvCopied, setCsvCopied] = useState(false);
   const maxR = maxRecipientsForPlan(orgPlan);
 
   useEffect(() => {
@@ -338,6 +344,16 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
       const recipientEmails = recipients.map((r) => r.email.toLowerCase());
       const scheduleFuture = Boolean(scheduleIso && new Date(scheduleIso) > new Date());
 
+      // Firestore rechaza campos undefined — limpiar antes de guardar.
+      const cleanRecipients = recipients.map((r) => {
+        const clean: Record<string, string> = { nombre: r.nombre || '', email: r.email || '' };
+        if (r.telefono) clean.telefono = r.telefono;
+        if (r.dni)      clean.dni      = r.dni;
+        if (r.legajo)   clean.legajo   = r.legajo;
+        if (r.area)     clean.area     = r.area;
+        return clean;
+      });
+
       const base = {
         orgId,
         createdBy: user.uid,
@@ -345,7 +361,7 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
         ...(canal !== "email" && waTemplateName.trim() ? {
           waTemplateName: waTemplateName.trim(),
           waTemplateLang: waTemplateLang.trim() || "es_AR",
-          waTemplateVariables,
+          waTemplateVariables: waTemplateVariables.filter(Boolean),
         } : {}),
         nombre: campaniaNombre.trim(),
         asunto: asunto.trim(),
@@ -354,7 +370,7 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
         ...(adjuntosPorDestinatario ? { adjuntosPorDestinatario } : {}),
         recipientListId: listId || null,
         recipientEmails,
-        recipientData: recipients,
+        recipientData: cleanRecipients,
         recipientCount: recipients.length,
         stats: {
           total: recipients.length,
@@ -480,11 +496,105 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
       {step === 2 && (
         <Card>
           <CardHeader>
-            <CardTitle>Destinatarios</CardTitle>
-            <CardDescription>
-              Canal: <strong>{canal === "email" ? "Email" : canal === "whatsapp" ? "WhatsApp" : "Email + WhatsApp"}</strong>
-              {" · "}Campos requeridos: <code className="text-xs">{csvCamposRequeridos(canal)}</code>
-            </CardDescription>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <CardTitle>Destinatarios</CardTitle>
+                <CardDescription className="mt-1">
+                  Canal: <strong>{canal === "email" ? "Email" : canal === "whatsapp" ? "WhatsApp" : "Email + WhatsApp"}</strong>
+                  {" · "}Campos requeridos: <code className="text-xs">{csvCamposRequeridos(canal)}</code>
+                </CardDescription>
+              </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button type="button" className="mt-1 shrink-0 text-muted-foreground hover:text-foreground transition-colors">
+                    <HelpCircle className="h-5 w-5" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-96 text-sm" align="end">
+                  <div className="space-y-4">
+                    <div>
+                      <p className="font-semibold mb-1">Formato del CSV</p>
+                      <p className="text-xs text-muted-foreground">
+                        La primera fila debe ser el encabezado. Las columnas pueden estar en cualquier orden.
+                        Separador: <strong>coma (,)</strong>. Codificación: <strong>UTF-8</strong>.
+                      </p>
+                    </div>
+
+                    {/* Columnas requeridas */}
+                    <div>
+                      <p className="font-medium text-xs uppercase tracking-wide text-muted-foreground mb-1">Columnas requeridas</p>
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-muted/50">
+                            <th className="text-left p-1.5 font-medium rounded-tl">Columna</th>
+                            <th className="text-left p-1.5 font-medium">Ejemplo</th>
+                            <th className="text-left p-1.5 font-medium rounded-tr">Notas</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-t"><td className="p-1.5 font-mono">nombre</td><td className="p-1.5">Juan García</td><td className="p-1.5 text-muted-foreground">Nombre completo</td></tr>
+                          {(canal === "email" || canal === "ambos") && (
+                            <tr className="border-t"><td className="p-1.5 font-mono">email</td><td className="p-1.5">juan@ejemplo.com</td><td className="p-1.5 text-muted-foreground">Email válido</td></tr>
+                          )}
+                          {(canal === "whatsapp" || canal === "ambos") && (
+                            <tr className="border-t bg-amber-50 dark:bg-amber-950/20">
+                              <td className="p-1.5 font-mono">telefono</td>
+                              <td className="p-1.5">+5491112345678</td>
+                              <td className="p-1.5 text-muted-foreground">Con código de país</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Columnas opcionales */}
+                    <div>
+                      <p className="font-medium text-xs uppercase tracking-wide text-muted-foreground mb-1">Columnas opcionales (para personalizar el mensaje)</p>
+                      <table className="w-full text-xs border-collapse">
+                        <tbody>
+                          <tr className="border-t"><td className="p-1.5 font-mono">dni</td><td className="p-1.5">30123456</td><td className="p-1.5 text-muted-foreground">Disponible como {"{{"+"dni"+"}}"}</td></tr>
+                          <tr className="border-t"><td className="p-1.5 font-mono">legajo</td><td className="p-1.5">GCL-00001</td><td className="p-1.5 text-muted-foreground">Disponible como {"{{"+"legajo"+"}}"}</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Teléfono para WA */}
+                    {(canal === "whatsapp" || canal === "ambos") && (
+                      <div className="rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-2 text-xs space-y-1">
+                        <p className="font-medium text-amber-800 dark:text-amber-300">Formato de teléfono para WhatsApp</p>
+                        <p className="text-amber-700 dark:text-amber-400">Debe incluir código de país. Formatos aceptados:</p>
+                        <ul className="font-mono space-y-0.5 text-amber-800 dark:text-amber-300">
+                          <li>+5491112345678 ✓</li>
+                          <li>5491112345678 ✓</li>
+                          <li>1112345678 ✓ (se asume Argentina +549)</li>
+                          <li>011-1234-5678 ✗ (sin guiones)</li>
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Ejemplo copiable */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="font-medium text-xs uppercase tracking-wide text-muted-foreground">Ejemplo para copiar</p>
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 text-xs text-primary hover:underline"
+                          onClick={() => {
+                            navigator.clipboard.writeText(csvPlaceholder(canal));
+                            setCsvCopied(true);
+                            setTimeout(() => setCsvCopied(false), 2000);
+                          }}
+                        >
+                          {csvCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                          {csvCopied ? "Copiado" : "Copiar"}
+                        </button>
+                      </div>
+                      <pre className="bg-muted rounded p-2 text-xs overflow-x-auto whitespace-pre">{csvPlaceholder(canal)}</pre>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
           </CardHeader>
           <CardContent className="space-y-6">
             {lists.length > 0 && (

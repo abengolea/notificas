@@ -12,6 +12,14 @@ const SEND_BATCH = 20;
 // Configurable por campaña vía campaign.tandaSize para warm-up progresivo.
 const DEFAULT_TANDA_SIZE = 0;
 
+/** Clave única de destinatario: email si existe, sino teléfono normalizado. */
+function recipientKey(email: string, telefono: string): string {
+  const e = email.trim().toLowerCase();
+  if (e) return e;
+  const t = telefono.replace(/\D/g, '');
+  return t ? `wa:${t}` : `noop:${Math.random()}`;
+}
+
 function verifyWorkerSecret(request: NextRequest): boolean {
   const secret = process.env.CAMPAIGN_WORKER_SECRET;
   if (!secret) return false;
@@ -114,13 +122,11 @@ async function processFanoutPage(
     .where('campaignId', '==', campaignId)
     .get();
 
-  const existingByEmail = new Map<string, { id: string; estado: string }>();
+  const existingByKey = new Map<string, { id: string; estado: string }>();
   existingSnap.docs.forEach((d) => {
     const data = d.data();
-    existingByEmail.set(String(data.recipientEmail || '').toLowerCase(), {
-      id: d.id,
-      estado: String(data.estado || 'pendiente'),
-    });
+    const key = recipientKey(String(data.recipientEmail || ''), String(data.recipientTelefono || ''));
+    existingByKey.set(key, { id: d.id, estado: String(data.estado || 'pendiente') });
   });
 
   // Crear campaign_messages en batch para los nuevos/pendientes.
@@ -129,8 +135,9 @@ async function processFanoutPage(
   let batchCount = 0;
 
   for (const row of page) {
-    const email = row.email.trim().toLowerCase();
-    const existing = existingByEmail.get(email);
+    const email = (row.email || '').trim().toLowerCase();
+    const key = recipientKey(email, row.telefono || '');
+    const existing = existingByKey.get(key);
 
     if (existing?.estado === 'enviado' || existing?.estado === 'leido') continue;
 

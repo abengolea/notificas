@@ -432,6 +432,60 @@ exports.sendEmail = onRequest(
 
     const trackingToken = emailData.tracking?.token || generateToken();
 
+    // Campaña WhatsApp-only: no enviar email, solo registrar tracking y enviar WA.
+    if (emailData.waOnly === true) {
+      const readerUrlWa = `${APP_HOSTING_URL}/reader/${encodeURIComponent(docId)}?k=${encodeURIComponent(trackingToken)}`;
+      await docRef.update({
+        delivery: { state: 'DELIVERED', time: FieldValue.serverTimestamp(), info: 'whatsapp-only' },
+        tracking: {
+          token: trackingToken,
+          sentAt: FieldValue.serverTimestamp(),
+          openCount: 0, clickCount: 0,
+          opened: false, openedAt: null,
+          readConfirmed: false, readConfirmedAt: null,
+          movements: [],
+        },
+        readerUrl: readerUrlWa,
+        source: 'whatsapp_campaign',
+        sourceLabel: 'Campaña WhatsApp',
+        sourceIcon: '📱',
+      });
+
+      // Enviar WA
+      const recipientPhone = emailData.recipientPhone;
+      if (recipientPhone) {
+        const token = whatsappAccessToken.value();
+        const phoneId = whatsappPhoneNumberId.value();
+        const campaignTemplateName = emailData.waTemplateName?.trim() || '';
+        const globalTemplateName   = whatsappTemplateName.value()?.trim() || '';
+        const resolvedTemplate     = campaignTemplateName || globalTemplateName || null;
+        const resolvedLang         = emailData.waTemplateLang?.trim() || whatsappTemplateLanguage.value()?.trim() || 'es_AR';
+        const resolvedVariables    = Array.isArray(emailData.waTemplateVariables) ? emailData.waTemplateVariables : null;
+        const waId = await sendWhatsAppNotification({
+          accessToken: token, phoneNumberId: phoneId,
+          templateName: resolvedTemplate, templateLang: resolvedLang,
+          toPhone: recipientPhone, readerUrl: readerUrlWa,
+          senderName: formatWhatsAppSenderDisplay(emailData.senderName, from),
+          recipientName: formatWhatsAppRecipientDisplay(emailData.recipientName),
+          templateVariables: resolvedVariables,
+          recipientData: {
+            nombre: emailData.recipientName,
+            email: emailData.recipientEmail,
+            telefono: recipientPhone,
+            dni: emailData.recipientDni,
+            legajo: emailData.recipientLegajo,
+          },
+        });
+        if (waId && typeof waId === 'string') {
+          await docRef.update({ whatsappMessageId: waId });
+          console.log('📱 WhatsApp WA-only enviado:', waId);
+        } else if (waId && waId.error) {
+          console.error('❌ WhatsApp WA-only error:', JSON.stringify(waId.error));
+        }
+      }
+      return res.status(200).json({ success: true, channel: 'whatsapp-only' });
+    }
+
     const subject = emailData.message?.subject || 'Sin asunto';
     const htmlOriginal = emailData.message?.html || '';
     const textOriginal = emailData.message?.text || htmlOriginal.replace(/<[^>]*>/g, '');

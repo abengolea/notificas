@@ -446,7 +446,9 @@ export function CampaignDashboard() {
                 </TableCell>
                 <TableCell>
                   <div className="font-medium">{m.recipientNombre}</div>
-                  <div className="text-xs text-muted-foreground truncate max-w-[160px]">{m.recipientEmail}</div>
+                  {m.recipientEmail && !m.recipientEmail.endsWith('@notificas.internal') && (
+                    <div className="text-xs text-muted-foreground truncate max-w-[160px]">{m.recipientEmail}</div>
+                  )}
                   {m.recipientTelefono && (
                     <div className="text-xs text-muted-foreground">{m.recipientTelefono}</div>
                   )}
