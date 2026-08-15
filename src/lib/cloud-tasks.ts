@@ -150,10 +150,11 @@ async function enqueueTask(path: string, payload: unknown, taskId?: string): Pro
 
 /** Encola el fanout que crea campaign_messages y encola los sends. */
 export async function enqueueCampaignFanout(campaignId: string, offset: number): Promise<void> {
+  const ts = Date.now();
   await enqueueTask(
     '/api/campaigns/fanout',
     { campaignId, offset },
-    `fanout-${campaignId}-${offset}`
+    `fanout-${campaignId}-${offset}-${ts}`
   );
 }
 
