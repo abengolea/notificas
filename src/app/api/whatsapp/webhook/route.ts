@@ -60,13 +60,39 @@ async function processStatus(status: any) {
 
   const db = getAdminDb();
 
+  // Resolver mailDocId: primero por índice whatsapp_ids, luego fallback por query en mail.
+  let mailDocId: string | null = null;
   const idDoc = await db.doc(`whatsapp_ids/${wamid}`).get();
-  if (!idDoc.exists) {
-    console.warn(`⚠️ No mailDocId para wamid=${wamid}`);
-    return;
+  if (idDoc.exists) {
+    mailDocId = idDoc.data()!.mailDocId as string;
+  } else {
+    // Fallback: buscar en colección mail por whatsappMessageId (waOnly) o tracking.whatsappMessageId
+    const byWamid = await db.collection('mail')
+      .where('whatsappMessageId', '==', wamid)
+      .limit(1).get();
+    if (!byWamid.empty) {
+      mailDocId = byWamid.docs[0].id;
+    } else {
+      const byTracking = await db.collection('mail')
+        .where('tracking.whatsappMessageId', '==', wamid)
+        .limit(1).get();
+      if (!byTracking.empty) {
+        mailDocId = byTracking.docs[0].id;
+      }
+    }
+    if (mailDocId) {
+      // Escribir el índice para futuros lookups
+      await db.doc(`whatsapp_ids/${wamid}`).set(
+        { mailDocId, recipientPhone, createdAt: new Date().toISOString() },
+        { merge: true }
+      );
+      console.log(`🔧 whatsapp_ids reconstruido para wamid=${wamid}`);
+    } else {
+      console.warn(`⚠️ No mailDocId para wamid=${wamid} (ni en índice ni en mail)`);
+      return;
+    }
   }
 
-  const { mailDocId } = idDoc.data()!;
   const mailRef = db.doc(`mail/${mailDocId}`);
   const mailSnap = await mailRef.get();
   if (!mailSnap.exists) {
