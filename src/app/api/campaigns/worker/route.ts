@@ -201,7 +201,12 @@ async function refreshStats(
   });
 
   const campSnap = await campRef.get();
-  const totalRecipients = (campSnap.data()?.recipientData as unknown[])?.length || allMsgs.size;
+  const campData = campSnap.data() ?? {};
+  // recipientCount es la fuente de verdad para campañas con Storage (recipientData ya no existe).
+  const totalRecipients =
+    (typeof campData.recipientCount === 'number' && campData.recipientCount > 0)
+      ? campData.recipientCount
+      : (campData.recipientData as unknown[] | undefined)?.length ?? allMsgs.size;
   const pendientesTotal = pendientes + Math.max(0, totalRecipients - allMsgs.size);
 
   await campRef.update({
