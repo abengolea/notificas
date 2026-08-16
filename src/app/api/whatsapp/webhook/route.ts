@@ -88,7 +88,13 @@ async function processStatus(status: any) {
       );
       console.log(`🔧 whatsapp_ids reconstruido para wamid=${wamid}`);
     } else {
-      console.warn(`⚠️ No mailDocId para wamid=${wamid} (ni en índice ni en mail)`);
+      // whatsapp_ids aún no existe (race condition: webhook llegó antes que el worker lo escribiera).
+      // Guardar el evento pendiente — el worker lo procesará al escribir whatsapp_ids.
+      await db.doc(`pending_wa_webhooks/${wamid}`).set(
+        { statusType, timestamp, recipientPhone, wamid, createdAt: FieldValue.serverTimestamp() },
+        { merge: true }
+      );
+      console.log(`⏳ Webhook ${statusType} guardado en pending_wa_webhooks/${wamid} — se procesará cuando llegue whatsapp_ids`);
       return;
     }
   }

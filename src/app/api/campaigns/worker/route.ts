@@ -148,14 +148,39 @@ async function processMessage(
     return;
   }
 
-  // Escribir whatsapp_ids aquí (en el worker de Next.js, que garantiza await antes de responder).
-  // El CF sendEmail escribe el WAMID en el mail doc antes de responder; lo leemos y lo indexamos
-  // para que el webhook de Meta pueda resolver mailDocId → campaign_message.
+  // Escribir whatsapp_ids aquí (en el worker de Next.js, garantizando await antes de responder HTTP).
+  // El CF escribe el WAMID en mail.whatsappMessageId antes de responder; lo indexamos en whatsapp_ids
+  // para que el webhook de Meta resuelva wamid → mailDocId → campaign_message.
+  // También procesamos eventos pendientes guardados si el webhook llegó antes que este write.
   if (canal === 'whatsapp' || canal === 'ambos') {
     const mailSnap = await db.collection('mail').doc(mailId).get();
     const wamid = mailSnap.data()?.whatsappMessageId as string | undefined;
     if (wamid) {
       await db.collection('whatsapp_ids').doc(wamid).set({ mailDocId: mailId }, { merge: true });
+
+      // Procesar eventos WA pendientes que llegaron antes de que existiera whatsapp_ids
+      const pendingSnap = await db.doc(`pending_wa_webhooks/${wamid}`).get();
+      if (pendingSnap.exists) {
+        const pending = pendingSnap.data()!;
+        const st = pending.statusType as string;
+        const now = FieldValue.serverTimestamp();
+        const update: Record<string, unknown> = {};
+        if (st === 'delivered') {
+          update.waEstado = 'entregado';
+          update.waEntregadoAt = now;
+        } else if (st === 'read') {
+          update.waEstado = 'leido';
+          update.waLeidoAt = now;
+          update.estado = 'leido';
+          update.leidoAt = now;
+          await db.collection('campaigns').doc(campaignId).update({ 'stats.leidos': FieldValue.increment(1) });
+        } else if (st === 'failed') {
+          update.waEstado = 'error';
+        }
+        if (Object.keys(update).length) await msgRef.update(update);
+        await db.doc(`pending_wa_webhooks/${wamid}`).delete();
+        console.log(`✅ Evento WA pendiente '${st}' procesado para wamid=${wamid}`);
+      }
     }
   }
 
