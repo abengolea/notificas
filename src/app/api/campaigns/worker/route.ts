@@ -186,28 +186,31 @@ async function refreshStats(
   campaignId: string,
   campRef: FirebaseFirestore.DocumentReference
 ): Promise<void> {
-  const allMsgs = await db
-    .collection('campaign_messages')
-    .where('campaignId', '==', campaignId)
-    .get();
+  const base = db.collection('campaign_messages').where('campaignId', '==', campaignId);
 
-  let enviados = 0, leidos = 0, errores = 0, pendientes = 0;
-  allMsgs.docs.forEach((d) => {
-    const st = d.data().estado as string;
-    if (st === 'leido') { leidos++; enviados++; }
-    else if (st === 'enviado') enviados++;
-    else if (st === 'error') errores++;
-    else pendientes++;
-  });
+  // count() cuesta 1 lectura por query sin importar cuántos docs coincidan.
+  const [leidoSnap, enviadoSnap, errorSnap, pendienteSnap, campSnap] = await Promise.all([
+    base.where('estado', '==', 'leido').count().get(),
+    base.where('estado', '==', 'enviado').count().get(),
+    base.where('estado', '==', 'error').count().get(),
+    base.where('estado', '==', 'pendiente').count().get(),
+    campRef.get(),
+  ]);
 
-  const campSnap = await campRef.get();
+  const leidos        = leidoSnap.data().count;
+  const soloEnviados  = enviadoSnap.data().count;
+  const enviados      = leidos + soloEnviados;
+  const errores       = errorSnap.data().count;
+  const pendientes    = pendienteSnap.data().count;
+  const totalCreados  = enviados + errores + pendientes;
+
   const campData = campSnap.data() ?? {};
   // recipientCount es la fuente de verdad para campañas con Storage (recipientData ya no existe).
   const totalRecipients =
     (typeof campData.recipientCount === 'number' && campData.recipientCount > 0)
       ? campData.recipientCount
-      : (campData.recipientData as unknown[] | undefined)?.length ?? allMsgs.size;
-  const pendientesTotal = pendientes + Math.max(0, totalRecipients - allMsgs.size);
+      : (campData.recipientData as unknown[] | undefined)?.length ?? totalCreados;
+  const pendientesTotal = pendientes + Math.max(0, totalRecipients - totalCreados);
 
   await campRef.update({
     stats: { total: totalRecipients, enviados, leidos, errores, pendientes: pendientesTotal },

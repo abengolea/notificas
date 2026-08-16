@@ -101,6 +101,14 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "campaignId", "order": "ASCENDING" },
+        { "fieldPath": "recipientTelefono", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "campaign_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "campaignId", "order": "ASCENDING" },
         { "fieldPath": "recipientNombre", "order": "ASCENDING" }
       ]
     },

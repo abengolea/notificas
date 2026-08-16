@@ -48,7 +48,7 @@ import {
   campaignBodyToHtmlFragment,
   personalizeCampaignText,
 } from "@/lib/campaign-email-html";
-import { Loader2, Mail, MessageCircle, Layers, HelpCircle, Copy, Check } from "lucide-react";
+import { Loader2, Mail, MessageCircle, Layers, HelpCircle, Copy, Check, Upload, X, FileText } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -88,6 +88,7 @@ function parseCsvQuick(text: string, canal: CanalCampaign): RecipientEntry[] {
   if (iNombre < 0) return [];
   if (needEmail && iEmail < 0) return [];
   if (needPhone && iTelefono < 0) return [];
+  if (iDni < 0) return [];
 
   const out: RecipientEntry[] = [];
   for (let r = 1; r < lines.length; r++) {
@@ -99,6 +100,7 @@ function parseCsvQuick(text: string, canal: CanalCampaign): RecipientEntry[] {
     const dni      = iDni >= 0      ? cells[iDni] || undefined             : undefined;
     const legajo   = iLegajo >= 0   ? cells[iLegajo] || undefined          : undefined;
     if (!nombre) continue;
+    if (!dni) continue;
     if (needEmail && !email.includes("@")) continue;
     if (needPhone && !telefono) continue;
     // Validar formato de teléfono (si se requiere o si viene)
@@ -115,9 +117,9 @@ function csvPlaceholder(canal: CanalCampaign): string {
 }
 
 function csvCamposRequeridos(canal: CanalCampaign): string {
-  if (canal === "whatsapp") return "nombre, telefono";
-  if (canal === "ambos")    return "nombre, email, telefono";
-  return "nombre, email";
+  if (canal === "whatsapp") return "nombre, telefono, dni";
+  if (canal === "ambos")    return "nombre, email, telefono, dni";
+  return "nombre, email, dni";
 }
 
 export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: string }) {
@@ -145,6 +147,10 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
   const [scheduleIso, setScheduleIso] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [csvCopied, setCsvCopied] = useState(false);
+  const [csvFileName, setCsvFileName] = useState<string | null>(null);
+  const [csvFileError, setCsvFileError] = useState<string | null>(null);
+  const [csvFileDragging, setCsvFileDragging] = useState(false);
+  const csvFileInputRef = useRef<HTMLInputElement>(null);
   const maxR = maxRecipientsForPlan(orgPlan);
 
   useEffect(() => {
@@ -263,6 +269,54 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
     setPairingSelections(emailToFileIndex);
     toast({ title: 'Sugerencias de adjuntos actualizadas' });
   }, [files, recipients, pairByRecipient, recvSig, fileNamesSig, toast]);
+
+  function validateCsvHeaders(text: string): string | null {
+    const firstLine = text.split(/\r?\n/)[0] || "";
+    const headers = firstLine.split(",").map((h) => h.trim().toLowerCase());
+    const needEmail = canal === "email" || canal === "ambos";
+    const needPhone = canal === "whatsapp" || canal === "ambos";
+    if (!headers.includes("nombre")) return "Falta la columna obligatoria: nombre";
+    if (needEmail && !headers.includes("email")) return "Falta la columna obligatoria: email";
+    if (needPhone && !headers.includes("telefono")) return "Falta la columna obligatoria: telefono";
+    if (!headers.includes("dni")) return "Falta la columna obligatoria: dni";
+    return null;
+  }
+
+  function handleCsvFile(file: File) {
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      setCsvFileError("El archivo debe ser .csv");
+      setCsvFileName(null);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = (e.target?.result as string) || "";
+      const headerErr = validateCsvHeaders(text);
+      if (headerErr) {
+        setCsvFileError(`${headerErr}. Campos requeridos: ${csvCamposRequeridos(canal)}`);
+        setCsvFileName(null);
+        return;
+      }
+      const parsed = parseCsvQuick(text, canal);
+      if (parsed.length === 0) {
+        setCsvFileError("El archivo no contiene filas válidas. Revisá el formato y que los campos obligatorios tengan datos.");
+        setCsvFileName(null);
+        return;
+      }
+      setCsvFileError(null);
+      setCsvFileName(file.name);
+      const map = new Map<string, RecipientEntry>();
+      recipients.forEach((r) => map.set(r.email.toLowerCase(), r));
+      parsed.forEach((r) => map.set(r.email.toLowerCase(), r));
+      setRecipients([...map.values()]);
+      toast({ title: `${parsed.length} destinatarios importados`, description: `Desde ${file.name}` });
+    };
+    reader.onerror = () => {
+      setCsvFileError("No se pudo leer el archivo. Intentá con otro.");
+      setCsvFileName(null);
+    };
+    reader.readAsText(file, "UTF-8");
+  }
 
   function mergeRecipientsFromInputs(mode: "paste" | "csv") {
     const next = mode === "paste" ? parseEmailsBlock(pasteEmails) : parseCsvQuick(csvChunk, canal);
@@ -481,7 +535,7 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
                 <button
                   key={value}
                   type="button"
-                  onClick={() => { setCanal(value); setRecipients([]); }}
+                  onClick={() => { setCanal(value); setRecipients([]); setCsvFileName(null); setCsvFileError(null); }}
                   className={`flex flex-col items-start gap-2 rounded-md border p-4 text-left transition-colors ${
                     canal === value ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-primary/50"
                   }`}
@@ -496,7 +550,7 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
             </div>
             <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
               <p className="font-medium">Campos requeridos en el CSV:</p>
-              <p className="text-muted-foreground font-mono text-xs">{csvCamposRequeridos(canal)}{canal !== "email" ? ", dni, legajo (opcionales)" : ", dni, legajo (opcionales)"}</p>
+              <p className="text-muted-foreground font-mono text-xs">{csvCamposRequeridos(canal)}<span className="not-italic text-muted-foreground/70"> + legajo (opcional)</span></p>
               {(canal === "whatsapp" || canal === "ambos") && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
                   WhatsApp requiere un template aprobado por Meta. El campo <strong>telefono</strong> debe incluir código de país (+54…).
@@ -559,16 +613,16 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
                               <td className="p-1.5 text-muted-foreground">Con código de país</td>
                             </tr>
                           )}
+                          <tr className="border-t"><td className="p-1.5 font-mono">dni</td><td className="p-1.5">30123456</td><td className="p-1.5 text-muted-foreground">Siempre requerido</td></tr>
                         </tbody>
                       </table>
                     </div>
 
                     {/* Columnas opcionales */}
                     <div>
-                      <p className="font-medium text-xs uppercase tracking-wide text-muted-foreground mb-1">Columnas opcionales (para personalizar el mensaje)</p>
+                      <p className="font-medium text-xs uppercase tracking-wide text-muted-foreground mb-1">Columna opcional</p>
                       <table className="w-full text-xs border-collapse">
                         <tbody>
-                          <tr className="border-t"><td className="p-1.5 font-mono">dni</td><td className="p-1.5">30123456</td><td className="p-1.5 text-muted-foreground">Disponible como {"{{"+"dni"+"}}"}</td></tr>
                           <tr className="border-t"><td className="p-1.5 font-mono">legajo</td><td className="p-1.5">GCL-00001</td><td className="p-1.5 text-muted-foreground">Disponible como {"{{"+"legajo"+"}}"}</td></tr>
                         </tbody>
                       </table>
@@ -645,16 +699,89 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
                   </Button>
                 </TabsContent>
               )}
-              <TabsContent value="csv" className="space-y-2">
-                <Textarea
-                  placeholder={csvPlaceholder(canal)}
-                  value={csvChunk}
-                  onChange={(e) => setCsvChunk(e.target.value)}
-                  rows={6}
-                />
-                <Button type="button" variant="secondary" onClick={() => mergeRecipientsFromInputs("csv")}>
-                  Importar CSV
-                </Button>
+              <TabsContent value="csv" className="space-y-3">
+                {/* Drop zone de archivo */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Subir archivo CSV"
+                  className={`relative flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center cursor-pointer transition-colors select-none
+                    ${csvFileDragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 hover:bg-muted/30"}`}
+                  onClick={() => csvFileInputRef.current?.click()}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") csvFileInputRef.current?.click(); }}
+                  onDragOver={(e) => { e.preventDefault(); setCsvFileDragging(true); }}
+                  onDragLeave={() => setCsvFileDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setCsvFileDragging(false);
+                    const f = e.dataTransfer.files[0];
+                    if (f) handleCsvFile(f);
+                  }}
+                >
+                  <input
+                    ref={csvFileInputRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="sr-only"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCsvFile(f); e.target.value = ""; }}
+                  />
+                  {csvFileName ? (
+                    <>
+                      <FileText className="h-8 w-8 text-primary" />
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-medium text-primary">{csvFileName}</p>
+                        <p className="text-xs text-muted-foreground">Click para cambiar el archivo</p>
+                      </div>
+                      <button
+                        type="button"
+                        className="absolute top-2 right-2 rounded-sm text-muted-foreground hover:text-foreground p-1"
+                        onClick={(e) => { e.stopPropagation(); setCsvFileName(null); setCsvFileError(null); }}
+                        aria-label="Quitar archivo"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-8 w-8 text-muted-foreground" />
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-medium">Arrastrá un CSV o hacé click para subir</p>
+                        <p className="text-xs text-muted-foreground">Columnas requeridas: <code>{csvCamposRequeridos(canal)}</code></p>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Error de validación del archivo */}
+                {csvFileError && (
+                  <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                    <X className="h-4 w-4 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="font-medium">Formato inválido</p>
+                      <p className="text-xs mt-0.5">{csvFileError}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Alternativa: pegar texto */}
+                <details className="group">
+                  <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground list-none flex items-center gap-1">
+                    <span className="group-open:hidden">▶</span>
+                    <span className="hidden group-open:inline">▼</span>
+                    O pegá el CSV directamente como texto
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    <Textarea
+                      placeholder={csvPlaceholder(canal)}
+                      value={csvChunk}
+                      onChange={(e) => setCsvChunk(e.target.value)}
+                      rows={6}
+                    />
+                    <Button type="button" variant="secondary" onClick={() => mergeRecipientsFromInputs("csv")}>
+                      Importar CSV
+                    </Button>
+                  </div>
+                </details>
               </TabsContent>
             </Tabs>
             <div className="text-sm text-muted-foreground">

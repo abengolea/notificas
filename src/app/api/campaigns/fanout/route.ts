@@ -86,6 +86,11 @@ export async function POST(request: NextRequest) {
     return await processFanoutPage(db, campaign, campaignId, chunkRecipients, offset);
   } else if (Array.isArray(campaign.recipientData) && campaign.recipientData.length > 0) {
     allRecipients = campaign.recipientData as RecipientEntry[];
+  } else if (Array.isArray(campaign.recipientEmails) && campaign.recipientEmails.length > 0) {
+    allRecipients = (campaign.recipientEmails as string[]).map((email) => ({
+      email: String(email).trim().toLowerCase(),
+      nombre: String(email).split('@')[0],
+    }));
   } else if (campaign.recipientListId) {
     // Fallback: leer desde subcolección paginada en recipient_lists.
     const listSnap = await db
@@ -129,18 +134,33 @@ async function processFanoutPage(
   page: RecipientEntry[],
   offset: number
 ) {
-  // Cargar mensajes ya existentes para evitar duplicados.
-  const existingSnap = await db
-    .collection('campaign_messages')
-    .where('campaignId', '==', campaignId)
-    .get();
-
+  // Dedup: consultar solo los destinatarios de esta página, no toda la colección.
+  // Antes se hacía un .get() sin límite que leía todos los campaign_messages en cada fanout.
   const existingByKey = new Map<string, { id: string; estado: string }>();
-  existingSnap.docs.forEach((d) => {
-    const data = d.data();
-    const key = recipientKey(String(data.recipientEmail || ''), String(data.recipientTelefono || ''));
-    existingByKey.set(key, { id: d.id, estado: String(data.estado || 'pendiente') });
-  });
+  const base = db.collection('campaign_messages').where('campaignId', '==', campaignId);
+  const IN_CHUNK = 30;
+
+  const absorb = (snap: FirebaseFirestore.QuerySnapshot) =>
+    snap.docs.forEach(d => {
+      const data = d.data();
+      const key = recipientKey(String(data.recipientEmail || ''), String(data.recipientTelefono || ''));
+      existingByKey.set(key, { id: d.id, estado: String(data.estado || 'pendiente') });
+    });
+
+  const emails = [...new Set(page.map(r => (r.email || '').trim().toLowerCase()).filter(Boolean))];
+  for (let i = 0; i < emails.length; i += IN_CHUNK) {
+    absorb(await base.where('recipientEmail', 'in', emails.slice(i, i + IN_CHUNK)).get());
+  }
+
+  // Para destinatarios sin email (WA-only puro), buscar por teléfono.
+  const phones = [...new Set(
+    page.filter(r => !(r.email || '').trim())
+      .map(r => (r.telefono || '').replace(/\D/g, ''))
+      .filter(Boolean)
+  )];
+  for (let i = 0; i < phones.length; i += IN_CHUNK) {
+    absorb(await base.where('recipientTelefono', 'in', phones.slice(i, i + IN_CHUNK)).get());
+  }
 
   // Crear campaign_messages en batch para los nuevos/pendientes.
   const toProcess: string[] = []; // docIds a encolar en workers

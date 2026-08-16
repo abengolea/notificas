@@ -56,15 +56,19 @@ export async function POST(request: NextRequest) {
         if (!data) return;
         if (data.readSynced === true) return;
         const st = data.estado as string;
-        if (st !== 'enviado') return;
+        // Solo procesar mensajes enviados o ya leídos (por ej. webhook WA llegó primero)
+        if (st !== 'enviado' && st !== 'leido') return;
         const campId = String(data.campaignId || '');
-        t.update(ref, {
-          estado: 'leido',
-          leidoAt: FieldValue.serverTimestamp(),
-          txHashLectura: txRead || data.txHashLectura || null,
+        const update: Record<string, unknown> = {
           readSynced: true,
-        });
-        if (campId) {
+          txHashLectura: txRead || data.txHashLectura || null,
+        };
+        if (st === 'enviado') {
+          update.estado = 'leido';
+          update.leidoAt = FieldValue.serverTimestamp();
+        }
+        t.update(ref, update);
+        if (campId && st === 'enviado') {
           t.update(db.collection('campaigns').doc(campId), {
             'stats.leidos': FieldValue.increment(1),
           });

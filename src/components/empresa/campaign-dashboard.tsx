@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { useCampaignProgress } from "@/lib/campaign-sync";
@@ -25,6 +25,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import {
+  Copy,
   Download,
   Loader2,
   RefreshCw,
@@ -92,7 +93,7 @@ function msgEstadoBadge(estado: string) {
 }
 
 /** Hook de paginación server-side para campaign_messages. */
-function useMessages(campaignId: string, estado: string, search: string) {
+function useMessages(campaignId: string, estado: string, search: string, refreshKey: number) {
   const [messages, setMessages]   = useState<CampaignMessage[]>([]);
   const [loading, setLoading]     = useState(true);
   const [hasMore, setHasMore]     = useState(false);
@@ -128,13 +129,13 @@ function useMessages(campaignId: string, estado: string, search: string) {
     } finally {
       setLoading(false);
     }
-  }, [campaignId, estado, search, stackLen]);
+  }, [campaignId, estado, search, stackLen, refreshKey]);
 
-  // Reset al cambiar filtros
+  // Reset al cambiar filtros o refreshKey externo
   useEffect(() => {
     cursorStack.current = [''];
     setStackLen(1);
-  }, [campaignId, estado, search]);
+  }, [campaignId, estado, search, refreshKey]);
 
   // Cargar cuando cambia la página actual (stackLen) o los filtros
   useEffect(() => {
@@ -161,12 +162,14 @@ export function CampaignDashboard() {
   const campaignId = params.campaignId as string;
   const { campaign, stats, loading: campLoading } = useCampaignProgress(campaignId);
   const { toast }  = useToast();
+  const router     = useRouter();
 
   const [filter, setFilter] = useState("all");
   const [q, setQ]           = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [selected, setSelected]     = useState<Set<string>>(new Set());
   const [busy, setBusy]             = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Debounce de búsqueda para no lanzar una query por cada keystroke
   useEffect(() => {
@@ -174,8 +177,26 @@ export function CampaignDashboard() {
     return () => clearTimeout(t);
   }, [q]);
 
+  // Recargar tabla cuando cambian los stats (mensajes enviados/leídos)
+  const prevStatsRef = useRef<string>('');
+  useEffect(() => {
+    if (!stats) return;
+    const key = `${stats.enviados}-${stats.leidos}-${stats.errores}`;
+    if (key !== prevStatsRef.current) {
+      prevStatsRef.current = key;
+      setRefreshKey((k) => k + 1);
+    }
+  }, [stats]);
+
   const { messages, loading: msgLoading, hasMore, currentPage, nextPage, prevPage } =
-    useMessages(campaignId, filter, debouncedQ);
+    useMessages(campaignId, filter, debouncedQ, refreshKey);
+
+  // Polling cada 15s solo mientras la campaña está enviando activamente
+  useEffect(() => {
+    if (campaign?.estado !== 'enviando') return;
+    const t = setInterval(() => setRefreshKey((k) => k + 1), 15000);
+    return () => clearInterval(t);
+  }, [campaign?.estado]);
 
   const leidoPct =
     stats && stats.enviados > 0 ? Math.round((stats.leidos / stats.enviados) * 100) : 0;
@@ -269,6 +290,29 @@ export function CampaignDashboard() {
       setBusy(false);
     }
   }, [campaign, campaignId, orgId, toast]);
+
+  async function copiarCampana() {
+    if (!campaign) return;
+    const user = auth.currentUser;
+    if (!user) return;
+    setBusy(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch('/api/campaigns/copy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ campaignId, orgId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al copiar');
+      toast({ title: 'Campaña copiada', description: `"${data.nombre}" creada como borrador.` });
+      router.push(`/empresa/${orgId}/campanas/${data.newCampaignId}`);
+    } catch (e: unknown) {
+      toast({ title: 'Error', description: e instanceof Error ? e.message : 'No se pudo copiar', variant: 'destructive' });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function cancelarCampana() {
     const user = auth.currentUser;
@@ -397,6 +441,10 @@ export function CampaignDashboard() {
               Iniciar envío
             </Button>
           )}
+          <Button variant="outline" onClick={copiarCampana} disabled={busy} className="gap-2">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+            Copiar campaña
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" disabled={busy} className="gap-2">
@@ -514,12 +562,24 @@ export function CampaignDashboard() {
             <TabsTrigger value="error">Error</TabsTrigger>
           </TabsList>
         </Tabs>
-        <Input
-          placeholder="Buscar nombre…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          className="max-w-sm"
-        />
+        <div className="flex items-center gap-2 max-w-sm w-full">
+          <Input
+            placeholder="Buscar nombre…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            className="flex-1"
+          />
+          {campaign.estado === 'completada' && (
+            <Button
+              variant="outline"
+              size="icon"
+              title="Actualizar tabla"
+              onClick={() => setRefreshKey((k) => k + 1)}
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
