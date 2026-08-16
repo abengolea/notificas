@@ -148,6 +148,17 @@ async function processMessage(
     return;
   }
 
+  // Escribir whatsapp_ids aquí (en el worker de Next.js, que garantiza await antes de responder).
+  // El CF sendEmail escribe el WAMID en el mail doc antes de responder; lo leemos y lo indexamos
+  // para que el webhook de Meta pueda resolver mailDocId → campaign_message.
+  if (canal === 'whatsapp' || canal === 'ambos') {
+    const mailSnap = await db.collection('mail').doc(mailId).get();
+    const wamid = mailSnap.data()?.whatsappMessageId as string | undefined;
+    if (wamid) {
+      await db.collection('whatsapp_ids').doc(wamid).set({ mailDocId: mailId }, { merge: true });
+    }
+  }
+
   void certifyInBackground(mailId);
 
   // Descontar crédito y marcar enviado.
