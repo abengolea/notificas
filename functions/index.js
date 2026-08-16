@@ -248,6 +248,7 @@ function getCertifyRecipientId(data) {
 }
 
 function certifyPolygonEventOnce(docId, data, type, context) {
+  if (data?.campaignId) return;
   if (!docId || !['receive', 'read'].includes(type)) return;
   if (data?.polygonCertifications?.[type]) {
     console.log(`🔗 Polygon ${type} ya certificado (${context})`);
@@ -771,17 +772,19 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
 
       console.log('Email enviado:', result.messageId);
 
-      // Certificar envío en Polygon (fire-and-forget, no bloquea la respuesta)
-      void fetch(`${APP_HOSTING_URL}/api/polygon/certify-event`, certifyEventFetchInit({
-        docId: docId,
-        type: 'send',
-        userId: emailData.createdBy || from,
-      }))
-        .then(async (certRes) => {
-          if (!certRes.ok) console.warn('⚠️ Polygon certify send:', await certRes.text());
-          else console.log('✅ Envío certificado en Polygon (automático)');
-        })
-        .catch((e) => console.warn('⚠️ Polygon certify send failed (no afecta el envío):', e?.message));
+      // Campañas: la hoja Merkle se registra en el worker (evita 1 TX por destinatario).
+      if (!emailData.campaignId) {
+        void fetch(`${APP_HOSTING_URL}/api/polygon/certify-event`, certifyEventFetchInit({
+          docId: docId,
+          type: 'send',
+          userId: emailData.createdBy || from,
+        }))
+          .then(async (certRes) => {
+            if (!certRes.ok) console.warn('⚠️ Polygon certify send:', await certRes.text());
+            else console.log('✅ Envío certificado en Polygon (automático)');
+          })
+          .catch((e) => console.warn('⚠️ Polygon certify send failed (no afecta el envío):', e?.message));
+      }
 
       // Enviar WhatsApp si hay teléfono (secrets desde Secret Manager)
       const recipientPhone = emailData.recipientPhone;
@@ -1839,11 +1842,19 @@ async function processWhatsAppStatus(status) {
   }
 
   await mailRef.update(update);
-  if (statusType === 'delivered') {
-    certifyPolygonEventOnce(mailDocId, data, 'receive', 'whatsapp_delivered');
-  } else if (statusType === 'read') {
-    certifyPolygonEventOnce(mailDocId, data, 'receive', 'whatsapp_read');
-    certifyPolygonEventOnce(mailDocId, data, 'read', 'whatsapp_read');
+  const isCampaignMail = Boolean(data.campaignId);
+  if (!isCampaignMail) {
+    if (statusType === 'delivered') {
+      certifyPolygonEventOnce(mailDocId, data, 'receive', 'whatsapp_delivered');
+    } else if (statusType === 'read') {
+      certifyPolygonEventOnce(mailDocId, data, 'receive', 'whatsapp_read');
+      certifyPolygonEventOnce(mailDocId, data, 'read', 'whatsapp_read');
+    }
+  } else if (statusType === 'delivered' || statusType === 'read') {
+    void fetch(`${APP_HOSTING_URL}/api/campaigns/integrity/event`, certifyEventFetchInit({
+      mailId: mailDocId,
+      eventType: statusType === 'delivered' ? 'wa_delivered' : 'wa_read',
+    })).catch((e) => console.warn('⚠️ Integrity event WA:', e?.message));
   }
   console.log(`✅ whatsapp_${statusType} registrado en mail/${mailDocId}`);
 

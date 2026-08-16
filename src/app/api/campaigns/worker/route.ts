@@ -9,8 +9,8 @@ import {
 } from '@/lib/campaign-email-html';
 import { normalizeEnviosDisponibles } from '@/lib/envios';
 import { invokeSendEmail } from '@/lib/send-mail-via-cf';
-import { certificarEnvio } from '@/lib/certification-polygon';
 import { computeContentHash } from '@/lib/certification';
+import { closeOpenBatches, recordEventLeaf, recordSendError, recordSendLeaf, sendBatchId } from '@/lib/campaign-integrity';
 import type { CampaignAttachment, RecipientEntry } from '@/lib/types';
 
 function verifyWorkerSecret(request: NextRequest): boolean {
@@ -31,33 +31,44 @@ function attachmentsFor(campaign: FirebaseFirestore.DocumentData, emailKey: stri
   return [...glob, ...extra];
 }
 
-async function certifyInBackground(mailId: string): Promise<void> {
+async function recordSendIntegrity(params: {
+  campaignId: string;
+  orgId: string;
+  messageDocId: string;
+  batchId: string;
+  email: string;
+  phone: string;
+  contentHash: string;
+  attachmentHashes: string[];
+  mailId: string;
+}): Promise<void> {
   try {
     const db = getAdminDb();
-    const snap = await db.collection('mail').doc(mailId).get();
-    const data = snap.data();
-    if (!data) return;
-    const toEmail = Array.isArray(data.to) ? data.to[0] : data.recipientEmail || data.to || '';
-    const fromUserId = data.createdBy || 'campaign-worker';
-    const contentHash = await computeContentHash(data.message?.contentText || '');
-    const txHash = await Promise.race([
-      certificarEnvio(mailId, fromUserId, toEmail, contentHash),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout certificación Polygon (>40s)')), 40_000)
-      ),
-    ]);
-    await db.collection('mail').doc(mailId).update({
-      'polygonCertifications.send': txHash,
-      'polygonCertifications.contentHash': contentHash,
-      'polygonCertifications.updatedAt': new Date(),
+    const mailSnap = await db.collection('mail').doc(params.mailId).get();
+    const mail = mailSnap.data() || {};
+    const smtpMessageId = String(mail.smtpMessageId || mail.delivery?.info || mail.tracking?.messageId || '');
+    const wamid = String(mail.whatsappMessageId || mail.tracking?.whatsappMessageId || '');
+
+    await recordSendLeaf({
+      campaignId: params.campaignId,
+      orgId: params.orgId,
+      messageId: params.messageDocId,
+      batchId: params.batchId,
+      email: params.email,
+      phone: params.phone,
+      contentHash: params.contentHash,
+      attachmentHashes: params.attachmentHashes,
+      smtpMessageId,
+      wamid,
     });
-    // Propagar TX envío al campaign_message
-    const msgSnap = await db.collection('campaign_messages').where('mailId', '==', mailId).limit(1).get();
-    if (!msgSnap.empty) {
-      await msgSnap.docs[0].ref.update({ txHashEnvio: txHash, emailTxEnvio: txHash });
-    }
-  } catch (err: any) {
-    console.error('⚠️ [worker] Error certificando Polygon:', err?.message);
+
+    await db.collection('mail').doc(params.mailId).update({
+      'polygonCertifications.contentHash': params.contentHash,
+      'polygonCertifications.updatedAt': new Date(),
+    }).catch(() => undefined);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('⚠️ [worker] Error registrando hoja Merkle:', message);
   }
 }
 
@@ -92,9 +103,11 @@ async function processMessage(
   const senderEmail = String(campaign.senderEmail || campaign.createdBy || 'contacto@notificas.com');
   const uid = String(campaign.senderUid || campaign.createdBy || '');
   const subject = personalizeCampaignText(String(campaign.asunto || 'Notificación'), row);
-  const bodyHtml = campaignBodyToHtmlFragment(
-    personalizeCampaignText(String(campaign.cuerpo || ''), row)
-  );
+  const bodyPlain = personalizeCampaignText(String(campaign.cuerpo || ''), row);
+  const bodyHtml = campaignBodyToHtmlFragment(bodyPlain);
+  const contentHash = await computeContentHash(bodyPlain);
+  const batchId = String(msg.integritySendBatchId || sendBatchId(0));
+  const orgId = String(msg.orgId || campaign.orgId || '');
   const html = buildCampaignMailHtml({
     recipientEmail: email,
     recipientName: row.nombre || email.split('@')[0],
@@ -111,6 +124,7 @@ async function processMessage(
       to: email,
       subject,
       html,
+      text: bodyPlain,
       from: 'contacto@notificas.com',
       replyTo: senderEmail.includes('@') ? senderEmail : undefined,
       senderName: senderEmail,
@@ -121,6 +135,7 @@ async function processMessage(
       recipientLegajo: row.legajo || undefined,
       createdBy: uid,
       campaignId,
+      campaignMessageId: messageDocId,
       attachments: adjuntos.length ? adjuntos : undefined,
       // Template WA específico de la campaña
       ...(campaign.waTemplateName ? {
@@ -145,6 +160,7 @@ async function processMessage(
     if (canal === 'email' || canal === 'ambos') errUpdate.emailEstado = 'error';
     if (canal === 'whatsapp' || canal === 'ambos') errUpdate.waEstado = 'error';
     await msgRef.update(errUpdate);
+    await recordSendError({ campaignId, messageId: messageDocId, batchId });
     return;
   }
 
@@ -178,13 +194,31 @@ async function processMessage(
           update.waEstado = 'error';
         }
         if (Object.keys(update).length) await msgRef.update(update);
+        if (st === 'delivered' || st === 'read') {
+          void recordEventLeaf({
+            campaignId,
+            orgId,
+            messageId: messageDocId,
+            eventType: st === 'delivered' ? 'wa_delivered' : 'wa_read',
+          }).catch((e) => console.warn('⚠️ Hoja de hecho WA pendiente:', e?.message));
+        }
         await db.doc(`pending_wa_webhooks/${wamid}`).delete();
         console.log(`✅ Evento WA pendiente '${st}' procesado para wamid=${wamid}`);
       }
     }
   }
 
-  void certifyInBackground(mailId);
+  void recordSendIntegrity({
+    campaignId,
+    orgId,
+    messageDocId,
+    batchId,
+    email: emailRaw,
+    phone: String(row.telefono || ''),
+    contentHash,
+    attachmentHashes: adjuntos.map((a) => a.hash).filter(Boolean),
+    mailId,
+  });
 
   // Descontar crédito y marcar enviado.
   const userRef = db.collection('users').doc(uid);
@@ -257,6 +291,9 @@ async function refreshStats(
       estado: 'completada',
       completedAt: FieldValue.serverTimestamp(),
     });
+    void closeOpenBatches(campaignId, true).catch((e) =>
+      console.warn('⚠️ [worker] No se pudieron cerrar tandas al completar:', e?.message)
+    );
   }
 }
 
@@ -299,10 +336,19 @@ export async function POST(request: NextRequest) {
       console.error(`[campaign-worker] Error procesando ${messageDocId}:`, e?.message);
       errors++;
       try {
+        const failed = await db.collection('campaign_messages').doc(messageDocId).get();
+        const failedData = failed.data();
         await db.collection('campaign_messages').doc(messageDocId).update({
           estado: 'error',
           errorMsg: e?.message || 'Error interno del worker',
         });
+        if (failedData?.integritySendBatchId) {
+          await recordSendError({
+            campaignId,
+            messageId: messageDocId,
+            batchId: String(failedData.integritySendBatchId),
+          });
+        }
       } catch {
         // Si esto falla, Cloud Tasks reintentará la tarea completa.
       }

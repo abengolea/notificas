@@ -244,4 +244,22 @@ export interface CampaignMessage {
   waTxEntregado?: string;
   waTxLeido?: string;
   waError?: string;
+  integritySendBatchId?: string;
+  integrity?: {
+    send?: {
+      batchId?: string;
+      leafHash?: string;
+      leafIndex?: number;
+      proof?: string[];
+      merkleRoot?: string;
+      txHash?: string;
+      contentHash?: string;
+    };
+    events?: Record<string, {
+      batchId?: string;
+      leafHash?: string;
+      txHash?: string;
+      occurredAt?: string;
+    }>;
+  };
 }

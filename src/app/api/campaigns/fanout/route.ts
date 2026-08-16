@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb, getAdminBucket } from '@/lib/firebase-admin';
 import { enqueueCampaignFanout, enqueueCampaignWorker } from '@/lib/cloud-tasks';
+import { ensureSendBatch, resolveOpenSendBatchId, tandaIndexFromOffset } from '@/lib/campaign-integrity';
 import type { RecipientEntry } from '@/lib/types';
 
 // Destinatarios que procesa cada invocación del fanout.
@@ -166,6 +167,8 @@ async function processFanoutPage(
   const toProcess: string[] = []; // docIds a encolar en workers
   const batchOps = db.batch();
   let batchCount = 0;
+  const tandaIndex = tandaIndexFromOffset(offset);
+  const integrityBatchId = await resolveOpenSendBatchId(campaignId, tandaIndex);
 
   for (const row of page) {
     const email = (row.email || '').trim().toLowerCase();
@@ -188,6 +191,8 @@ async function processFanoutPage(
         recipientTelefono: row.telefono || null,
         estado: 'pendiente',
         creditApplied: false,
+        sendTandaIndex: tandaIndex,
+        integritySendBatchId: integrityBatchId,
         createdAt: FieldValue.serverTimestamp(),
       });
       toProcess.push(ref.id);
@@ -197,6 +202,13 @@ async function processFanoutPage(
 
   if (batchCount > 0) {
     await batchOps.commit();
+    await ensureSendBatch({
+      campaignId,
+      orgId: String(campaign.orgId || ''),
+      tandaIndex,
+      expectedIncrement: batchCount,
+      batchId: integrityBatchId,
+    });
   }
 
   // Encolar workers en batches de SEND_BATCH.

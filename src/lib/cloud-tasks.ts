@@ -101,10 +101,23 @@ async function enqueueLocal(path: string, payload: unknown): Promise<void> {
   }
 }
 
-async function enqueueTask(path: string, payload: unknown, taskId?: string): Promise<void> {
+async function enqueueTask(
+  path: string,
+  payload: unknown,
+  taskId?: string,
+  delaySeconds = 0
+): Promise<void> {
   const url = workerUrl(path);
 
   if (isLocalWorkerUrl(url)) {
+    if (delaySeconds > 0) {
+      setTimeout(() => {
+        void enqueueLocal(path, payload).catch((e) =>
+          console.warn('⚠️ Local delayed task failed:', e?.message)
+        );
+      }, delaySeconds * 1000);
+      return;
+    }
     await enqueueLocal(path, payload);
     return;
   }
@@ -123,6 +136,10 @@ async function enqueueTask(path: string, payload: unknown, taskId?: string): Pro
       body: Buffer.from(JSON.stringify(payload)).toString('base64'),
     },
   };
+
+  if (delaySeconds > 0) {
+    task.scheduleTime = new Date(Date.now() + delaySeconds * 1000).toISOString();
+  }
 
   if (taskId) {
     const safeName = taskId.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 499);
@@ -167,5 +184,20 @@ export async function enqueueCampaignWorker(
     '/api/campaigns/worker',
     { campaignId, messageDocIds },
     `send-${campaignId}-${messageDocIds[0]}`
+  );
+}
+
+/** Cierra (o intenta cerrar) una tanda Merkle. delaySeconds=0 = inmediato. */
+export async function enqueueIntegrityClose(
+  campaignId: string,
+  batchId: string,
+  delaySeconds = 0
+): Promise<void> {
+  const suffix = delaySeconds > 0 ? `d${delaySeconds}` : 'now';
+  await enqueueTask(
+    '/api/campaigns/integrity/close',
+    { campaignId, batchId, force: delaySeconds > 0 },
+    `integrity-${campaignId}-${batchId}-${suffix}`,
+    delaySeconds
   );
 }

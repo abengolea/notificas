@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { recordEventLeaf } from "@/lib/campaign-integrity";
 
 // GET: Meta verifica el webhook con hub.challenge
 export async function GET(request: NextRequest) {
@@ -218,6 +219,14 @@ async function syncCampaignMessage(db: ReturnType<typeof getAdminDb>, mailId: st
         }
         t.update(ref, update);
       });
+    }
+    if (statusType === 'delivered' || statusType === 'read') {
+      void recordEventLeaf({
+        campaignId: campId,
+        orgId: String(data.orgId || ''),
+        messageId: snap.docs[0].id,
+        eventType: statusType === 'delivered' ? 'wa_delivered' : 'wa_read',
+      }).catch((e) => console.warn('⚠️ Hoja Merkle WA:', e?.message));
     }
     console.log(`✅ campaign_message sincronizado: ${statusType} para mail/${mailId}`);
   } catch (e: any) {

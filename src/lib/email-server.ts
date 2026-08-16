@@ -74,6 +74,7 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
     html,
     text: (text ?? html.replace(/<[^>]*>/g, '')) || '',
   };
+  if (text) messageObj.contentText = text;
 
   if (attachments && attachments.length > 0) {
     messageObj.details = {

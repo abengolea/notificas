@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { certificarRecepcion } from '@/lib/certification-polygon';
+import { recordEventLeaf } from '@/lib/campaign-integrity';
 
 function extractBrowserInfo(userAgent: string) {
   const match = userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)\/(\d+)/);
@@ -131,6 +132,7 @@ export async function POST(request: NextRequest) {
       recipientId: string;
       sendTxHash?: string;
       contentHash?: string;
+      isCampaign: boolean;
     };
     type TxSkip = { skipped: true; reason: string };
     type TxResult = TxOk | TxSkip;
@@ -182,13 +184,15 @@ export async function POST(request: NextRequest) {
         'tracking.movements': FieldValue.arrayUnion(movement),
       });
 
+      const isCampaign = Boolean(messageData.campaignId);
       const certify =
-        wasFirstOpen && !messageData.polygonCertifications?.receive;
+        wasFirstOpen && !isCampaign && !messageData.polygonCertifications?.receive;
       return {
         skipped: false,
         movementId: movement.id,
         wasFirstOpen,
         certify,
+        isCampaign,
         recipientId:
           messageData.recipientEmail || messageData.to?.[0] || 'recipient',
         sendTxHash: messageData.polygonCertifications?.send as string | undefined,
@@ -216,6 +220,21 @@ export async function POST(request: NextRequest) {
 
     if (txResult.wasFirstOpen) {
       void syncCampaignMessageRead(messageId);
+      void (async () => {
+        try {
+          const msgSnap = await adminDb.collection('campaign_messages').where('mailId', '==', messageId).limit(1).get();
+          if (msgSnap.empty) return;
+          const msg = msgSnap.docs[0];
+          await recordEventLeaf({
+            campaignId: String(msg.data().campaignId),
+            orgId: String(msg.data().orgId || ''),
+            messageId: msg.id,
+            eventType: 'email_read',
+          });
+        } catch (e: unknown) {
+          console.warn('⚠️ Hoja Merkle email_read:', e instanceof Error ? e.message : e);
+        }
+      })();
     }
 
     return NextResponse.json(

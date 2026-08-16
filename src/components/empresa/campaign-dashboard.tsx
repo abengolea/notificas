@@ -24,6 +24,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { CampaignIntegrityPanel } from "@/components/empresa/campaign-integrity-panel";
 import {
   Copy,
   Download,
@@ -550,6 +551,8 @@ export function CampaignDashboard() {
           )}
         </>
       )}
+
+      <CampaignIntegrityPanel orgId={orgId} campaignId={campaignId} messages={messages} />
 
       {/* Filtros */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
