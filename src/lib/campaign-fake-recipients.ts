@@ -28,14 +28,10 @@ export function generateFakeCampaignRecipients(
     const nombre = `${NOMBRES[i % NOMBRES.length]} ${APELLIDOS[Math.floor(i / NOMBRES.length) % APELLIDOS.length]}`;
     const row: RecipientEntry = {
       nombre,
+      email: needEmail ? `sim.${idx}@${TEST_EMAIL_DOMAIN}` : `sim.${idx}@wa.internal`,
       dni: String(20_000_000 + idx),
       legajo: `SIM-${String(idx).padStart(5, '0')}`,
     };
-    if (needEmail) {
-      row.email = `sim.${idx}@${TEST_EMAIL_DOMAIN}`;
-    } else {
-      row.email = `sim.${idx}@wa.internal`;
-    }
     if (needPhone) {
       row.telefono = `+54911${String(10_000_000 + idx).slice(-8)}`;
     }
