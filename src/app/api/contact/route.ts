@@ -13,7 +13,20 @@ const bodySchema = z.object({
   compania: z.string().trim().max(200).optional().default(""),
   email: z.string().trim().email().max(320),
   mensaje: z.string().trim().max(8000).optional().default(""),
+  telefono: z.string().trim().max(40).optional().default(""),
+  volumenEstimado: z.string().trim().max(80).optional().default(""),
+  canal: z
+    .union([z.enum(["whatsapp", "email", "ambos"]), z.literal("")])
+    .optional()
+    .default(""),
+  tipoConsulta: z.enum(["general", "cotizacion"]).optional().default("general"),
 });
+
+const CANAL_LABEL: Record<"whatsapp" | "email" | "ambos", string> = {
+  whatsapp: "WhatsApp",
+  email: "Email",
+  ambos: "WhatsApp + Email",
+};
 
 function escapeHtml(s: string): string {
   return s
@@ -36,30 +49,57 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Revisá nombre y email." }, { status: 400 });
   }
 
-  const { nombre, compania, email, mensaje } = parsed.data;
+  const {
+    nombre,
+    compania,
+    email,
+    mensaje,
+    telefono,
+    volumenEstimado,
+    canal,
+    tipoConsulta,
+  } = parsed.data;
   const inbox = getContactInboxEmail();
+  const isQuote = tipoConsulta === "cotizacion";
+  const canalLabel = canal ? CANAL_LABEL[canal] : "";
 
   const htmlLines = [
+    `<p><strong>Tipo:</strong> ${isQuote ? "Solicitud de cotización corporativa" : "Consulta web"}</p>`,
     `<p><strong>Nombre:</strong> ${escapeHtml(nombre)}</p>`,
-    `<p><strong>Compañía:</strong> ${escapeHtml(compania || "(no indicada)")}</p>`,
+    `<p><strong>Empresa:</strong> ${escapeHtml(compania || "(no indicada)")}</p>`,
     `<p><strong>Email:</strong> <a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></p>`,
   ];
+  if (telefono) {
+    htmlLines.push(`<p><strong>Teléfono:</strong> ${escapeHtml(telefono)}</p>`);
+  }
+  if (volumenEstimado) {
+    htmlLines.push(
+      `<p><strong>Volumen estimado:</strong> ${escapeHtml(volumenEstimado)}</p>`
+    );
+  }
+  if (canalLabel) {
+    htmlLines.push(`<p><strong>Canal:</strong> ${escapeHtml(canalLabel)}</p>`);
+  }
   if (mensaje) {
     htmlLines.push(
-      `<p><strong>Mensaje:</strong></p><pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(mensaje)}</pre>`
+      `<p><strong>${isQuote ? "Descripción:" : "Mensaje:"}</strong></p><pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(mensaje)}</pre>`
     );
   }
   htmlLines.push(
-    `<p style="color:#666;font-size:12px">Origen: formulario Contáctenos (${escapeHtml(
-      process.env.NEXT_PUBLIC_APP_URL || "notificas"
-    )})</p>`
+    `<p style="color:#666;font-size:12px">Origen: formulario ${
+      isQuote ? "cotización corporativa" : "Contáctenos"
+    } (${escapeHtml(process.env.NEXT_PUBLIC_APP_URL || "notificas")})</p>`
   );
   const html = htmlLines.join("\n");
   const text = [
+    `Tipo: ${isQuote ? "Solicitud de cotización corporativa" : "Consulta web"}`,
     `Nombre: ${nombre}`,
-    `Compañía: ${compania || "(no indicada)"}`,
+    `Empresa: ${compania || "(no indicada)"}`,
     `Email: ${email}`,
-    mensaje ? `\nMensaje:\n${mensaje}` : "",
+    telefono ? `Teléfono: ${telefono}` : "",
+    volumenEstimado ? `Volumen estimado: ${volumenEstimado}` : "",
+    canalLabel ? `Canal: ${canalLabel}` : "",
+    mensaje ? `\n${isQuote ? "Descripción" : "Mensaje"}:\n${mensaje}` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -71,7 +111,9 @@ export async function POST(request: NextRequest) {
       to: inbox,
       from: DEFAULT_CONTACT_FROM_EMAIL,
       replyTo: email,
-      subject: `Consulta web — ${nombre}`,
+      subject: isQuote
+        ? `Cotización corporativa — ${nombre}`
+        : `Consulta web — ${nombre}`,
       html,
       text,
       senderName: nombre,

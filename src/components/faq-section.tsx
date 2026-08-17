@@ -35,15 +35,6 @@ const linkSignup = (
   </Link>
 );
 
-const linkLogin = (
-  <Link
-    href="/login"
-    className="text-primary font-medium underline-offset-4 hover:underline"
-  >
-    Iniciar sesión
-  </Link>
-);
-
 const linkEmpresa = (
   <Link
     href="/login?next=/empresa"
@@ -104,6 +95,26 @@ const faqItems: FaqItem[] = [
     answer: (
       <>
         Creá tu cuenta en {linkSignup} — el proceso toma menos de dos minutos. Desde el dashboard podés cargar créditos y empezar a enviar notificaciones certificadas de inmediato. Para cuentas corporativas o de volumen, usá el {linkEmpresa}.
+      </>
+    ),
+  },
+  {
+    question: "¿Notificas ofrece notificaciones de alto volumen para empresas?",
+    answer:
+      "Sí. Además de las notificaciones individuales mediante créditos, Notificas ofrece soluciones para empresas y organizaciones que necesitan procesar cientos o miles de notificaciones por WhatsApp o Email, con personalización, trazabilidad individual, certificación tecnológica mediante blockchain y reportes. Las campañas corporativas se implementan previa evaluación técnica y cotización personalizada.",
+  },
+  {
+    question: "¿Cómo funcionan las campañas corporativas por WhatsApp y Email?",
+    answer: (
+      <>
+        WhatsApp Business Platform permite realizar comunicaciones empresariales mediante plantillas previamente aprobadas cuando corresponda. La disponibilidad, velocidad y volumen de procesamiento están sujetos a las políticas y a los límites de capacidad habilitados por Meta. En Email, Notificas registra los estados técnicamente disponibles para cada comunicación, como enviado, acceso al contenido o error. Podés solicitar una cotización desde{" "}
+        <Link
+          href="/#cotizacion"
+          className="text-primary font-medium underline-offset-4 hover:underline"
+        >
+          Soluciones para empresas
+        </Link>
+        .
       </>
     ),
   },

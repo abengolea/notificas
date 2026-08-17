@@ -14,7 +14,7 @@ export const DEFAULT_TITLE =
   "Notificas | Notificaciones fehacientes digitales certificadas en blockchain";
 
 export const DEFAULT_DESCRIPTION =
-  "Enviá notificaciones fehacientes digitales con valor probatorio. Certificá envío, recepción y lectura en Polygon. Más económico y trazable que una carta documento.";
+  "Enviá notificaciones fehacientes digitales con valor probatorio. Certificá envío, recepción y lectura en Polygon. Notificaciones de alto volumen para empresas por WhatsApp y Email, previa cotización.";
 
 export const SITE_KEYWORDS = [
   "notificaciones fehacientes",
@@ -30,6 +30,15 @@ export const SITE_KEYWORDS = [
   "prueba de lectura",
   "notificaciones legales Argentina",
   "Notificas",
+  "notificaciones de alto volumen",
+  "notificaciones WhatsApp empresas",
+  "notificaciones por email",
+  "notificaciones digitales certificadas",
+  "notificaciones blockchain",
+  "notificaciones masivas para empresas",
+  "gestión de mora WhatsApp",
+  "intimaciones digitales",
+  "comunicaciones empresariales certificadas",
 ] as const;
 
 export const SITE_CONTACT = {
@@ -91,6 +100,16 @@ export const FAQ_SEO_ITEMS: ReadonlyArray<{ question: string; answer: string }> 
     question: "¿Cómo empiezo a usar Notificas?",
     answer:
       "Creá tu cuenta en Registro — el proceso toma menos de dos minutos. Desde el dashboard podés cargar créditos y empezar a enviar notificaciones certificadas de inmediato. Para cuentas corporativas o de volumen, usá el acceso empresas.",
+  },
+  {
+    question: "¿Notificas ofrece notificaciones de alto volumen para empresas?",
+    answer:
+      "Sí. Además de las notificaciones individuales mediante créditos, Notificas ofrece soluciones para empresas y organizaciones que necesitan procesar cientos o miles de notificaciones por WhatsApp o Email, con personalización, trazabilidad individual, certificación tecnológica mediante blockchain y reportes. Las campañas corporativas se implementan previa evaluación técnica y cotización personalizada.",
+  },
+  {
+    question: "¿Cómo funcionan las campañas corporativas por WhatsApp y Email?",
+    answer:
+      "WhatsApp Business Platform permite realizar comunicaciones empresariales mediante plantillas previamente aprobadas cuando corresponda. La disponibilidad, velocidad y volumen de procesamiento están sujetos a las políticas y a los límites de capacidad habilitados por Meta. En Email, Notificas registra los estados técnicamente disponibles para cada comunicación, como enviado, acceso al contenido o error. Notificas administra el procesamiento, el envío, la trazabilidad y la certificación tecnológica; no publica tarifas de Meta en el sitio: cada campaña se cotiza de forma particular.",
   },
 ];
 

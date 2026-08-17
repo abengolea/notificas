@@ -61,7 +61,7 @@ export function serviceJsonLd() {
     name: "Notificaciones fehacientes digitales",
     serviceType: "Notificación fehaciente digital certificada en blockchain",
     description:
-      "Plataforma para enviar notificaciones fehacientes digitales con certificación de envío, recepción y lectura en la red Polygon, con certificado PDF de valor probatorio.",
+      "Plataforma para enviar notificaciones fehacientes digitales con certificación de envío, recepción y lectura en la red Polygon, y soluciones de notificaciones de alto volumen para empresas mediante WhatsApp y Email, previa cotización.",
     provider: { "@id": `${SITE_URL}/#organization` },
     areaServed: {
       "@type": "Country",

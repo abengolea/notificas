@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, ShieldCheck, Cpu, ArrowRight, Mail, Send, Phone, Search } from 'lucide-react';
+import { CheckCircle, ShieldCheck, Cpu, ArrowRight, Mail, Send, Phone, Search, MessageCircle, FileText, Users, Link2 } from 'lucide-react';
 import { FaqSection } from '@/components/faq-section';
-import { FooterContactForm } from '@/components/footer-contact-form';
+import { FooterContactForm, QuoteContactForm } from '@/components/footer-contact-form';
 import { LandingHeader } from '@/components/landing-header';
 import { JsonLd } from '@/components/json-ld';
 import { createPageMetadata } from '@/lib/seo';
@@ -18,7 +18,7 @@ import {
 const HOME_TITLE =
   'Notificas | Notificaciones fehacientes digitales certificadas en blockchain';
 const HOME_DESCRIPTION =
-  'Enviá notificaciones fehacientes digitales con valor probatorio. Certificá envío, recepción y lectura en Polygon. Alternativa digital a la carta documento en Argentina.';
+  'Enviá notificaciones fehacientes digitales con valor probatorio. Certificá envío, recepción y lectura en Polygon. Soluciones de notificaciones de alto volumen para empresas por WhatsApp y Email, previa cotización.';
 
 export const metadata: Metadata = {
   ...createPageMetadata({
@@ -31,6 +31,15 @@ export const metadata: Metadata = {
       'notificación certificada',
       'blockchain Polygon',
       'Notificas Argentina',
+      'notificaciones de alto volumen',
+      'notificaciones WhatsApp empresas',
+      'notificaciones por email',
+      'notificaciones digitales certificadas',
+      'notificaciones blockchain',
+      'gestión de mora WhatsApp',
+      'intimaciones digitales',
+      'comunicaciones empresariales certificadas',
+      'notificaciones masivas para empresas',
     ],
   }),
   title: { absolute: HOME_TITLE },
@@ -45,7 +54,7 @@ const features = [
   {
     icon: <Send className="h-10 w-10 text-primary" />,
     title: 'ENVÍOS',
-    description: 'La preparación y el envío son instantáneos.',
+    description: 'Las notificaciones individuales son procesadas inmediatamente. Las campañas corporativas y de alto volumen se ejecutan progresivamente de acuerdo con las condiciones técnicas y la capacidad disponible de WhatsApp o Email.',
   },
   {
     icon: <Cpu className="h-10 w-10 text-primary" />,
@@ -78,6 +87,21 @@ const useCases = [
     "Avisos de corte o suspensión de servicios",
     "Comunicaciones en procesos de mediación o instancias previas",
     "Notificaciones de acciones colectivas",
+    "Avisos de vencimiento",
+    "Gestión de mora",
+    "Comunicaciones contractuales",
+    "Avisos relacionados con cuentas de clientes",
+    "Comunicaciones administrativas",
+    "Notificaciones a grandes bases de clientes",
+];
+
+const corporateCapabilities = [
+  { icon: MessageCircle, title: 'WhatsApp', description: 'Comunicaciones empresariales mediante WhatsApp Business Platform.' },
+  { icon: Mail, title: 'Email', description: 'Notificaciones por correo con seguimiento de estados disponibles.' },
+  { icon: Users, title: 'Personalización', description: 'Adaptamos cada comunicación con los datos de cada destinatario.' },
+  { icon: Link2, title: 'Trazabilidad', description: 'Seguimiento individual de cada envío y de sus eventos.' },
+  { icon: ShieldCheck, title: 'Blockchain', description: 'Certificación tecnológica y registro de evidencia en Polygon.' },
+  { icon: FileText, title: 'Reportes', description: 'Constancias digitales y reportes de la campaña ejecutada.' },
 ];
 
 export default function LandingPage() {
@@ -98,9 +122,14 @@ export default function LandingPage() {
             <p className="mx-auto mb-8 max-w-3xl text-pretty text-base text-muted-foreground sm:text-lg md:text-xl">
               El contenido, envío, recepción y lectura de cada comunicación quedan registrados de forma inmutable en blockchain. Usamos la red Polygon: pública, descentralizada y verificable por cualquier persona.
             </p>
-            <Button size="lg" className="w-full sm:w-auto" asChild>
-              <Link href="/signup">Empezá Ahora</Link>
-            </Button>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <Button size="lg" className="w-full sm:w-auto" asChild>
+                <Link href="/signup">Empezá Ahora</Link>
+              </Button>
+              <Button size="lg" variant="outline" className="w-full sm:w-auto" asChild>
+                <Link href="/#empresas">Soluciones para empresas</Link>
+              </Button>
+            </div>
           </div>
         </section>
 
@@ -169,7 +198,7 @@ export default function LandingPage() {
             </div>
         </section>
         
-        <section id="ventajas" className="bg-muted/20 px-4 py-16 sm:py-20 md:py-28">
+        <section id="ventajas" className="scroll-mt-24 bg-muted/20 px-4 py-16 sm:py-20 md:py-28">
           <div className="container">
             <div className="text-center mb-12">
               <h2 className="text-3xl md:text-4xl font-bold">CONOCÉ LAS VENTAJAS DE NUESTRO SERVICIO</h2>
@@ -189,6 +218,71 @@ export default function LandingPage() {
                 </Card>
               ))}
             </div>
+            <Card className="mt-8">
+              <CardHeader>
+                <p className="text-xs font-semibold tracking-wider text-primary">
+                  EMPRESAS · ALTO VOLUMEN
+                </p>
+                <CardTitle className="text-xl md:text-2xl">Notificaciones a escala</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-muted-foreground">
+                  Procesá cientos o miles de comunicaciones mediante WhatsApp o Email con seguimiento individual, trazabilidad y certificación blockchain.
+                </p>
+                <Button className="w-full sm:w-auto" asChild>
+                  <Link href="/#cotizacion">Solicitar cotización</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+
+        <section id="empresas" className="scroll-mt-24 px-4 py-16 sm:py-20 md:py-28">
+          <div className="container">
+            <div className="mx-auto max-w-3xl text-center mb-10 md:mb-12">
+              <h2 className="text-3xl md:text-4xl font-bold mb-4">SOLUCIONES PARA EMPRESAS</h2>
+              <p className="text-lg md:text-xl text-muted-foreground mb-6">
+                Notificaciones digitales de alto volumen
+              </p>
+              <p className="text-muted-foreground leading-relaxed mb-4">
+                Notificas ofrece soluciones para empresas y organizaciones que necesitan realizar cientos o miles de notificaciones mediante WhatsApp o Email, manteniendo trazabilidad individual de cada comunicación.
+              </p>
+              <p className="text-muted-foreground leading-relaxed mb-4">
+                Gestionamos el procesamiento de bases de destinatarios, personalización de comunicaciones, envío progresivo, seguimiento de estados, registro de eventos, certificación tecnológica mediante blockchain y generación de reportes.
+              </p>
+              <p className="text-foreground font-medium leading-relaxed">
+                Las campañas corporativas y los servicios de alto volumen se implementan previa evaluación técnica y cotización personalizada.
+              </p>
+            </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 max-w-5xl mx-auto mb-10 md:mb-12">
+              {corporateCapabilities.map((item) => (
+                <Card key={item.title} className="text-center">
+                  <CardHeader className="pb-2">
+                    <div className="mx-auto bg-primary/10 p-3 rounded-full w-fit mb-2">
+                      <item.icon className="h-6 w-6 text-primary" aria-hidden />
+                    </div>
+                    <CardTitle className="text-base">{item.title}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">{item.description}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            <p className="mx-auto mb-6 max-w-2xl text-center text-sm text-muted-foreground">
+              WhatsApp Business Platform permite realizar comunicaciones empresariales mediante plantillas previamente aprobadas cuando corresponda. Notificas permite procesar, enviar, registrar y certificar comunicaciones digitales a escala.
+            </p>
+            <Card id="cotizacion" className="mx-auto max-w-xl scroll-mt-24">
+              <CardHeader>
+                <CardTitle className="text-xl">Solicitar cotización</CardTitle>
+                <p className="text-sm text-muted-foreground pt-1">
+                  Contanos el volumen de notificaciones, canal y características de la comunicación.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <QuoteContactForm />
+              </CardContent>
+            </Card>
           </div>
         </section>
 
@@ -242,7 +336,7 @@ export default function LandingPage() {
                     <Link href="/arrepentimiento" className="block hover:underline text-background/80 hover:text-background">Derecho de Arrepentimiento</Link>
                 </div>
             </div>
-            <div>
+            <div id="contacto" className="scroll-mt-24">
                 <h3 className="font-bold text-lg mb-4">Contáctenos</h3>
                 <FooterContactForm />
             </div>

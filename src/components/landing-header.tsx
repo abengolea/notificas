@@ -8,6 +8,7 @@ import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetHeader,
   SheetTitle,
@@ -16,6 +17,7 @@ import {
 
 const navLinks = [
   { href: "/#ventajas", label: "Ventajas" },
+  { href: "/#empresas", label: "Empresas" },
   { href: "/verify", label: "Verificar certificado" },
   { href: "/#faq", label: "Preguntas frecuentes" },
 ];
@@ -29,7 +31,7 @@ export function LandingHeader() {
           <span className="truncate font-bold text-base sm:text-xl">Notificas</span>
         </Link>
 
-        <nav className="hidden items-center gap-6 text-sm font-medium md:flex">
+        <nav className="hidden items-center gap-6 text-sm font-medium lg:flex">
           {navLinks.map(({ href, label }) => (
             <Link
               key={href}
@@ -57,7 +59,7 @@ export function LandingHeader() {
               <Button
                 variant="outline"
                 size="icon"
-                className="md:hidden"
+                className="lg:hidden"
                 aria-label="Abrir menú"
               >
                 <Menu className="h-5 w-5" />
@@ -69,13 +71,14 @@ export function LandingHeader() {
               </SheetHeader>
               <nav className="flex flex-col gap-1">
                 {navLinks.map(({ href, label }) => (
-                  <Link
-                    key={href}
-                    href={href}
-                    className="rounded-lg px-3 py-3 text-base font-medium text-foreground hover:bg-muted"
-                  >
-                    {label}
-                  </Link>
+                  <SheetClose asChild key={href}>
+                    <Link
+                      href={href}
+                      className="rounded-lg px-3 py-3 text-base font-medium text-foreground hover:bg-muted"
+                    >
+                      {label}
+                    </Link>
+                  </SheetClose>
                 ))}
               </nav>
               <div className="mt-auto flex flex-col gap-2 border-t pt-4 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
