@@ -24,7 +24,7 @@ const navLinks = [
 
 export function LandingHeader() {
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 pt-[env(safe-area-inset-top,0px)] backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-50 w-full border-b border-border/70 bg-background/90 pt-[env(safe-area-inset-top,0px)] backdrop-blur-md supports-[backdrop-filter]:bg-background/75">
       <div className="container flex h-14 items-center justify-between gap-2 px-4 sm:h-16 md:px-6">
         <Link href="/" className="flex min-w-0 shrink items-center gap-2">
           <Logo className="h-8 w-auto shrink-0 sm:h-10" />
@@ -36,7 +36,7 @@ export function LandingHeader() {
             <Link
               key={href}
               href={href}
-              className="text-muted-foreground transition-colors hover:text-foreground"
+              className="text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
             >
               {label}
             </Link>

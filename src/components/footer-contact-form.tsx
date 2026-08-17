@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 const CONTACT_EMAIL = "contacto@notificas.com";
 
 const footerInputClass =
-  "bg-background/20 border-border/50 text-foreground placeholder:text-background/50";
+  "border-background/25 bg-background/10 text-background placeholder:text-background/55";
 
 type ContactFormVariant = "footer" | "quote";
 type CanalCotizacion = "" | "whatsapp" | "email" | "ambos";
@@ -252,7 +252,7 @@ function ContactForm({ variant }: { variant: ContactFormVariant }) {
           disabled={sending}
           className={cn(
             inputClass,
-            "min-h-[72px] text-foreground md:text-sm"
+            "min-h-[72px] md:text-sm"
           )}
           aria-label={isQuote ? "Descripción de la necesidad" : "Mensaje opcional"}
         />

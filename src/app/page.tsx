@@ -1,8 +1,23 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, ShieldCheck, Cpu, ArrowRight, Mail, Send, Phone, Search, MessageCircle, FileText, Users, Link2 } from 'lucide-react';
+import {
+  CheckCircle,
+  ShieldCheck,
+  Cpu,
+  ArrowRight,
+  Mail,
+  Send,
+  Phone,
+  Search,
+  MessageCircle,
+  FileText,
+  Users,
+  Link2,
+  Inbox,
+} from 'lucide-react';
 import { FaqSection } from '@/components/faq-section';
 import { FooterContactForm, QuoteContactForm } from '@/components/footer-contact-form';
 import { LandingHeader } from '@/components/landing-header';
@@ -45,36 +60,64 @@ export const metadata: Metadata = {
   title: { absolute: HOME_TITLE },
 };
 
-const features = [
+const features: { icon: LucideIcon; title: string; description: string }[] = [
   {
-    icon: <ShieldCheck className="h-10 w-10 text-primary" />,
-    title: 'COMUNICACIONES CERTIFICADAS',
+    icon: ShieldCheck,
+    title: 'Comunicaciones certificadas',
     description: 'Tus comunicaciones son registradas y certificadas de manera inmutable en la red Polygon (blockchain pública y descentralizada).',
   },
   {
-    icon: <Send className="h-10 w-10 text-primary" />,
-    title: 'ENVÍOS',
+    icon: Send,
+    title: 'Envíos',
     description: 'Las notificaciones individuales son procesadas inmediatamente. Las campañas corporativas y de alto volumen se ejecutan progresivamente de acuerdo con las condiciones técnicas y la capacidad disponible de WhatsApp o Email.',
   },
   {
-    icon: <Cpu className="h-10 w-10 text-primary" />,
-    title: 'COSTOS',
+    icon: Cpu,
+    title: 'Costos',
     description: 'Hasta 20 veces más económico que una carta documento, con mayor trazabilidad y sin necesidad de concurrir a ninguna oficina.',
   },
   {
-    icon: <ArrowRight className="h-10 w-10 text-primary" />,
-    title: 'TRAZABILIDAD COMPLETA',
+    icon: ArrowRight,
+    title: 'Trazabilidad completa',
     description: 'Cada evento queda registrado: envío, recepción, apertura y lectura confirmada, tanto por correo como por WhatsApp. Todo certificado en Polygon y verificable de forma independiente.',
   },
   {
-    icon: <ShieldCheck className="h-10 w-10 text-primary" />,
-    title: 'PRUEBA EN JUICIO',
+    icon: ShieldCheck,
+    title: 'Prueba en juicio',
     description: 'El sistema genera un certificado oficial con valor probatorio para demostrar el envío, contenido, recepción y/o lectura del mensaje.',
   },
   {
-    icon: <ShieldCheck className="h-10 w-10 text-primary" />,
-    title: 'ALMACENAMIENTO',
+    icon: ShieldCheck,
+    title: 'Almacenamiento',
     description: 'La documentación queda guardada por más de 5 años.',
+  },
+];
+
+const certifiedEvents: { icon: LucideIcon; title: string; description: string }[] = [
+  {
+    icon: Send,
+    title: 'Envío',
+    description: 'Marca de tiempo del envío, hash SHA-256 del contenido (asunto + cuerpo) e ID del servidor SMTP. Prueba qué se envió, a quién y cuándo.',
+  },
+  {
+    icon: MessageCircle,
+    title: 'Notificación por WhatsApp',
+    description: 'El aviso por WhatsApp también queda registrado: envío del mensaje, acceso al enlace y apertura del contenido, todo en el audit trail certificado.',
+  },
+  {
+    icon: Inbox,
+    title: 'Recepción',
+    description: 'Primer acceso fehaciente al mensaje por el destinatario —ya sea por correo o WhatsApp—, encadenado criptográficamente al evento de envío.',
+  },
+  {
+    icon: CheckCircle,
+    title: 'Lectura confirmada',
+    description: 'Confirmación explícita de lectura por parte del destinatario. El evento más sólido probatoriamente, vinculado a todos los eventos anteriores.',
+  },
+  {
+    icon: FileText,
+    title: 'Certificado PDF',
+    description: 'Hash SHA-256 del PDF oficial generado, anclado en blockchain y encadenado al envío. Garantiza que el certificado presentado ante un juez no fue alterado.',
   },
 ];
 
@@ -106,7 +149,7 @@ const corporateCapabilities = [
 
 export default function LandingPage() {
   return (
-    <div className="flex flex-col min-h-screen bg-background text-foreground">
+    <div className="landing-page flex min-h-screen flex-col text-foreground">
       <JsonLd data={organizationJsonLd()} />
       <JsonLd data={websiteJsonLd()} />
       <JsonLd data={serviceJsonLd()} />
@@ -114,168 +157,144 @@ export default function LandingPage() {
       <LandingHeader />
 
       <main className="flex-1">
-        <section className="bg-muted/20 px-4 py-14 sm:py-20 md:py-32">
-          <div className="container text-center">
-            <h1 className="mb-6 text-balance text-3xl font-bold tracking-tighter sm:text-4xl md:text-6xl">
-              Notificas: notificaciones fehacientes digitales con respaldo blockchain
-            </h1>
-            <p className="mx-auto mb-8 max-w-3xl text-pretty text-base text-muted-foreground sm:text-lg md:text-xl">
-              El contenido, envío, recepción y lectura de cada comunicación quedan registrados de forma inmutable en blockchain. Usamos la red Polygon: pública, descentralizada y verificable por cualquier persona.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <Button size="lg" className="w-full sm:w-auto" asChild>
-                <Link href="/signup">Empezá Ahora</Link>
-              </Button>
-              <Button size="lg" variant="outline" className="w-full sm:w-auto" asChild>
-                <Link href="/#empresas">Soluciones para empresas</Link>
-              </Button>
+        <section className="landing-hero px-4 py-16 sm:py-20 md:py-24">
+          <div className="container grid items-start gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:gap-16">
+            <div className="landing-hero-copy max-w-2xl">
+              <h1 className="mb-5 text-balance text-3xl font-bold tracking-tight sm:text-4xl md:text-[2.75rem] md:leading-tight">
+                Notificas: notificaciones fehacientes digitales con respaldo blockchain
+              </h1>
+              <p className="landing-hero-muted mb-8 max-w-[65ch] text-pretty text-base leading-relaxed sm:text-lg">
+                El contenido, envío, recepción y lectura de cada comunicación quedan registrados de forma inmutable en blockchain. Usamos la red Polygon: pública, descentralizada y verificable por cualquier persona.
+              </p>
+              <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+                <Button size="lg" className="w-full sm:w-auto" asChild>
+                  <Link href="/signup">Empezá Ahora</Link>
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white sm:w-auto"
+                  asChild
+                >
+                  <Link href="/#empresas">Soluciones para empresas</Link>
+                </Button>
+              </div>
             </div>
+
+            <ol className="landing-hero-proof border-l border-white/20 pl-5 sm:pl-6">
+              {certifiedEvents.map((event) => (
+                <li key={event.title} className="relative pb-5 last:pb-0">
+                  <event.icon
+                    className="absolute -left-[1.85rem] top-0.5 h-4 w-4 text-white sm:-left-[2.05rem]"
+                    aria-hidden
+                  />
+                  <p className="font-semibold leading-snug text-white">{event.title}</p>
+                  <p className="landing-hero-muted mt-1 max-w-[60ch] text-sm leading-relaxed">
+                    {event.description}
+                  </p>
+                </li>
+              ))}
+            </ol>
           </div>
         </section>
 
-        <section id="blockchain" className="px-4 py-16 sm:py-20 md:py-28">
-            <div className="container flex justify-center">
-                <div className="max-w-3xl text-center md:text-left space-y-8">
+        <section id="blockchain" className="px-4 py-16 sm:py-20 md:py-24">
+            <div className="container">
+                <div className="max-w-3xl space-y-10">
                     <div>
-                        <h2 className="text-3xl md:text-4xl font-bold mb-4">¿QUÉ ES LA TECNOLOGÍA BLOCKCHAIN?</h2>
-                        <p className="text-muted-foreground mb-4 leading-relaxed">
+                        <h2 className="mb-4 text-3xl font-bold tracking-tight md:text-4xl">¿Qué es la tecnología blockchain?</h2>
+                        <p className="mb-0 max-w-[70ch] leading-relaxed text-muted-foreground">
                             Blockchain —o cadena de bloques enlazados y cifrados— es una base de datos distribuida diseñada para que la información, una vez registrada, no pueda ser modificada ni eliminada. Cada bloque contiene un sello de tiempo y una referencia criptográfica al bloque anterior, formando una cadena inmutable y auditable por cualquier persona.
                         </p>
                     </div>
 
                     <div>
-                        <h3 className="text-xl font-semibold mb-3">La red que usamos: Polygon</h3>
-                        <p className="text-muted-foreground mb-4 leading-relaxed">
-                            Notificas utiliza <strong>Polygon</strong>, una blockchain pública compatible con Ethereum, con miles de nodos distribuidos alrededor del mundo y más de mil millones de transacciones procesadas. Es una de las redes más auditadas y utilizadas a nivel global, con consenso Proof of Stake y costos de transacción muy bajos.
+                        <h3 className="mb-3 text-xl font-semibold">La red que usamos: Polygon</h3>
+                        <p className="mb-4 max-w-[70ch] leading-relaxed text-muted-foreground">
+                            Notificas utiliza <strong className="font-semibold text-foreground">Polygon</strong>, una blockchain pública compatible con Ethereum, con miles de nodos distribuidos alrededor del mundo y más de mil millones de transacciones procesadas. Es una de las redes más auditadas y utilizadas a nivel global, con consenso Proof of Stake y costos de transacción muy bajos.
                         </p>
-                        <p className="text-muted-foreground leading-relaxed">
+                        <p className="max-w-[70ch] leading-relaxed text-muted-foreground">
                             Cada transacción generada por Notificas es verificable de forma independiente en{' '}
-                            <a href="https://polygonscan.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">polygonscan.com</a>
+                            <a href="https://polygonscan.com" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-4">polygonscan.com</a>
                             {' '}ingresando el hash de la transacción. Nadie —ni Notificas ni nadie más— puede alterar ese registro una vez confirmado.
                         </p>
                     </div>
 
-                    <div>
-                        <h3 className="text-xl font-semibold mb-4">¿Qué eventos se certifican en blockchain?</h3>
-                        <div className="grid sm:grid-cols-2 gap-4">
-                            <Card className="text-left">
-                                <CardContent className="pt-5 pb-4">
-                                    <p className="font-semibold text-foreground mb-1">📤 Envío</p>
-                                    <p className="text-sm text-muted-foreground">Marca de tiempo del envío, hash SHA-256 del contenido (asunto + cuerpo) e ID del servidor SMTP. Prueba qué se envió, a quién y cuándo.</p>
-                                </CardContent>
-                            </Card>
-                            <Card className="text-left">
-                                <CardContent className="pt-5 pb-4">
-                                    <p className="font-semibold text-foreground mb-1">📱 Notificación por WhatsApp</p>
-                                    <p className="text-sm text-muted-foreground">El aviso por WhatsApp también queda registrado: envío del mensaje, acceso al enlace y apertura del contenido, todo en el audit trail certificado.</p>
-                                </CardContent>
-                            </Card>
-                            <Card className="text-left">
-                                <CardContent className="pt-5 pb-4">
-                                    <p className="font-semibold text-foreground mb-1">📨 Recepción</p>
-                                    <p className="text-sm text-muted-foreground">Primer acceso fehaciente al mensaje por el destinatario —ya sea por correo o WhatsApp—, encadenado criptográficamente al evento de envío.</p>
-                                </CardContent>
-                            </Card>
-                            <Card className="text-left">
-                                <CardContent className="pt-5 pb-4">
-                                    <p className="font-semibold text-foreground mb-1">✅ Lectura confirmada</p>
-                                    <p className="text-sm text-muted-foreground">Confirmación explícita de lectura por parte del destinatario. El evento más sólido probatoriamente, vinculado a todos los eventos anteriores.</p>
-                                </CardContent>
-                            </Card>
-                            <Card className="text-left sm:col-span-2">
-                                <CardContent className="pt-5 pb-4">
-                                    <p className="font-semibold text-foreground mb-1">📄 Certificado PDF</p>
-                                    <p className="text-sm text-muted-foreground">Hash SHA-256 del PDF oficial generado, anclado en blockchain y encadenado al envío. Garantiza que el certificado presentado ante un juez no fue alterado.</p>
-                                </CardContent>
-                            </Card>
-                        </div>
-                    </div>
-
-                    <Button variant="link" className="px-0" asChild>
+                    <Button variant="link" className="h-auto px-0" asChild>
                         <a href="https://polygon.technology" target="_blank" rel="noopener noreferrer">Más sobre Polygon <ArrowRight className="ml-2 h-4 w-4" /></a>
                     </Button>
                 </div>
             </div>
         </section>
         
-        <section id="ventajas" className="scroll-mt-24 bg-muted/20 px-4 py-16 sm:py-20 md:py-28">
+        <section id="ventajas" className="scroll-mt-24 px-4 py-16 sm:py-20 md:py-24">
           <div className="container">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold">CONOCÉ LAS VENTAJAS DE NUESTRO SERVICIO</h2>
-            </div>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {features.map((feature, index) => (
-                <Card key={index} className="text-center">
-                  <CardHeader>
-                    <div className="mx-auto bg-primary/10 p-3 rounded-full w-fit mb-4">
-                        {feature.icon}
-                    </div>
-                    <CardTitle>{feature.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground">{feature.description}</p>
-                  </CardContent>
-                </Card>
+            <h2 className="mb-10 max-w-3xl text-3xl font-bold tracking-tight md:mb-14 md:text-4xl">
+              Conocé las ventajas de nuestro servicio
+            </h2>
+            <div className="grid gap-x-12 gap-y-10 md:grid-cols-2">
+              {features.map((feature) => (
+                <article key={feature.title} className="max-w-[60ch]">
+                  <h3 className="flex items-start gap-3 text-lg font-semibold leading-snug">
+                    <feature.icon className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
+                    {feature.title}
+                  </h3>
+                  <p className="mt-2 pl-8 leading-relaxed text-muted-foreground">{feature.description}</p>
+                </article>
               ))}
             </div>
-            <Card className="mt-8">
-              <CardHeader>
-                <p className="text-xs font-semibold tracking-wider text-primary">
-                  EMPRESAS · ALTO VOLUMEN
-                </p>
-                <CardTitle className="text-xl md:text-2xl">Notificaciones a escala</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-muted-foreground">
-                  Procesá cientos o miles de comunicaciones mediante WhatsApp o Email con seguimiento individual, trazabilidad y certificación blockchain.
-                </p>
-                <Button className="w-full sm:w-auto" asChild>
-                  <Link href="/#cotizacion">Solicitar cotización</Link>
-                </Button>
-              </CardContent>
-            </Card>
           </div>
         </section>
 
-        <section id="empresas" className="scroll-mt-24 px-4 py-16 sm:py-20 md:py-28">
+        <section className="landing-band px-4 py-12 md:py-16">
+          <div className="container flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
+            <div className="max-w-2xl">
+              <h2 className="text-2xl font-bold tracking-tight md:text-3xl">Notificaciones a escala</h2>
+              <p className="mt-3 max-w-[65ch] leading-relaxed text-muted-foreground">
+                Procesá cientos o miles de comunicaciones mediante WhatsApp o Email con seguimiento individual, trazabilidad y certificación blockchain.
+              </p>
+            </div>
+            <Button className="w-full shrink-0 sm:w-auto" asChild>
+              <Link href="/#cotizacion">Solicitar cotización</Link>
+            </Button>
+          </div>
+        </section>
+
+        <section id="empresas" className="scroll-mt-24 px-4 py-16 sm:py-20 md:py-24">
           <div className="container">
-            <div className="mx-auto max-w-3xl text-center mb-10 md:mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">SOLUCIONES PARA EMPRESAS</h2>
-              <p className="text-lg md:text-xl text-muted-foreground mb-6">
+            <div className="mb-10 max-w-3xl md:mb-14">
+              <h2 className="mb-4 text-3xl font-bold tracking-tight md:text-4xl">Soluciones para empresas</h2>
+              <p className="mb-6 text-lg text-muted-foreground md:text-xl">
                 Notificaciones digitales de alto volumen
               </p>
-              <p className="text-muted-foreground leading-relaxed mb-4">
+              <p className="mb-4 max-w-[70ch] leading-relaxed text-muted-foreground">
                 Notificas ofrece soluciones para empresas y organizaciones que necesitan realizar cientos o miles de notificaciones mediante WhatsApp o Email, manteniendo trazabilidad individual de cada comunicación.
               </p>
-              <p className="text-muted-foreground leading-relaxed mb-4">
+              <p className="mb-4 max-w-[70ch] leading-relaxed text-muted-foreground">
                 Gestionamos el procesamiento de bases de destinatarios, personalización de comunicaciones, envío progresivo, seguimiento de estados, registro de eventos, certificación tecnológica mediante blockchain y generación de reportes.
               </p>
-              <p className="text-foreground font-medium leading-relaxed">
+              <p className="max-w-[70ch] font-medium leading-relaxed text-foreground">
                 Las campañas corporativas y los servicios de alto volumen se implementan previa evaluación técnica y cotización personalizada.
               </p>
             </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 max-w-5xl mx-auto mb-10 md:mb-12">
+            <div className="mb-10 grid gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 md:mb-12">
               {corporateCapabilities.map((item) => (
-                <Card key={item.title} className="text-center">
-                  <CardHeader className="pb-2">
-                    <div className="mx-auto bg-primary/10 p-3 rounded-full w-fit mb-2">
-                      <item.icon className="h-6 w-6 text-primary" aria-hidden />
-                    </div>
-                    <CardTitle className="text-base">{item.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground">{item.description}</p>
-                  </CardContent>
-                </Card>
+                <article key={item.title} className="max-w-[42ch]">
+                  <h3 className="flex items-center gap-2.5 text-base font-semibold">
+                    <item.icon className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                    {item.title}
+                  </h3>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{item.description}</p>
+                </article>
               ))}
             </div>
-            <p className="mx-auto mb-6 max-w-2xl text-center text-sm text-muted-foreground">
+            <p className="mb-10 max-w-2xl text-sm leading-relaxed text-muted-foreground">
               WhatsApp Business Platform permite realizar comunicaciones empresariales mediante plantillas previamente aprobadas cuando corresponda. Notificas permite procesar, enviar, registrar y certificar comunicaciones digitales a escala.
             </p>
-            <Card id="cotizacion" className="mx-auto max-w-xl scroll-mt-24">
+            <Card id="cotizacion" className="max-w-xl scroll-mt-24 shadow-none">
               <CardHeader>
                 <CardTitle className="text-xl">Solicitar cotización</CardTitle>
-                <p className="text-sm text-muted-foreground pt-1">
+                <p className="pt-1 text-sm text-muted-foreground">
                   Contanos el volumen de notificaciones, canal y características de la comunicación.
                 </p>
               </CardHeader>
@@ -286,35 +305,32 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="casos-de-uso" className="px-4 py-16 sm:py-20 md:py-28">
-            <div className="container flex justify-center">
-                <div className="max-w-3xl">
-                    <h2 className="text-3xl md:text-4xl font-bold mb-6 text-center md:text-left">CASOS DE USO</h2>
-                    <ul className="space-y-3">
-                        {useCases.map((useCase, index) => (
-                             <li key={index} className="flex items-start">
-                                <CheckCircle className="h-5 w-5 text-green-500 mr-3 mt-1 flex-shrink-0" />
-                                <span>{useCase}</span>
+        <section id="casos-de-uso" className="px-4 py-16 sm:py-20 md:py-24">
+            <div className="container">
+                <div className="max-w-4xl">
+                    <h2 className="mb-8 text-3xl font-bold tracking-tight md:text-4xl">Casos de uso</h2>
+                    <ul className="grid gap-x-10 gap-y-3 sm:grid-cols-2">
+                        {useCases.map((useCase) => (
+                             <li key={useCase} className="flex items-start">
+                                <CheckCircle className="mr-3 mt-0.5 h-5 w-5 flex-shrink-0 text-primary" aria-hidden />
+                                <span className="leading-relaxed">{useCase}</span>
                             </li>
                         ))}
                     </ul>
                     
-                    {/* Link de Verificación */}
-                    <div className="mt-12 text-center">
-                        <div className="bg-muted/30 p-6 rounded-lg border border-border">
-                            <h3 className="text-xl font-semibold text-foreground mb-3 flex items-center justify-center gap-2">
-                                <Search className="h-5 w-5 text-primary" aria-hidden />
-                                ¿Necesitas verificar un documento?
-                            </h3>
-                            <p className="text-muted-foreground mb-4">
-                                Verifica la autenticidad de cualquier constancia PDF emitida por Notificas.com
-                            </p>
-                            <Button asChild size="lg">
-                                <Link href="/verify">
-                                    Verificar Documento
-                                </Link>
-                            </Button>
-                        </div>
+                    <div className="mt-14 max-w-xl border-t border-border pt-10">
+                        <h3 className="mb-3 flex items-center gap-2 text-xl font-semibold text-foreground">
+                            <Search className="h-5 w-5 text-primary" aria-hidden />
+                            ¿Necesitas verificar un documento?
+                        </h3>
+                        <p className="mb-5 max-w-[60ch] text-muted-foreground">
+                            Verifica la autenticidad de cualquier constancia PDF emitida por Notificas.com
+                        </p>
+                        <Button asChild size="lg">
+                            <Link href="/verify">
+                                Verificar Documento
+                            </Link>
+                        </Button>
                     </div>
                 </div>
             </div>
@@ -324,24 +340,24 @@ export default function LandingPage() {
       </main>
 
       <footer className="bg-foreground text-background">
-        <div className="container grid grid-cols-1 gap-8 px-4 py-10 md:grid-cols-3 md:py-12 md:px-6">
+        <div className="container grid grid-cols-1 gap-10 px-4 py-12 md:grid-cols-3 md:gap-8 md:px-6 md:py-14">
             <div>
-                <h3 className="font-bold text-lg mb-4">Notificas</h3>
+                <h3 className="mb-4 text-lg font-bold">Notificas</h3>
                 <p className="text-sm text-background/80">Colon 12, primer piso - San Nicolás de los Arroyos</p>
                 <p className="text-sm text-background/80">Buenos Aires - Argentina</p>
-                <div className="mt-4 space-y-2 text-sm">
-                    <Link href="/consumidores" className="block hover:underline text-background/80 hover:text-background">Defensa del Consumidor</Link>
-                    <Link href="/terminos" className="block hover:underline text-background/80 hover:text-background">Términos y Condiciones</Link>
-                    <Link href="/privacidad" className="block hover:underline text-background/80 hover:text-background">Política de Privacidad</Link>
-                    <Link href="/arrepentimiento" className="block hover:underline text-background/80 hover:text-background">Derecho de Arrepentimiento</Link>
+                <div className="mt-5 space-y-2 text-sm">
+                    <Link href="/consumidores" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Defensa del Consumidor</Link>
+                    <Link href="/terminos" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Términos y Condiciones</Link>
+                    <Link href="/privacidad" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Política de Privacidad</Link>
+                    <Link href="/arrepentimiento" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Derecho de Arrepentimiento</Link>
                 </div>
             </div>
             <div id="contacto" className="scroll-mt-24">
-                <h3 className="font-bold text-lg mb-4">Contáctenos</h3>
+                <h3 className="mb-4 text-lg font-bold">Contáctenos</h3>
                 <FooterContactForm />
             </div>
              <div>
-                <h3 className="font-bold text-lg mb-4">Contacto Directo</h3>
+                <h3 className="mb-4 text-lg font-bold">Contacto Directo</h3>
                 <div className="space-y-2 text-sm">
                     <p className="flex items-center gap-2 text-background/80">
                         <Mail className="h-4 w-4" aria-hidden />
@@ -355,12 +371,12 @@ export default function LandingPage() {
             </div>
         </div>
         <div className="border-t border-background/20">
-            <div className="container px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-center text-sm text-background/80 space-y-2 md:px-6">
+            <div className="container space-y-2 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-center text-sm text-background/80 md:px-6">
                 <p>Copyright © 2026 | Notificas SRL</p>
                 <p>
                   <Link
                     href="/login?next=/empresa"
-                    className="text-[10px] leading-tight text-background/45 hover:text-background/65 transition-colors"
+                    className="text-xs leading-tight text-background/55 transition-colors hover:text-background/80"
                   >
                     Acceso empresas
                   </Link>

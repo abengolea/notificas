@@ -82,6 +82,11 @@
     @apply bg-background text-foreground;
   }
 
+  ::selection {
+    background: hsl(var(--primary) / 0.22);
+    color: hsl(var(--foreground));
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -90,6 +95,80 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
     }
+  }
+}
+
+@layer components {
+  .landing-page {
+    background-color: hsl(var(--background));
+    background-image: linear-gradient(
+      180deg,
+      hsl(208 32% 94%) 0%,
+      hsl(var(--background)) 28rem,
+      hsl(var(--background)) 100%
+    );
+  }
+
+  .dark .landing-page {
+    background-image: linear-gradient(
+      180deg,
+      hsl(215 30% 13%) 0%,
+      hsl(var(--background)) 28rem,
+      hsl(var(--background)) 100%
+    );
+  }
+
+  .landing-hero {
+    color: hsl(210 20% 98%);
+    background-color: hsl(208 38% 20%);
+    background-image: linear-gradient(
+      158deg,
+      hsl(208 42% 26%) 0%,
+      hsl(208 38% 20%) 48%,
+      hsl(196 28% 17%) 100%
+    );
+  }
+
+  .landing-hero-muted {
+    color: hsl(186 18% 86%);
+  }
+
+  .landing-band {
+    background-image: linear-gradient(
+      135deg,
+      hsl(208 38% 29% / 0.09) 0%,
+      hsl(186 50% 37% / 0.07) 100%
+    );
+  }
+
+  .dark .landing-band {
+    background-image: linear-gradient(
+      135deg,
+      hsl(208 38% 40% / 0.2) 0%,
+      hsl(186 40% 28% / 0.14) 100%
+    );
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .landing-hero-copy,
+  .landing-hero-proof {
+    animation: landing-rise 720ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .landing-hero-proof {
+    animation-delay: 70ms;
+  }
+}
+
+@keyframes landing-rise {
+  from {
+    opacity: 0.78;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

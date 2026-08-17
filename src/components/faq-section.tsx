@@ -142,24 +142,24 @@ function FaqAnswer({ item }: { item: FaqItem }) {
 
 export function FaqSection() {
   return (
-    <section id="faq" className="py-16 md:py-28 bg-muted/20">
-      <div className="container px-4 sm:px-6">
-        <div className="mx-auto max-w-3xl text-center mb-8 md:mb-10">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 md:mb-3">
+    <section id="faq" className="px-4 py-16 sm:py-20 md:py-24">
+      <div className="container">
+        <div className="mb-8 max-w-3xl md:mb-10">
+          <h2 className="mb-3 text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl">
             Preguntas frecuentes
           </h2>
-          <p className="text-muted-foreground text-base md:text-lg max-w-2xl mx-auto">
+          <p className="max-w-[65ch] text-base leading-relaxed text-muted-foreground md:text-lg">
             Todo lo que necesitás saber sobre el servicio, la certificación en blockchain y cómo usar la plataforma.
           </p>
         </div>
         <Accordion
           type="single"
           collapsible
-          className="mx-auto max-w-3xl w-full rounded-lg border bg-background px-3 sm:px-5 md:px-6"
+          className="w-full max-w-3xl"
         >
           {faqItems.map((item, index) => (
             <AccordionItem key={item.question} value={`faq-${index}`}>
-              <AccordionTrigger className="text-left text-sm sm:text-base hover:no-underline data-[state=open]:underline py-4">
+              <AccordionTrigger className="py-4 text-left text-sm hover:no-underline data-[state=open]:underline sm:text-base">
                 {item.question}
               </AccordionTrigger>
               <AccordionContent className="pt-0">
