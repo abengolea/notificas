@@ -30,6 +30,8 @@ type SearchHit = {
   recipientDni?: string;
   recipientTelefono?: string;
 };
+
+type VerifyResult = {
   summary: string;
   intact: boolean;
   recipientNombre?: string;
