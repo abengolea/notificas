@@ -31,6 +31,7 @@ export type ActaTandaInput = {
   sealedAt?: string;
   generatedAt: string;
   leaves: ActaLeafRow[];
+  verifyRef?: string;
 };
 
 const EVENT_LABEL: Record<string, string> = {
@@ -232,6 +233,9 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
         14,
         287
       );
+      if (input.verifyRef) {
+        doc.text(`verify-ref: ${input.verifyRef}`, 14, 291);
+      }
       if (input.txHash) {
         doc.text(input.txHash.slice(0, 18) + '…', 150, 287);
       }
@@ -256,6 +260,226 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
     182
   );
   doc.text(disclaimer, 14, footY);
+
+  return doc.output('arraybuffer') as ArrayBuffer;
+}
+
+export type ActaDestinatarioInput = {
+  orgNombre: string;
+  orgCuit?: string;
+  campaignId: string;
+  campaignNombre: string;
+  campaignAsunto?: string;
+  generatedAt: string;
+  recipientNombre: string;
+  recipientEmail: string;
+  recipientTelefono?: string;
+  recipientDni?: string;
+  recipientLegajo?: string;
+  intact: boolean;
+  summary: string;
+  contentHash: string;
+  storedHash: string | null;
+  contentMatch: boolean;
+  send: {
+    batchId: string | null;
+    txHash: string | null;
+    merkleRoot: string | null;
+    leafHash: string | null;
+    merkleValid: boolean | null;
+    onChainMatch: boolean | null;
+  };
+  events: Array<{
+    type: string;
+    present: boolean;
+    occurredAt?: string;
+    merkleValid?: boolean | null;
+    txHash?: string;
+  }>;
+  verifyRef?: string;
+};
+
+function checkLabel(ok: boolean | null | undefined): string {
+  if (ok === true) return 'Sí';
+  if (ok === false) return 'No';
+  return 'Pendiente';
+}
+
+export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Promise<ArrayBuffer> {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const explorerUrl = input.send.txHash ? `https://polygonscan.com/tx/${input.send.txHash}` : '';
+  const email = input.recipientEmail && !isSyntheticEmail(input.recipientEmail) ? input.recipientEmail : '';
+
+  doc.setFillColor(13, 148, 136);
+  doc.rect(0, 0, 210, 28, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.text('ACTA INDIVIDUAL DE DESTINATARIO', 14, 13);
+  doc.setFontSize(9);
+  doc.text('Notificas — Constancia puntual para una persona de la campaña', 14, 20);
+  doc.setTextColor(15, 23, 42);
+
+  if (explorerUrl) {
+    try {
+      const qr = await QRCode.toDataURL(explorerUrl, { margin: 0, width: 160 });
+      doc.addImage(qr, 'PNG', 176, 32, 20, 20);
+      doc.setFontSize(6);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Ver TX', 181, 55);
+      doc.setTextColor(15, 23, 42);
+    } catch {
+      /* QR opcional */
+    }
+  }
+
+  let y = 36;
+  doc.setFontSize(10);
+  doc.text(`Organización: ${input.orgNombre}${input.orgCuit ? `  ·  CUIT ${input.orgCuit}` : ''}`, 14, y);
+  y += 6;
+  doc.text(`Campaña: ${input.campaignNombre}`, 14, y);
+  y += 5;
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`ID campaña: ${input.campaignId}`, 14, y);
+  if (input.campaignAsunto) {
+    y += 5;
+    const asunto = doc.splitTextToSize(`Asunto: ${input.campaignAsunto}`, 155);
+    doc.text(asunto, 14, y);
+    y += asunto.length * 4;
+  }
+  y += 6;
+
+  doc.setFillColor(248, 250, 252);
+  doc.rect(14, y, 182, 28, 'F');
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(12);
+  doc.text(input.recipientNombre || 'Sin nombre', 16, y + 8);
+  doc.setFontSize(8);
+  doc.setTextColor(51, 65, 85);
+  const idLine = [
+    input.recipientDni ? `DNI ${input.recipientDni}` : '',
+    input.recipientLegajo ? `Legajo ${input.recipientLegajo}` : '',
+    email,
+    input.recipientTelefono,
+  ]
+    .filter(Boolean)
+    .join('  ·  ');
+  doc.text(idLine || '—', 16, y + 15);
+  doc.setFontSize(8);
+  doc.setTextColor(input.intact ? 4 : 146, input.intact ? 120 : 64, input.intact ? 87 : 14);
+  doc.text(input.intact ? 'Estado: íntegro — coincide con el lacre en Polygon' : `Estado: ${input.summary}`, 16, y + 23);
+  y += 34;
+
+  if (!input.send.txHash) {
+    doc.setFillColor(254, 243, 199);
+    doc.rect(14, y - 4, 182, 10, 'F');
+    doc.setTextColor(146, 64, 14);
+    doc.setFontSize(8);
+    doc.text(
+      'Esta persona todavía no está en una tanda cerrada. El acta es informativa; no constituye prueba on-chain.',
+      16,
+      y + 2
+    );
+    y += 12;
+    doc.setTextColor(15, 23, 42);
+  }
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(9);
+  doc.text('Comprobaciones', 14, y);
+  y += 6;
+  autoTable(doc, {
+    startY: y,
+    theme: 'plain',
+    styles: { fontSize: 8, cellPadding: 1.4, textColor: [15, 23, 42] },
+    columnStyles: { 0: { cellWidth: 130 }, 1: { cellWidth: 50, fontStyle: 'bold' } },
+    body: [
+      ['El texto actual coincide con la huella guardada', checkLabel(input.contentMatch)],
+      ['La foja entra en el árbol de su tanda', checkLabel(input.send.merkleValid)],
+      ['La raíz coincide con la transacción en Polygon', checkLabel(input.send.onChainMatch)],
+    ],
+  });
+  y = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y;
+  y += 8;
+
+  doc.setFillColor(248, 250, 252);
+  doc.rect(14, y, 182, 42, 'F');
+  doc.setFontSize(8);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Huella de contenido (SHA-256)', 16, y + 5);
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(7);
+  doc.text(doc.splitTextToSize(input.contentHash || '—', 178), 16, y + 10);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text('Raíz Merkle / transacción Polygon', 16, y + 18);
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(7);
+  doc.text(doc.splitTextToSize(input.send.merkleRoot || '—', 178), 16, y + 23);
+  doc.text(doc.splitTextToSize(input.send.txHash || '—', 178), 16, y + 28);
+  if (explorerUrl) {
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(13, 148, 136);
+    doc.setFontSize(7);
+    doc.text(explorerUrl, 16, y + 35);
+  }
+  y += 48;
+  doc.setFont('helvetica', 'normal');
+
+  const eventRows = input.events.map((ev) => [
+    EVENT_LABEL[ev.type] || ev.type,
+    ev.present ? formatTs(ev.occurredAt) : 'Pendiente',
+    ev.present ? checkLabel(ev.merkleValid ?? true) : '—',
+    ev.txHash || '—',
+  ]);
+  if (eventRows.length > 0) {
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(9);
+    doc.text('Hechos posteriores', 14, y);
+    y += 4;
+    autoTable(doc, {
+      startY: y,
+      head: [['Hecho', 'Fecha', 'En el árbol', 'TX']],
+      body: eventRows,
+      styles: { fontSize: 7, font: 'helvetica', cellPadding: 1.4, overflow: 'ellipsize' },
+      headStyles: { fillColor: [13, 148, 136], fontSize: 7, textColor: 255 },
+      columnStyles: { 3: { cellWidth: 52, font: 'courier', fontSize: 6 } },
+    });
+    y = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y;
+    y += 8;
+  }
+
+  if (y > 250) {
+    doc.addPage();
+    y = 20;
+  }
+  doc.setFontSize(7);
+  doc.setTextColor(51, 65, 85);
+  const steps = [
+    'Cómo verificar: abrir la transacción en polygonscan.com y decodificar Input Data (UTF-8).',
+    'El payload de envío es CAMPAIGN_SEND|v1|{campaignId}|{batchId}|{merkleRoot}|{leafCount}|{timestamp}.',
+    'Recalcular SHA-256 del texto personalizado de esta persona: debe coincidir con la huella de contenido.',
+    'Si se altera esta foja, la raíz Merkle deja de coincidir con la registrada on-chain.',
+  ];
+  for (const line of steps) {
+    const wrapped = doc.splitTextToSize(line, 182);
+    doc.text(wrapped, 14, y);
+    y += wrapped.length * 3.5 + 1;
+  }
+  y += 4;
+  const disclaimer = doc.splitTextToSize(
+    'Este documento es una constancia técnica oponible de un destinatario puntual. ' +
+      'La inmutabilidad la aporta la transacción citada, no este PDF. ' +
+      `Acta generada: ${input.generatedAt}.`,
+    182
+  );
+  doc.setTextColor(71, 85, 105);
+  doc.text(disclaimer, 14, y);
+  if (input.verifyRef) {
+    y += disclaimer.length * 3.4 + 4;
+    doc.setFontSize(6);
+    doc.text(`verify-ref: ${input.verifyRef}`, 14, Math.min(y, 288));
+  }
 
   return doc.output('arraybuffer') as ArrayBuffer;
 }

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
+import { campaignMessageMatchesSearch } from '@/lib/search-text';
+import { recordIssuedDocument, sha256Hex } from '@/lib/issued-documents';
+import { campaignVerifyRef } from '@/lib/verify-hints';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -22,7 +25,7 @@ export async function GET(request: NextRequest) {
     const campaignId = sp.get('campaignId');
     const orgId = sp.get('orgId');
     const estadoFilter = (sp.get('estado') || 'todos') as EstadoFilter;
-    const nombreFilter = (sp.get('nombre') || '').trim().toLowerCase();
+    const nombreFilter = (sp.get('nombre') || '').trim();
     const limitParam = parseInt(sp.get('limit') || String(MAX_ROWS), 10);
     const limit = Math.min(Math.max(1, limitParam), MAX_ROWS);
 
@@ -43,8 +46,14 @@ export async function GET(request: NextRequest) {
     const orgSnap = await db.collection('organizations').doc(orgId).get();
     const orgNombre = orgSnap.exists ? String(orgSnap.data()!.nombre || '') : '';
 
-    // Intentar obtener campaign_messages; si no hay, usar recipientData como fallback.
-    const msgSnap = await db.collection('campaign_messages').where('campaignId', '==', campaignId).get();
+    let q: FirebaseFirestore.Query = db
+      .collection('campaign_messages')
+      .where('campaignId', '==', campaignId);
+    if (estadoFilter !== 'todos') {
+      q = q.where('estado', '==', estadoFilter);
+    }
+    q = q.orderBy('recipientNombre').limit(limit);
+    const msgSnap = await q.get();
 
     type Row = {
       recipientNombre: string;
@@ -111,10 +120,7 @@ export async function GET(request: NextRequest) {
 
     const filtered = allRows.filter((r) => {
       if (estadoFilter !== 'todos' && r.estado !== estadoFilter) return false;
-      if (nombreFilter) {
-        const haystack = `${r.recipientNombre} ${r.recipientEmail}`.toLowerCase();
-        if (!haystack.includes(nombreFilter)) return false;
-      }
+      if (nombreFilter && !campaignMessageMatchesSearch(r, nombreFilter)) return false;
       return true;
     });
 
@@ -180,10 +186,11 @@ export async function GET(request: NextRequest) {
     if (nombreFilter) filterParts.push(`Nombre: "${nombreFilter}"`);
     const filterLabel = filterParts.length ? filterParts.join(' · ') : 'Sin filtros';
     doc.text(`Filtro: ${filterLabel} — ${totalFiltrados} registros${totalFiltrados > limit ? ` (mostrando ${limit} de ${totalFiltrados})` : ''}`, 14, 42);
-    doc.text(`Generado: ${new Date().toLocaleString('es-AR')}`, 14, 48);
+    doc.text(`ID campaña: ${campaignId}`, 14, 48);
+    doc.text(`Generado: ${new Date().toLocaleString('es-AR')}`, 14, 54);
 
     // Contenido del mensaje enviado
-    let msgY = 54;
+    let msgY = 60;
     if (showWa && campaign.waTemplateName) {
       doc.setFontSize(9);
       doc.setTextColor(80, 80, 80);
@@ -233,8 +240,23 @@ export async function GET(request: NextRequest) {
       finalY + 10
     );
 
+    const verifyRef = campaignVerifyRef('campaign_report', campaignId);
+    doc.setFontSize(6);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`verify-ref: ${verifyRef}`, 14, finalY + 16);
+
     const out = doc.output('arraybuffer') as ArrayBuffer;
-    const filename = `reporte-${estadoFilter !== 'todos' ? estadoFilter + '-' : ''}${campaignId.slice(0, 8)}.pdf`;
+    const hash = sha256Hex(out);
+    const filename = `reporte-${estadoFilter !== 'todos' ? estadoFilter + '-' : ''}${campaignId}.pdf`;
+    await recordIssuedDocument(db, {
+      hash,
+      kind: 'campaign_report',
+      campaignId,
+      orgId,
+      orgNombre,
+      campaignNombre: String(campaign.nombre || ''),
+      fileName: filename,
+    });
     return new NextResponse(out, {
       status: 200,
       headers: {

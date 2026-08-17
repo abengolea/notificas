@@ -150,6 +150,7 @@ function useMessages(
   const [messages, setMessages]   = useState<CampaignMessage[]>([]);
   const [loading, setLoading]     = useState(true);
   const [hasMore, setHasMore]     = useState(false);
+  const [filteredTotal, setFilteredTotal] = useState<number | null>(null);
   // Stack de cursores: posición 0 = inicio, cada push = nueva página
   const cursorStack               = useRef<string[]>(['']);
   const [stackLen, setStackLen]   = useState(1);
@@ -165,9 +166,15 @@ function useMessages(
       if (cursor)           params.set('cursor', cursor);
       const res = await campaignRequest(mode, `/api/campaigns/messages?${params}`);
       if (!res.ok) return;
-      const data = await res.json() as { messages: CampaignMessage[]; nextCursor: string | null; hasMore: boolean };
+      const data = await res.json() as {
+        messages: CampaignMessage[];
+        nextCursor: string | null;
+        hasMore: boolean;
+        filteredTotal?: number | null;
+      };
       setMessages(data.messages);
       setHasMore(data.hasMore);
+      setFilteredTotal(typeof data.filteredTotal === "number" ? data.filteredTotal : null);
       // Guardar el nextCursor en la posición siguiente del stack (si no existe ya)
       if (data.nextCursor && cursorStack.current.length === stackLen) {
         cursorStack.current.push(data.nextCursor);
@@ -199,7 +206,7 @@ function useMessages(
     setStackLen((n) => n - 1);
   }
 
-  return { messages, loading, hasMore, currentPage, nextPage, prevPage };
+  return { messages, loading, hasMore, currentPage, nextPage, prevPage, filteredTotal };
 }
 
 export function CampaignDashboard({
@@ -249,7 +256,7 @@ export function CampaignDashboard({
     }
   }, [stats]);
 
-  const { messages, loading: msgLoading, hasMore, currentPage, nextPage, prevPage } =
+  const { messages, loading: msgLoading, hasMore, currentPage, nextPage, prevPage, filteredTotal } =
     useMessages(campaignId, filter, debouncedQ, refreshKey, mode);
 
   // Polling cada 15s solo mientras la campaña está enviando activamente
@@ -296,7 +303,7 @@ export function CampaignDashboard({
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       const suffix = [filter !== "all" ? filter : "", q.trim() ? "filtrado" : ""].filter(Boolean).join("-");
-      a.download = `reporte-${suffix ? suffix + "-" : ""}${campaignId.slice(0, 8)}.pdf`;
+      a.download = `reporte-${suffix ? suffix + "-" : ""}${campaignId}.pdf`;
       a.click();
       URL.revokeObjectURL(a.href);
     } finally {
@@ -781,6 +788,9 @@ export function CampaignDashboard({
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <span>
               Página {currentPage + 1}
+              {filteredTotal != null
+                ? ` · ${filteredTotal.toLocaleString("es-AR")} en este filtro`
+                : ""}
               {stats ? ` · ${stats.total.toLocaleString("es-AR")} destinatarios en total` : ""}
             </span>
             <div className="flex gap-2">

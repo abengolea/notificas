@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, Download, ExternalLink, Loader2, Search, ShieldCheck, XCircle } from "lucide-react";
+import { CheckCircle2, Circle, Download, ExternalLink, Loader2, Printer, Search, ShieldCheck, XCircle } from "lucide-react";
 
 type Batch = {
   id: string;
@@ -32,10 +32,12 @@ type SearchHit = {
 };
 
 type VerifyResult = {
+  messageId?: string;
   summary: string;
   intact: boolean;
   recipientNombre?: string;
   recipientEmail?: string;
+  recipientTelefono?: string;
   content: { currentHash: string; storedHash: string | null; match: boolean };
   send: {
     batchId: string | null;
@@ -108,19 +110,23 @@ function sendBatchHint(b: Batch): string {
 function YesNo({ ok, label }: { ok: boolean | null | undefined; label: string }) {
   if (ok === true) {
     return (
-      <p className="flex items-center gap-2 text-sm text-emerald-700">
-        <CheckCircle2 className="h-4 w-4" /> {label}
+      <p className="flex items-center gap-2 text-sm text-foreground">
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" /> {label}
       </p>
     );
   }
   if (ok === false) {
     return (
       <p className="flex items-center gap-2 text-sm text-destructive">
-        <XCircle className="h-4 w-4" /> {label}
+        <XCircle className="h-4 w-4 shrink-0" /> {label}
       </p>
     );
   }
-  return <p className="text-sm text-muted-foreground">{label} — pendiente</p>;
+  return (
+    <p className="flex items-center gap-2 text-sm text-muted-foreground">
+      <Circle className="h-4 w-4 shrink-0" /> {label} — pendiente
+    </p>
+  );
 }
 
 export function CampaignIntegrityPanel({
@@ -151,6 +157,7 @@ export function CampaignIntegrityPanel({
   const [searching, setSearching] = useState(false);
   const [noHits, setNoHits] = useState(false);
   const [result, setResult] = useState<VerifyResult | null>(null);
+  const [verifiedMessageId, setVerifiedMessageId] = useState<string | null>(null);
   const searchBoxRef = useRef<HTMLDivElement>(null);
   const skipSearchRef = useRef(false);
 
@@ -247,7 +254,7 @@ export function CampaignIntegrityPanel({
       const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `acta-tanda-${batchId}.pdf`;
+      a.download = `acta-tanda-${campaignId}-${batchId}.pdf`;
       a.click();
       URL.revokeObjectURL(a.href);
     } catch (e: unknown) {
@@ -261,10 +268,37 @@ export function CampaignIntegrityPanel({
     }
   }
 
+  async function descargarActaDestinatario(messageId: string) {
+    setBusy(true);
+    try {
+      const p = new URLSearchParams({ campaignId, orgId, messageId });
+      const res = await authFetch(`/api/campaigns/integrity/acta?${p}`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error || "No se pudo generar el acta");
+      }
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `acta-destinatario-${messageId}.pdf`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e: unknown) {
+      toast({
+        title: "Acta del destinatario",
+        description: e instanceof Error ? e.message : "Falló la descarga",
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const runVerify = useCallback(async (messageId: string) => {
     if (!messageId) return;
     setBusy(true);
     setResult(null);
+    setVerifiedMessageId(null);
     try {
       const res = await authFetch("/api/campaigns/integrity/verify", {
         method: "POST",
@@ -274,6 +308,7 @@ export function CampaignIntegrityPanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "No se pudo verificar");
       setResult(data);
+      setVerifiedMessageId(typeof data.messageId === "string" ? data.messageId : messageId);
     } catch (e: unknown) {
       toast({
         title: "Verificación",
@@ -555,23 +590,57 @@ export function CampaignIntegrityPanel({
               </div>
 
               {result && (
-                <div className={`rounded-md border p-4 space-y-2 ${result.intact ? "border-emerald-300 bg-emerald-50/50" : "bg-muted/30"}`}>
-                  <p className="font-medium">{result.recipientNombre || result.recipientEmail}</p>
-                  <p className="text-sm">{result.summary}</p>
-                  <YesNo ok={result.content.match} label="El texto actual coincide con la huella guardada" />
-                  <YesNo ok={result.send.merkleValid} label="La foja entra en el árbol de su tanda" />
-                  <YesNo ok={result.send.onChainMatch} label="La raíz coincide con la transacción en Polygon" />
-                  {result.send.txHash && (
-                    <a
-                      href={`https://polygonscan.com/tx/${result.send.txHash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-primary"
-                    >
-                      Acta de envío {shortHash(result.send.txHash)} <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                  <div className="pt-2 space-y-1">
+                <div className="rounded-lg border bg-muted p-4 space-y-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-foreground">
+                          {result.recipientNombre || result.recipientEmail}
+                        </p>
+                        {result.intact ? (
+                          <Badge className="bg-emerald-600 hover:bg-emerald-600">Íntegro</Badge>
+                        ) : (
+                          <Badge variant="secondary">Revisar</Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-foreground/80">{result.summary}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 shrink-0">
+                      <Button
+                        size="sm"
+                        disabled={busy || !verifiedMessageId}
+                        onClick={() =>
+                          verifiedMessageId &&
+                          void descargarActaDestinatario(verifiedMessageId)
+                        }
+                        className="gap-1.5"
+                      >
+                        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+                        Imprimir acta
+                      </Button>
+                      {result.send.txHash && (
+                        <Button size="sm" variant="outline" asChild>
+                          <a
+                            href={`https://polygonscan.com/tx/${result.send.txHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="gap-1.5"
+                          >
+                            Ver en Polygon <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground">Comprobaciones</p>
+                    <YesNo ok={result.content.match} label="El texto actual coincide con la huella guardada" />
+                    <YesNo ok={result.send.merkleValid} label="La foja entra en el árbol de su tanda" />
+                    <YesNo ok={result.send.onChainMatch} label="La raíz coincide con la transacción en Polygon" />
+                  </div>
+
+                  <div className="space-y-1.5">
                     <p className="text-xs font-medium text-muted-foreground">Hechos posteriores</p>
                     {result.events.map((ev) => (
                       <YesNo
@@ -587,9 +656,13 @@ export function CampaignIntegrityPanel({
                       />
                     ))}
                   </div>
-                  <p className="text-xs text-muted-foreground break-all">
-                    Hash actual: {result.content.currentHash}
-                  </p>
+
+                  <div className="rounded-md bg-background px-3 py-2">
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Huella de contenido</p>
+                    <p className="font-mono text-xs text-foreground break-all leading-relaxed">
+                      {result.content.currentHash}
+                    </p>
+                  </div>
                 </div>
               )}
             </div>

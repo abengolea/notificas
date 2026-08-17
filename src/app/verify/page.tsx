@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Upload, Search, CheckCircle, XCircle, FileText, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { generatePDFHash } from "@/lib/storage";
+import { hashArrayBuffer } from "@/lib/storage";
+import { extractVerifyHints } from "@/lib/verify-hints";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 interface VerificationResult {
@@ -19,6 +20,10 @@ interface VerificationResult {
   blockchainVerified?: boolean;
   fileName?: string;
   attachmentUrl?: string;
+  isCampaignDocument?: boolean;
+  kindLabel?: string;
+  campaignNombre?: string;
+  orgNombre?: string;
 }
 
 export default function VerifyPage() {
@@ -105,7 +110,10 @@ export default function VerifyPage() {
 
     setIsVerifying(true);
     try {
-      const hash = await generatePDFHash(selectedFile);
+      const buffer = await selectedFile.arrayBuffer();
+      const hash = await hashArrayBuffer(buffer);
+      const hints = extractVerifyHints(buffer, selectedFile.name);
+      const hintText = new TextDecoder("latin1").decode(buffer);
       const response = await fetch("/api/verify", {
         method: "POST",
         headers: {
@@ -115,6 +123,12 @@ export default function VerifyPage() {
           hash,
           fileName: selectedFile.name,
           fileSize: selectedFile.size,
+          hintText: hintText.slice(0, 200_000),
+          campaignId: hints.campaignId,
+          campaignNombre: hints.campaignNombre,
+          batchId: hints.batchId,
+          kind: hints.kind,
+          messageId: hints.messageId,
         }),
       });
 
@@ -132,11 +146,17 @@ export default function VerifyPage() {
           blockchainVerified: data?.data?.blockchainVerified ?? true,
           fileName: data?.data?.fileName || selectedFile.name,
           attachmentUrl: data?.data?.attachmentUrl,
+          isCampaignDocument: data?.data?.isCampaignDocument === true,
+          kindLabel: data?.data?.kindLabel,
+          campaignNombre: data?.data?.campaignNombre,
+          orgNombre: data?.data?.orgNombre,
         };
         setResult(verification);
         toast({
           title: "Documento válido",
-          description: "El PDF coincide con un registro certificado.",
+          description: data?.data?.isCampaignDocument
+            ? "El PDF de campaña coincide con un registro de Notificas."
+            : "El PDF coincide con un registro certificado.",
         });
       } else if (response.status === 404) {
         // Intentar verificar por ID extraído del nombre del archivo (certificado-lectura-{id}.pdf)
@@ -424,37 +444,64 @@ export default function VerifyPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         {result.fileName && (
-                          <div className="flex justify-between">
-                            <span className="text-sm text-gray-600">Archivo:</span>
+                          <div className="flex justify-between gap-3">
+                            <span className="text-sm text-muted-foreground">Archivo:</span>
                             <span className="text-sm font-medium truncate max-w-[180px]" title={result.fileName}>
                               {result.fileName}
                             </span>
                           </div>
                         )}
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">ID del Mensaje:</span>
-                          <span className="text-sm font-mono bg-gray-100 px-2 py-1 rounded">
-                            {result.messageId}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Remitente:</span>
-                          <span className="text-sm font-medium">{result.senderName}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Destinatario:</span>
-                          <span className="text-sm font-medium">{result.recipientEmail}</span>
-                        </div>
+                        {result.isCampaignDocument ? (
+                          <>
+                            <div className="flex justify-between gap-3">
+                              <span className="text-sm text-muted-foreground">Tipo:</span>
+                              <span className="text-sm font-medium">{result.kindLabel || "Documento de campaña"}</span>
+                            </div>
+                            <div className="flex justify-between gap-3">
+                              <span className="text-sm text-muted-foreground">Organización:</span>
+                              <span className="text-sm font-medium">{result.orgNombre || result.senderName || "—"}</span>
+                            </div>
+                            <div className="flex justify-between gap-3">
+                              <span className="text-sm text-muted-foreground">Campaña:</span>
+                              <span className="text-sm font-medium">{result.campaignNombre || "—"}</span>
+                            </div>
+                            {result.recipientEmail && (
+                              <div className="flex justify-between gap-3">
+                                <span className="text-sm text-muted-foreground">Destinatario:</span>
+                                <span className="text-sm font-medium">{result.recipientEmail}</span>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex justify-between gap-3">
+                              <span className="text-sm text-muted-foreground">ID del Mensaje:</span>
+                              <span className="text-sm font-mono bg-muted px-2 py-1 rounded">
+                                {result.messageId}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-3">
+                              <span className="text-sm text-muted-foreground">Remitente:</span>
+                              <span className="text-sm font-medium">{result.senderName}</span>
+                            </div>
+                            <div className="flex justify-between gap-3">
+                              <span className="text-sm text-muted-foreground">Destinatario:</span>
+                              <span className="text-sm font-medium">{result.recipientEmail}</span>
+                            </div>
+                          </>
+                        )}
                       </div>
                       <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600">Fecha de Envío:</span>
-                          <span className="text-sm font-medium">{result.sentAt}</span>
-                        </div>
+                        {result.sentAt && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-sm text-muted-foreground">Fecha de Envío:</span>
+                            <span className="text-sm font-medium">{result.sentAt}</span>
+                          </div>
+                        )}
                         {result.hash && (
-                          <div className="flex justify-between">
-                            <span className="text-sm text-gray-600">Hash:</span>
-                            <span className="text-sm font-mono bg-gray-100 px-2 py-1 rounded text-xs" title={result.hash}>
+                          <div className="flex justify-between gap-3">
+                            <span className="text-sm text-muted-foreground">Hash:</span>
+                            <span className="text-sm font-mono bg-muted px-2 py-1 rounded text-xs" title={result.hash}>
                               {result.hash.substring(0, 16)}...
                             </span>
                           </div>
@@ -548,6 +595,7 @@ export default function VerifyPage() {
               <h4 className="font-semibold text-foreground mb-2">4. ¿Cómo verificar un documento?</h4>
               <ul className="text-sm text-muted-foreground space-y-1">
                 <li><strong>Certificado de lectura (PDF):</strong> Ingrese el &quot;Identificador de mensaje&quot; que figura en el PDF.</li>
+                <li><strong>Reporte o acta de campaña:</strong> Suba el PDF descargado desde la campaña. El sistema compara su hash y la referencia impresa en el documento.</li>
                 <li><strong>Constancia PDF de Notificas:</strong> Suba el archivo PDF de constancia; el sistema compara su hash con el registrado en Polygon.</li>
               </ul>
             </div>

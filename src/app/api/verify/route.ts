@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldPath, type QueryDocumentSnapshot } from "firebase-admin/firestore";
-import { adminDb } from "@/lib/firebase-admin";
+import { adminDb, getAdminDb } from "@/lib/firebase-admin";
+import { findIssuedDocument, type IssuedDocumentRecord } from "@/lib/issued-documents";
+import { extractVerifyHints, type IssuedDocKind, type VerifyHints } from "@/lib/verify-hints";
 
 const PAGE_SIZE = 200;
 
@@ -43,6 +45,99 @@ function toIsoString(value: any): string | undefined {
     }
   }
   return undefined;
+}
+
+function campaignKindLabel(kind?: IssuedDocKind): string {
+  switch (kind) {
+    case "campaign_acta":
+      return "Acta de tanda de campaña";
+    case "campaign_acta_recipient":
+      return "Acta individual de destinatario";
+    case "campaign_report":
+      return "Reporte legal de campaña";
+    default:
+      return "Documento de campaña";
+  }
+}
+
+function buildCampaignPayload(
+  record: IssuedDocumentRecord,
+  hash: string | null,
+  extras?: { blockchainVerified?: boolean }
+) {
+  return {
+    docId: record.campaignId || record.messageId || record.hash,
+    messageId: record.messageId || record.campaignId,
+    kind: record.kind,
+    kindLabel: campaignKindLabel(record.kind),
+    senderName: record.orgNombre,
+    recipientEmail: record.recipientNombre,
+    campaignNombre: record.campaignNombre,
+    orgNombre: record.orgNombre,
+    batchId: record.batchId,
+    hash: hash ?? record.hash,
+    fileName: record.fileName,
+    blockchainVerified: extras?.blockchainVerified ?? Boolean(record.txHash),
+    isCertificate: true,
+    isCampaignDocument: true,
+  };
+}
+
+async function resolveCampaignFromHints(hints: VerifyHints): Promise<IssuedDocumentRecord | null> {
+  if (!hints.campaignId && !hints.messageId && !hints.batchId && !hints.campaignNombre) return null;
+  const db = getAdminDb();
+
+  if (hints.messageId && hints.kind === "campaign_acta_recipient") {
+    const msg = await db.collection("campaign_messages").doc(hints.messageId).get();
+    if (!msg.exists) return null;
+    const data = msg.data()!;
+    const campaignId = String(data.campaignId || hints.campaignId || "");
+    const camp = campaignId ? await db.collection("campaigns").doc(campaignId).get() : null;
+    const orgId = camp?.exists ? String(camp.data()?.orgId || "") : "";
+    const org = orgId ? await db.collection("organizations").doc(orgId).get() : null;
+    return {
+      hash: "",
+      kind: "campaign_acta_recipient",
+      campaignId,
+      orgId,
+      orgNombre: org?.exists ? String(org.data()?.nombre || "") : "",
+      campaignNombre: camp?.exists ? String(camp.data()?.nombre || "") : "",
+      messageId: hints.messageId,
+      recipientNombre: String(data.recipientNombre || ""),
+      txHash: (data.integrity?.send as { txHash?: string } | undefined)?.txHash || null,
+    };
+  }
+
+  if (!hints.campaignId && hints.campaignNombre) {
+    const byName = await db.collection("campaigns").where("nombre", "==", hints.campaignNombre).limit(2).get();
+    if (byName.size === 1) hints.campaignId = byName.docs[0].id;
+  }
+
+  if (hints.campaignId) {
+    const camp = await db.collection("campaigns").doc(hints.campaignId).get();
+    if (!camp.exists) return null;
+    const campaign = camp.data()!;
+    const orgId = String(campaign.orgId || "");
+    const org = orgId ? await db.collection("organizations").doc(orgId).get() : null;
+    let txHash: string | null = null;
+    if (hints.batchId) {
+      const batch = await camp.ref.collection("integrity_batches").doc(hints.batchId).get();
+      if (batch.exists) txHash = typeof batch.data()?.txHash === "string" ? batch.data()!.txHash : null;
+    }
+    return {
+      hash: "",
+      kind: hints.kind || (hints.batchId ? "campaign_acta" : "campaign_report"),
+      campaignId: hints.campaignId,
+      orgId,
+      orgNombre: org?.exists ? String(org.data()?.nombre || "") : "",
+      campaignNombre: String(campaign.nombre || ""),
+      batchId: hints.batchId,
+      messageId: hints.messageId,
+      txHash,
+    };
+  }
+
+  return null;
 }
 
 function buildResponsePayload(
@@ -169,26 +264,60 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const hash = typeof body?.hash === "string" ? normalizeHash(body.hash) : null;
     const messageId = typeof body?.messageId === "string" ? body.messageId.trim() : null;
+    const fileName = typeof body?.fileName === "string" ? body.fileName : undefined;
+    const hintText = typeof body?.hintText === "string" ? body.hintText : "";
+    const hints = extractVerifyHints(hintText, fileName);
+    if (typeof body?.campaignId === "string" && body.campaignId.trim()) {
+      hints.campaignId = body.campaignId.trim();
+    }
+    if (typeof body?.batchId === "string" && body.batchId.trim()) {
+      hints.batchId = body.batchId.trim();
+    }
+    if (typeof body?.campaignNombre === "string" && body.campaignNombre.trim()) {
+      hints.campaignNombre = body.campaignNombre.trim();
+    }
+    if (typeof body?.kind === "string" && !hints.kind) {
+      hints.kind = body.kind as IssuedDocKind;
+    }
+    if (messageId && !hints.messageId) hints.messageId = messageId;
 
     // Verificación por messageId (certificado de lectura)
-    if (messageId) {
+    if (messageId && !hash) {
       const docRef = adminDb.collection("mail").doc(messageId);
       const docSnap = await docRef.get();
 
-      if (!docSnap.exists) {
-        return NextResponse.json(
-          { error: "Documento no encontrado", messageId },
-          { status: 404 }
+      if (docSnap.exists) {
+        const payload = buildResponsePayload(
+          docSnap as MailDocument,
+          null,
+          null,
+          { isCertificateVerification: true }
         );
+        return NextResponse.json({ success: true, data: payload });
       }
 
-      const payload = buildResponsePayload(
-        docSnap as MailDocument,
-        null,
-        null,
-        { isCertificateVerification: true }
+      const fromId =
+        (await resolveCampaignFromHints({
+          ...hints,
+          messageId,
+          kind: hints.kind || "campaign_acta_recipient",
+        })) ||
+        (await resolveCampaignFromHints({
+          ...hints,
+          campaignId: messageId,
+          kind: hints.kind || "campaign_report",
+        }));
+      if (fromId) {
+        return NextResponse.json({
+          success: true,
+          data: buildCampaignPayload(fromId, null),
+        });
+      }
+
+      return NextResponse.json(
+        { error: "Documento no encontrado", messageId },
+        { status: 404 }
       );
-      return NextResponse.json({ success: true, data: payload });
     }
 
     // Verificación por hash (adjuntos de correo)
@@ -204,6 +333,22 @@ export async function POST(request: NextRequest) {
         { error: "hash inválido (debe ser SHA-256 en hexadecimal)" },
         { status: 400 }
       );
+    }
+
+    const issued = await findIssuedDocument(getAdminDb(), hash);
+    if (issued) {
+      return NextResponse.json({
+        success: true,
+        data: buildCampaignPayload(issued, hash),
+      });
+    }
+
+    const fromHints = await resolveCampaignFromHints(hints);
+    if (fromHints) {
+      return NextResponse.json({
+        success: true,
+        data: buildCampaignPayload(fromHints, hash),
+      });
     }
 
     const quickMatch =

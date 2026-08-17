@@ -442,12 +442,15 @@ export function generateSafeFileName(originalName: string, messageId: string): s
 /**
  * Genera hash SHA-256 de un archivo PDF
  */
-export async function generatePDFHash(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
+export async function hashArrayBuffer(buffer: ArrayBuffer): Promise<string> {
   const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  return hashHex;
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export async function generatePDFHash(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  return hashArrayBuffer(buffer);
 }
 
 /**

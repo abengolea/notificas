@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { buildActaTandaPdf, type ActaLeafRow } from '@/lib/campaign-integrity-pdf';
+import { verifyCampaignMessage } from '@/lib/campaign-integrity';
+import { buildActaDestinatarioPdf, buildActaTandaPdf, type ActaLeafRow } from '@/lib/campaign-integrity-pdf';
+import { recordIssuedDocument, sha256Hex } from '@/lib/issued-documents';
+import { campaignVerifyRef } from '@/lib/verify-hints';
 
 function formatSealedAt(v: unknown): string | undefined {
   if (!v) return undefined;
@@ -27,14 +30,81 @@ export async function GET(request: NextRequest) {
   const campaignId = request.nextUrl.searchParams.get('campaignId') || '';
   const orgId = request.nextUrl.searchParams.get('orgId') || '';
   const batchId = request.nextUrl.searchParams.get('batchId') || '';
-  if (!campaignId || !orgId || !batchId) {
-    return NextResponse.json({ error: 'campaignId, orgId y batchId requeridos' }, { status: 400 });
+  const messageId = request.nextUrl.searchParams.get('messageId') || '';
+  if (!campaignId || !orgId || (!batchId && !messageId)) {
+    return NextResponse.json({ error: 'campaignId, orgId y batchId o messageId requeridos' }, { status: 400 });
   }
 
   const denied = await requireCampaignOrgAccess(request, orgId, campaignId);
   if (denied) return denied;
 
   const db = getAdminDb();
+  const orgSnap = await db.collection('organizations').doc(orgId).get();
+  const org = orgSnap.data() || {};
+  const campSnap = await db.collection('campaigns').doc(campaignId).get();
+  const campaign = campSnap.data() || {};
+
+  if (messageId) {
+    try {
+    const msgSnap = await db.collection('campaign_messages').doc(messageId).get();
+    if (!msgSnap.exists || String(msgSnap.data()?.campaignId) !== campaignId) {
+      return NextResponse.json({ error: 'Destinatario no encontrado' }, { status: 404 });
+    }
+    const msg = msgSnap.data()!;
+    const verified = await verifyCampaignMessage(campaignId, messageId);
+    const pdf = await buildActaDestinatarioPdf({
+      orgNombre: String(org.nombre || ''),
+      orgCuit: typeof org.cuit === 'string' ? org.cuit : undefined,
+      campaignId,
+      campaignNombre: String(campaign.nombre || ''),
+      campaignAsunto: typeof campaign.asunto === 'string' ? campaign.asunto : undefined,
+      generatedAt: new Date().toLocaleString('es-AR'),
+      recipientNombre: String(verified.recipientNombre || msg.recipientNombre || ''),
+      recipientEmail: String(verified.recipientEmail || msg.recipientEmail || ''),
+      recipientTelefono: String(verified.recipientTelefono || msg.recipientTelefono || ''),
+      recipientDni: typeof msg.recipientDni === 'string' ? msg.recipientDni : undefined,
+      recipientLegajo: typeof msg.recipientLegajo === 'string' ? msg.recipientLegajo : undefined,
+      intact: verified.intact,
+      summary: verified.summary,
+      contentHash: verified.content.currentHash,
+      storedHash: verified.content.storedHash,
+      contentMatch: verified.content.match,
+      send: {
+        batchId: verified.send.batchId,
+        txHash: verified.send.txHash,
+        merkleRoot: verified.send.merkleRoot,
+        leafHash: verified.send.leafHash,
+        merkleValid: verified.send.merkleValid,
+        onChainMatch: verified.send.onChainMatch,
+      },
+      events: verified.events,
+      verifyRef: campaignVerifyRef('campaign_acta_recipient', campaignId, messageId),
+    });
+    const hash = sha256Hex(pdf);
+    await recordIssuedDocument(db, {
+      hash,
+      kind: 'campaign_acta_recipient',
+      campaignId,
+      orgId,
+      orgNombre: String(org.nombre || ''),
+      campaignNombre: String(campaign.nombre || ''),
+      messageId,
+      recipientNombre: String(verified.recipientNombre || ''),
+      txHash: verified.send.txHash,
+      fileName: `acta-destinatario-${messageId}.pdf`,
+    });
+    return new NextResponse(pdf, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="acta-destinatario-${messageId}.pdf"`,
+      },
+    });
+    } catch (e) {
+      console.error('GET /api/campaigns/integrity/acta (destinatario)', e);
+      return NextResponse.json({ error: 'Error al generar el acta PDF' }, { status: 500 });
+    }
+  }
 
   const batchRef = db.collection('campaigns').doc(campaignId).collection('integrity_batches').doc(batchId);
   const batchSnap = await batchRef.get();
@@ -84,11 +154,6 @@ export async function GET(request: NextRequest) {
     };
   });
 
-  const orgSnap = await db.collection('organizations').doc(orgId).get();
-  const org = orgSnap.data() || {};
-  const campSnap = await db.collection('campaigns').doc(campaignId).get();
-  const campaign = campSnap.data() || {};
-
   try {
     const pdf = await buildActaTandaPdf({
       orgNombre: String(org.nombre || ''),
@@ -106,14 +171,28 @@ export async function GET(request: NextRequest) {
       sealedAt: formatSealedAt(batch.sealedAt),
       generatedAt: new Date().toLocaleString('es-AR'),
       leaves,
+      verifyRef: campaignVerifyRef('campaign_acta', campaignId, batchId),
     });
 
+    const hash = sha256Hex(pdf);
     const safeBatch = batchId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40);
+    const fileName = `acta-tanda-${campaignId}-${safeBatch}.pdf`;
+    await recordIssuedDocument(db, {
+      hash,
+      kind: 'campaign_acta',
+      campaignId,
+      orgId,
+      orgNombre: String(org.nombre || ''),
+      campaignNombre: String(campaign.nombre || ''),
+      batchId,
+      txHash: typeof batch.txHash === 'string' ? batch.txHash : null,
+      fileName,
+    });
     return new NextResponse(pdf, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="acta-tanda-${safeBatch}.pdf"`,
+        'Content-Disposition': `attachment; filename="${fileName}"`,
       },
     });
   } catch (e) {
