@@ -8,10 +8,9 @@ import { auth, db } from "@/lib/firebase";
 import { useCampaignProgress } from "@/lib/campaign-sync";
 import type { CampaignMessage } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -24,6 +23,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import { CampaignIntegrityPanel } from "@/components/empresa/campaign-integrity-panel";
 import {
   Copy,
@@ -31,12 +31,14 @@ import {
   Loader2,
   RefreshCw,
   Play,
-  ExternalLink,
   Mail,
   MessageCircle,
   ChevronDown,
   XCircle,
   AlertTriangle,
+  ShieldCheck,
+  Users,
+  FileText,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -91,6 +93,29 @@ function msgEstadoBadge(estado: string) {
     case "error":     return <Badge variant="destructive">error</Badge>;
     default:          return <Badge variant="outline">{estado}</Badge>;
   }
+}
+
+function ChannelCell({
+  estado,
+  error,
+  rows,
+}: {
+  estado: string;
+  error?: string;
+  rows: { label: string; ts: string | null }[];
+}) {
+  const shown = rows.filter((r) => r.ts);
+  return (
+    <div className="space-y-1 min-w-[140px]">
+      {msgEstadoBadge(estado)}
+      {error ? <p className="text-xs text-destructive max-w-[220px] leading-snug">{error}</p> : null}
+      {shown.map((r) => (
+        <p key={r.label} className="text-xs text-muted-foreground">
+          {r.label}: {r.ts}
+        </p>
+      ))}
+    </div>
+  );
 }
 
 /** Hook de paginación server-side para campaign_messages. */
@@ -165,12 +190,14 @@ export function CampaignDashboard() {
   const { toast }  = useToast();
   const router     = useRouter();
 
+  const [section, setSection] = useState("destinatarios");
   const [filter, setFilter] = useState("all");
   const [q, setQ]           = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [selected, setSelected]     = useState<Set<string>>(new Set());
   const [busy, setBusy]             = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [verifyTarget, setVerifyTarget] = useState<string | undefined>();
 
   // Debounce de búsqueda para no lanzar una query por cada keystroke
   useEffect(() => {
@@ -389,6 +416,17 @@ export function CampaignDashboard() {
     });
   }
 
+  function openDestinatarios(nextFilter: string) {
+    setFilter(nextFilter);
+    setSelected(new Set());
+    setSection("destinatarios");
+  }
+
+  function openIntegrity(messageId: string) {
+    setVerifyTarget(messageId);
+    setSection("integridad");
+  }
+
   if (campLoading || !campaign) {
     return (
       <div className="p-8 space-y-4 max-w-6xl">
@@ -404,17 +442,20 @@ export function CampaignDashboard() {
   const showEmail = campaign.canal === "email" || campaign.canal === "ambos" || !campaign.canal;
   const showWa    = campaign.canal === "whatsapp" || campaign.canal === "ambos";
 
+  const tableCols = 4 + (showEmail ? 1 : 0) + (showWa ? 1 : 0);
+
   return (
-    <div className="p-6 md:p-8 max-w-6xl space-y-8">
-      {/* Header */}
+    <div className="p-6 md:p-8 max-w-6xl space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <Link href={`/empresa/${orgId}/campanas`} className="text-sm text-muted-foreground hover:underline">
             ← Campañas
           </Link>
           <h1 className="text-2xl font-bold mt-2">{campaign.nombre}</h1>
-          <div className="flex flex-wrap gap-2 mt-2 text-sm text-muted-foreground">
-            <span>Estado: {campaignEstadoBadge(campaign.estado)}</span>
+          <div className="flex flex-wrap items-center gap-2 mt-2 text-sm text-muted-foreground">
+            {campaignEstadoBadge(campaign.estado)}
+            {showEmail && <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5" />Email</span>}
+            {showWa && <span className="inline-flex items-center gap-1"><MessageCircle className="h-3.5 w-3.5 text-emerald-600" />WhatsApp</span>}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -480,71 +521,45 @@ export function CampaignDashboard() {
         </div>
       </div>
 
-      {/* Preview del mensaje enviado */}
-      {showWa && campaign.waTemplateName && (
-        <div className="rounded-md border p-4 bg-muted/30 space-y-1 text-sm">
-          <p className="font-medium flex items-center gap-2"><MessageCircle className="h-4 w-4 text-emerald-500" />Mensaje enviado</p>
-          <p className="text-muted-foreground">
-            Template: <span className="font-mono text-foreground">{campaign.waTemplateName}</span>
-            {campaign.waTemplateLang && <span className="ml-2 text-xs">({campaign.waTemplateLang})</span>}
-          </p>
-          {campaign.waTemplateVariables && campaign.waTemplateVariables.length > 0 && (
-            <p className="text-muted-foreground">
-              Variables: {campaign.waTemplateVariables.map((v, i) => (
-                <span key={i} className="inline-block mr-2">
-                  <span className="text-xs text-muted-foreground">{`{{${i + 1}}}`} = </span>
-                  <span className="font-medium text-foreground">{v}</span>
-                </span>
-              ))}
-            </p>
-          )}
-          {campaign.cuerpo && (
-            <p className="text-muted-foreground mt-2 whitespace-pre-wrap border-t pt-2">{campaign.cuerpo}</p>
-          )}
-        </div>
-      )}
-      {showEmail && !showWa && campaign.asunto && (
-        <div className="rounded-md border p-4 bg-muted/30 space-y-1 text-sm">
-          <p className="font-medium flex items-center gap-2"><Mail className="h-4 w-4" />Mensaje enviado</p>
-          <p className="text-muted-foreground">Asunto: <span className="font-medium text-foreground">{campaign.asunto}</span></p>
-        </div>
-      )}
-
-      {/* Stats — vienen del campaign doc (FieldValue.increment, nunca recalculados en cliente) */}
       {stats && (
         <>
-          <div className="grid gap-4 md:grid-cols-4">
-            <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Enviados</CardTitle></CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.enviados.toLocaleString('es-AR')}</div>
-                <p className="text-xs text-muted-foreground">de {stats.total.toLocaleString('es-AR')} destinatarios</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Leídos</CardTitle></CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.leidos.toLocaleString('es-AR')}</div>
-                <div className="mt-2 space-y-1">
-                  <Progress value={leidoPct} className="h-2" />
-                  <p className="text-xs text-muted-foreground">{leidoPct}% del envío</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Pendientes</CardTitle></CardHeader>
-              <CardContent><div className="text-2xl font-bold">{stats.pendientes.toLocaleString('es-AR')}</div></CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Errores</CardTitle></CardHeader>
-              <CardContent><div className="text-2xl font-bold">{stats.errores.toLocaleString('es-AR')}</div></CardContent>
-            </Card>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {(
+              [
+                { key: "all", label: "Enviados", value: stats.enviados, hint: `de ${stats.total.toLocaleString("es-AR")} destinatarios` },
+                { key: "leido", label: "Leídos", value: stats.leidos, hint: `${leidoPct}% del envío` },
+                { key: "pendiente", label: "Pendientes", value: stats.pendientes, hint: "aún en cola" },
+                { key: "error", label: "Errores", value: stats.errores, hint: stats.errores > 0 ? "tocá para verlos" : "sin errores" },
+              ] as const
+            ).map((s) => (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => openDestinatarios(s.key)}
+                className={cn(
+                  "rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  section === "destinatarios" && filter === s.key && "ring-2 ring-primary",
+                  s.key === "error" && s.value > 0 && "border-destructive/40"
+                )}
+              >
+                <p className="text-sm font-medium text-muted-foreground">{s.label}</p>
+                <p className="text-2xl font-bold tabular-nums mt-1">{s.value.toLocaleString("es-AR")}</p>
+                {s.key === "leido" ? (
+                  <div className="mt-2 space-y-1">
+                    <Progress value={leidoPct} className="h-2" />
+                    <p className="text-xs text-muted-foreground">{s.hint}</p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1">{s.hint}</p>
+                )}
+              </button>
+            ))}
           </div>
           {campaign.estado === "enviando" && (
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <RefreshCw className="h-4 w-4 animate-spin" />
-                Enviando… {enviadoPct}% completado — {stats?.enviados?.toLocaleString("es-AR") ?? 0} de {stats?.total?.toLocaleString("es-AR") ?? 0}
+                Enviando… {enviadoPct}% completado — {stats.enviados.toLocaleString("es-AR")} de {stats.total.toLocaleString("es-AR")}
               </div>
               <Progress value={enviadoPct} className="h-2" />
             </div>
@@ -552,198 +567,254 @@ export function CampaignDashboard() {
         </>
       )}
 
-      <CampaignIntegrityPanel orgId={orgId} campaignId={campaignId} messages={messages} />
-
-      {/* Filtros */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <Tabs value={filter} onValueChange={(v) => { setFilter(v); setSelected(new Set()); }}>
-          <TabsList>
-            <TabsTrigger value="all">Todos</TabsTrigger>
-            <TabsTrigger value="pendiente">Pendiente</TabsTrigger>
-            <TabsTrigger value="enviado">Enviado</TabsTrigger>
-            <TabsTrigger value="leido">Leído</TabsTrigger>
-            <TabsTrigger value="error">Error</TabsTrigger>
+      <Tabs value={section} onValueChange={setSection} className="w-full">
+        <div className="sticky top-14 z-10 -mx-2 border-b bg-background/95 px-2 py-2 backdrop-blur-sm lg:top-0">
+          <TabsList className="grid h-auto w-full grid-cols-3 gap-1 sm:inline-flex sm:w-auto">
+            <TabsTrigger value="destinatarios" className="gap-1.5">
+              <Users className="h-4 w-4" />
+              Destinatarios
+            </TabsTrigger>
+            <TabsTrigger value="integridad" className="gap-1.5">
+              <ShieldCheck className="h-4 w-4" />
+              Integridad
+            </TabsTrigger>
+            <TabsTrigger value="mensaje" className="gap-1.5">
+              <FileText className="h-4 w-4" />
+              Mensaje
+            </TabsTrigger>
           </TabsList>
-        </Tabs>
-        <div className="flex items-center gap-2 max-w-sm w-full">
-          <Input
-            placeholder="Buscar nombre…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className="flex-1"
-          />
-          {campaign.estado === 'completada' && (
-            <Button
-              variant="outline"
-              size="icon"
-              title="Actualizar tabla"
-              onClick={() => setRefreshKey((k) => k + 1)}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          )}
         </div>
-      </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="secondary" disabled={busy || selected.size === 0} onClick={reenviarSeleccion} className="gap-2">
-          <RefreshCw className="h-4 w-4" />
-          Reenviar seleccionados ({selected.size})
-        </Button>
-        {stats && stats.errores > 0 && campaign.estado !== "enviando" && (
-          <Button variant="outline" disabled={busy} onClick={reintentarErrores} className="gap-2 border-destructive text-destructive hover:bg-destructive/10">
-            <AlertTriangle className="h-4 w-4" />
-            Reintentar todos los errores ({stats.errores.toLocaleString("es-AR")})
-          </Button>
-        )}
-        <p className="text-xs text-muted-foreground">Solo filas en error pueden seleccionarse individualmente.</p>
-      </div>
+        <TabsContent value="destinatarios" className="mt-4 space-y-4 focus-visible:outline-none">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <Tabs value={filter} onValueChange={(v) => { setFilter(v); setSelected(new Set()); }}>
+              <TabsList>
+                <TabsTrigger value="all">Todos</TabsTrigger>
+                <TabsTrigger value="pendiente">Pendiente</TabsTrigger>
+                <TabsTrigger value="enviado">Enviado</TabsTrigger>
+                <TabsTrigger value="leido">Leído</TabsTrigger>
+                <TabsTrigger value="error">Error</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <div className="flex items-center gap-2 max-w-sm w-full">
+              <Input
+                placeholder="Buscar nombre…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                className="flex-1"
+              />
+              {campaign.estado === "completada" && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  title="Actualizar tabla"
+                  onClick={() => setRefreshKey((k) => k + 1)}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
 
-      {/* Tabla */}
-      <div className="rounded-md border overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10" />
-              <TableHead>Nombre</TableHead>
-              <TableHead>DNI / Legajo</TableHead>
-              {showEmail && (
-                <>
-                  <TableHead><span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />Estado email</span></TableHead>
-                  <TableHead><span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />Click</span></TableHead>
-                  <TableHead><span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />TX envío</span></TableHead>
-                  <TableHead><span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />TX lectura</span></TableHead>
-                </>
-              )}
-              {showWa && (
-                <>
-                  <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />Estado WA</span></TableHead>
-                  <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />Entregado</span></TableHead>
-                  <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />Leído WA</span></TableHead>
-                  <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />Click</span></TableHead>
-                  <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />TX blockchain</span></TableHead>
-                </>
-              )}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {msgLoading ? (
-              Array.from({ length: 8 }).map((_, i) => {
-                const cols = 3 + (showEmail ? 4 : 0) + (showWa ? 5 : 0);
-                return (
-                  <TableRow key={i}>
-                    {Array.from({ length: cols }).map((_, j) => (
-                      <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
-                    ))}
-                  </TableRow>
-                );
-              })
-            ) : messages.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={3 + (showEmail ? 4 : 0) + (showWa ? 5 : 0)} className="text-center text-muted-foreground py-8">
-                  No hay mensajes con el filtro seleccionado.
-                </TableCell>
-              </TableRow>
-            ) : (
-              messages.map((m) => (
-                <TableRow key={m.id}>
-                  <TableCell>
-                    <Checkbox
-                      disabled={m.estado !== "error"}
-                      checked={selected.has(m.id)}
-                      onCheckedChange={(c) => toggleRow(m.id, m, c === true)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <div className="font-medium">{m.recipientNombre}</div>
-                    {m.recipientEmail && !isSyntheticEmail(m.recipientEmail) && (
-                      <div className="text-xs text-muted-foreground truncate max-w-[160px]">{m.recipientEmail}</div>
-                    )}
-                    {m.recipientTelefono && (
-                      <div className="text-xs text-muted-foreground">{m.recipientTelefono}</div>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    {m.recipientDni || "—"} / {m.recipientLegajo || "—"}
-                  </TableCell>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="secondary" disabled={busy || selected.size === 0} onClick={reenviarSeleccion} className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Reenviar seleccionados ({selected.size})
+            </Button>
+            {stats && stats.errores > 0 && campaign.estado !== "enviando" && (
+              <Button variant="outline" disabled={busy} onClick={reintentarErrores} className="gap-2 border-destructive text-destructive hover:bg-destructive/10">
+                <AlertTriangle className="h-4 w-4" />
+                Reintentar todos los errores ({stats.errores.toLocaleString("es-AR")})
+              </Button>
+            )}
+            <p className="text-xs text-muted-foreground">Solo filas en error pueden seleccionarse individualmente.</p>
+          </div>
+
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10" />
+                  <TableHead>Nombre</TableHead>
+                  <TableHead>DNI / Legajo</TableHead>
                   {showEmail && (
-                    <>
-                      <TableCell>{msgEstadoBadge(m.emailEstado || m.estado)}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {fmtTs(m.emailClickAt) ?? "—"}
-                      </TableCell>
-                      <TableCell>
-                        {(m.emailTxEnvio || m.txHashEnvio) ? (
-                          <a href={`https://polygonscan.com/tx/${m.emailTxEnvio || m.txHashEnvio}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary text-xs">
-                            Ver <ExternalLink className="h-3 w-3" />
-                          </a>
-                        ) : "—"}
-                      </TableCell>
-                      <TableCell>
-                        {(m.emailTxLectura || m.txHashLectura) ? (
-                          <a href={`https://polygonscan.com/tx/${m.emailTxLectura || m.txHashLectura}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary text-xs">
-                            Ver <ExternalLink className="h-3 w-3" />
-                          </a>
-                        ) : "—"}
-                      </TableCell>
-                    </>
+                    <TableHead>
+                      <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />Email</span>
+                    </TableHead>
                   )}
                   {showWa && (
-                    <>
-                      <TableCell>{msgEstadoBadge(m.waEstado || m.estado)}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {fmtTs(m.waEntregadoAt) ?? (m.waLeidoAt ? <span className="text-muted-foreground/50">—</span> : "—")}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {fmtTs(m.waLeidoAt) ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {fmtTs(m.waClickAt) ?? "—"}
+                    <TableHead>
+                      <span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />WhatsApp</span>
+                    </TableHead>
+                  )}
+                  <TableHead className="w-28">Integridad</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {msgLoading ? (
+                  Array.from({ length: 8 }).map((_, i) => (
+                    <TableRow key={i}>
+                      {Array.from({ length: tableCols }).map((_, j) => (
+                        <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : messages.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={tableCols} className="text-center text-muted-foreground py-8">
+                      No hay mensajes con el filtro seleccionado.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  messages.map((m) => (
+                    <TableRow key={m.id}>
+                      <TableCell>
+                        <Checkbox
+                          disabled={m.estado !== "error"}
+                          checked={selected.has(m.id)}
+                          onCheckedChange={(c) => toggleRow(m.id, m, c === true)}
+                        />
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-col gap-1">
-                          {m.waTxEnvio && (
-                            <a href={`https://polygonscan.com/tx/${m.waTxEnvio}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary text-xs font-mono">
-                              <span className="text-muted-foreground mr-1">env</span>{m.waTxEnvio.slice(0, 6)}…{m.waTxEnvio.slice(-4)} <ExternalLink className="h-3 w-3" />
-                            </a>
-                          )}
-                          {m.waTxEntregado && (
-                            <a href={`https://polygonscan.com/tx/${m.waTxEntregado}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary text-xs font-mono">
-                              <span className="text-muted-foreground mr-1">ent</span>{m.waTxEntregado.slice(0, 6)}…{m.waTxEntregado.slice(-4)} <ExternalLink className="h-3 w-3" />
-                            </a>
-                          )}
-                          {m.waTxLeido && (
-                            <a href={`https://polygonscan.com/tx/${m.waTxLeido}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary text-xs font-mono">
-                              <span className="text-muted-foreground mr-1">leí</span>{m.waTxLeido.slice(0, 6)}…{m.waTxLeido.slice(-4)} <ExternalLink className="h-3 w-3" />
-                            </a>
-                          )}
-                          {!m.waTxEnvio && !m.waTxEntregado && !m.waTxLeido && "—"}
-                        </div>
+                        <div className="font-medium">{m.recipientNombre}</div>
+                        {m.recipientEmail && !isSyntheticEmail(m.recipientEmail) && (
+                          <div className="text-xs text-muted-foreground truncate max-w-[160px]">{m.recipientEmail}</div>
+                        )}
+                        {m.recipientTelefono && (
+                          <div className="text-xs text-muted-foreground">{m.recipientTelefono}</div>
+                        )}
                       </TableCell>
-                    </>
-                  )}
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                      <TableCell className="text-xs">
+                        {m.recipientDni || "—"} / {m.recipientLegajo || "—"}
+                      </TableCell>
+                      {showEmail && (
+                        <TableCell>
+                          <ChannelCell
+                            estado={m.emailEstado || m.estado}
+                            error={m.emailError || (m.estado === "error" && !showWa ? m.errorMsg : undefined)}
+                            rows={[{ label: "click", ts: fmtTs(m.emailClickAt) }]}
+                          />
+                        </TableCell>
+                      )}
+                      {showWa && (
+                        <TableCell>
+                          <ChannelCell
+                            estado={m.waEstado || m.estado}
+                            error={m.waError || (m.estado === "error" ? m.errorMsg : undefined)}
+                            rows={[
+                              { label: "entregado", ts: fmtTs(m.waEntregadoAt) },
+                              { label: "leído", ts: fmtTs(m.waLeidoAt) },
+                              { label: "click", ts: fmtTs(m.waClickAt) },
+                            ]}
+                          />
+                        </TableCell>
+                      )}
+                      <TableCell>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="gap-1"
+                          onClick={() => openIntegrity(m.id)}
+                        >
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                          Verificar
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
 
-      {/* Paginación */}
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <span>
-          Página {currentPage + 1}
-          {stats ? ` · ${stats.total.toLocaleString('es-AR')} destinatarios en total` : ""}
-        </span>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" disabled={currentPage === 0 || msgLoading} onClick={prevPage}>
-            Anterior
-          </Button>
-          <Button variant="outline" size="sm" disabled={!hasMore || msgLoading} onClick={nextPage}>
-            Siguiente
-          </Button>
-        </div>
-      </div>
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>
+              Página {currentPage + 1}
+              {stats ? ` · ${stats.total.toLocaleString("es-AR")} destinatarios en total` : ""}
+            </span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={currentPage === 0 || msgLoading} onClick={prevPage}>
+                Anterior
+              </Button>
+              <Button variant="outline" size="sm" disabled={!hasMore || msgLoading} onClick={nextPage}>
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="integridad" className="mt-4 focus-visible:outline-none">
+          <CampaignIntegrityPanel
+            orgId={orgId}
+            campaignId={campaignId}
+            initialMessageId={verifyTarget}
+          />
+        </TabsContent>
+
+        <TabsContent value="mensaje" className="mt-4 space-y-4 focus-visible:outline-none">
+          {showEmail && (
+            <div className="rounded-md border p-4 bg-muted/30 space-y-2 text-sm">
+              <p className="font-medium flex items-center gap-2">
+                <Mail className="h-4 w-4" />
+                Correo
+              </p>
+              {campaign.asunto ? (
+                <p className="text-muted-foreground">
+                  Asunto: <span className="font-medium text-foreground">{campaign.asunto}</span>
+                </p>
+              ) : (
+                <p className="text-muted-foreground">Sin asunto cargado.</p>
+              )}
+              {campaign.cuerpo && !showWa && (
+                <p className="text-muted-foreground whitespace-pre-wrap border-t pt-2">{campaign.cuerpo}</p>
+              )}
+            </div>
+          )}
+          {showWa && (
+            <div className="rounded-md border p-4 bg-muted/30 space-y-2 text-sm">
+              <p className="font-medium flex items-center gap-2">
+                <MessageCircle className="h-4 w-4 text-emerald-500" />
+                WhatsApp
+              </p>
+              {campaign.waTemplateName ? (
+                <p className="text-muted-foreground">
+                  Template: <span className="font-mono text-foreground">{campaign.waTemplateName}</span>
+                  {campaign.waTemplateLang && <span className="ml-2 text-xs">({campaign.waTemplateLang})</span>}
+                </p>
+              ) : (
+                <p className="text-muted-foreground">Sin template de WhatsApp.</p>
+              )}
+              {campaign.waTemplateVariables && campaign.waTemplateVariables.length > 0 && (
+                <p className="text-muted-foreground">
+                  Variables: {campaign.waTemplateVariables.map((v, i) => (
+                    <span key={i} className="inline-block mr-2">
+                      <span className="text-xs text-muted-foreground">{`{{${i + 1}}}`} = </span>
+                      <span className="font-medium text-foreground">{v}</span>
+                    </span>
+                  ))}
+                </p>
+              )}
+              {campaign.cuerpo && (
+                <p className="text-muted-foreground whitespace-pre-wrap border-t pt-2">{campaign.cuerpo}</p>
+              )}
+            </div>
+          )}
+          {campaign.adjuntos && campaign.adjuntos.length > 0 && (
+            <div className="rounded-md border p-4 bg-muted/30 text-sm">
+              <p className="font-medium">Adjuntos ({campaign.adjuntos.length})</p>
+              <ul className="mt-2 space-y-1 text-muted-foreground">
+                {campaign.adjuntos.map((a) => (
+                  <li key={a.hash || a.url}>{a.nombre}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {!showEmail && !showWa && (
+            <p className="text-sm text-muted-foreground">No hay contenido de mensaje para mostrar.</p>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
