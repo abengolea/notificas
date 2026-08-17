@@ -260,7 +260,7 @@ async function processFanoutPage(
         estado: 'pendiente',
         creditApplied: false,
         sendTandaIndex: tandaIndex,
-        ...(campaign.simulated === true ? {} : { integritySendBatchId: integrityBatchId }),
+        integritySendBatchId: integrityBatchId,
         createdAt: FieldValue.serverTimestamp(),
       });
       toProcess.push(ref.id);
@@ -270,15 +270,13 @@ async function processFanoutPage(
 
   if (batchCount > 0) {
     await batchOps.commit();
-    if (campaign.simulated !== true) {
-      await ensureSendBatch({
-        campaignId,
-        orgId: String(campaign.orgId || ''),
-        tandaIndex,
-        expectedIncrement: batchCount,
-        batchId: integrityBatchId,
-      });
-    }
+    await ensureSendBatch({
+      campaignId,
+      orgId: String(campaign.orgId || ''),
+      tandaIndex,
+      expectedIncrement: batchCount,
+      batchId: integrityBatchId,
+    });
   }
 
   // Encolar workers en batches de SEND_BATCH.

@@ -76,9 +76,14 @@ function movement(partial: Record<string, unknown>) {
   };
 }
 
+export type SimulatedSendResult =
+  | { status: 'error' }
+  | { status: 'sent'; delivered: boolean; waRead: boolean; readerOpen: boolean };
+
 /**
  * Completa un envío simulado: no llama Mailgun ni Meta.
  * Marca el mail + campaign_message y, al azar, delivered / read / apertura del reader.
+ * La integridad Merkle/Polygon la registra el worker (tandas de 500).
  */
 export async function completeSimulatedSend(params: {
   campaign: FirebaseFirestore.DocumentData;
@@ -88,7 +93,7 @@ export async function completeSimulatedSend(params: {
   canal: string;
   recipientEmail: string;
   recipientPhone: string;
-}): Promise<'sent' | 'error'> {
+}): Promise<SimulatedSendResult> {
   const { campaign, campaignId, messageDocId, mailId, canal } = params;
   const db = getAdminDb();
   const plan = planOutcome(canal, ratesFromCampaign(campaign));
@@ -141,7 +146,7 @@ export async function completeSimulatedSend(params: {
     if (email) errUpdate.emailEstado = 'error';
     if (wa) errUpdate.waEstado = 'error';
     await db.collection('campaign_messages').doc(messageDocId).update(errUpdate);
-    return 'error';
+    return { status: 'error' };
   }
 
   (mailUpdate.delivery as Record<string, unknown>).state = 'DELIVERED';
@@ -242,5 +247,10 @@ export async function completeSimulatedSend(params: {
     });
   }
 
-  return 'sent';
+  return {
+    status: 'sent',
+    delivered: Boolean(wa && plan.delivered),
+    waRead: Boolean(wa && plan.waRead),
+    readerOpen: plan.readerOpen,
+  };
 }

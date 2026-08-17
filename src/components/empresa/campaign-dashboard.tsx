@@ -796,17 +796,17 @@ export function CampaignDashboard({
 
         <TabsContent value="integridad" className="mt-4 focus-visible:outline-none">
           {campaign.simulated ? (
-            <p className="text-sm text-muted-foreground rounded-md border border-amber-500/40 bg-amber-500/5 p-4">
-              Esta campaña es una simulación: no se ancla integridad en Polygon.
+            <p className="text-sm text-muted-foreground rounded-md border border-amber-500/40 bg-amber-500/5 p-4 mb-4">
+              Simulación: no salió Mailgun ni WhatsApp. Las tandas de integridad sí se anclan en Polygon
+              (Merkle de 500 envíos y 500 hechos: entregado, leído, apertura).
             </p>
-          ) : (
+          ) : null}
           <CampaignIntegrityPanel
             orgId={orgId}
             campaignId={campaignId}
             initialMessageId={verifyTarget}
             adminSession={isAdmin}
           />
-          )}
         </TabsContent>
 
         <TabsContent value="mensaje" className="mt-4 space-y-4 focus-visible:outline-none">

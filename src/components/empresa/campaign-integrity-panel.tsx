@@ -367,8 +367,9 @@ export function CampaignIntegrityPanel({
           Certificación
         </CardTitle>
         <p className="text-sm text-muted-foreground font-normal">
-          El envío se certifica en Polygon. Las lecturas y entregas se certifican aparte, aunque
-          lleguen otro día. Acá podés cerrar lotes o verificar a una persona.
+          El envío se certifica en Polygon en tandas de hasta 500 mensajes: un Merkle y una
+          transacción por lote. Las lecturas y entregas van en tandas aparte de 500 hechos,
+          aunque lleguen otro día. Acá podés cerrar lotes o verificar a una persona.
         </p>
       </CardHeader>
       <CardContent className="space-y-5">

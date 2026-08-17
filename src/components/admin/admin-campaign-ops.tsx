@@ -500,6 +500,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
                 <>
                   Se van a simular {remaining.toLocaleString("es-AR")} envíos para {data.org.nombre}.
                   No sale nada a Mailgun ni a WhatsApp; el dashboard muestra entregas y aperturas al azar.
+                  Cada 500 envíos (y cada 500 hechos) se publica una tanda Merkle en Polygon.
                 </>
               ) : (
                 <>

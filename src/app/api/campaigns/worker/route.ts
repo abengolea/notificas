@@ -189,7 +189,7 @@ async function processMessage(
   if (!mailId) throw new WorkerRetryError('mailId ausente');
 
   if (isCampaignSimulated(campaign)) {
-    return completeSimulatedSend({
+    const sim = await completeSimulatedSend({
       campaign,
       campaignId,
       messageDocId,
@@ -198,6 +198,47 @@ async function processMessage(
       recipientEmail: email,
       recipientPhone: String(row.telefono || ''),
     });
+    if (sim.status === 'error') {
+      await recordSendError({ campaignId, messageId: messageDocId, batchId });
+      return 'error';
+    }
+    await recordSendIntegrity({
+      campaignId,
+      orgId,
+      messageDocId,
+      batchId,
+      email: emailRaw,
+      phone: String(row.telefono || ''),
+      contentHash,
+      attachmentHashes: adjuntos.map((a) => a.hash).filter(Boolean),
+      mailId,
+    });
+    const waCanal = canal === 'whatsapp' || canal === 'ambos';
+    if (waCanal && sim.delivered) {
+      await recordEventLeaf({
+        campaignId,
+        orgId,
+        messageId: messageDocId,
+        eventType: 'wa_delivered',
+      }).catch((e) => console.warn('⚠️ Hoja Merkle wa_delivered (sim):', e?.message));
+    }
+    if (waCanal && sim.waRead) {
+      await recordEventLeaf({
+        campaignId,
+        orgId,
+        messageId: messageDocId,
+        eventType: 'wa_read',
+      }).catch((e) => console.warn('⚠️ Hoja Merkle wa_read (sim):', e?.message));
+    }
+    if (sim.readerOpen) {
+      await recordEventLeaf({
+        campaignId,
+        orgId,
+        messageId: messageDocId,
+        eventType: 'email_read',
+      }).catch((e) => console.warn('⚠️ Hoja Merkle email_read (sim):', e?.message));
+    }
+    return 'sent';
   }
 
   // Invocar Cloud Function (maneja internamente email y/o WA según lo que tenga el mail doc).
@@ -362,11 +403,9 @@ async function applyStatsDelta(
     await campRef.update({ creditsRefunded: alreadyRefunded + refund });
   }
 
-  if (!isCampaignSimulated(campData)) {
-    void closeOpenBatches(campRef.id, true).catch((e) =>
-      console.warn('⚠️ [worker] No se pudieron cerrar tandas al completar:', e?.message)
-    );
-  }
+  void closeOpenBatches(campRef.id, true).catch((e) =>
+    console.warn('⚠️ [worker] No se pudieron cerrar tandas al completar:', e?.message)
+  );
 }
 
 export async function POST(request: NextRequest) {

@@ -801,6 +801,7 @@ export function CampaignWizard({
                   </span>
                   <span className="block text-xs text-muted-foreground mt-1">
                     Destinatarios ficticios, entregas y aperturas al azar. No se factura ni se envía nada.
+                  Cada 500 envíos (y cada 500 hechos) se ancla una tanda real en Polygon.
                   </span>
                 </span>
               </label>
@@ -1370,8 +1371,8 @@ export function CampaignWizard({
             <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm space-y-2">
               {simulated ? (
                 <p>
-                  <strong>Simulación:</strong> no se envía a teléfonos ni correos reales, no se factura y no se escribe en Polygon.
-                  El dashboard muestra entregas y aperturas al azar (~3% error, ~58% leído WA, ~36% abre el aviso).
+                  <strong>Simulación:</strong> no se envía a teléfonos ni correos reales y no se factura.
+                  Sí se lacran tandas Merkle de 500 en Polygon (envíos y hechos: entregado, leído, apertura).
                 </p>
               ) : (
               <p>
@@ -1447,7 +1448,7 @@ export function CampaignWizard({
               {simulated ? (
                 <>
                   Se van a simular {recipientTotal.toLocaleString("es-AR")} envíos (cola, workers y dashboard).
-                  No sale nada a Mailgun ni a WhatsApp.
+                  No sale nada a Mailgun ni a WhatsApp. Cada 500 mensajes se ancla una tanda en Polygon.
                 </>
               ) : (
                 <>
