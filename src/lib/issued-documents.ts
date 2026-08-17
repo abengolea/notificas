@@ -3,8 +3,8 @@ import { FieldValue, type Firestore } from 'firebase-admin/firestore';
 import type { IssuedDocKind } from '@/lib/verify-hints';
 
 export function sha256Hex(data: Buffer | Uint8Array | ArrayBuffer): string {
-  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
-  return createHash('sha256').update(buf).digest('hex');
+  const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+  return createHash('sha256').update(bytes).digest('hex');
 }
 
 export type IssuedDocumentRecord = {
