@@ -16,6 +16,7 @@ type CampaignRow = {
   canal: CanalCampaign;
   estado: string;
   recipientCount: number;
+  simulated?: boolean;
   stats: { enviados: number; errores: number; pendientes: number };
 };
 
@@ -95,7 +96,10 @@ export function AdminCampaigns() {
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="font-medium">{c.nombre}</div>
-                  {estadoLabel(c.estado)}
+                  <div className="flex items-center gap-2">
+                    {c.simulated ? <Badge variant="outline" className="border-amber-500 text-amber-700 dark:text-amber-400">simulada</Badge> : null}
+                    {estadoLabel(c.estado)}
+                  </div>
                 </div>
                 <div className="text-sm text-muted-foreground mt-1">
                   {orgNames[c.orgId] || c.orgId} · {c.canal} · {c.recipientCount.toLocaleString("es-AR")} dest.

@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 import { useCampaignProgress } from "@/lib/campaign-sync";
 import type { CampaignMessage } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -160,7 +159,8 @@ function useMessages(
     setLoading(true);
     try {
       const params = new URLSearchParams({ campaignId, limit: String(PAGE_SIZE) });
-      if (estado !== 'all') params.set('estado', estado);
+      if (estado === 'waWmidMissing') params.set('flag', 'waWmidMissing');
+      else if (estado !== 'all') params.set('estado', estado);
       if (search)           params.set('search', search);
       if (cursor)           params.set('cursor', cursor);
       const res = await campaignRequest(mode, `/api/campaigns/messages?${params}`);
@@ -325,9 +325,6 @@ export function CampaignDashboard({
     if (!campaign) return;
     setBusy(true);
     try {
-      if (!isAdmin) {
-        await updateDoc(doc(db, "campaigns", campaignId), { estado: "enviando", startedAt: serverTimestamp() });
-      }
       const sendUrl = isAdmin ? "/api/admin/campaigns/send" : "/api/campaigns/send";
       const res = await campaignRequest(mode, sendUrl, {
         method: "POST",
@@ -388,18 +385,12 @@ export function CampaignDashboard({
     if (!campaign) return;
     setBusy(true);
     try {
-      if (!isAdmin) {
-        await updateDoc(doc(db, "campaigns", campaignId), { estado: "enviando" });
-      }
       const sendUrl = isAdmin ? "/api/admin/campaigns/send" : "/api/campaigns/send";
       const res = await campaignRequest(mode, sendUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(isAdmin ? { campaignId } : { campaignId, orgId }),
+        body: JSON.stringify(isAdmin ? { campaignId, retryErrors: true } : { campaignId, orgId, retryErrors: true }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Error");
-      toast({ title: "Reintento iniciado", description: `${data.pending ?? data.pendingThisTanda ?? 0} mensajes encolados` });
     } catch (e: unknown) {
       toast({ title: "Error", description: e instanceof Error ? e.message : "Falló", variant: "destructive" });
     } finally {
@@ -476,6 +467,7 @@ export function CampaignDashboard({
           <h1 className="text-2xl font-bold mt-2">{campaign.nombre}</h1>
           <div className="flex flex-wrap items-center gap-2 mt-2 text-sm text-muted-foreground">
             {campaignEstadoBadge(campaign.estado)}
+            {campaign.simulated ? <Badge variant="outline" className="border-amber-500 text-amber-700 dark:text-amber-400">simulada</Badge> : null}
             {showEmail && <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5" />Email</span>}
             {showWa && <span className="inline-flex items-center gap-1"><MessageCircle className="h-3.5 w-3.5 text-emerald-600" />WhatsApp</span>}
           </div>
@@ -651,6 +643,7 @@ export function CampaignDashboard({
                 <TabsTrigger value="enviado">Enviado</TabsTrigger>
                 <TabsTrigger value="leido">Leído</TabsTrigger>
                 <TabsTrigger value="error">Error</TabsTrigger>
+                <TabsTrigger value="waWmidMissing">WAMID faltante</TabsTrigger>
               </TabsList>
             </Tabs>
             <div className="flex items-center gap-2 max-w-sm w-full">
@@ -802,12 +795,18 @@ export function CampaignDashboard({
         </TabsContent>
 
         <TabsContent value="integridad" className="mt-4 focus-visible:outline-none">
+          {campaign.simulated ? (
+            <p className="text-sm text-muted-foreground rounded-md border border-amber-500/40 bg-amber-500/5 p-4">
+              Esta campaña es una simulación: no se ancla integridad en Polygon.
+            </p>
+          ) : (
           <CampaignIntegrityPanel
             orgId={orgId}
             campaignId={campaignId}
             initialMessageId={verifyTarget}
             adminSession={isAdmin}
           />
+          )}
         </TabsContent>
 
         <TabsContent value="mensaje" className="mt-4 space-y-4 focus-visible:outline-none">

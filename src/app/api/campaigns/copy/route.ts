@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
       estado: 'borrador',
       createdAt: FieldValue.serverTimestamp(),
       ...(access.viaAdmin || c.managedByAdmin ? { managedByAdmin: true } : {}),
+      ...(c.simulated === true ? { simulated: true } : {}),
       ...(typeof c.tandaSize === 'number' ? { tandaSize: c.tandaSize } : {}),
     });
 

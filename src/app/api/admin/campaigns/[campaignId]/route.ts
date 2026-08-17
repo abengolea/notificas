@@ -33,6 +33,7 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     waTemplateLang: String(data.waTemplateLang || 'es_AR'),
     waTemplateVariables: Array.isArray(data.waTemplateVariables) ? data.waTemplateVariables : [],
     managedByAdmin: data.managedByAdmin === true,
+    simulated: data.simulated === true,
     senderUid: String(data.senderUid || ''),
     senderEmail: String(data.senderEmail || ''),
     stats: {

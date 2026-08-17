@@ -195,6 +195,8 @@ export interface Campaign {
   tandaCap?: number;
   /** Creada y operada desde el panel admin (campañas masivas). */
   managedByAdmin?: boolean;
+  /** Admin: recorre fanout/workers/dashboard sin Mailgun ni Meta. */
+  simulated?: boolean;
   recipientStoragePath?: string;
   recipientChunkCount?: number;
   senderUid?: string;
@@ -258,6 +260,8 @@ export interface CampaignMessage {
   waTxEntregado?: string;
   waTxLeido?: string;
   waError?: string;
+  /** CF respondió OK pero no escribió whatsappMessageId en el mail doc. */
+  waWmidMissing?: boolean;
   integritySendBatchId?: string;
   integrity?: {
     send?: {

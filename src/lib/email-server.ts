@@ -36,6 +36,9 @@ export type CreateMailAdminParams = {
   waTemplateName?: string;
   waTemplateLang?: string;
   waTemplateVariables?: string[] | null;
+  /** Campaña admin simulada: la CF sendEmail no debe despachar Mailgun/Meta. */
+  simulated?: boolean;
+  waOnly?: boolean;
 };
 
 /** Crea un documento en `mail` con Admin SDK (equivalente a scheduleEmail sin auto-fetch). */
@@ -61,6 +64,8 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
     waTemplateName,
     waTemplateLang,
     waTemplateVariables,
+    simulated,
+    waOnly,
   } = params;
 
   const db = getAdminDb();
@@ -126,6 +131,8 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
   }
 
   if (contactRequest) payload.contactRequest = true;
+  if (simulated) payload.simulated = true;
+  if (waOnly) payload.waOnly = true;
 
   await mailRef.set(payload);
   return mailId;

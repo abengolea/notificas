@@ -27,6 +27,7 @@ function mapCampaign(id: string, data: DocumentData): Campaign {
     recipientCount: typeof data.recipientCount === 'number' ? data.recipientCount : 0,
     tandaSize: typeof data.tandaSize === 'number' ? data.tandaSize : undefined,
     managedByAdmin: data.managedByAdmin === true,
+    simulated: data.simulated === true,
     canal: (data.canal as CanalCampaign) || 'email',
     estado: data.estado as Campaign['estado'],
     stats: {

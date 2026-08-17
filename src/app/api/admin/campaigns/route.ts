@@ -16,6 +16,7 @@ const createSchema = z.object({
   waTemplateLang: z.string().max(16).optional(),
   waTemplateVariables: z.array(z.string().max(40)).max(8).optional(),
   tandaSize: z.number().int().min(0).optional(),
+  simulated: z.boolean().optional(),
 });
 
 function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
@@ -36,6 +37,7 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     waTemplateLang: String(data.waTemplateLang || 'es_AR'),
     waTemplateVariables: Array.isArray(data.waTemplateVariables) ? data.waTemplateVariables : [],
     managedByAdmin: data.managedByAdmin === true,
+    simulated: data.simulated === true,
     senderUid: String(data.senderUid || ''),
     senderEmail: String(data.senderEmail || ''),
     stats: {
@@ -105,6 +107,7 @@ export async function POST(request: NextRequest) {
       adjuntos: [],
       recipientCount: 0,
       tandaSize: parsed.data.tandaSize ?? 0,
+      simulated: parsed.data.simulated === true,
       ...(canal !== 'email' && parsed.data.waTemplateName?.trim()
         ? {
             waTemplateName: parsed.data.waTemplateName.trim(),

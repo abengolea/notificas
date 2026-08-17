@@ -33,6 +33,14 @@ const whatsappVerifyToken = defineSecret('WHATSAPP_VERIFY_TOKEN');
 const whatsappTemplateName = defineString('WHATSAPP_TEMPLATE_NAME', { default: '' });
 const whatsappTemplateLanguage = defineString('WHATSAPP_TEMPLATE_LANGUAGE', { default: 'es_AR' });
 
+/**
+ * Dígitos E.164 argentinos sin `+` (ej. 5491112345678).
+ *
+ * SYNC: la lógica DEBE mantenerse igual a `toWhatsAppPhone` en
+ * src/lib/parse-campaign-csv.ts (allá se guarda con `+`; acá sin `+` para Meta).
+ * Si cambia una, cambiar la otra. Plan futuro: extraer a un paquete compartido
+ * (hoy Next.js y Cloud Functions no comparten módulos).
+ */
 function formatPhoneForWhatsApp(phone) {
   if (!phone || typeof phone !== 'string') return null;
   let digits = phone.replace(/\D/g, '');
@@ -369,8 +377,22 @@ function injectTrackingIntoHtml(html, docId, token) {
 
 
 
+function whatsappErrorMessage(waId) {
+  if (!waId) return 'La API de WhatsApp no devolvió un ID de mensaje';
+  if (typeof waId === 'string') return null;
+  const err = waId.error || waId;
+  return err.error?.message || err.message || (typeof err === 'string' ? err : JSON.stringify(err));
+}
+
 exports.sendEmail = onRequest(
-  { region: REGION, concurrency: 1, secrets: [whatsappAccessToken, whatsappPhoneNumberId, smtpPass, polygonCertifySecret] },
+  {
+    region: REGION,
+    concurrency: 1,
+    // Techo bajo el MPS típico de Cloud API (~80). minInstances evita el cold start del primer lote.
+    maxInstances: 40,
+    minInstances: 1,
+    secrets: [whatsappAccessToken, whatsappPhoneNumberId, smtpPass, polygonCertifySecret],
+  },
   async (req, res) => {
     const timestamp = new Date().toISOString();
     console.log(`🔥 [${timestamp}] Firebase Function sendEmail ejecutada`);
@@ -391,14 +413,23 @@ exports.sendEmail = onRequest(
       }
       
       const emailData = docSnapshot.data();
+
+      if (emailData.simulated === true) {
+        console.log(`🧪 sendEmail ignorado (simulación) docId=${docId}`);
+        return res.status(200).json({ success: true, simulated: true, message: 'Campaña simulada: no se envía' });
+      }
       
-      // 🚨 VERIFICAR SI YA FUE PROCESADO
-      if (emailData.delivery?.state) {
+      const alreadyDelivered = emailData.delivery?.state === 'DELIVERED';
+      const waRequired = emailData.waOnly === true || Boolean(emailData.campaignId && emailData.recipientPhone);
+      const existingWamid = emailData.whatsappMessageId || emailData.tracking?.whatsappMessageId;
+      // DELIVERED + (email-only, o WA ya con WAMID) → idempotente.
+      // ERROR se reintenta. DELIVERED sin WAMID en campaña WA → reintenta solo WhatsApp.
+      if (alreadyDelivered && (!waRequired || existingWamid)) {
         console.log(`⚠️ Documento ${docId} ya fue procesado, estado:`, emailData.delivery.state);
-        return res.status(200).json({ 
-          success: true, 
+        return res.status(200).json({
+          success: true,
           message: 'Ya fue procesado',
-          state: emailData.delivery.state 
+          state: emailData.delivery.state,
         });
       }
 
@@ -442,7 +473,7 @@ exports.sendEmail = onRequest(
 
     const trackingToken = emailData.tracking?.token || generateToken();
 
-    // Campaña WhatsApp-only: no enviar email, solo registrar tracking y enviar WA.
+    // Campaña WhatsApp-only: enviar WA primero; DELIVERED solo si Meta aceptó.
     if (emailData.waOnly === true) {
       const waDigits = formatPhoneForWhatsApp(emailData.recipientPhone);
       const rParam =
@@ -450,6 +481,45 @@ exports.sendEmail = onRequest(
           ? `&r=${encodeURIComponent(base64UrlEncode(waDigits))}`
           : '';
       const readerUrlWa = `${APP_HOSTING_URL}/linkRedirect?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}&src=whatsapp${rParam}`;
+      const recipientPhone = emailData.recipientPhone;
+      if (!recipientPhone) {
+        await docRef.update({
+          delivery: { state: 'ERROR', time: FieldValue.serverTimestamp(), error: 'Sin teléfono WhatsApp' },
+        });
+        return res.status(422).json({ success: false, error: 'Sin teléfono WhatsApp', channel: 'whatsapp-only' });
+      }
+
+      const token = whatsappAccessToken.value();
+      const phoneId = whatsappPhoneNumberId.value();
+      const campaignTemplateName = emailData.waTemplateName?.trim() || '';
+      const globalTemplateName   = whatsappTemplateName.value()?.trim() || '';
+      const resolvedTemplate     = campaignTemplateName || globalTemplateName || null;
+      const resolvedLang         = emailData.waTemplateLang?.trim() || whatsappTemplateLanguage.value()?.trim() || 'es_AR';
+      const resolvedVariables    = Array.isArray(emailData.waTemplateVariables) ? emailData.waTemplateVariables : null;
+      const waId = await sendWhatsAppNotification({
+        accessToken: token, phoneNumberId: phoneId,
+        templateName: resolvedTemplate, templateLang: resolvedLang,
+        toPhone: recipientPhone, readerUrl: readerUrlWa,
+        senderName: formatWhatsAppSenderDisplay(emailData.senderName, from),
+        recipientName: formatWhatsAppRecipientDisplay(emailData.recipientName),
+        templateVariables: resolvedVariables,
+        recipientData: {
+          nombre: emailData.recipientName,
+          email: emailData.recipientEmail,
+          telefono: recipientPhone,
+          dni: emailData.recipientDni,
+          legajo: emailData.recipientLegajo,
+        },
+      });
+      const waErr = whatsappErrorMessage(waId);
+      if (waErr) {
+        console.error('❌ WhatsApp WA-only error:', waErr);
+        await docRef.update({
+          delivery: { state: 'ERROR', time: FieldValue.serverTimestamp(), error: waErr },
+        });
+        return res.status(502).json({ success: false, error: waErr, channel: 'whatsapp-only' });
+      }
+
       await docRef.update({
         delivery: { state: 'DELIVERED', time: FieldValue.serverTimestamp(), info: 'whatsapp-only' },
         tracking: {
@@ -461,55 +531,22 @@ exports.sendEmail = onRequest(
           movements: [],
         },
         readerUrl: readerUrlWa,
+        whatsappMessageId: waId,
         source: 'whatsapp_campaign',
         sourceLabel: 'Campaña WhatsApp',
         sourceIcon: '📱',
       });
-
-      // Enviar WA
-      const recipientPhone = emailData.recipientPhone;
-      if (recipientPhone) {
-        const token = whatsappAccessToken.value();
-        const phoneId = whatsappPhoneNumberId.value();
-        const campaignTemplateName = emailData.waTemplateName?.trim() || '';
-        const globalTemplateName   = whatsappTemplateName.value()?.trim() || '';
-        const resolvedTemplate     = campaignTemplateName || globalTemplateName || null;
-        const resolvedLang         = emailData.waTemplateLang?.trim() || whatsappTemplateLanguage.value()?.trim() || 'es_AR';
-        const resolvedVariables    = Array.isArray(emailData.waTemplateVariables) ? emailData.waTemplateVariables : null;
-        const waId = await sendWhatsAppNotification({
-          accessToken: token, phoneNumberId: phoneId,
-          templateName: resolvedTemplate, templateLang: resolvedLang,
-          toPhone: recipientPhone, readerUrl: readerUrlWa,
-          senderName: formatWhatsAppSenderDisplay(emailData.senderName, from),
-          recipientName: formatWhatsAppRecipientDisplay(emailData.recipientName),
-          templateVariables: resolvedVariables,
-          recipientData: {
-            nombre: emailData.recipientName,
-            email: emailData.recipientEmail,
-            telefono: recipientPhone,
-            dni: emailData.recipientDni,
-            legajo: emailData.recipientLegajo,
-          },
+      try {
+        await getFirestore().doc(`whatsapp_ids/${waId}`).set({
+          mailDocId: docId,
+          recipientPhone: formatPhoneForWhatsApp(recipientPhone) || recipientPhone,
+          createdAt: FieldValue.serverTimestamp(),
         });
-        if (waId && typeof waId === 'string') {
-          await docRef.update({ whatsappMessageId: waId });
-          // Índice para lookup rápido desde el webhook de delivery — DEBE ser await.
-          // En Cloud Run las promesas fire-and-forget se matan al responder HTTP.
-          try {
-            await getFirestore().doc(`whatsapp_ids/${waId}`).set({
-              mailDocId: docId,
-              recipientPhone: formatPhoneForWhatsApp(recipientPhone) || recipientPhone,
-              createdAt: FieldValue.serverTimestamp(),
-            });
-          } catch (e) {
-            console.warn('⚠️ Error guardando whatsapp_ids (waOnly):', e.message);
-          }
-          console.log('📱 WhatsApp WA-only enviado:', waId);
-        } else if (waId && waId.error) {
-          console.error('❌ WhatsApp WA-only error:', JSON.stringify(waId.error));
-        }
+      } catch (e) {
+        console.warn('⚠️ Error guardando whatsapp_ids (waOnly):', e.message);
       }
-      return res.status(200).json({ success: true, channel: 'whatsapp-only' });
+      console.log('📱 WhatsApp WA-only enviado:', waId);
+      return res.status(200).json({ success: true, channel: 'whatsapp-only', whatsappId: waId });
     }
 
     const subject = emailData.message?.subject || 'Sin asunto';
@@ -725,9 +762,12 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
         bcc: emailData.bcc
       };
 
+      let result = { messageId: emailData.smtpMessageId || emailData.delivery?.info || '' };
+
+      if (!alreadyDelivered) {
       console.log('📧 Enviando email a:', to);
       console.log('📧 Asunto:', subject);
-      const result = await getTransporter().sendMail(mailOptions);
+      result = await getTransporter().sendMail(mailOptions);
       
       console.log('📧 Resultado del envío:', result);
       
@@ -799,6 +839,8 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
           })
           .catch((e) => console.warn('⚠️ Polygon certify send failed (no afecta el envío):', e?.message));
       }
+
+      } // !alreadyDelivered: no reenviar SMTP en retry de WhatsApp
 
       // Enviar WhatsApp si hay teléfono (secrets desde Secret Manager)
       const recipientPhone = emailData.recipientPhone;
@@ -881,7 +923,6 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
               }
             } else if (resultWA && resultWA.error) {
               const err = resultWA.error;
-              // Meta: { error: { message: "..." } }
               whatsappError = err.error?.message || err.message || (typeof err === 'string' ? err : JSON.stringify(err));
             } else {
               whatsappError = 'La API de WhatsApp rechazó el envío';
@@ -895,9 +936,17 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
         console.log('📱 Sin recipientPhone en documento, omitiendo WhatsApp');
       }
 
-      // Devolver respuesta exitosa
-      res.status(200).json({ 
-        success: true, 
+      if (emailData.campaignId && recipientPhone && whatsappError) {
+        console.error('❌ WhatsApp de campaña falló:', whatsappError);
+        return res.status(502).json({
+          success: false,
+          error: whatsappError,
+          messageId: result.messageId || undefined,
+        });
+      }
+
+      res.status(200).json({
+        success: true,
         messageId: result.messageId,
         docId: docId,
         whatsappId: whatsappId || undefined,

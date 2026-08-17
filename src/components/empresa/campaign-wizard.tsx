@@ -48,7 +48,7 @@ import {
   campaignBodyToHtmlFragment,
   personalizeCampaignText,
 } from "@/lib/campaign-email-html";
-import { Loader2, Mail, MessageCircle, Layers, HelpCircle, Copy, Check, Upload, X, FileText } from "lucide-react";
+import { Loader2, Mail, MessageCircle, Layers, HelpCircle, Copy, Check, Upload, X, FileText, FlaskConical } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -57,9 +57,24 @@ import {
 import { maxRecipientsForPlan } from "@/lib/org-limits-client";
 import { assignFilesToRecipientsGreedy, scoreFileForRecipient } from "@/lib/campaign-attachment-match";
 import { uploadCampaignCsvInChunks, uploadCampaignRecipients } from "@/lib/upload-campaign-recipients";
-import { csvCamposRequeridos, csvPlaceholder, inspectCampaignCsv, parseCsvQuick } from "@/lib/parse-campaign-csv";
+import { csvCamposRequeridos, csvPlaceholder, detectCsvSeparatorError, inspectCampaignCsv, parseCsvQuickResult, phoneDigits } from "@/lib/parse-campaign-csv";
 import { DEFAULT_TANDA_SIZE } from "@/lib/campaign-tanda";
+import {
+  SIM_RECIPIENT_DEFAULT,
+  SIM_RECIPIENT_MAX,
+  SIM_RECIPIENT_MIN,
+} from "@/lib/campaign-fake-recipients";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { CsvInspectResult } from "@/lib/parse-campaign-csv";
+
+function cleanRecipientForUpload(r: RecipientEntry): RecipientEntry {
+  const clean: RecipientEntry = { nombre: r.nombre || "", email: r.email || "" };
+  if (r.telefono) clean.telefono = r.telefono;
+  if (r.dni) clean.dni = r.dni;
+  if (r.legajo) clean.legajo = r.legajo;
+  if (r.area) clean.area = r.area;
+  return clean;
+}
 
 function parseEmailsBlock(text: string): RecipientEntry[] {
   const parts = text.split(/[\s,;\n]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
@@ -67,6 +82,25 @@ function parseEmailsBlock(text: string): RecipientEntry[] {
   return uniq
     .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     .map((email) => ({ email, nombre: email.split("@")[0] }));
+}
+
+function recipientMergeKey(r: RecipientEntry, canal: CanalCampaign): string {
+  if (canal === "whatsapp" || canal === "ambos") {
+    const digits = phoneDigits(r.telefono);
+    if (digits) return `wa:${digits}`;
+  }
+  return r.email.trim().toLowerCase();
+}
+
+function mergeRecipientList(
+  current: RecipientEntry[],
+  incoming: RecipientEntry[],
+  canal: CanalCampaign
+): RecipientEntry[] {
+  const map = new Map<string, RecipientEntry>();
+  current.forEach((r) => map.set(recipientMergeKey(r, canal), r));
+  incoming.forEach((r) => map.set(recipientMergeKey(r, canal), r));
+  return [...map.values()];
 }
 
 export function CampaignWizard({
@@ -114,11 +148,13 @@ export function CampaignWizard({
   const csvFileRef = useRef<File | null>(null);
   const [csvInspect, setCsvInspect] = useState<CsvInspectResult | null>(null);
   const [tandaSize, setTandaSize] = useState(DEFAULT_TANDA_SIZE);
+  const [simulated, setSimulated] = useState(false);
+  const [simRecipientCount, setSimRecipientCount] = useState(SIM_RECIPIENT_DEFAULT);
   const [adminBillingEmail, setAdminBillingEmail] = useState("");
   const [adminOrgPlan, setAdminOrgPlan] = useState("starter");
   const orgPlan = isAdmin ? adminOrgPlan : orgPlanProp;
   const maxR = isAdmin ? 1_000_000 : maxRecipientsForPlan(orgPlan);
-  const recipientTotal = csvInspect?.count || recipients.length;
+  const recipientTotal = csvInspect?.count || recipients.length || (isAdmin && simulated ? simRecipientCount : 0);
 
   useEffect(() => {
     if (isAdmin) return;
@@ -269,6 +305,8 @@ export function CampaignWizard({
 
   function validateCsvHeaders(text: string): string | null {
     const firstLine = text.split(/\r?\n/)[0] || "";
+    const sepErr = detectCsvSeparatorError(firstLine);
+    if (sepErr) return sepErr;
     const headers = firstLine.split(",").map((h) => h.trim().toLowerCase());
     const needEmail = canal === "email" || canal === "ambos";
     const needPhone = canal === "whatsapp" || canal === "ambos";
@@ -302,11 +340,9 @@ export function CampaignWizard({
       setCsvInspect(inspected);
       if (!isAdmin) {
         void fromFile.text().then((text) => {
-          const parsed = parseCsvQuick(text, canal);
-          const map = new Map<string, RecipientEntry>();
-          recipients.forEach((r) => map.set(r.email.toLowerCase(), r));
-          parsed.forEach((r) => map.set(r.email.toLowerCase(), r));
-          setRecipients([...map.values()]);
+          const parsed = parseCsvQuickResult(text, canal);
+          if (parsed.error || parsed.rows.length === 0) return;
+          setRecipients(mergeRecipientList(recipients, parsed.rows, canal));
         });
       } else {
         setRecipients([]);
@@ -331,8 +367,13 @@ export function CampaignWizard({
         setCsvFileName(null);
         return;
       }
-      const parsed = parseCsvQuick(text, canal);
-      if (parsed.length === 0) {
+      const parsed = parseCsvQuickResult(text, canal);
+      if (parsed.error) {
+        setCsvFileError(`${parsed.error}. Campos requeridos: ${csvCamposRequeridos(canal)}`);
+        setCsvFileName(null);
+        return;
+      }
+      if (parsed.rows.length === 0) {
         setCsvFileError("El archivo no contiene filas válidas. Revisá el formato y que los campos obligatorios tengan datos.");
         setCsvFileName(null);
         return;
@@ -340,12 +381,14 @@ export function CampaignWizard({
       setCsvFileError(null);
       setCsvFileName(file.name);
       csvFileRef.current = file;
-      setCsvInspect({ error: null, count: parsed.length, skipped: 0, sample: parsed.slice(0, 3).map((r) => r.nombre) });
-      const map = new Map<string, RecipientEntry>();
-      recipients.forEach((r) => map.set(r.email.toLowerCase(), r));
-      parsed.forEach((r) => map.set(r.email.toLowerCase(), r));
-      setRecipients([...map.values()]);
-      toast({ title: `${parsed.length} destinatarios importados`, description: `Desde ${file.name}` });
+      setCsvInspect({ error: null, count: parsed.rows.length, skipped: parsed.phoneDuplicates, sample: parsed.rows.slice(0, 3).map((r) => r.nombre) });
+      setRecipients(mergeRecipientList(recipients, parsed.rows, canal));
+      toast({
+        title: `${parsed.rows.length} destinatarios importados`,
+        description: parsed.phoneDuplicates
+          ? `Desde ${file.name} · ${parsed.phoneDuplicates} teléfonos duplicados omitidos`
+          : `Desde ${file.name}`,
+      });
     };
     reader.onerror = () => {
       setCsvFileError("No se pudo leer el archivo. Intentá con otro.");
@@ -355,15 +398,31 @@ export function CampaignWizard({
   }
 
   function mergeRecipientsFromInputs(mode: "paste" | "csv") {
-    const next = mode === "paste" ? parseEmailsBlock(pasteEmails) : parseCsvQuick(csvChunk, canal);
+    if (mode === "csv") {
+      const parsed = parseCsvQuickResult(csvChunk, canal);
+      if (parsed.error) {
+        toast({ title: "CSV inválido", description: parsed.error, variant: "destructive" });
+        return;
+      }
+      if (parsed.rows.length === 0) {
+        toast({ title: "No se encontraron destinatarios válidos", description: `El CSV debe tener columnas: ${csvCamposRequeridos(canal)}`, variant: "destructive" });
+        return;
+      }
+      setRecipients(mergeRecipientList(recipients, parsed.rows, canal));
+      toast({
+        title: `${parsed.rows.length} destinatarios`,
+        description: parsed.phoneDuplicates
+          ? `Combinados con la lista actual · ${parsed.phoneDuplicates} teléfonos duplicados omitidos`
+          : "Combinados con la lista actual",
+      });
+      return;
+    }
+    const next = parseEmailsBlock(pasteEmails);
     if (next.length === 0) {
       toast({ title: "No se encontraron destinatarios válidos", description: `El CSV debe tener columnas: ${csvCamposRequeridos(canal)}`, variant: "destructive" });
       return;
     }
-    const map = new Map<string, RecipientEntry>();
-    recipients.forEach((r) => map.set(r.email.toLowerCase(), r));
-    next.forEach((r) => map.set(r.email.toLowerCase(), r));
-    setRecipients([...map.values()]);
+    setRecipients(mergeRecipientList(recipients, next, canal));
     toast({ title: `${next.length} destinatarios`, description: "Combinados con la lista actual" });
   }
 
@@ -376,8 +435,12 @@ export function CampaignWizard({
       toast({ title: "Completá nombre interno, asunto y cuerpo", variant: "destructive" });
       return;
     }
+    if ((canal === "whatsapp" || canal === "ambos") && sendNow && !simulated && !waTemplateName.trim()) {
+      toast({ title: "Completá el template de WhatsApp", description: "Meta requiere un template aprobado para enviar.", variant: "destructive" });
+      return;
+    }
     const file = csvFileRef.current;
-    if (!file && recipients.length === 0) {
+    if (!file && recipients.length === 0 && !(simulated && simRecipientCount >= SIM_RECIPIENT_MIN)) {
       toast({ title: "Agregá destinatarios", variant: "destructive" });
       return;
     }
@@ -403,7 +466,8 @@ export function CampaignWizard({
           waTemplateName: waTemplateName.trim() || undefined,
           waTemplateLang,
           waTemplateVariables: waTemplateVariables.filter(Boolean),
-          tandaSize: sendNow ? tandaSize : 0,
+          tandaSize: sendNow ? (simulated ? 0 : tandaSize) : 0,
+          simulated,
         }),
       });
       const created = await createRes.json();
@@ -420,18 +484,24 @@ export function CampaignWizard({
           onProgress: (p) =>
             setUploadProgress({ uploadedChunks: p.uploadedChunks, chunkCount: p.chunkCount }),
         });
-      } else {
-        const cleanRecipients = recipients.map((r) => {
-          const clean: Record<string, string> = { nombre: r.nombre || "", email: r.email || "" };
-          if (r.telefono) clean.telefono = r.telefono;
-          if (r.dni) clean.dni = r.dni;
-          if (r.legajo) clean.legajo = r.legajo;
-          return clean;
+      } else if (simulated) {
+        const genRes = await fetch("/api/admin/campaigns/generate-recipients", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            campaignId,
+            count: Math.min(SIM_RECIPIENT_MAX, Math.max(SIM_RECIPIENT_MIN, simRecipientCount)),
+          }),
         });
+        const genData = await genRes.json();
+        if (!genRes.ok) throw new Error(genData.error || "No se pudieron generar destinatarios");
+      } else {
+        const cleanRecipients = recipients.map(cleanRecipientForUpload);
         await uploadCampaignRecipients({
           campaignId,
           orgId,
-          recipients: cleanRecipients as RecipientEntry[],
+          recipients: cleanRecipients,
           endpoint: "/api/admin/campaigns/upload-recipients",
           onProgress: setUploadProgress,
         });
@@ -442,13 +512,15 @@ export function CampaignWizard({
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ campaignId, tandaSize }),
+          body: JSON.stringify({ campaignId, tandaSize: simulated ? 0 : tandaSize }),
         });
         const sendData = await sendRes.json();
         if (!sendRes.ok) throw new Error(sendData.error || "Falló el envío");
         toast({
-          title: "Envío iniciado",
-          description: `${(sendData.pendingThisTanda ?? sendData.pending ?? 0).toLocaleString("es-AR")} mensajes encolados`,
+          title: simulated ? "Simulación iniciada" : "Envío iniciado",
+          description: simulated
+            ? `${(sendData.pendingThisTanda ?? sendData.pending ?? simRecipientCount).toLocaleString("es-AR")} mensajes simulados encolados`
+            : `${(sendData.pendingThisTanda ?? sendData.pending ?? 0).toLocaleString("es-AR")} mensajes encolados`,
         });
       } else {
         toast({ title: "Borrador guardado" });
@@ -476,6 +548,10 @@ export function CampaignWizard({
     if (!user) return;
     if (!campaniaNombre.trim() || !asunto.trim() || !cuerpo.trim()) {
       toast({ title: "Completá nombre interno, asunto y cuerpo", variant: "destructive" });
+      return;
+    }
+    if ((canal === "whatsapp" || canal === "ambos") && sendNow && !waTemplateName.trim()) {
+      toast({ title: "Completá el template de WhatsApp", description: "Meta requiere un template aprobado para enviar.", variant: "destructive" });
       return;
     }
     if (recipients.length === 0) {
@@ -549,14 +625,7 @@ export function CampaignWizard({
       const scheduleFuture = Boolean(scheduleIso && new Date(scheduleIso) > new Date());
 
       // Firestore rechaza campos undefined — limpiar antes de guardar.
-      const cleanRecipients = recipients.map((r) => {
-        const clean: Record<string, string> = { nombre: r.nombre || '', email: r.email || '' };
-        if (r.telefono) clean.telefono = r.telefono;
-        if (r.dni)      clean.dni      = r.dni;
-        if (r.legajo)   clean.legajo   = r.legajo;
-        if (r.area)     clean.area     = r.area;
-        return clean;
-      });
+      const cleanRecipients = recipients.map(cleanRecipientForUpload);
 
       // Base del doc: NO incluimos recipientData/recipientEmails para no superar 1MB.
       // Los destinatarios se suben a Storage y se referencia por path.
@@ -564,6 +633,7 @@ export function CampaignWizard({
         orgId,
         createdBy: user.uid,
         canal,
+        tandaSize,
         ...(canal !== "email" && waTemplateName.trim() ? {
           waTemplateName: waTemplateName.trim(),
           waTemplateLang: waTemplateLang.trim() || "es_AR",
@@ -600,7 +670,7 @@ export function CampaignWizard({
         await uploadCampaignRecipients({
           campaignId: refDoc.id,
           orgId,
-          recipients: cleanRecipients as RecipientEntry[],
+          recipients: cleanRecipients,
           token,
           onProgress: setUploadProgress,
         });
@@ -619,7 +689,6 @@ export function CampaignWizard({
       }
 
       if (sendNow) {
-        await updateDoc(refDoc, { estado: "enviando", startedAt: serverTimestamp() });
         const sendRes = await fetch("/api/campaigns/send", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -627,7 +696,6 @@ export function CampaignWizard({
         });
         const sendData = await sendRes.json();
         if (!sendRes.ok) {
-          await updateDoc(refDoc, { estado: "borrador" });
           throw new Error(sendData.error || "Falló el envío");
         }
         toast({ title: "Envío iniciado", description: `${sendData.pending ?? sendData.total ?? 0} mensajes encolados` });
@@ -649,6 +717,7 @@ export function CampaignWizard({
   }
 
   const STEPS = ["Canal", "Destinatarios", "Mensaje", "Confirmación"];
+  const waTemplateMissing = !simulated && (canal === "whatsapp" || canal === "ambos") && !waTemplateName.trim();
 
   return (
     <div className="max-w-3xl space-y-8">
@@ -676,10 +745,66 @@ export function CampaignWizard({
             </Select>
             {adminOrgId ? (
               <p className="text-xs text-muted-foreground">
-                Plan {adminOrgPlan} · cobra {adminBillingEmail || "el admin de la empresa"} ·{" "}
-                {creditos.toLocaleString("es-AR")} envíos
+                Plan {adminOrgPlan}
+                {simulated
+                  ? " · simulación (no se factura)"
+                  : ` · cobra ${adminBillingEmail || "el admin de la empresa"} · ${creditos.toLocaleString("es-AR")} envíos`}
               </p>
             ) : null}
+          </CardContent>
+        </Card>
+      )}
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Modo de envío</CardTitle>
+            <CardDescription>
+              La simulación recorre la misma cola, workers y dashboard. No llama a Mailgun ni a WhatsApp.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <RadioGroup
+              value={simulated ? "simulated" : "real"}
+              onValueChange={(v) => {
+                const next = v === "simulated";
+                setSimulated(next);
+                setTandaSize(next ? 0 : DEFAULT_TANDA_SIZE);
+                if (next && !campaniaNombre.trim()) {
+                  setCampaniaNombre(`[SIM] Prueba ${new Date().toLocaleString("es-AR")}`);
+                }
+              }}
+              className="grid gap-3 sm:grid-cols-2"
+            >
+              <label
+                className={`flex cursor-pointer items-start gap-3 rounded-md border p-4 ${
+                  !simulated ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border"
+                }`}
+              >
+                <RadioGroupItem value="real" className="mt-1" />
+                <span>
+                  <span className="block font-medium">Envío real</span>
+                  <span className="block text-xs text-muted-foreground mt-1">
+                    Sale por correo y/o WhatsApp de verdad. No se puede deshacer.
+                  </span>
+                </span>
+              </label>
+              <label
+                className={`flex cursor-pointer items-start gap-3 rounded-md border p-4 ${
+                  simulated ? "border-amber-500 bg-amber-500/5 ring-1 ring-amber-500" : "border-border"
+                }`}
+              >
+                <RadioGroupItem value="simulated" className="mt-1" />
+                <span>
+                  <span className="font-medium inline-flex items-center gap-1.5">
+                    <FlaskConical className="h-4 w-4" />
+                    Simulación
+                  </span>
+                  <span className="block text-xs text-muted-foreground mt-1">
+                    Destinatarios ficticios, entregas y aperturas al azar. No se factura ni se envía nada.
+                  </span>
+                </span>
+              </label>
+            </RadioGroup>
           </CardContent>
         </Card>
       )}
@@ -732,7 +857,7 @@ export function CampaignWizard({
             <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
               <p className="font-medium">Campos requeridos en el CSV:</p>
               <p className="text-muted-foreground font-mono text-xs">{csvCamposRequeridos(canal)}<span className="not-italic text-muted-foreground/70"> + legajo (opcional)</span></p>
-              {(canal === "whatsapp" || canal === "ambos") && (
+              {(canal === "whatsapp" || canal === "ambos") && !simulated && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
                   WhatsApp requiere un template aprobado por Meta. El campo <strong>telefono</strong> debe incluir código de país (+54…).
                 </p>
@@ -813,12 +938,12 @@ export function CampaignWizard({
                     {(canal === "whatsapp" || canal === "ambos") && (
                       <div className="rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-2 text-xs space-y-1">
                         <p className="font-medium text-amber-800 dark:text-amber-300">Formato de teléfono para WhatsApp</p>
-                        <p className="text-amber-700 dark:text-amber-400">Debe incluir código de país. Formatos aceptados:</p>
+                        <p className="text-amber-700 dark:text-amber-400">Debe incluir código de país. Formatos aceptados (se normalizan a E.164):</p>
                         <ul className="font-mono space-y-0.5 text-amber-800 dark:text-amber-300">
                           <li>+5491112345678 ✓</li>
                           <li>5491112345678 ✓</li>
                           <li>1112345678 ✓ (se asume Argentina +549)</li>
-                          <li>011-1234-5678 ✗ (sin guiones)</li>
+                          <li>011-1234-5678 ✓ (guiones y 0 inicial se normalizan)</li>
                         </ul>
                       </div>
                     )}
@@ -848,6 +973,42 @@ export function CampaignWizard({
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
+            {isAdmin && simulated && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-4 space-y-3">
+                <p className="font-medium inline-flex items-center gap-2">
+                  <FlaskConical className="h-4 w-4" />
+                  Destinatarios ficticios
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Se generan al enviar. Teléfonos y mails de prueba (no existen). Podés subir un CSV en su lugar.
+                </p>
+                <div className="space-y-1 max-w-xs">
+                  <Label className="text-xs">Cantidad</Label>
+                  <Input
+                    type="number"
+                    min={SIM_RECIPIENT_MIN}
+                    max={SIM_RECIPIENT_MAX}
+                    value={simRecipientCount}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (Number.isInteger(n)) setSimRecipientCount(n);
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Entre {SIM_RECIPIENT_MIN.toLocaleString("es-AR")} y {SIM_RECIPIENT_MAX.toLocaleString("es-AR")}. Default 10.000.
+                  </p>
+                </div>
+                {csvFileName ? (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Hay un CSV cargado: se usa ese archivo en lugar de la lista ficticia.
+                  </p>
+                ) : (
+                  <p className="text-sm">
+                    Al enviar se crean <strong>{simRecipientCount.toLocaleString("es-AR")}</strong> destinatarios de prueba.
+                  </p>
+                )}
+              </div>
+            )}
             {lists.length > 0 && !isAdmin && (
               <div className="space-y-2">
                 <Label>Lista guardada</Label>
@@ -1003,7 +1164,7 @@ export function CampaignWizard({
             </div>
 
             {/* Configuración de template WhatsApp */}
-            {(canal === "whatsapp" || canal === "ambos") && (
+            {(canal === "whatsapp" || canal === "ambos") && !simulated && (
               <div className="rounded-md border p-4 space-y-4">
                 <div>
                   <p className="text-sm font-medium flex items-center gap-2">
@@ -1011,15 +1172,15 @@ export function CampaignWizard({
                     Template de WhatsApp
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Meta solo permite mensajes con templates aprobados. Si lo dejás vacío, usamos el
-                    template registrado por defecto de Notificas.
+                    Meta solo permite mensajes con templates aprobados. Completá el nombre del
+                    template aprobado en Meta antes de enviar.
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Nombre del template (aprobado en Meta)</Label>
                     <Input
-                      placeholder="Vacío = template por defecto de Notificas"
+                      placeholder="Nombre del template en Meta (obligatorio para enviar)"
                       value={waTemplateName}
                       onChange={(e) => setWaTemplateName(e.target.value)}
                     />
@@ -1207,6 +1368,12 @@ export function CampaignWizard({
 
             {/* Créditos y programación */}
             <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm space-y-2">
+              {simulated ? (
+                <p>
+                  <strong>Simulación:</strong> no se envía a teléfonos ni correos reales, no se factura y no se escribe en Polygon.
+                  El dashboard muestra entregas y aperturas al azar (~3% error, ~58% leído WA, ~36% abre el aviso).
+                </p>
+              ) : (
               <p>
                 Consumo: <strong>1 envío</strong> por destinatario exitoso.
                 {isAdmin ? (
@@ -1217,7 +1384,8 @@ export function CampaignWizard({
                   <> Tu saldo: <strong>{creditos}</strong>.</>
                 )}
               </p>
-              {isAdmin ? (
+              )}
+              {isAdmin && !simulated ? (
                 <>
                   <div className="space-y-1 pt-1 max-w-xs">
                     <Label className="text-xs">Límite por envío</Label>
@@ -1235,7 +1403,7 @@ export function CampaignWizard({
                     </p>
                   </div>
                 </>
-              ) : (
+              ) : !isAdmin ? (
                 <>
               {creditos < recipients.length && (
                 <p className="text-destructive">Saldo insuficiente — necesitás {recipients.length - creditos} envíos más.</p>
@@ -1246,14 +1414,19 @@ export function CampaignWizard({
                 <p className="text-xs text-muted-foreground">Sin fecha → envío inmediato. Con fecha futura → queda en borrador.</p>
               </div>
                 </>
-              )}
+              ) : null}
             </div>
 
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setStep(3)}>Atrás</Button>
-              <Button variant="secondary" disabled={submitting} onClick={() => setConfirmOpen(true)}>
+              {waTemplateMissing && (
+                <p className="w-full text-sm text-destructive">
+                  Completá el nombre del template de WhatsApp (paso Mensaje) antes de enviar.
+                </p>
+              )}
+              <Button variant="secondary" disabled={submitting || waTemplateMissing} onClick={() => setConfirmOpen(true)}>
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Enviar ahora
+                {simulated ? "Simular ahora" : "Enviar ahora"}
               </Button>
               <Button variant="outline" disabled={submitting} onClick={() => runSubmit(false)}>Guardar borrador</Button>
             </div>
@@ -1269,9 +1442,18 @@ export function CampaignWizard({
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Confirmar envío masivo?</AlertDialogTitle>
+            <AlertDialogTitle>{simulated ? "¿Confirmar simulación?" : "¿Confirmar envío masivo?"}</AlertDialogTitle>
             <AlertDialogDescription>
+              {simulated ? (
+                <>
+                  Se van a simular {recipientTotal.toLocaleString("es-AR")} envíos (cola, workers y dashboard).
+                  No sale nada a Mailgun ni a WhatsApp.
+                </>
+              ) : (
+                <>
               Estás por enviar {isAdmin ? (tandaSize > 0 ? Math.min(tandaSize, recipientTotal) : recipientTotal).toLocaleString("es-AR") : recipients.length} notificaciones certificadas. Esta acción no se puede deshacer.
+                </>
+              )}
               {submitting && uploadProgress ? (
                 <span className="mt-2 block">
                   Subiendo destinatarios: {uploadProgress.uploadedChunks} / {uploadProgress.chunkCount}
@@ -1282,12 +1464,12 @@ export function CampaignWizard({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <Button
-              disabled={submitting}
+              disabled={submitting || waTemplateMissing}
               onClick={async () => {
                 await runSubmit(true);
               }}
             >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirmar"}
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : simulated ? "Simular" : "Confirmar"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

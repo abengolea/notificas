@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Loader2, Mail, MessageCircle, Play, RefreshCw, Save, Upload, XCircle } from "lucide-react";
+import { Loader2, Mail, MessageCircle, Play, RefreshCw, Save, Upload, XCircle, FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,11 @@ import { useToast } from "@/hooks/use-toast";
 import { csvCamposRequeridos, csvPlaceholder } from "@/lib/parse-campaign-csv";
 import { uploadCampaignCsvInChunks } from "@/lib/upload-campaign-recipients";
 import { DEFAULT_TANDA_SIZE } from "@/lib/campaign-tanda";
+import {
+  SIM_RECIPIENT_DEFAULT,
+  SIM_RECIPIENT_MAX,
+  SIM_RECIPIENT_MIN,
+} from "@/lib/campaign-fake-recipients";
 import type { CanalCampaign } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { CampaignDashboard } from "@/components/empresa/campaign-dashboard";
@@ -43,6 +48,7 @@ type CampaignPayload = {
   estado: string;
   recipientCount: number;
   tandaSize: number;
+  simulated?: boolean;
   waTemplateName: string;
   waTemplateLang: string;
   waTemplateVariables: string[];
@@ -82,6 +88,8 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
   const [sending, setSending] = useState(false);
   const [confirmSend, setConfirmSend] = useState(false);
   const [tandaSize, setTandaSize] = useState(DEFAULT_TANDA_SIZE);
+  const [simRecipientCount, setSimRecipientCount] = useState(SIM_RECIPIENT_DEFAULT);
+  const [generating, setGenerating] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [templateLang, setTemplateLang] = useState("es_AR");
   const formReady = useRef(false);
@@ -174,6 +182,34 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
     }
   }
 
+  async function generateFakeRecipients() {
+    if (!data) return;
+    setGenerating(true);
+    try {
+      const res = await fetch("/api/admin/campaigns/generate-recipients", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId, count: simRecipientCount }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "No se pudieron generar");
+      toast({
+        title: "Destinatarios de prueba",
+        description: `${Number(json.recipientCount || 0).toLocaleString("es-AR")} ficticios cargados`,
+      });
+      await load();
+    } catch (e) {
+      toast({
+        title: "Error",
+        description: e instanceof Error ? e.message : "Error",
+        variant: "destructive",
+      });
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   async function sendTanda() {
     setSending(true);
     try {
@@ -181,7 +217,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campaignId, tandaSize }),
+        body: JSON.stringify({ campaignId, tandaSize: data?.campaign.simulated ? 0 : tandaSize }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "No se pudo enviar");
@@ -250,16 +286,22 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
           <h1 className="text-2xl font-bold mt-2">{c.nombre}</h1>
           <div className="flex flex-wrap items-center gap-2 mt-2 text-sm text-muted-foreground">
             {estadoBadge(c.estado)}
+            {c.simulated ? (
+              <Badge variant="outline" className="border-amber-500 text-amber-700 dark:text-amber-400 gap-1">
+                <FlaskConical className="h-3.5 w-3.5" />
+                simulada
+              </Badge>
+            ) : null}
             {showEmail && <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5" />Email</span>}
             {showWa && <span className="inline-flex items-center gap-1"><MessageCircle className="h-3.5 w-3.5 text-emerald-600" />WhatsApp</span>}
-            <span>{data.org.nombre} · se factura a {data.org.adminUserEmail || "la empresa"}</span>
+            <span>{data.org.nombre}{c.simulated ? " · no se factura" : ` · se factura a ${data.org.adminUserEmail || "la empresa"}`}</span>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
           {c.estado !== "cancelada" && (
             <Button disabled={!canSend || sending} onClick={() => setConfirmSend(true)} className="gap-2">
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              {c.estado === "borrador" ? "Iniciar envío" : "Enviar esta tanda"}
+              {c.estado === "borrador" ? (c.simulated ? "Iniciar simulación" : "Iniciar envío") : "Enviar esta tanda"}
             </Button>
           )}
           {c.estado !== "cancelada" && (
@@ -305,6 +347,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
         </div>
       )}
 
+      {!c.simulated && (
       <Card>
         <CardHeader>
           <CardTitle>Límite por envío</CardTitle>
@@ -332,16 +375,40 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
           </p>
         </CardContent>
       </Card>
+      )}
 
       {c.estado === "borrador" && (
         <Card>
           <CardHeader>
-            <CardTitle>Destinatarios (CSV)</CardTitle>
+            <CardTitle>{c.simulated ? "Destinatarios de prueba" : "Destinatarios (CSV)"}</CardTitle>
             <CardDescription>
-              Columnas: {csvCamposRequeridos(c.canal)}. Se sube de a 500. Ahora hay {c.recipientCount.toLocaleString("es-AR")}.
+              {c.simulated
+                ? `Generá una lista ficticia o subí un CSV. Ahora hay ${c.recipientCount.toLocaleString("es-AR")}.`
+                : `Columnas: ${csvCamposRequeridos(c.canal)}. Se sube de a 500. Ahora hay ${c.recipientCount.toLocaleString("es-AR")}.`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            {c.simulated && (
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="space-y-1 max-w-[12rem]">
+                  <Label className="text-xs">Cantidad ficticia</Label>
+                  <Input
+                    type="number"
+                    min={SIM_RECIPIENT_MIN}
+                    max={SIM_RECIPIENT_MAX}
+                    value={simRecipientCount}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (Number.isInteger(n)) setSimRecipientCount(n);
+                    }}
+                  />
+                </div>
+                <Button variant="secondary" disabled={generating} onClick={() => void generateFakeRecipients()}>
+                  {generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FlaskConical className="h-4 w-4 mr-2" />}
+                  Generar lista
+                </Button>
+              </div>
+            )}
             <input
               ref={inputRef}
               type="file"
@@ -379,7 +446,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
             </p>
           </div>
         )}
-        {showWa && (
+        {showWa && !c.simulated && (
           <div className="space-y-3">
             <p className="font-medium flex items-center gap-2">
               <MessageCircle className="h-4 w-4 text-emerald-500" />
@@ -427,16 +494,25 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
       <AlertDialog open={confirmSend} onOpenChange={setConfirmSend}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Confirmar envío masivo?</AlertDialogTitle>
+            <AlertDialogTitle>{c.simulated ? "¿Confirmar simulación?" : "¿Confirmar envío masivo?"}</AlertDialogTitle>
             <AlertDialogDescription>
+              {c.simulated ? (
+                <>
+                  Se van a simular {remaining.toLocaleString("es-AR")} envíos para {data.org.nombre}.
+                  No sale nada a Mailgun ni a WhatsApp; el dashboard muestra entregas y aperturas al azar.
+                </>
+              ) : (
+                <>
               Estás por encolar hasta {thisTanda.toLocaleString("es-AR")} notificaciones para {data.org.nombre}.
               Se facturan los envíos exitosos; no se descuenta saldo. Si el día 1 falla mucho, no sigas.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <Button disabled={sending} onClick={() => void sendTanda()}>
-              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirmar"}
+              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : c.simulated ? "Simular" : "Confirmar"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
