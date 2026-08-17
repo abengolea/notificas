@@ -24,8 +24,9 @@ export async function POST(request: NextRequest) {
   // Responder 200 inmediatamente — Meta reintenta si no recibe respuesta rápida
   const body = await request.json().catch(() => null);
 
-  // Procesamos en background sin bloquear la respuesta
-  processWebhookBody(body).catch((e) =>
+  // Procesar de forma síncrona antes de retornar — Cloud Run mata promesas en background
+  // al enviar la respuesta HTTP. Meta tolera hasta ~20s; nuestras queries de Firestore son <5s.
+  await processWebhookBody(body).catch((e) =>
     console.error("❌ Error en whatsapp webhook:", e?.message)
   );
 
