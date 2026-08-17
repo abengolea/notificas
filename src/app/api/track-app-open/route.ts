@@ -110,8 +110,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    /** Solo el destinatario genera lectura; el remitente al ver el panel no registra movimiento. */
-    if (isSender && !isRecipient) {
+    /**
+     * El remitente al abrir el detalle en el panel no cuenta como lectura del destinatario,
+     * aunque se haya enviado a sí mismo (caso típico de prueba).
+     */
+    if (isSender) {
       return NextResponse.json(
         {
           success: true,
@@ -122,52 +125,64 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const existingMovements: any[] = messageData.tracking?.movements || [];
+    const openedByEmail = userEmail || 'Unknown';
     const fiveSecondsAgo = Date.now() - 5000;
-    const recentAppOpen = existingMovements
-      .filter((m) => m.type === 'app_opened')
-      .find((m) => {
-        const t = new Date(m.timestamp).getTime();
-        if (t <= fiveSecondsAgo) return false;
-        const by = normalizeEmail((m as { openedByEmail?: string }).openedByEmail);
-        return by === userNorm || (!by && t > fiveSecondsAgo);
-      });
 
-    if (recentAppOpen) {
+    const txResult = await adminDb.runTransaction(async (tx) => {
+      const fresh = await tx.get(messageRef);
+      if (!fresh.exists) {
+        throw Object.assign(new Error('NOT_FOUND'), { code: 'NOT_FOUND' });
+      }
+      const freshData = fresh.data()!;
+      const existingMovements: any[] = freshData.tracking?.movements || [];
+      const recentAppOpen = existingMovements
+        .filter((m) => m.type === 'app_opened')
+        .find((m) => {
+          const t = new Date(m.timestamp).getTime();
+          if (t <= fiveSecondsAgo) return false;
+          const by = normalizeEmail((m as { openedByEmail?: string }).openedByEmail);
+          return by === userNorm || (!by && t > fiveSecondsAgo);
+        });
+
+      if (recentAppOpen) {
+        return { skipped: true as const, movement: null, wasFirstOpen: false, data: freshData };
+      }
+
+      const appOpenMovement = {
+        id: generateUUID(),
+        type: 'app_opened',
+        description: 'El destinatario abrió el mensaje desde la aplicación web.',
+        timestamp: new Date().toISOString(),
+        userAgent,
+        clientIP,
+        browser: extractBrowserInfo(userAgent),
+        mailRecipientEmail: mailboxRecipient || undefined,
+        openedByEmail,
+        recipientEmail: openedByEmail,
+        viewerIsSender: false,
+        source: 'app_web',
+      };
+
+      const wasFirstOpen = !freshData.tracking?.opened;
+      tx.update(messageRef, {
+        'tracking.opened': true,
+        'tracking.openedAt': new Date(),
+        'tracking.openCount': (freshData.tracking?.openCount || 0) + 1,
+        'tracking.movements': FieldValue.arrayUnion(appOpenMovement),
+        'tracking.lastAppOpenAt': new Date(),
+      });
+      return { skipped: false as const, movement: appOpenMovement, wasFirstOpen, data: freshData };
+    });
+
+    if (txResult.skipped) {
       return NextResponse.json(
         { success: true, message: 'Apertura ya registrada', skipped: true },
         { status: 200, headers: CORS_HEADERS }
       );
     }
 
-    const openedByEmail = userEmail || 'Unknown';
-
-    const appOpenMovement = {
-      id: generateUUID(),
-      type: 'app_opened',
-      description: 'El destinatario abrió el mensaje desde la aplicación web.',
-      timestamp: new Date().toISOString(),
-      userAgent,
-      clientIP,
-      browser: extractBrowserInfo(userAgent),
-      /** Buzón al que iba dirigido el envío (siempre el del documento). */
-      mailRecipientEmail: mailboxRecipient || undefined,
-      /** Quien generó el evento (destinatario autenticado). */
-      openedByEmail,
-      recipientEmail: openedByEmail,
-      viewerIsSender: false,
-      source: 'app_web',
-    };
-
-    const wasFirstOpen = !messageData.tracking?.opened;
-
-    await messageRef.update({
-      'tracking.opened': true,
-      'tracking.openedAt': new Date(),
-      'tracking.openCount': (messageData.tracking?.openCount || 0) + 1,
-      'tracking.movements': FieldValue.arrayUnion(appOpenMovement),
-      'tracking.lastAppOpenAt': new Date(),
-    });
+    const appOpenMovement = txResult.movement!;
+    const wasFirstOpen = txResult.wasFirstOpen;
 
     if (wasFirstOpen || !messageData.polygonCertifications?.receive) {
       try {
@@ -194,6 +209,12 @@ export async function POST(request: NextRequest) {
       { status: 200, headers: CORS_HEADERS }
     );
   } catch (error: any) {
+    if (error?.code === 'NOT_FOUND') {
+      return NextResponse.json(
+        { error: 'Mensaje no encontrado' },
+        { status: 404, headers: CORS_HEADERS }
+      );
+    }
     console.error('❌ Error al trackear apertura desde app:', error?.message);
     return NextResponse.json(
       {

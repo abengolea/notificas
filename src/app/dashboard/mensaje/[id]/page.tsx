@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { UserNav } from '@/components/dashboard/user-nav';
 import { Logo } from '@/components/logo';
@@ -28,6 +28,13 @@ function isAuthenticatedUserMailRecipient(mailData: Record<string, unknown>, use
   const rec = normalizeEmail(mailData.recipientEmail);
   const recipients = [...new Set([...fromTo, rec].filter(Boolean))];
   return recipients.includes(userEmail.trim().toLowerCase());
+}
+
+/** Destinatario autenticado, pero no el remitente viendo su propio envío. */
+function shouldTrackAppOpen(mailData: Record<string, unknown>, user: { uid: string; email: string } | null) {
+  if (!user?.email) return false;
+  if (typeof mailData.createdBy === 'string' && mailData.createdBy === user.uid) return false;
+  return isAuthenticatedUserMailRecipient(mailData, user.email);
 }
 
 function mapAuthUserToAppUser(u: any | null): AppUser | null {
@@ -86,6 +93,7 @@ function MessageContent() {
   const [notFound, setNotFound] = useState(false);
   const [messageData, setMessageData] = useState<any | null>(null);
   const [trackingStopped, setTrackingStopped] = useState(false);
+  const appOpenTrackedRef = useRef(false);
   const params = useParams();
   const id = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : null;
 
@@ -167,95 +175,55 @@ function MessageContent() {
     })();
   }, [id]);
 
+  useEffect(() => {
+    appOpenTrackedRef.current = false;
+  }, [id]);
+
   // Trackear apertura solo si quien entra es destinatario (no el remitente en el panel).
   useEffect(() => {
-    if (!id || !appUser?.email || trackingStopped || !messageData) return;
-    if (!isAuthenticatedUserMailRecipient(messageData, appUser.email)) return;
+    if (!id || !appUser || trackingStopped || !messageData) return;
+    if (!shouldTrackAppOpen(messageData, appUser)) return;
+    if (appOpenTrackedRef.current) return;
 
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
-      // Verificar que estamos en el cliente
-      if (typeof window === 'undefined') return;
+      if (typeof window === 'undefined' || appOpenTrackedRef.current) return;
+      appOpenTrackedRef.current = true;
 
       try {
-        console.log('📱 Registrando apertura desde app para mensaje:', id);
-        
-        // Crear un AbortController para timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
-          controller.abort();
-        }, 10000); // 10 segundos timeout
-        
-        try {
-          const apiUrl = `${window.location.origin}/api/track-app-open`;
-          const token = await auth.currentUser?.getIdToken();
-
-          const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({
-              messageId: id,
-              userEmail: appUser.email
-            }),
-            signal: controller.signal,
-          });
-
-          clearTimeout(timeoutId);
-
-          if (!response) {
-            console.error('❌ No se recibió respuesta del servidor');
-            return;
-          }
-
-          if (response.ok) {
-            try {
-              const result = await response.json();
-              console.log('✅ Apertura desde app registrada:', result);
-            } catch (jsonError) {
-              console.error('❌ Error parseando respuesta JSON:', jsonError);
-            }
-          } else {
-            try {
-              const errorText = await response.text();
-              console.error('❌ Error al registrar apertura desde app:', response.status, response.statusText, errorText);
-            } catch (textError) {
-              console.error('❌ Error leyendo respuesta de error:', response.status, response.statusText);
-            }
-          }
-        } catch (fetchError: any) {
-          clearTimeout(timeoutId);
-          
-          if (fetchError.name === 'AbortError') {
-            console.error('❌ Timeout al trackear apertura desde app (10s)');
-          } else if (fetchError.message === 'Failed to fetch' || fetchError.message?.includes('fetch')) {
-            console.error('❌ Error de red al trackear apertura desde app:', {
-              message: fetchError.message,
-              name: fetchError.name,
-              stack: fetchError.stack
-            });
-            console.error('💡 Verifica que el servidor esté corriendo en', window.location.origin);
-          } else {
-            console.error('❌ Error al trackear apertura desde app:', {
-              error: fetchError,
-              message: fetchError?.message,
-              name: fetchError?.name
-            });
-          }
-        }
-      } catch (error: any) {
-        console.error('❌ Error inesperado al trackear apertura desde app:', {
-          error,
-          message: error?.message,
-          name: error?.name,
-          stack: error?.stack
+        const apiUrl = `${window.location.origin}/api/track-app-open`;
+        const token = await auth.currentUser?.getIdToken();
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            messageId: id,
+            userEmail: appUser.email
+          }),
+          signal: controller.signal,
         });
-      }
-    }, 500); // Esperar 500ms para asegurar que el mensaje se cargó
 
-    return () => clearTimeout(timer);
-  }, [id, appUser?.email, trackingStopped, messageData]);
+        if (response.ok) {
+          const result = await response.json().catch(() => null);
+          console.log('✅ Apertura desde app registrada:', result);
+        } else {
+          const errorText = await response.text().catch(() => '');
+          console.error('❌ Error al registrar apertura desde app:', response.status, errorText);
+        }
+      } catch (fetchError: any) {
+        if (fetchError?.name === 'AbortError') return;
+        console.error('❌ Error al trackear apertura desde app:', fetchError?.message);
+      }
+    }, 500);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [id, appUser, trackingStopped, messageData]);
 
   if (notFound) {
     return (

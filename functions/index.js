@@ -1792,56 +1792,65 @@ async function processWhatsAppStatus(status) {
     return;
   }
   const mailRef = db.doc(`mail/${mailDocId}`);
-  const mailSnap = await mailRef.get();
-  if (!mailSnap.exists) {
-    console.warn(`⚠️ Documento mail/${mailDocId} no encontrado`);
-    return;
-  }
-
-  const data = mailSnap.data() || {};
-  const existingMovements = data?.tracking?.movements || [];
-
-  // Dedupe: no registrar el mismo status dos veces para el mismo wamid
-  const alreadyRecorded = existingMovements.some(
-    (m) => m.whatsappMessageId === wamid && m.type === `whatsapp_${statusType}`
-  );
-  if (alreadyRecorded) {
-    console.log(`⚠️ whatsapp_${statusType} ya registrado para wamid=${wamid}, skip`);
-    return;
-  }
-
   const typeMap = { delivered: 'whatsapp_delivered', read: 'whatsapp_read', failed: 'whatsapp_failed' };
-  const descMap = {
-    delivered: `Mensaje de WhatsApp entregado al teléfono +${recipientPhone}`,
-    read: `Mensaje de WhatsApp leído en el teléfono +${recipientPhone}`,
-    failed: `Error de entrega en WhatsApp para +${recipientPhone}${status.errors?.[0]?.title ? ': ' + status.errors[0].title : ''}`,
-  };
+  const recorded = await db.runTransaction(async (t) => {
+    const mailSnap = await t.get(mailRef);
+    if (!mailSnap.exists) return { wrote: false, reason: 'missing', data: null };
+    const data = mailSnap.data() || {};
+    const alreadyByFlag =
+      (statusType === 'delivered' && data.tracking?.whatsappDelivered) ||
+      (statusType === 'read' && data.tracking?.whatsappRead);
+    const alreadyByMovement = (data.tracking?.movements || []).some(
+      (m) => m.type === `whatsapp_${statusType}`
+    );
+    if (alreadyByFlag || alreadyByMovement) {
+      return { wrote: false, reason: 'dup', data };
+    }
 
-  const movement = {
-    id: crypto.randomUUID(),
-    type: typeMap[statusType],
-    description: descMap[statusType],
-    timestamp,
-    userAgent: 'Sistema (WhatsApp de Meta)',
-    clientIP: 'Server',
-    forwardedIPs: [],
-    realIP: 'Server',
-    browser: 'WhatsApp',
-    recipientEmail: data.recipientEmail || 'Unknown',
-    recipientPhone,
-    whatsappMessageId: wamid,
-  };
+    const descMap = {
+      delivered: `Mensaje de WhatsApp entregado al teléfono +${recipientPhone}`,
+      read: `Mensaje de WhatsApp leído en el teléfono +${recipientPhone}`,
+      failed: `Error de entrega en WhatsApp para +${recipientPhone}${status.errors?.[0]?.title ? ': ' + status.errors[0].title : ''}`,
+    };
 
-  const update = { 'tracking.movements': FieldValue.arrayUnion(movement) };
-  if (statusType === 'delivered') {
-    update['tracking.whatsappDelivered'] = true;
-    update['tracking.whatsappDeliveredAt'] = FieldValue.serverTimestamp();
-  } else if (statusType === 'read') {
-    update['tracking.whatsappRead'] = true;
-    update['tracking.whatsappReadAt'] = FieldValue.serverTimestamp();
+    const movement = {
+      id: crypto.randomUUID(),
+      type: typeMap[statusType],
+      description: descMap[statusType],
+      timestamp,
+      userAgent: 'Sistema (WhatsApp de Meta)',
+      clientIP: 'Server',
+      forwardedIPs: [],
+      realIP: 'Server',
+      browser: 'WhatsApp',
+      recipientEmail: data.recipientEmail || 'Unknown',
+      recipientPhone,
+      whatsappMessageId: wamid,
+    };
+
+    const update = { 'tracking.movements': FieldValue.arrayUnion(movement) };
+    if (statusType === 'delivered') {
+      update['tracking.whatsappDelivered'] = true;
+      update['tracking.whatsappDeliveredAt'] = FieldValue.serverTimestamp();
+    } else if (statusType === 'read') {
+      update['tracking.whatsappRead'] = true;
+      update['tracking.whatsappReadAt'] = FieldValue.serverTimestamp();
+    }
+
+    t.update(mailRef, update);
+    return { wrote: true, reason: 'ok', data };
+  });
+
+  if (!recorded.wrote) {
+    if (recorded.reason === 'missing') {
+      console.warn(`⚠️ Documento mail/${mailDocId} no encontrado`);
+    } else {
+      console.log(`⚠️ whatsapp_${statusType} ya registrado para mail/${mailDocId}, skip`);
+    }
+    return;
   }
 
-  await mailRef.update(update);
+  const data = recorded.data || {};
   const isCampaignMail = Boolean(data.campaignId);
   if (!isCampaignMail) {
     if (statusType === 'delivered') {

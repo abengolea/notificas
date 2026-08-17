@@ -47,6 +47,15 @@ function wamidLookupKeys(wamid: string): string[] {
   return [...new Set(keys)];
 }
 
+/** Un delivered/read/failed por mail. Meta reintenta el webhook y hay dos handlers (Next + CF). */
+function alreadyHasWhatsAppStatus(data: Record<string, any> | undefined, statusType: string): boolean {
+  if (!data) return false;
+  if (statusType === "delivered" && data.tracking?.whatsappDelivered) return true;
+  if (statusType === "read" && data.tracking?.whatsappRead) return true;
+  const type = `whatsapp_${statusType}`;
+  return (data.tracking?.movements ?? []).some((m: { type?: string }) => m?.type === type);
+}
+
 async function processWebhookBody(body: any) {
   if (!body || body.object !== "whatsapp_business_account") return;
 
@@ -123,57 +132,59 @@ async function processStatus(status: any) {
   }
 
   const mailRef = db.doc(`mail/${mailDocId}`);
-  const mailSnap = await mailRef.get();
-  if (!mailSnap.exists) {
-    console.warn(`⚠️ Documento mail/${mailDocId} no encontrado`);
+  const recorded = await db.runTransaction(async (t) => {
+    const mailSnap = await t.get(mailRef);
+    if (!mailSnap.exists) return { wrote: false as const, reason: "missing" as const };
+    const data = mailSnap.data()!;
+    if (alreadyHasWhatsAppStatus(data, statusType)) {
+      return { wrote: false as const, reason: "dup" as const };
+    }
+
+    const descMap: Record<string, string> = {
+      delivered: `Mensaje de WhatsApp entregado al teléfono +${recipientPhone}`,
+      read: `Mensaje de WhatsApp leído en el teléfono +${recipientPhone}`,
+      failed: `Error de entrega en WhatsApp para +${recipientPhone}${status.errors?.[0]?.title ? ": " + status.errors[0].title : ""}`,
+    };
+
+    const movement = {
+      id: crypto.randomUUID(),
+      type: `whatsapp_${statusType}`,
+      description: descMap[statusType],
+      timestamp,
+      userAgent: "Sistema (WhatsApp de Meta)",
+      clientIP: "Server",
+      forwardedIPs: [],
+      realIP: "Server",
+      browser: "WhatsApp",
+      recipientEmail: data.recipientEmail ?? "Unknown",
+      recipientPhone,
+      whatsappMessageId: wamid,
+    };
+
+    const update: Record<string, any> = {
+      "tracking.movements": FieldValue.arrayUnion(movement),
+    };
+    if (statusType === "delivered") {
+      update["tracking.whatsappDelivered"] = true;
+      update["tracking.whatsappDeliveredAt"] = FieldValue.serverTimestamp();
+    } else if (statusType === "read") {
+      update["tracking.whatsappRead"] = true;
+      update["tracking.whatsappReadAt"] = FieldValue.serverTimestamp();
+    }
+
+    t.update(mailRef, update);
+    return { wrote: true as const, reason: "ok" as const };
+  });
+
+  if (!recorded.wrote) {
+    if (recorded.reason === "missing") {
+      console.warn(`⚠️ Documento mail/${mailDocId} no encontrado`);
+    } else {
+      console.log(`⚠️ whatsapp_${statusType} ya registrado para mail/${mailDocId}, skip`);
+    }
     return;
   }
 
-  const data = mailSnap.data()!;
-  const existingMovements: any[] = data.tracking?.movements ?? [];
-
-  // Dedupe: no registrar el mismo status dos veces para el mismo wamid
-  const already = existingMovements.some(
-    (m) => m.whatsappMessageId === wamid && m.type === `whatsapp_${statusType}`
-  );
-  if (already) {
-    console.log(`⚠️ whatsapp_${statusType} ya registrado para wamid=${wamid}, skip`);
-    return;
-  }
-
-  const descMap: Record<string, string> = {
-    delivered: `Mensaje de WhatsApp entregado al teléfono +${recipientPhone}`,
-    read: `Mensaje de WhatsApp leído en el teléfono +${recipientPhone}`,
-    failed: `Error de entrega en WhatsApp para +${recipientPhone}${status.errors?.[0]?.title ? ": " + status.errors[0].title : ""}`,
-  };
-
-  const movement = {
-    id: crypto.randomUUID(),
-    type: `whatsapp_${statusType}`,
-    description: descMap[statusType],
-    timestamp,
-    userAgent: "Sistema (WhatsApp de Meta)",
-    clientIP: "Server",
-    forwardedIPs: [],
-    realIP: "Server",
-    browser: "WhatsApp",
-    recipientEmail: data.recipientEmail ?? "Unknown",
-    recipientPhone,
-    whatsappMessageId: wamid,
-  };
-
-  const update: Record<string, any> = {
-    "tracking.movements": FieldValue.arrayUnion(movement),
-  };
-  if (statusType === "delivered") {
-    update["tracking.whatsappDelivered"] = true;
-    update["tracking.whatsappDeliveredAt"] = FieldValue.serverTimestamp();
-  } else if (statusType === "read") {
-    update["tracking.whatsappRead"] = true;
-    update["tracking.whatsappReadAt"] = FieldValue.serverTimestamp();
-  }
-
-  await mailRef.update(update);
   console.log(`✅ whatsapp_${statusType} registrado en mail/${mailDocId}`);
 
   // Propagar estado al campaign_message correspondiente
