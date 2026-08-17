@@ -250,7 +250,7 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
   doc.setTextColor(71, 85, 105);
   const disclaimer = doc.splitTextToSize(
     'Este documento es una constancia técnica oponible: deja asentado el contenido (o el hecho) incluido en la tanda y el ancla pública en Polygon Mainnet. ' +
-      'No sustituye una carta documento. La inmutabilidad la aporta la transacción citada, no este PDF. ' +
+      'La inmutabilidad la aporta la transacción citada, no este PDF. ' +
       'Si se altera una sola foja, la raíz Merkle deja de coincidir con la registrada on-chain. ' +
       'Los envíos individuales (fuera de campaña) se certifican con otra transacción por mensaje.',
     182
