@@ -48,6 +48,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     if (pathname === "/admin") return "Resumen";
     if (pathname?.startsWith("/admin/users")) return "Gestión de Usuarios";
     if (pathname?.startsWith("/admin/empresas")) return "Empresa (B2B)";
+    if (pathname?.startsWith("/admin/campanas")) return "Campañas masivas";
     if (pathname?.startsWith("/admin/plans")) return "Gestión de Planes y Precios";
     if (pathname?.startsWith("/admin/settings")) return "Configuración";
     return "Panel de Administración";

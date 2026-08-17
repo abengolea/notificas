@@ -1,23 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { getAdminAuth } from '@/lib/firebase-admin';
+import { requireCampaignViewer } from '@/lib/campaign-access';
 
 const PAGE_SIZE = 100;
 
 export async function GET(request: NextRequest) {
-  // Auth
-  const authHeader = request.headers.get('Authorization') || '';
-  const token = authHeader.replace('Bearer ', '').trim();
-  if (!token) return NextResponse.json({ error: 'Sin autenticación' }, { status: 401 });
-  try {
-    await getAdminAuth().verifyIdToken(token);
-  } catch {
-    return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-  }
-
   const { searchParams } = request.nextUrl;
   const campaignId = searchParams.get('campaignId');
   if (!campaignId) return NextResponse.json({ error: 'campaignId requerido' }, { status: 400 });
+
+  const denied = await requireCampaignViewer(request, campaignId);
+  if (denied) return denied;
 
   const estado  = searchParams.get('estado')  || 'all';
   const search  = (searchParams.get('search') || '').trim();

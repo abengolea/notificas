@@ -20,7 +20,8 @@
 runtime: nodejs22
 
 runConfig:
-  maxInstances: 1
+  # Workers, webhooks y fanout de campañas grandes (150k) no caben en 1 instancia.
+  maxInstances: 10
 
 env:
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY

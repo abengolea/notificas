@@ -25,6 +25,8 @@ function mapCampaign(id: string, data: DocumentData): Campaign {
     recipientEmails: Array.isArray(data.recipientEmails) ? data.recipientEmails : [],
     recipientData: Array.isArray(data.recipientData) ? data.recipientData : [],
     recipientCount: typeof data.recipientCount === 'number' ? data.recipientCount : 0,
+    tandaSize: typeof data.tandaSize === 'number' ? data.tandaSize : undefined,
+    managedByAdmin: data.managedByAdmin === true,
     canal: (data.canal as CanalCampaign) || 'email',
     estado: data.estado as Campaign['estado'],
     stats: {
@@ -112,10 +114,12 @@ function fallbackMessages(campaign: Campaign): CampaignMessage[] {
 /**
  * Suscripción ligera: solo el doc de campaña (stats, estado).
  * Los mensajes se cargan por API paginada para soportar 150k+ destinatarios.
+ * En modo admin no hay Firebase Auth: se consulta la API del panel.
  */
-export function useCampaignProgress(campaignId: string | null) {
+export function useCampaignProgress(campaignId: string | null, opts?: { admin?: boolean }) {
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
+  const admin = opts?.admin === true;
 
   useEffect(() => {
     if (!campaignId) {
@@ -125,6 +129,33 @@ export function useCampaignProgress(campaignId: string | null) {
     }
 
     setLoading(true);
+
+    if (admin) {
+      let cancelled = false;
+      const load = async () => {
+        try {
+          const res = await fetch(`/api/admin/campaigns/${campaignId}`, { credentials: 'include' });
+          const json = await res.json() as { campaign?: DocumentData };
+          if (cancelled) return;
+          if (!res.ok || !json.campaign) {
+            setCampaign(null);
+          } else {
+            setCampaign(mapCampaign(campaignId, json.campaign));
+          }
+        } catch {
+          if (!cancelled) setCampaign(null);
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      };
+      void load();
+      const t = setInterval(() => void load(), 4000);
+      return () => {
+        cancelled = true;
+        clearInterval(t);
+      };
+    }
+
     const unsub = onSnapshot(
       doc(db, 'campaigns', campaignId),
       (snap) => {
@@ -139,7 +170,7 @@ export function useCampaignProgress(campaignId: string | null) {
     );
 
     return unsub;
-  }, [campaignId]);
+  }, [campaignId, admin]);
 
   const stats = useMemo(() => campaign?.stats ?? null, [campaign]);
 

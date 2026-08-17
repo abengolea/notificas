@@ -1,14 +1,12 @@
 #!/usr/bin/env node
 /**
- * Warm-up progresivo para campañas WhatsApp de alto volumen.
+ * Ajusta la velocidad de la cola Cloud Tasks.
  *
  * Uso:
  *   node scripts/warmup-campaign.js --campaign=<campaignId> --org=<orgId> --dia=<1|2|3>
  *
- * Días de warm-up recomendados para 150k destinatarios:
- *   Día 1:  10.000  (valida calidad del número y tasa de entrega)
- *   Día 2:  40.000  (escala al Tier 2 de Meta)
- *   Día 3: 100.000  (el resto)
+ * El límite diario se edita en la campaña (campo tandaSize / "Límite por envío").
+ * Día 1 = 2.000 (cupo actual de Meta). Subilo en la UI cuando WhatsApp lo permita.
  *
  * Requiere: FIREBASE_PROJECT_ID, CAMPAIGN_WORKER_SECRET en env.
  */
@@ -16,9 +14,9 @@
 const https = require('https');
 
 const PLANES = {
-  1: { tandaSize: 10_000,  tasaMsgSeg: 2   },  // ~1.4hs
-  2: { tandaSize: 40_000,  tasaMsgSeg: 5   },  // ~2.2hs
-  3: { tandaSize: 100_000, tasaMsgSeg: 10  },  // ~2.8hs
+  1: { tandaSize: 2_000,   tasaMsgSeg: 1,  yaEnviados: 0     },  // cupo actual Meta
+  2: { tandaSize: 10_000,  tasaMsgSeg: 2,  yaEnviados: 2_000 },  // solo si Meta ya subió el límite
+  3: { tandaSize: 50_000,  tasaMsgSeg: 5,  yaEnviados: 10_000 },
 };
 
 const args = Object.fromEntries(
@@ -73,10 +71,12 @@ function calcularTiempo(total, tasksPerSeg, batchSize = 20) {
 }
 
 async function main() {
+  const nuevos = plan.tandaSize - plan.yaEnviados;
   console.log(`\n🚀 Warm-up día ${dia} — Campaña ${campaignId}`);
-  console.log(`   Tanda: ${plan.tandaSize.toLocaleString()} destinatarios`);
+  console.log(`   Tope acumulado (tandaSize): ${plan.tandaSize.toLocaleString()}`);
+  console.log(`   Envíos nuevos de este día: ${nuevos.toLocaleString()}`);
   console.log(`   Velocidad cola: ${plan.tasaMsgSeg} tasks/seg`);
-  console.log(`   Tiempo estimado: ${calcularTiempo(plan.tandaSize, plan.tasaMsgSeg)}`);
+  console.log(`   Tiempo estimado: ${calcularTiempo(nuevos, plan.tasaMsgSeg)}`);
   console.log('');
 
   // 1. Ajustar velocidad de la cola de Cloud Tasks.

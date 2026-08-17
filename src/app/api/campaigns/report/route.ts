@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAuthToken } from '@/lib/auth-helper';
+import { requireCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { getOrgIfMember } from '@/lib/org-server';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -19,9 +18,6 @@ type EstadoFilter = 'todos' | 'enviado' | 'leido' | 'error' | 'pendiente';
 
 export async function GET(request: NextRequest) {
   try {
-    const { decoded, errorResponse } = await verifyAuthToken(request);
-    if (errorResponse) return errorResponse;
-
     const sp = request.nextUrl.searchParams;
     const campaignId = sp.get('campaignId');
     const orgId = sp.get('orgId');
@@ -34,8 +30,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'campaignId y orgId requeridos' }, { status: 400 });
     }
 
-    const orgGate = await getOrgIfMember(decoded!.uid, orgId, decoded!.email);
-    if (!orgGate) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+    const denied = await requireCampaignOrgAccess(request, orgId, campaignId);
+    if (denied) return denied;
 
     const db = getAdminDb();
     const campSnap = await db.collection('campaigns').doc(campaignId).get();

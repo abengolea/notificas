@@ -127,10 +127,12 @@ export function CampaignIntegrityPanel({
   orgId,
   campaignId,
   initialMessageId,
+  adminSession = false,
 }: {
   orgId: string;
   campaignId: string;
   initialMessageId?: string;
+  adminSession?: boolean;
 }) {
   const { toast } = useToast();
   const [batches, setBatches] = useState<Batch[]>([]);
@@ -153,6 +155,7 @@ export function CampaignIntegrityPanel({
   const skipSearchRef = useRef(false);
 
   const token = useCallback(async () => {
+    if (adminSession) return null;
     const user = await new Promise<typeof auth.currentUser>((resolve) => {
       const unsub = auth.onAuthStateChanged((u) => {
         unsub();
@@ -161,15 +164,24 @@ export function CampaignIntegrityPanel({
     });
     if (!user) throw new Error("Sin sesión");
     return user.getIdToken();
-  }, []);
+  }, [adminSession]);
+
+  const authFetch = useCallback(async (url: string, init?: RequestInit) => {
+    if (adminSession) {
+      return fetch(url, { ...init, credentials: "include" });
+    }
+    const t = await token();
+    return fetch(url, {
+      ...init,
+      headers: { ...(init?.headers || {}), Authorization: `Bearer ${t}` },
+    });
+  }, [adminSession, token]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const t = await token();
-      const res = await fetch(
-        `/api/campaigns/integrity?campaignId=${encodeURIComponent(campaignId)}&orgId=${encodeURIComponent(orgId)}`,
-        { headers: { Authorization: `Bearer ${t}` } }
+      const res = await authFetch(
+        `/api/campaigns/integrity?campaignId=${encodeURIComponent(campaignId)}&orgId=${encodeURIComponent(orgId)}`
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "No se pudo cargar");
@@ -184,7 +196,7 @@ export function CampaignIntegrityPanel({
     } finally {
       setLoading(false);
     }
-  }, [campaignId, orgId, toast, token]);
+  }, [authFetch, campaignId, orgId, toast]);
 
   useEffect(() => {
     void load();
@@ -193,10 +205,9 @@ export function CampaignIntegrityPanel({
   async function closeBatches(batchId?: string, force = true) {
     setBusy(true);
     try {
-      const t = await token();
-      const res = await fetch("/api/campaigns/integrity/close", {
+      const res = await authFetch("/api/campaigns/integrity/close", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ campaignId, orgId, batchId, force }),
       });
       const data = await res.json();
@@ -227,11 +238,8 @@ export function CampaignIntegrityPanel({
   async function descargarActa(batchId: string) {
     setBusy(true);
     try {
-      const t = await token();
       const p = new URLSearchParams({ campaignId, orgId, batchId });
-      const res = await fetch(`/api/campaigns/integrity/acta?${p}`, {
-        headers: { Authorization: `Bearer ${t}` },
-      });
+      const res = await authFetch(`/api/campaigns/integrity/acta?${p}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { error?: string }).error || "No se pudo generar el acta");
@@ -258,10 +266,9 @@ export function CampaignIntegrityPanel({
     setBusy(true);
     setResult(null);
     try {
-      const t = await token();
-      const res = await fetch("/api/campaigns/integrity/verify", {
+      const res = await authFetch("/api/campaigns/integrity/verify", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ campaignId, orgId, messageId }),
       });
       const data = await res.json();
@@ -276,7 +283,7 @@ export function CampaignIntegrityPanel({
     } finally {
       setBusy(false);
     }
-  }, [campaignId, orgId, toast, token]);
+  }, [authFetch, campaignId, orgId, toast]);
 
   useEffect(() => {
     if (!initialMessageId) return;
@@ -302,15 +309,12 @@ export function CampaignIntegrityPanel({
     setSearching(true);
     const timer = setTimeout(async () => {
       try {
-        const t = await token();
         const params = new URLSearchParams({
           campaignId,
           search: term,
           limit: "8",
         });
-        const res = await fetch(`/api/campaigns/messages?${params}`, {
-          headers: { Authorization: `Bearer ${t}` },
-        });
+        const res = await authFetch(`/api/campaigns/messages?${params}`);
         const data = await res.json();
         if (cancelled) return;
         const list = (data.messages || []) as SearchHit[];
@@ -335,7 +339,7 @@ export function CampaignIntegrityPanel({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [verifyQuery, campaignId, token]);
+  }, [verifyQuery, campaignId, authFetch]);
 
   useEffect(() => {
     function onPointerDown(e: PointerEvent) {

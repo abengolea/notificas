@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
+import type { NextRequest } from "next/server";
 
 export const ADMIN_SESSION_COOKIE = "notificas_admin_sess";
 
@@ -41,6 +42,14 @@ export function verifyAdminSessionToken(
 }
 
 export type AdminPanelConfig = { email: string; password: string; secret: string };
+
+/** True si hay cookie de panel admin válida (no escribe respuesta). */
+export function hasAdminSession(request: NextRequest): boolean {
+  const cfg = getAdminPanelConfig();
+  if (!cfg) return false;
+  const raw = request.cookies.get(ADMIN_SESSION_COOKIE)?.value;
+  return Boolean(raw && verifyAdminSessionToken(raw, cfg.secret, cfg.email));
+}
 
 /** Credenciales del panel + secreto para firmar cookies (solo servidor). */
 export function getAdminPanelConfig(): AdminPanelConfig | null {

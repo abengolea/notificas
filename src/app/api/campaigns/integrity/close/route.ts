@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAuthToken } from '@/lib/auth-helper';
-import { getOrgIfMember } from '@/lib/org-server';
-import { getAdminDb } from '@/lib/firebase-admin';
+import { requireCampaignOrgAccess } from '@/lib/campaign-access';
 import { closeIntegrityBatch, closeOpenBatches } from '@/lib/campaign-integrity';
 
 function verifyWorkerSecret(request: NextRequest): boolean {
@@ -25,16 +23,10 @@ export async function POST(request: NextRequest) {
 
   const isWorker = verifyWorkerSecret(request);
   if (!isWorker) {
-    const { decoded, errorResponse } = await verifyAuthToken(request);
-    if (errorResponse) return errorResponse;
     const orgId = String(body.orgId || '');
     if (!orgId) return NextResponse.json({ error: 'orgId requerido' }, { status: 400 });
-    const orgGate = await getOrgIfMember(decoded!.uid, orgId, decoded!.email);
-    if (!orgGate) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
-    const camp = await getAdminDb().collection('campaigns').doc(campaignId).get();
-    if (!camp.exists || String(camp.data()?.orgId) !== orgId) {
-      return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 });
-    }
+    const denied = await requireCampaignOrgAccess(request, orgId, campaignId);
+    if (denied) return denied;
   }
 
   try {

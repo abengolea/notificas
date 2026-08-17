@@ -51,6 +51,28 @@ import {
 
 const PAGE_SIZE = 100;
 
+async function waitFirebaseUser() {
+  return new Promise<typeof auth.currentUser>((resolve) => {
+    const unsub = auth.onAuthStateChanged((u) => {
+      unsub();
+      resolve(u);
+    });
+  });
+}
+
+async function campaignRequest(mode: "empresa" | "admin", url: string, init?: RequestInit) {
+  if (mode === "admin") {
+    return fetch(url, { ...init, credentials: "include" });
+  }
+  const user = auth.currentUser ?? (await waitFirebaseUser());
+  if (!user) throw new Error("Sin sesión");
+  const token = await user.getIdToken();
+  return fetch(url, {
+    ...init,
+    headers: { ...(init?.headers || {}), Authorization: `Bearer ${token}` },
+  });
+}
+
 function campaignEstadoBadge(estado: string) {
   switch (estado) {
     case "borrador":   return <Badge variant="secondary">borrador</Badge>;
@@ -119,7 +141,13 @@ function ChannelCell({
 }
 
 /** Hook de paginación server-side para campaign_messages. */
-function useMessages(campaignId: string, estado: string, search: string, refreshKey: number) {
+function useMessages(
+  campaignId: string,
+  estado: string,
+  search: string,
+  refreshKey: number,
+  mode: "empresa" | "admin",
+) {
   const [messages, setMessages]   = useState<CampaignMessage[]>([]);
   const [loading, setLoading]     = useState(true);
   const [hasMore, setHasMore]     = useState(false);
@@ -129,21 +157,13 @@ function useMessages(campaignId: string, estado: string, search: string, refresh
   const currentPage               = stackLen - 1;
 
   const load = useCallback(async (cursor: string) => {
-    // Siempre esperar el primer disparo de onAuthStateChanged (puede ser inmediato si ya cargó)
-    const user = await new Promise<typeof auth.currentUser>((resolve) => {
-      const unsub = auth.onAuthStateChanged((u) => { unsub(); resolve(u); });
-    });
-    if (!user) { setLoading(false); return; }
     setLoading(true);
     try {
-      const token = await user.getIdToken();
       const params = new URLSearchParams({ campaignId, limit: String(PAGE_SIZE) });
       if (estado !== 'all') params.set('estado', estado);
       if (search)           params.set('search', search);
       if (cursor)           params.set('cursor', cursor);
-      const res = await fetch(`/api/campaigns/messages?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await campaignRequest(mode, `/api/campaigns/messages?${params}`);
       if (!res.ok) return;
       const data = await res.json() as { messages: CampaignMessage[]; nextCursor: string | null; hasMore: boolean };
       setMessages(data.messages);
@@ -155,7 +175,7 @@ function useMessages(campaignId: string, estado: string, search: string, refresh
     } finally {
       setLoading(false);
     }
-  }, [campaignId, estado, search, stackLen, refreshKey]);
+  }, [campaignId, estado, search, stackLen, refreshKey, mode]);
 
   // Reset al cambiar filtros o refreshKey externo
   useEffect(() => {
@@ -182,11 +202,24 @@ function useMessages(campaignId: string, estado: string, search: string, refresh
   return { messages, loading, hasMore, currentPage, nextPage, prevPage };
 }
 
-export function CampaignDashboard() {
+export function CampaignDashboard({
+  mode = "empresa",
+  orgId: orgIdProp,
+  campaignId: campaignIdProp,
+  listHref,
+  embedded = false,
+}: {
+  mode?: "empresa" | "admin";
+  orgId?: string;
+  campaignId?: string;
+  listHref?: string;
+  embedded?: boolean;
+} = {}) {
   const params     = useParams();
-  const orgId      = params.orgId as string;
-  const campaignId = params.campaignId as string;
-  const { campaign, stats, loading: campLoading } = useCampaignProgress(campaignId);
+  const isAdmin    = mode === "admin";
+  const orgId      = orgIdProp || (params.orgId as string);
+  const campaignId = campaignIdProp || (params.campaignId as string);
+  const { campaign, stats, loading: campLoading } = useCampaignProgress(campaignId, { admin: isAdmin });
   const { toast }  = useToast();
   const router     = useRouter();
 
@@ -217,7 +250,7 @@ export function CampaignDashboard() {
   }, [stats]);
 
   const { messages, loading: msgLoading, hasMore, currentPage, nextPage, prevPage } =
-    useMessages(campaignId, filter, debouncedQ, refreshKey);
+    useMessages(campaignId, filter, debouncedQ, refreshKey, mode);
 
   // Polling cada 15s solo mientras la campaña está enviando activamente
   useEffect(() => {
@@ -232,14 +265,11 @@ export function CampaignDashboard() {
     stats && stats.total > 0 ? Math.round((stats.enviados / stats.total) * 100) : 0;
 
   async function continuarEnvio() {
-    const user = auth.currentUser;
-    if (!user) return;
     setBusy(true);
     try {
-      const token = await user.getIdToken();
-      const res = await fetch("/api/campaigns/send", {
+      const res = await campaignRequest(mode, "/api/campaigns/send", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ campaignId, orgId }),
       });
       const data = await res.json();
@@ -253,17 +283,14 @@ export function CampaignDashboard() {
   }
 
   async function descargarReporte() {
-    const user = auth.currentUser;
-    if (!user) return;
     setBusy(true);
     try {
-      const token = await user.getIdToken();
       const p = new URLSearchParams({
         campaignId, orgId,
         estado: filter === "all" ? "todos" : filter,
         ...(q.trim() ? { nombre: q.trim() } : {}),
       });
-      const res = await fetch(`/api/campaigns/report?${p}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await campaignRequest(mode, `/api/campaigns/report?${p}`);
       if (!res.ok) { toast({ title: "No se pudo generar el PDF", variant: "destructive" }); return; }
       const blob = await res.blob();
       const a = document.createElement("a");
@@ -278,13 +305,10 @@ export function CampaignDashboard() {
   }
 
   async function descargarCsv() {
-    const user = auth.currentUser;
-    if (!user) return;
     setBusy(true);
     try {
-      const token = await user.getIdToken();
       const url = `/api/campaigns/export?campaignId=${encodeURIComponent(campaignId)}&orgId=${encodeURIComponent(orgId)}`;
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await campaignRequest(mode, url);
       if (!res.ok) { toast({ title: "No se pudo generar el CSV", variant: "destructive" }); return; }
       const blob = await res.blob();
       const a = document.createElement("a");
@@ -298,60 +322,57 @@ export function CampaignDashboard() {
   }
 
   const iniciarEnvio = useCallback(async () => {
-    const user = auth.currentUser;
-    if (!user || !campaign) return;
+    if (!campaign) return;
     setBusy(true);
     try {
-      await updateDoc(doc(db, "campaigns", campaignId), { estado: "enviando", startedAt: serverTimestamp() });
-      const token = await user.getIdToken();
-      const res = await fetch("/api/campaigns/send", {
+      if (!isAdmin) {
+        await updateDoc(doc(db, "campaigns", campaignId), { estado: "enviando", startedAt: serverTimestamp() });
+      }
+      const sendUrl = isAdmin ? "/api/admin/campaigns/send" : "/api/campaigns/send";
+      const res = await campaignRequest(mode, sendUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ campaignId, orgId }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isAdmin ? { campaignId } : { campaignId, orgId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error");
-      toast({ title: "Envío", description: `${data.pending ?? data.total ?? 0} mensajes encolados` });
+      toast({ title: "Envío", description: `${data.pending ?? data.pendingThisTanda ?? data.total ?? 0} mensajes encolados` });
     } catch (e: unknown) {
       toast({ title: "Error", description: e instanceof Error ? e.message : "Falló el envío", variant: "destructive" });
     } finally {
       setBusy(false);
     }
-  }, [campaign, campaignId, orgId, toast]);
+  }, [campaign, campaignId, orgId, toast, isAdmin, mode]);
 
   async function copiarCampana() {
     if (!campaign) return;
-    const user = auth.currentUser;
-    if (!user) return;
     setBusy(true);
     try {
-      const token = await user.getIdToken();
-      const res = await fetch('/api/campaigns/copy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      const res = await campaignRequest(mode, "/api/campaigns/copy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ campaignId, orgId }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error al copiar');
-      toast({ title: 'Campaña copiada', description: `"${data.nombre}" creada como borrador.` });
-      router.push(`/empresa/${orgId}/campanas/${data.newCampaignId}`);
+      if (!res.ok) throw new Error(data.error || "Error al copiar");
+      toast({ title: "Campaña copiada", description: `"${data.nombre}" creada como borrador.` });
+      router.push(isAdmin ? `/admin/campanas/${data.newCampaignId}` : `/empresa/${orgId}/campanas/${data.newCampaignId}`);
     } catch (e: unknown) {
-      toast({ title: 'Error', description: e instanceof Error ? e.message : 'No se pudo copiar', variant: 'destructive' });
+      toast({ title: "Error", description: e instanceof Error ? e.message : "No se pudo copiar", variant: "destructive" });
     } finally {
       setBusy(false);
     }
   }
 
   async function cancelarCampana() {
-    const user = auth.currentUser;
-    if (!user || !campaign) return;
+    if (!campaign) return;
     setBusy(true);
     try {
-      const token = await user.getIdToken();
-      const res = await fetch("/api/campaigns/cancel", {
+      const url = isAdmin ? "/api/admin/campaigns/cancel" : "/api/campaigns/cancel";
+      const res = await campaignRequest(mode, url, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ campaignId, orgId }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isAdmin ? { campaignId } : { campaignId, orgId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error");
@@ -364,20 +385,21 @@ export function CampaignDashboard() {
   }
 
   async function reintentarErrores() {
-    const user = auth.currentUser;
-    if (!user || !campaign) return;
+    if (!campaign) return;
     setBusy(true);
     try {
-      await updateDoc(doc(db, "campaigns", campaignId), { estado: "enviando" });
-      const token = await user.getIdToken();
-      const res = await fetch("/api/campaigns/send", {
+      if (!isAdmin) {
+        await updateDoc(doc(db, "campaigns", campaignId), { estado: "enviando" });
+      }
+      const sendUrl = isAdmin ? "/api/admin/campaigns/send" : "/api/campaigns/send";
+      const res = await campaignRequest(mode, sendUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ campaignId, orgId }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isAdmin ? { campaignId } : { campaignId, orgId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error");
-      toast({ title: "Reintento iniciado", description: `${data.pending ?? 0} mensajes encolados` });
+      toast({ title: "Reintento iniciado", description: `${data.pending ?? data.pendingThisTanda ?? 0} mensajes encolados` });
     } catch (e: unknown) {
       toast({ title: "Error", description: e instanceof Error ? e.message : "Falló", variant: "destructive" });
     } finally {
@@ -386,19 +408,17 @@ export function CampaignDashboard() {
   }
 
   async function reenviarSeleccion() {
-    const user = auth.currentUser;
-    if (!user || selected.size === 0) return;
+    if (selected.size === 0) return;
     setBusy(true);
     try {
-      const token = await user.getIdToken();
-      const res = await fetch("/api/campaigns/resend", {
+      const res = await campaignRequest(mode, "/api/campaigns/resend", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ campaignId, orgId, messageIds: [...selected] }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Reenvío fallido");
-      toast({ title: "Reenvío", description: `${data.sent ?? 0} enviados, ${data.errors ?? 0} errores` });
+      toast({ title: "Reenvío", description: `${data.sent ?? data.pendingThisTanda ?? 0} enviados, ${data.errors ?? 0} errores` });
       setSelected(new Set());
     } catch (e: unknown) {
       toast({ title: "Error", description: e instanceof Error ? e.message : "No se pudo reenviar", variant: "destructive" });
@@ -445,10 +465,12 @@ export function CampaignDashboard() {
   const tableCols = 4 + (showEmail ? 1 : 0) + (showWa ? 1 : 0);
 
   return (
-    <div className="p-6 md:p-8 max-w-6xl space-y-6">
+    <div className={embedded ? "space-y-6" : "p-6 md:p-8 max-w-6xl space-y-6"}>
+      {!embedded && (
+      <>
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
-          <Link href={`/empresa/${orgId}/campanas`} className="text-sm text-muted-foreground hover:underline">
+          <Link href={listHref || `/empresa/${orgId}/campanas`} className="text-sm text-muted-foreground hover:underline">
             ← Campañas
           </Link>
           <h1 className="text-2xl font-bold mt-2">{campaign.nombre}</h1>
@@ -459,7 +481,7 @@ export function CampaignDashboard() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {campaign.estado === "enviando" && stats && stats.pendientes > 0 && (
+          {campaign.estado === "enviando" && stats && stats.pendientes > 0 && !isAdmin && (
             <Button variant="secondary" onClick={continuarEnvio} disabled={busy} className="gap-2">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Continuar envío
@@ -471,13 +493,13 @@ export function CampaignDashboard() {
               Cancelar campaña
             </Button>
           )}
-          {campaign.estado === "completada" && stats && stats.errores > 0 && (
+          {campaign.estado === "completada" && stats && stats.errores > 0 && !isAdmin && (
             <Button variant="outline" onClick={reintentarErrores} disabled={busy} className="gap-2 border-destructive text-destructive hover:bg-destructive/10">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
               Reintentar {stats.errores.toLocaleString("es-AR")} errores
             </Button>
           )}
-          {campaign.estado === "borrador" && (
+          {campaign.estado === "borrador" && !isAdmin && (
             <Button onClick={iniciarEnvio} disabled={busy} className="gap-2">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               Iniciar envío
@@ -565,6 +587,41 @@ export function CampaignDashboard() {
             </div>
           )}
         </>
+      )}
+      </>
+      )}
+
+      {embedded && (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="outline" onClick={copiarCampana} disabled={busy} className="gap-2">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+            Copiar campaña
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" disabled={busy} className="gap-2">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                Descargar <ChevronDown className="h-3 w-3 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                PDF — imprime el filtro activo (máx 500 filas)
+              </DropdownMenuLabel>
+              <DropdownMenuItem onClick={descargarReporte} className="gap-2">
+                <Download className="h-4 w-4" />
+                PDF
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                CSV — evidencia completa sin límite
+              </DropdownMenuLabel>
+              <DropdownMenuItem onClick={descargarCsv} className="gap-2">
+                <Download className="h-4 w-4" /> CSV con TX hashes y WAMID
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       )}
 
       <Tabs value={section} onValueChange={setSection} className="w-full">
@@ -749,6 +806,7 @@ export function CampaignDashboard() {
             orgId={orgId}
             campaignId={campaignId}
             initialMessageId={verifyTarget}
+            adminSession={isAdmin}
           />
         </TabsContent>
 
@@ -783,7 +841,9 @@ export function CampaignDashboard() {
                   {campaign.waTemplateLang && <span className="ml-2 text-xs">({campaign.waTemplateLang})</span>}
                 </p>
               ) : (
-                <p className="text-muted-foreground">Sin template de WhatsApp.</p>
+                <p className="text-muted-foreground">
+                  Template: <span className="font-medium text-foreground">el registrado por defecto de Notificas</span>
+                </p>
               )}
               {campaign.waTemplateVariables && campaign.waTemplateVariables.length > 0 && (
                 <p className="text-muted-foreground">

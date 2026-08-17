@@ -1,25 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
-import { verifyAuthToken } from '@/lib/auth-helper';
+import { resolveCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb, getAdminBucket } from '@/lib/firebase-admin';
-import { getOrgIfMember } from '@/lib/org-server';
 import type { RecipientEntry } from '@/lib/types';
 
 const CHUNK_SIZE = 500;
 
 export async function POST(request: NextRequest) {
   try {
-    const { decoded, errorResponse } = await verifyAuthToken(request);
-    if (errorResponse) return errorResponse;
-
     const body = await request.json() as { campaignId: string; orgId: string };
     const { campaignId, orgId } = body;
     if (!campaignId || !orgId) {
       return NextResponse.json({ error: 'campaignId y orgId son requeridos' }, { status: 400 });
     }
 
-    const orgGate = await getOrgIfMember(decoded!.uid, orgId, decoded!.email);
-    if (!orgGate) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+    const access = await resolveCampaignOrgAccess(request, orgId, campaignId);
+    if (!access.ok) return access.response;
 
     const db = getAdminDb();
     const src = await db.collection('campaigns').doc(campaignId).get();
@@ -28,14 +24,18 @@ export async function POST(request: NextRequest) {
     }
 
     const c = src.data()!;
+    const orgSnap = await db.collection('organizations').doc(orgId).get();
+    const createdBy = access.viaAdmin
+      ? String(orgSnap.data()?.adminUserId || c.createdBy || '')
+      : String(access.uid || '');
     const nombre = `Copia de ${c.nombre}`;
 
     // Crear el documento de la nueva campaña (sin destinatarios aún)
     const newRef = await db.collection('campaigns').add({
       orgId,
-      createdBy:  decoded!.uid,
+      createdBy,
       senderEmail: c.senderEmail ?? null,
-      senderUid:   decoded!.uid,
+      senderUid: createdBy || null,
       nombre,
       asunto:  c.asunto  ?? '',
       cuerpo:  c.cuerpo  ?? '',
@@ -55,6 +55,8 @@ export async function POST(request: NextRequest) {
       },
       estado: 'borrador',
       createdAt: FieldValue.serverTimestamp(),
+      ...(access.viaAdmin || c.managedByAdmin ? { managedByAdmin: true } : {}),
+      ...(typeof c.tandaSize === 'number' ? { tandaSize: c.tandaSize } : {}),
     });
 
     // Copiar destinatarios desde Storage

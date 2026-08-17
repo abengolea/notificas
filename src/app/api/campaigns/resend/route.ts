@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { FieldValue } from 'firebase-admin/firestore';
-import { verifyAuthToken } from '@/lib/auth-helper';
+import { resolveCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { getOrgIfMember } from '@/lib/org-server';
 import { z } from 'zod';
 
 const bodySchema = z.object({
@@ -17,13 +15,6 @@ function appBaseUrl() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { decoded, errorResponse } = await verifyAuthToken(request);
-    if (errorResponse) return errorResponse;
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Authorization Bearer requerido' }, { status: 401 });
-    }
-
     const jsonBody = await request.json();
     const parsed = bodySchema.safeParse(jsonBody);
     if (!parsed.success) {
@@ -31,14 +22,10 @@ export async function POST(request: NextRequest) {
     }
 
     const { campaignId, orgId, messageIds } = parsed.data;
-    const orgGate = await getOrgIfMember(decoded!.uid, orgId, decoded!.email);
-    if (!orgGate) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+    const access = await resolveCampaignOrgAccess(request, orgId, campaignId);
+    if (!access.ok) return access.response;
 
     const db = getAdminDb();
-    const campSnap = await db.collection('campaigns').doc(campaignId).get();
-    if (!campSnap.exists || String(campSnap.data()!.orgId) !== orgId) {
-      return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 });
-    }
 
     for (const mid of messageIds) {
       const ref = db.collection('campaign_messages').doc(mid);
@@ -55,13 +42,25 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const res = await fetch(`${appBaseUrl()}/api/campaigns/send`, {
+    const sendUrl = access.viaAdmin
+      ? `${appBaseUrl()}/api/admin/campaigns/send`
+      : `${appBaseUrl()}/api/campaigns/send`;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (access.viaAdmin) {
+      const cookie = request.headers.get('cookie');
+      if (cookie) headers.Cookie = cookie;
+    } else {
+      const authHeader = request.headers.get('Authorization');
+      if (!authHeader?.startsWith('Bearer ')) {
+        return NextResponse.json({ error: 'Authorization Bearer requerido' }, { status: 401 });
+      }
+      headers.Authorization = authHeader;
+    }
+
+    const res = await fetch(sendUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: authHeader,
-      },
-      body: JSON.stringify({ campaignId, orgId }),
+      headers,
+      body: JSON.stringify(access.viaAdmin ? { campaignId } : { campaignId, orgId }),
     });
     const text = await res.text();
     return new NextResponse(text, {

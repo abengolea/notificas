@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAuthToken } from '@/lib/auth-helper';
-import { getOrgIfMember } from '@/lib/org-server';
+import { requireCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { buildActaTandaPdf, type ActaLeafRow } from '@/lib/campaign-integrity-pdf';
 
@@ -25,9 +24,6 @@ function formatSealedAt(v: unknown): string | undefined {
 }
 
 export async function GET(request: NextRequest) {
-  const { decoded, errorResponse } = await verifyAuthToken(request);
-  if (errorResponse) return errorResponse;
-
   const campaignId = request.nextUrl.searchParams.get('campaignId') || '';
   const orgId = request.nextUrl.searchParams.get('orgId') || '';
   const batchId = request.nextUrl.searchParams.get('batchId') || '';
@@ -35,14 +31,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'campaignId, orgId y batchId requeridos' }, { status: 400 });
   }
 
-  const orgGate = await getOrgIfMember(decoded!.uid, orgId, decoded!.email);
-  if (!orgGate) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  const denied = await requireCampaignOrgAccess(request, orgId, campaignId);
+  if (denied) return denied;
 
   const db = getAdminDb();
-  const campSnap = await db.collection('campaigns').doc(campaignId).get();
-  if (!campSnap.exists || String(campSnap.data()?.orgId) !== orgId) {
-    return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 });
-  }
 
   const batchRef = db.collection('campaigns').doc(campaignId).collection('integrity_batches').doc(batchId);
   const batchSnap = await batchRef.get();
@@ -92,8 +84,10 @@ export async function GET(request: NextRequest) {
     };
   });
 
-  const org = orgGate.data;
-  const campaign = campSnap.data()!;
+  const orgSnap = await db.collection('organizations').doc(orgId).get();
+  const org = orgSnap.data() || {};
+  const campSnap = await db.collection('campaigns').doc(campaignId).get();
+  const campaign = campSnap.data() || {};
 
   try {
     const pdf = await buildActaTandaPdf({

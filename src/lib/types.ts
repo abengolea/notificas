@@ -189,6 +189,16 @@ export interface Campaign {
   recipientEmails: string[];
   recipientData: RecipientEntry[];
   recipientCount: number;
+  /** Máximo de envíos *nuevos* cada vez que se dispara (cupo diario de WhatsApp). */
+  tandaSize?: number;
+  /** Tope de offset de la corrida actual (yaEnviados + tandaSize). Lo calcula el send. */
+  tandaCap?: number;
+  /** Creada y operada desde el panel admin (campañas masivas). */
+  managedByAdmin?: boolean;
+  recipientStoragePath?: string;
+  recipientChunkCount?: number;
+  senderUid?: string;
+  senderEmail?: string;
   canal?: CanalCampaign;
   // Template de WhatsApp específico para esta campaña (sobreescribe el global)
   waTemplateName?: string;

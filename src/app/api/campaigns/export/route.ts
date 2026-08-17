@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAuthToken } from '@/lib/auth-helper';
+import { requireCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { getOrgIfMember } from '@/lib/org-server';
 
 function formatTs(v: unknown): string {
   if (!v) return '';
@@ -42,25 +41,18 @@ async function fetchMailDocs(
 
 export async function GET(request: NextRequest) {
   try {
-    const { decoded, errorResponse } = await verifyAuthToken(request);
-    if (errorResponse) return errorResponse;
-
     const campaignId = request.nextUrl.searchParams.get('campaignId');
     const orgId = request.nextUrl.searchParams.get('orgId');
     if (!campaignId || !orgId) {
       return NextResponse.json({ error: 'campaignId y orgId requeridos' }, { status: 400 });
     }
 
-    const orgGate = await getOrgIfMember(decoded!.uid, orgId, decoded!.email);
-    if (!orgGate) return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+    const denied = await requireCampaignOrgAccess(request, orgId, campaignId);
+    if (denied) return denied;
 
     const db = getAdminDb();
     const campSnap = await db.collection('campaigns').doc(campaignId).get();
-    if (!campSnap.exists || String(campSnap.data()!.orgId) !== orgId) {
-      return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 });
-    }
-
-    const campaign = campSnap.data()!;
+    const campaign = campSnap.data() || {};
 
     // Cargar todos los campaign_messages de esta campaña.
     const msgSnap = await db

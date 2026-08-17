@@ -56,6 +56,10 @@ import {
 } from "@/components/ui/popover";
 import { maxRecipientsForPlan } from "@/lib/org-limits-client";
 import { assignFilesToRecipientsGreedy, scoreFileForRecipient } from "@/lib/campaign-attachment-match";
+import { uploadCampaignCsvInChunks, uploadCampaignRecipients } from "@/lib/upload-campaign-recipients";
+import { csvCamposRequeridos, csvPlaceholder, inspectCampaignCsv, parseCsvQuick } from "@/lib/parse-campaign-csv";
+import { DEFAULT_TANDA_SIZE } from "@/lib/campaign-tanda";
+import type { CsvInspectResult } from "@/lib/parse-campaign-csv";
 
 function parseEmailsBlock(text: string): RecipientEntry[] {
   const parts = text.split(/[\s,;\n]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
@@ -65,67 +69,22 @@ function parseEmailsBlock(text: string): RecipientEntry[] {
     .map((email) => ({ email, nombre: email.split("@")[0] }));
 }
 
-const PHONE_RE = /^\+?[\d\s\-().]{7,20}$/;
-
-function normalizePhone(raw: string): string {
-  // Elimina espacios y guiones, pero conserva el + inicial
-  return raw.replace(/[\s\-().]/g, '');
-}
-
-function parseCsvQuick(text: string, canal: CanalCampaign): RecipientEntry[] {
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  if (!lines.length) return [];
-  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
-  const iNombre   = headers.indexOf("nombre");
-  const iEmail    = headers.indexOf("email");
-  const iTelefono = headers.indexOf("telefono");
-  const iDni      = headers.indexOf("dni");
-  const iLegajo   = headers.indexOf("legajo");
-
-  const needEmail = canal === "email" || canal === "ambos";
-  const needPhone = canal === "whatsapp" || canal === "ambos";
-
-  if (iNombre < 0) return [];
-  if (needEmail && iEmail < 0) return [];
-  if (needPhone && iTelefono < 0) return [];
-  if (iDni < 0) return [];
-
-  const out: RecipientEntry[] = [];
-  for (let r = 1; r < lines.length; r++) {
-    const cells = lines[r].split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
-    const nombre   = cells[iNombre] || "";
-    const email    = iEmail >= 0    ? (cells[iEmail] || "").toLowerCase()  : `sin-email-${r}@wa.internal`;
-    const rawPhone = iTelefono >= 0 ? cells[iTelefono] || undefined        : undefined;
-    const telefono = rawPhone ? normalizePhone(rawPhone) : undefined;
-    const dni      = iDni >= 0      ? cells[iDni] || undefined             : undefined;
-    const legajo   = iLegajo >= 0   ? cells[iLegajo] || undefined          : undefined;
-    if (!nombre) continue;
-    if (!dni) continue;
-    if (needEmail && !email.includes("@")) continue;
-    if (needPhone && !telefono) continue;
-    // Validar formato de teléfono (si se requiere o si viene)
-    if (telefono && !PHONE_RE.test(rawPhone || '')) continue;
-    out.push({ email, nombre, telefono, dni, legajo });
-  }
-  return out;
-}
-
-function csvPlaceholder(canal: CanalCampaign): string {
-  if (canal === "whatsapp") return "nombre,telefono,dni,legajo\nJuan García,+5491112345678,30123456,GCL-00001";
-  if (canal === "ambos")    return "nombre,email,telefono,dni,legajo\nJuan García,juan@ejemplo.com,+5491112345678,30123456,GCL-00001";
-  return "nombre,email,dni,legajo\nJuan García,juan@ejemplo.com,30123456,GCL-00001";
-}
-
-function csvCamposRequeridos(canal: CanalCampaign): string {
-  if (canal === "whatsapp") return "nombre, telefono, dni";
-  if (canal === "ambos")    return "nombre, email, telefono, dni";
-  return "nombre, email, dni";
-}
-
-export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: string }) {
+export function CampaignWizard({
+  orgId: orgIdProp,
+  orgPlan: orgPlanProp = "starter",
+  mode = "empresa",
+}: {
+  orgId?: string;
+  orgPlan?: string;
+  mode?: "empresa" | "admin";
+}) {
+  const isAdmin = mode === "admin";
   const router = useRouter();
   const { toast } = useToast();
   const [step, setStep] = useState(1);
+  const [adminOrgId, setAdminOrgId] = useState("");
+  const [adminOrgs, setAdminOrgs] = useState<{ id: string; nombre?: string; plan?: string; adminUserEmail?: string }[]>([]);
+  const orgId = isAdmin ? adminOrgId : String(orgIdProp || "");
   const [lists, setLists] = useState<(RecipientListType & { id: string })[]>([]);
   const [listId, setListId] = useState<string>("");
   const [pasteEmails, setPasteEmails] = useState("");
@@ -146,14 +105,24 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [scheduleIso, setScheduleIso] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ uploadedChunks: number; chunkCount: number } | null>(null);
   const [csvCopied, setCsvCopied] = useState(false);
   const [csvFileName, setCsvFileName] = useState<string | null>(null);
   const [csvFileError, setCsvFileError] = useState<string | null>(null);
   const [csvFileDragging, setCsvFileDragging] = useState(false);
   const csvFileInputRef = useRef<HTMLInputElement>(null);
-  const maxR = maxRecipientsForPlan(orgPlan);
+  const csvFileRef = useRef<File | null>(null);
+  const [csvInspect, setCsvInspect] = useState<CsvInspectResult | null>(null);
+  const [tandaSize, setTandaSize] = useState(DEFAULT_TANDA_SIZE);
+  const [adminBillingEmail, setAdminBillingEmail] = useState("");
+  const [adminOrgPlan, setAdminOrgPlan] = useState("starter");
+  const orgPlan = isAdmin ? adminOrgPlan : orgPlanProp;
+  const maxR = isAdmin ? 1_000_000 : maxRecipientsForPlan(orgPlan);
+  const recipientTotal = csvInspect?.count || recipients.length;
 
   useEffect(() => {
+    if (isAdmin) return;
+    if (!orgId) return;
     const q = query(collection(db, "recipient_lists"), where("orgId", "==", orgId));
     const unsub = onSnapshot(q, (snap) => {
       setLists(
@@ -172,16 +141,44 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
       );
     });
     return () => unsub();
-  }, [orgId]);
+  }, [orgId, isAdmin]);
 
   useEffect(() => {
+    if (isAdmin) return;
     const u = auth.currentUser;
     if (!u) return;
     const unsub = onSnapshot(doc(db, "users", u.uid), (s) => {
       setCreditos(normalizeEnviosDisponibles(s.data()?.creditos));
     });
     return () => unsub();
-  }, []);
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    void fetch("/api/admin/organizations", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setAdminOrgs(Array.isArray(d.organizations) ? d.organizations : []))
+      .catch(() => setAdminOrgs([]));
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin || !orgId) {
+      if (isAdmin) {
+        setCreditos(0);
+        setAdminBillingEmail("");
+        setAdminOrgPlan("starter");
+      }
+      return;
+    }
+    void fetch(`/api/admin/campaigns/billing?orgId=${encodeURIComponent(orgId)}`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => {
+        setCreditos(typeof d.creditos === "number" ? d.creditos : 0);
+        setAdminBillingEmail(String(d.adminUserEmail || ""));
+        setAdminOrgPlan(String(d.plan || "starter"));
+      })
+      .catch(() => undefined);
+  }, [isAdmin, orgId]);
 
   async function resolveListRecipients(id: string) {
     if (!id) {
@@ -199,10 +196,10 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
   }, [listId]);
 
   const preview = useMemo(() => {
-    const n = recipients.length;
-    const sample = recipients.slice(0, 3).map((r) => r.nombre);
+    const n = recipientTotal;
+    const sample = csvInspect?.sample?.length ? csvInspect.sample : recipients.slice(0, 3).map((r) => r.nombre);
     return { n, sample };
-  }, [recipients]);
+  }, [recipientTotal, csvInspect, recipients]);
 
   const firstHtml = useMemo(() => {
     const r0 = recipients[0];
@@ -286,8 +283,45 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
     if (!file.name.toLowerCase().endsWith(".csv")) {
       setCsvFileError("El archivo debe ser .csv");
       setCsvFileName(null);
+      csvFileRef.current = null;
+      setCsvInspect(null);
       return;
     }
+
+    const applyInspect = (inspected: CsvInspectResult, fromFile: File) => {
+      if (inspected.error) {
+        setCsvFileError(inspected.error);
+        setCsvFileName(null);
+        csvFileRef.current = null;
+        setCsvInspect(null);
+        return;
+      }
+      setCsvFileError(null);
+      setCsvFileName(fromFile.name);
+      csvFileRef.current = fromFile;
+      setCsvInspect(inspected);
+      if (!isAdmin) {
+        void fromFile.text().then((text) => {
+          const parsed = parseCsvQuick(text, canal);
+          const map = new Map<string, RecipientEntry>();
+          recipients.forEach((r) => map.set(r.email.toLowerCase(), r));
+          parsed.forEach((r) => map.set(r.email.toLowerCase(), r));
+          setRecipients([...map.values()]);
+        });
+      } else {
+        setRecipients([]);
+      }
+      toast({
+        title: `${inspected.count.toLocaleString("es-AR")} destinatarios`,
+        description: `Desde ${fromFile.name}${inspected.skipped ? ` · ${inspected.skipped} filas salteadas` : ""}`,
+      });
+    };
+
+    if (isAdmin) {
+      void inspectCampaignCsv(file, canal).then((inspected) => applyInspect(inspected, file));
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = (e.target?.result as string) || "";
@@ -305,6 +339,8 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
       }
       setCsvFileError(null);
       setCsvFileName(file.name);
+      csvFileRef.current = file;
+      setCsvInspect({ error: null, count: parsed.length, skipped: 0, sample: parsed.slice(0, 3).map((r) => r.nombre) });
       const map = new Map<string, RecipientEntry>();
       recipients.forEach((r) => map.set(r.email.toLowerCase(), r));
       parsed.forEach((r) => map.set(r.email.toLowerCase(), r));
@@ -331,7 +367,111 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
     toast({ title: `${next.length} destinatarios`, description: "Combinados con la lista actual" });
   }
 
+  async function runSubmitAdmin(sendNow: boolean) {
+    if (!orgId) {
+      toast({ title: "Elegí la empresa", variant: "destructive" });
+      return;
+    }
+    if (!campaniaNombre.trim() || !asunto.trim() || !cuerpo.trim()) {
+      toast({ title: "Completá nombre interno, asunto y cuerpo", variant: "destructive" });
+      return;
+    }
+    const file = csvFileRef.current;
+    if (!file && recipients.length === 0) {
+      toast({ title: "Agregá destinatarios", variant: "destructive" });
+      return;
+    }
+    const tandaNew = tandaSize > 0 ? Math.min(tandaSize, recipientTotal) : recipientTotal;
+    if (sendNow && creditos < tandaNew) {
+      toast({ title: "Envíos insuficientes", description: `Esta tanda necesita ${tandaNew.toLocaleString("es-AR")}` , variant: "destructive" });
+      return;
+    }
+
+    setSubmitting(true);
+    setUploadProgress(null);
+    try {
+      const createRes = await fetch("/api/admin/campaigns", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orgId,
+          nombre: campaniaNombre.trim(),
+          asunto: asunto.trim(),
+          cuerpo: cuerpo.trim(),
+          canal,
+          waTemplateName: waTemplateName.trim() || undefined,
+          waTemplateLang,
+          waTemplateVariables: waTemplateVariables.filter(Boolean),
+          tandaSize: sendNow ? tandaSize : 0,
+        }),
+      });
+      const created = await createRes.json();
+      if (!createRes.ok) throw new Error(created.error || "No se pudo crear la campaña");
+      const campaignId = String(created.id);
+
+      if (file) {
+        await uploadCampaignCsvInChunks({
+          campaignId,
+          orgId,
+          file,
+          canal,
+          endpoint: "/api/admin/campaigns/upload-recipients",
+          onProgress: (p) =>
+            setUploadProgress({ uploadedChunks: p.uploadedChunks, chunkCount: p.chunkCount }),
+        });
+      } else {
+        const cleanRecipients = recipients.map((r) => {
+          const clean: Record<string, string> = { nombre: r.nombre || "", email: r.email || "" };
+          if (r.telefono) clean.telefono = r.telefono;
+          if (r.dni) clean.dni = r.dni;
+          if (r.legajo) clean.legajo = r.legajo;
+          return clean;
+        });
+        await uploadCampaignRecipients({
+          campaignId,
+          orgId,
+          recipients: cleanRecipients as RecipientEntry[],
+          endpoint: "/api/admin/campaigns/upload-recipients",
+          onProgress: setUploadProgress,
+        });
+      }
+
+      if (sendNow) {
+        const sendRes = await fetch("/api/admin/campaigns/send", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ campaignId, tandaSize }),
+        });
+        const sendData = await sendRes.json();
+        if (!sendRes.ok) throw new Error(sendData.error || "Falló el envío");
+        toast({
+          title: "Envío iniciado",
+          description: `${(sendData.pendingThisTanda ?? sendData.pending ?? 0).toLocaleString("es-AR")} mensajes encolados`,
+        });
+      } else {
+        toast({ title: "Borrador guardado" });
+      }
+
+      router.push(`/admin/campanas/${campaignId}`);
+    } catch (e: unknown) {
+      toast({
+        title: "Error",
+        description: e instanceof Error ? e.message : "No se pudo crear la campaña",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+      setConfirmOpen(false);
+    }
+  }
+
   async function runSubmit(sendNow: boolean) {
+    if (isAdmin) {
+      await runSubmitAdmin(sendNow);
+      return;
+    }
     const user = auth.currentUser;
     if (!user) return;
     if (!campaniaNombre.trim() || !asunto.trim() || !cuerpo.trim()) {
@@ -376,6 +516,7 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
     }
 
     setSubmitting(true);
+    setUploadProgress(null);
     try {
       const draftKey = `draft_${Date.now()}`;
       const uploaded: CampaignAttachment[] = [];
@@ -453,17 +594,19 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
         startedAt: null,
       });
 
-      // Subir destinatarios a Storage vía API (Admin SDK bypasses Storage rules).
+      // Subir destinatarios de a 500 (un POST con 150k rompe el navegador / el servidor).
       const token = await user.getIdToken();
-      const uploadRes = await fetch("/api/campaigns/upload-recipients", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ campaignId: refDoc.id, orgId, recipients: cleanRecipients }),
-      });
-      if (!uploadRes.ok) {
-        const uploadErr = await uploadRes.json().catch(() => ({}));
+      try {
+        await uploadCampaignRecipients({
+          campaignId: refDoc.id,
+          orgId,
+          recipients: cleanRecipients as RecipientEntry[],
+          token,
+          onProgress: setUploadProgress,
+        });
+      } catch (uploadErr) {
         await updateDoc(refDoc, { estado: "borrador" });
-        throw new Error(uploadErr.error || "No se pudieron subir los destinatarios");
+        throw uploadErr;
       }
 
       if (scheduleFuture && scheduleIso) {
@@ -509,6 +652,37 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
 
   return (
     <div className="max-w-3xl space-y-8">
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Empresa</CardTitle>
+            <CardDescription>
+              La campaña queda a nombre de esta organización. Los créditos se descuentan de su administrador.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Label>Organización</Label>
+            <Select value={adminOrgId} onValueChange={setAdminOrgId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Elegí la empresa" />
+              </SelectTrigger>
+              <SelectContent>
+                {adminOrgs.map((o) => (
+                  <SelectItem key={o.id} value={o.id}>
+                    {o.nombre || o.id} ({o.plan || "starter"})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {adminOrgId ? (
+              <p className="text-xs text-muted-foreground">
+                Plan {adminOrgPlan} · cobra {adminBillingEmail || "el admin de la empresa"} ·{" "}
+                {creditos.toLocaleString("es-AR")} envíos
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+      )}
       <div>
         <div className="flex justify-between text-xs text-muted-foreground mb-2">
           <span>Paso {step} de {STEPS.length} — {STEPS[step - 1]}</span>
@@ -535,7 +709,14 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
                 <button
                   key={value}
                   type="button"
-                  onClick={() => { setCanal(value); setRecipients([]); setCsvFileName(null); setCsvFileError(null); }}
+                  onClick={() => {
+                    setCanal(value);
+                    setRecipients([]);
+                    setCsvFileName(null);
+                    setCsvFileError(null);
+                    csvFileRef.current = null;
+                    setCsvInspect(null);
+                  }}
                   className={`flex flex-col items-start gap-2 rounded-md border p-4 text-left transition-colors ${
                     canal === value ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-primary/50"
                   }`}
@@ -557,7 +738,7 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
                 </p>
               )}
             </div>
-            <Button onClick={() => setStep(2)}>Siguiente</Button>
+            <Button onClick={() => setStep(2)} disabled={isAdmin && !orgId}>Siguiente</Button>
           </CardContent>
         </Card>
       )}
@@ -667,7 +848,7 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            {lists.length > 0 && (
+            {lists.length > 0 && !isAdmin && (
               <div className="space-y-2">
                 <Label>Lista guardada</Label>
                 <Select value={listId || "__none__"} onValueChange={(v) => setListId(v === "__none__" ? "" : v)}>
@@ -735,7 +916,13 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
                       <button
                         type="button"
                         className="absolute top-2 right-2 rounded-sm text-muted-foreground hover:text-foreground p-1"
-                        onClick={(e) => { e.stopPropagation(); setCsvFileName(null); setCsvFileError(null); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCsvFileName(null);
+                          setCsvFileError(null);
+                          csvFileRef.current = null;
+                          setCsvInspect(null);
+                        }}
                         aria-label="Quitar archivo"
                       >
                         <X className="h-4 w-4" />
@@ -790,7 +977,7 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep(1)}>Atrás</Button>
-              <Button onClick={() => setStep(3)} disabled={!recipients.length}>Siguiente</Button>
+              <Button onClick={() => setStep(3)} disabled={!recipientTotal}>Siguiente</Button>
             </div>
           </CardContent>
         </Card>
@@ -824,15 +1011,15 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
                     Template de WhatsApp
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Meta solo permite mensajes con templates aprobados. Si no tenés uno aprobado todavía,
-                    podés dejarlo vacío y completarlo después antes de enviar.
+                    Meta solo permite mensajes con templates aprobados. Si lo dejás vacío, usamos el
+                    template registrado por defecto de Notificas.
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Nombre del template (aprobado en Meta)</Label>
                     <Input
-                      placeholder="ej: mora_notificacion_v1"
+                      placeholder="Vacío = template por defecto de Notificas"
                       value={waTemplateName}
                       onChange={(e) => setWaTemplateName(e.target.value)}
                     />
@@ -906,6 +1093,8 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
               <Label>Cuerpo{canal !== "email" ? " (referencia interna / vista previa email)" : ""}</Label>
               <Textarea value={cuerpo} onChange={(e) => setCuerpo(e.target.value)} rows={10} />
             </div>
+            {!isAdmin && (
+              <>
             <div className="rounded-md border p-4 space-y-3">
               <div className="flex items-start gap-3">
                 <Checkbox
@@ -933,6 +1122,8 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
               maxFiles={pairByRecipient ? pairingUploadCap : 12}
               maxSizeMB={10}
             />
+              </>
+            )}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep(2)}>Atrás</Button>
               <Button onClick={() => setStep(4)} disabled={!asunto.trim() || !cuerpo.trim() || !campaniaNombre.trim()}>
@@ -954,13 +1145,13 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
             <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
               <div className="flex gap-4 flex-wrap">
                 <span><strong>Canal:</strong> {canal === "email" ? "Email" : canal === "whatsapp" ? "WhatsApp" : "Email + WhatsApp"}</span>
-                <span><strong>Destinatarios:</strong> {recipients.length}</span>
+                <span><strong>Destinatarios:</strong> {recipientTotal.toLocaleString("es-AR")}</span>
                 <span><strong>Asunto:</strong> {asunto}</span>
               </div>
             </div>
 
             {/* Emparejamiento de adjuntos */}
-            {pairByRecipient && files.length > 0 && (
+            {pairByRecipient && files.length > 0 && !isAdmin && (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm font-medium">Emparejamiento de adjuntos</p>
@@ -1016,7 +1207,42 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
 
             {/* Créditos y programación */}
             <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm space-y-2">
-              <p>Consumo: <strong>1 envío</strong> por destinatario exitoso. Tu saldo: <strong>{creditos}</strong>.</p>
+              <p>
+                Consumo: <strong>1 envío</strong> por destinatario exitoso.
+                {isAdmin ? (
+                  <>
+                    {" "}Saldo de {adminBillingEmail || "la empresa"}: <strong>{creditos.toLocaleString("es-AR")}</strong>.
+                  </>
+                ) : (
+                  <> Tu saldo: <strong>{creditos}</strong>.</>
+                )}
+              </p>
+              {isAdmin ? (
+                <>
+                  <div className="space-y-1 pt-1 max-w-xs">
+                    <Label className="text-xs">Límite por envío</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={tandaSize}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        if (Number.isInteger(n) && n >= 0) setTandaSize(n);
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Cada vez que dispares, salen como máximo este número de destinatarios nuevos. Hoy WhatsApp permite 2.000. Cuando te suban el cupo, cambialo (ej. 10.000) y volvé a enviar.
+                    </p>
+                  </div>
+                  {creditos < (tandaSize > 0 ? Math.min(tandaSize, recipientTotal) : recipientTotal) && (
+                    <p className="text-destructive">
+                      Saldo insuficiente para esta tanda — necesitás{" "}
+                      {(tandaSize > 0 ? Math.min(tandaSize, recipientTotal) : recipientTotal) - creditos} envíos más.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
               {creditos < recipients.length && (
                 <p className="text-destructive">Saldo insuficiente — necesitás {recipients.length - creditos} envíos más.</p>
               )}
@@ -1025,6 +1251,8 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
                 <Input type="datetime-local" value={scheduleIso} onChange={(e) => setScheduleIso(e.target.value)} className="max-w-xs" />
                 <p className="text-xs text-muted-foreground">Sin fecha → envío inmediato. Con fecha futura → queda en borrador.</p>
               </div>
+                </>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -1035,6 +1263,11 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
               </Button>
               <Button variant="outline" disabled={submitting} onClick={() => runSubmit(false)}>Guardar borrador</Button>
             </div>
+            {submitting && uploadProgress && (
+              <p className="text-sm text-muted-foreground">
+                Subiendo destinatarios: {uploadProgress.uploadedChunks} / {uploadProgress.chunkCount}
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
@@ -1044,7 +1277,12 @@ export function CampaignWizard({ orgId, orgPlan }: { orgId: string; orgPlan: str
           <AlertDialogHeader>
             <AlertDialogTitle>¿Confirmar envío masivo?</AlertDialogTitle>
             <AlertDialogDescription>
-              Estás por enviar {recipients.length} notificaciones certificadas. Esta acción no se puede deshacer.
+              Estás por enviar {isAdmin ? (tandaSize > 0 ? Math.min(tandaSize, recipientTotal) : recipientTotal).toLocaleString("es-AR") : recipients.length} notificaciones certificadas. Esta acción no se puede deshacer.
+              {submitting && uploadProgress ? (
+                <span className="mt-2 block">
+                  Subiendo destinatarios: {uploadProgress.uploadedChunks} / {uploadProgress.chunkCount}
+                </span>
+              ) : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
