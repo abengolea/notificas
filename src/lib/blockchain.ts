@@ -71,22 +71,15 @@ export async function sendPolygonTransaction(data: string): Promise<string> {
     console.log('✅ Transacción enviada a Polygon Mainnet:', tx.hash);
     console.log('🔍 Ver en explorer: https://polygonscan.com/tx/' + tx.hash);
 
-    // No esperamos tx.wait() — devolvemos el hash inmediatamente.
-    // La TX ya está firmada y enviada a la mempool con un nonce válido y gas suficiente.
-    // La confirmación on-chain tarda 2-5s en Polygon pero el RPC público puede colgar
-    // en tx.wait() indefinidamente. El hash es suficiente para certificación: es inmutable
-    // y verificable en https://polygonscan.com.
-    // Intentamos esperar confirmación solo 8s como best-effort para loggear el gas.
-    Promise.race([
-      tx.wait(),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 8_000)),
-    ]).then((receipt) => {
-      if (receipt) {
-        console.log('📊 Confirmación recibida — Gas usado:', receipt.gasUsed?.toString());
-      } else {
-        console.log('ℹ️ Confirmación pendiente (normal en RPC público) — TX ya en mempool:', tx.hash);
-      }
-    }).catch(() => { /* ignorar errores de confirmación, el hash ya fue devuelto */ });
+    const receipt = await Promise.race([
+      tx.wait(1),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 15_000)),
+    ]);
+    if (receipt) {
+      console.log('📊 Confirmación recibida — bloque', receipt.blockNumber, 'gas', receipt.gasUsed?.toString());
+    } else {
+      console.log('ℹ️ Confirmación pendiente (RPC público) — TX en mempool:', tx.hash);
+    }
 
     return tx.hash;
   } catch (error: any) {

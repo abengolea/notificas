@@ -72,6 +72,7 @@ function cleanRecipientForUpload(r: RecipientEntry): RecipientEntry {
   if (r.telefono) clean.telefono = r.telefono;
   if (r.dni) clean.dni = r.dni;
   if (r.legajo) clean.legajo = r.legajo;
+  if (r.dias) clean.dias = r.dias;
   if (r.area) clean.area = r.area;
   return clean;
 }
@@ -128,6 +129,7 @@ export function CampaignWizard({
   const [waTemplateName, setWaTemplateName] = useState("");
   const [waTemplateLang, setWaTemplateLang] = useState("es_AR");
   const [waTemplateVariables, setWaTemplateVariables] = useState<string[]>(["nombre", "dni", "legajo"]);
+  const [waUrlButton, setWaUrlButton] = useState(false);
   const [campaniaNombre, setCampaniaNombre] = useState("");
   const [asunto, setAsunto] = useState("");
   const [cuerpo, setCuerpo] = useState("");
@@ -466,6 +468,7 @@ export function CampaignWizard({
           waTemplateName: waTemplateName.trim() || undefined,
           waTemplateLang,
           waTemplateVariables: waTemplateVariables.filter(Boolean),
+          waUrlButton,
           tandaSize: sendNow ? (simulated ? 0 : tandaSize) : 0,
           simulated,
         }),
@@ -638,6 +641,7 @@ export function CampaignWizard({
           waTemplateName: waTemplateName.trim(),
           waTemplateLang: waTemplateLang.trim() || "es_AR",
           waTemplateVariables: waTemplateVariables.filter(Boolean),
+          ...(waUrlButton ? { waUrlButton: true } : {}),
         } : {}),
         nombre: campaniaNombre.trim(),
         asunto: asunto.trim(),
@@ -1219,7 +1223,8 @@ export function CampaignWizard({
                             <SelectItem value="legajo">legajo</SelectItem>
                             <SelectItem value="email">email</SelectItem>
                             <SelectItem value="telefono">telefono</SelectItem>
-                            <SelectItem value="url_lectura">url de lectura (link al mensaje)</SelectItem>
+                            <SelectItem value="dias">días de atraso</SelectItem>
+                            <SelectItem value="url_lectura">url de lectura (en el texto)</SelectItem>
                           </SelectContent>
                         </Select>
                         <Button
@@ -1240,8 +1245,26 @@ export function CampaignWizard({
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    El orden debe coincidir exactamente con las variables definidas en el template aprobado por Meta.
+                    El orden debe coincidir exactamente con las variables del cuerpo en Meta. Para esta plantilla de mora suele ser {{1}} nombre y {{2}} días de atraso.
                   </p>
+                  <div className="flex items-start gap-3 rounded-md border p-3">
+                    <Checkbox
+                      id="wa-url-button"
+                      checked={waUrlButton}
+                      onCheckedChange={(v) => setWaUrlButton(v === true)}
+                      className="mt-0.5"
+                    />
+                    <div className="space-y-1">
+                      <label htmlFor="wa-url-button" className="text-xs font-medium leading-none">
+                        El template tiene un botón de enlace
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        Activalo solo si en Meta agregaste un botón URL. Notificas manda ahí el link del lector.
+                        En Meta el botón debe ser: dominio de Notificas + variable, por ejemplo
+                        {" "}<code>https://notificas.com.ar/{"{{1}}"}</code>.
+                      </p>
+                    </div>
+                  </div>
                 </div>
                 {waTemplateName.trim() && (
                   <div className="rounded-md bg-muted/50 p-2 text-xs font-mono text-muted-foreground">

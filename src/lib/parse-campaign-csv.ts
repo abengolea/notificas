@@ -71,6 +71,7 @@ export type CsvColumnIndex = {
   iTelefono: number;
   iDni: number;
   iLegajo: number;
+  iDias: number;
 };
 
 export function parseCsvHeaderLine(headerLine: string, canal: CanalCampaign): CsvColumnIndex | null {
@@ -80,13 +81,16 @@ export function parseCsvHeaderLine(headerLine: string, canal: CanalCampaign): Cs
   const iTelefono = headers.indexOf('telefono');
   const iDni = headers.indexOf('dni');
   const iLegajo = headers.indexOf('legajo');
+  const iDias = headers.includes('dias_atraso')
+    ? headers.indexOf('dias_atraso')
+    : headers.indexOf('dias');
   const needEmail = canal === 'email' || canal === 'ambos';
   const needPhone = canal === 'whatsapp' || canal === 'ambos';
   if (iNombre < 0) return null;
   if (needEmail && iEmail < 0) return null;
   if (needPhone && iTelefono < 0) return null;
   if (iDni < 0) return null;
-  return { iNombre, iEmail, iTelefono, iDni, iLegajo };
+  return { iNombre, iEmail, iTelefono, iDni, iLegajo, iDias };
 }
 
 export function parseCsvDataLine(
@@ -102,12 +106,13 @@ export function parseCsvDataLine(
   const telefono = rawPhone ? toWhatsAppPhone(rawPhone) : undefined;
   const dni = cols.iDni >= 0 ? cells[cols.iDni] || undefined : undefined;
   const legajo = cols.iLegajo >= 0 ? cells[cols.iLegajo] || undefined : undefined;
+  const dias = cols.iDias >= 0 ? cells[cols.iDias] || undefined : undefined;
   const needEmail = canal === 'email' || canal === 'ambos';
   const needPhone = canal === 'whatsapp' || canal === 'ambos';
   if (!nombre || !dni) return null;
   if (needEmail && !email.includes('@')) return null;
   if (needPhone && !telefono) return null;
-  return { email, nombre, telefono, dni, legajo };
+  return { email, nombre, telefono, dni, legajo, ...(dias ? { dias } : {}) };
 }
 
 export function dedupeRecipientsForCanal(

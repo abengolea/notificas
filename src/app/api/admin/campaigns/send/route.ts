@@ -4,10 +4,12 @@ import { z } from 'zod';
 import { assertAdminSession } from '@/lib/assert-admin-session';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { enqueueCampaignFanout } from '@/lib/cloud-tasks';
+import { sealCampaignWhatsAppTemplate } from '@/lib/wa-template-seal';
 
 const bodySchema = z.object({
   campaignId: z.string().min(1),
   tandaSize: z.number().int().min(0).optional(),
+  retryErrors: z.boolean().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -71,6 +73,9 @@ export async function POST(request: NextRequest) {
     const senderEmail = String(campaign.senderEmail || org.adminUserEmail || '');
 
     const startedAt = campaign.startedAt ? {} : { startedAt: FieldValue.serverTimestamp() };
+    const startOffset = parsed.data.retryErrors
+      ? 0
+      : (typeof campaign.fanoutResumeOffset === 'number' ? campaign.fanoutResumeOffset : 0);
     await campRef.update({
       estado: 'enviando',
       tandaSize: dailyLimit,
@@ -78,11 +83,15 @@ export async function POST(request: NextRequest) {
       senderUid,
       senderEmail,
       managedByAdmin: true,
+      'stats.total': totalRecipients,
+      'stats.pendientes': remaining,
+      ...(parsed.data.retryErrors ? { 'stats.errores': 0 } : {}),
       enqueuedAt: FieldValue.serverTimestamp(),
       ...startedAt,
     });
 
-    await enqueueCampaignFanout(parsed.data.campaignId, 0);
+    await sealCampaignWhatsAppTemplate(parsed.data.campaignId).catch(() => null);
+    await enqueueCampaignFanout(parsed.data.campaignId, startOffset);
 
     return NextResponse.json({
       queued: true,

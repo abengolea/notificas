@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import fs from 'fs';
 import path from 'path';
+import QRCode from 'qrcode';
 import { computeContentHash } from './certification';
 import { POLYGON_CERT_DISPLAY_ORDER, polygonCertLabel } from './polygon-cert-labels';
 
@@ -38,6 +39,14 @@ interface MailData {
   to?: string;
   senderName?: string;
   recipientEmail?: string;
+  recipientName?: string;
+  recipientDni?: string;
+  recipientPhone?: string;
+  recipientLegajo?: string;
+  whatsappMessageId?: string;
+  evidenceSnapshotHash?: string;
+  orgNombre?: string;
+  orgCuit?: string;
   readerUrl?: string;
   message?: MailMessageContent;
   delivery?: {
@@ -58,7 +67,10 @@ interface MailData {
     read?: string;
     certificate?: string;
     contentHash?: string;
+    waBodyHash?: string;
+    whatsapp?: string;
   };
+  waRequestSnapshot?: unknown;
 }
 
 interface CertificateData {
@@ -624,7 +636,12 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   // Formato acta: dos columnas visuales (label alineado a la izquierda, valor a la derecha)
   const identificationData = [
     { label: 'Remitente', value: mailData.senderName || mailData.from || 'No especificado' },
-    { label: 'Destinatario', value: mailData.recipientEmail || 'No especificado' },
+    ...(mailData.orgNombre ? [{ label: 'Organización', value: mailData.orgNombre }] : []),
+    ...(mailData.orgCuit ? [{ label: 'CUIT del remitente', value: mailData.orgCuit }] : []),
+    { label: 'Destinatario', value: mailData.recipientName || mailData.recipientEmail || 'No especificado' },
+    ...(mailData.recipientDni ? [{ label: 'DNI / identificación', value: String(mailData.recipientDni) }] : []),
+    { label: 'Email del destinatario', value: mailData.recipientEmail || 'No especificado' },
+    ...(mailData.recipientPhone ? [{ label: 'Teléfono', value: String(mailData.recipientPhone) }] : []),
     { label: 'Asunto', value: mailData.message?.subject || 'Sin asunto declarado' },
     { label: 'Fecha de envío', value: formatDate(mailData.delivery?.time) }
   ];
@@ -680,20 +697,46 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       techData.push({ label: 'Token de verificación', value: mailData.tracking.token, monospace: true });
     }
     if (mailData.delivery?.info) {
-      techData.push({ label: 'Identificador de entrega', value: mailData.delivery.info, monospace: true });
+      techData.push({ label: 'Identificador SMTP (aceptación)', value: mailData.delivery.info, monospace: true });
     }
+    const wamid = mailData.whatsappMessageId || (mailData as { tracking?: { whatsappMessageId?: string } }).tracking?.whatsappMessageId;
+    if (wamid) {
+      techData.push({ label: 'WhatsApp Message ID (wamid)', value: String(wamid), monospace: true });
+      techData.push({
+        label: 'Alcance de WhatsApp',
+        value: 'WhatsApp transportó un aviso (template de Meta) con enlace al lector. El texto intimado es el del correo y del lector, no el globo del chat.',
+        monospace: false,
+      });
+    }
+    const waBodyHash = (mailData as { polygonCertifications?: { waBodyHash?: string } }).polygonCertifications?.waBodyHash;
+    if (waBodyHash) {
+      techData.push({
+        label: 'Hash del aviso WhatsApp (SHA-256 del pedido a Meta)',
+        value: String(waBodyHash),
+        monospace: true,
+      });
+    }
+    if (mailData.evidenceSnapshotHash) {
+      techData.push({ label: 'Hash del snapshot inmutable', value: mailData.evidenceSnapshotHash, monospace: true });
+    }
+    const verifyBase = (process.env.NEXT_PUBLIC_APP_URL || 'https://notificas.com.ar').replace(/\/$/, '');
+    techData.push({
+      label: 'Verificación pública',
+      value: `${verifyBase}/verify?id=${encodeURIComponent(messageId)}`,
+      monospace: true,
+    });
     if (mailData.readerUrl) {
       techData.push({ label: 'URL de acceso al lector certificado', value: mailData.readerUrl, monospace: true });
     }
     if (contentHash) {
       techData.push({
-        label: 'Hash de integridad del contenido (SHA-256)',
+        label: 'Hash de integridad del texto intimado (SHA-256)',
         value: contentHash,
         monospace: true
       });
       techData.push({
         label: 'Fórmula de reproducción del hash (para peritos)',
-        value: 'SHA-256( UTF-8( trim(texto_plano_del_mensaje) ) ) — El hash se calcula sobre el texto del mensaje tal como lo escribió el remitente, sin HTML ni formato adicional. Implementación: crypto.subtle.digest("SHA-256", new TextEncoder().encode(texto.trim())) — Web Crypto API estándar.',
+        value: 'SHA-256( UTF-8( trim(texto_plano_del_mensaje) ) ) — Texto del correo/lector, no el globo de WhatsApp. Implementación: crypto.subtle.digest("SHA-256", new TextEncoder().encode(texto.trim())) — Web Crypto API estándar.',
         monospace: false
       });
     }
@@ -735,6 +778,21 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       
       yPosition += techHeight + 12;
     }
+  }
+
+  try {
+    const verifyBase = (process.env.NEXT_PUBLIC_APP_URL || 'https://notificas.com.ar').replace(/\/$/, '');
+    const verifyUrl = `${verifyBase}/verify?id=${encodeURIComponent(messageId)}`;
+    const qr = await QRCode.toDataURL(verifyUrl, { margin: 0, width: 160 });
+    ensureSpace(56);
+    doc.addImage(qr, 'PNG', pageWidth - margin - 48, yPosition, 42, 42);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    setTextColor(COLORS.textMuted);
+    doc.text('Escanee para verificar este certificado en Notificas.', margin, yPosition + 18);
+    yPosition += 52;
+  } catch {
+    /* QR opcional */
   }
 
   // ========================================

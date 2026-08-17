@@ -25,6 +25,7 @@ export type CreateMailAdminParams = {
   recipientPhone?: string;
   recipientDni?: string;
   recipientLegajo?: string;
+  recipientDias?: string;
   senderName?: string;
   createdBy: string;
   campaignId?: string;
@@ -36,6 +37,7 @@ export type CreateMailAdminParams = {
   waTemplateName?: string;
   waTemplateLang?: string;
   waTemplateVariables?: string[] | null;
+  waUrlButton?: boolean;
   /** Campaña admin simulada: la CF sendEmail no debe despachar Mailgun/Meta. */
   simulated?: boolean;
   waOnly?: boolean;
@@ -55,6 +57,7 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
     recipientPhone,
     recipientDni,
     recipientLegajo,
+    recipientDias,
     senderName,
     createdBy,
     campaignId,
@@ -64,6 +67,7 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
     waTemplateName,
     waTemplateLang,
     waTemplateVariables,
+    waUrlButton,
     simulated,
     waOnly,
   } = params;
@@ -103,9 +107,11 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
   if (recipientPhone) payload.recipientPhone = recipientPhone;
   if (recipientDni) payload.recipientDni = recipientDni;
   if (recipientLegajo) payload.recipientLegajo = recipientLegajo;
+  if (recipientDias) payload.recipientDias = recipientDias;
   if (waTemplateName) payload.waTemplateName = waTemplateName;
   if (waTemplateLang) payload.waTemplateLang = waTemplateLang;
   if (waTemplateVariables) payload.waTemplateVariables = waTemplateVariables;
+  if (waUrlButton) payload.waUrlButton = true;
   const sendNorm = normalizedEmailIdentity(senderName);
   if (sendNorm) payload.senderName = sendNorm;
   payload.createdBy = createdBy;

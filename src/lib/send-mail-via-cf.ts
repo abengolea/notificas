@@ -1,3 +1,4 @@
+import { sendEmailCfHeaders } from "@/lib/cf-send-auth";
 import { getFirebaseSendEmailUrl } from "@/lib/mail-defaults";
 
 export async function invokeSendEmail(
@@ -6,7 +7,7 @@ export async function invokeSendEmail(
   const fnUrl = getFirebaseSendEmailUrl();
   const cfRes = await fetch(fnUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: sendEmailCfHeaders(),
     body: JSON.stringify({ docId }),
   });
 
@@ -15,7 +16,7 @@ export async function invokeSendEmail(
     success?: boolean;
   };
 
-  if (!cfRes.ok) {
+  if (!cfRes.ok || cfBody.success === false) {
     return { ok: false, error: cfBody.error || `HTTP ${cfRes.status}` };
   }
   return { ok: true };

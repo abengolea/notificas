@@ -57,9 +57,29 @@ export async function POST(request: NextRequest) {
     }
 
     // Preparar datos para el certificado
+    let orgNombre: string | undefined;
+    let orgCuit: string | undefined;
+    if (typeof mailDataFresh.campaignId === 'string' && mailDataFresh.campaignId) {
+      const camp = await adminDb.collection('campaigns').doc(mailDataFresh.campaignId).get();
+      const orgId = camp.exists ? String(camp.data()?.orgId || '') : '';
+      if (orgId) {
+        const org = await adminDb.collection('organizations').doc(orgId).get();
+        if (org.exists) {
+          orgNombre = typeof org.data()?.nombre === 'string' ? org.data()!.nombre : undefined;
+          orgCuit = typeof org.data()?.cuit === 'string' ? org.data()!.cuit : undefined;
+        }
+      }
+    }
+
     const certificateData = {
       messageId,
-      mailData: mailDataFresh,
+      mailData: {
+        ...mailDataFresh,
+        orgNombre,
+        orgCuit,
+        whatsappMessageId:
+          mailDataFresh.whatsappMessageId || mailDataFresh.tracking?.whatsappMessageId,
+      },
       movements: mailDataFresh.tracking?.movements || [],
       attachments: mailDataFresh.attachments || []
     };

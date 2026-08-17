@@ -47,7 +47,10 @@ type VerifyResult = {
     onChainMatch: boolean | null;
     smtpMessageId: string | null;
     wamid: string | null;
+    waVars?: Record<string, string> | null;
+    templateSealHash?: string | null;
   };
+  template?: { hash: string; name: string; lang: string; variables: string[] } | null;
   events: Array<{
     type: string;
     present: boolean;
@@ -150,6 +153,12 @@ export function CampaignIntegrityPanel({
     leavesSend: number;
     leavesEvent: number;
   } | null>(null);
+  const [templateSeal, setTemplateSeal] = useState<{
+    hash: string;
+    name: string;
+    lang: string;
+    variables: string[];
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [verifyQuery, setVerifyQuery] = useState("");
@@ -194,6 +203,7 @@ export function CampaignIntegrityPanel({
       if (!res.ok) throw new Error(data.error || "No se pudo cargar");
       setBatches(data.batches || []);
       setSummary(data.summary || null);
+      setTemplateSeal(data.templateSeal || null);
     } catch (e: unknown) {
       toast({
         title: "Integridad",
@@ -402,9 +412,9 @@ export function CampaignIntegrityPanel({
           Certificación
         </CardTitle>
         <p className="text-sm text-muted-foreground font-normal">
-          El envío se certifica en Polygon en tandas de hasta 500 mensajes: un Merkle y una
-          transacción por lote. Las lecturas y entregas van en tandas aparte de 500 hechos,
-          aunque lleguen otro día. Acá podés cerrar lotes o verificar a una persona.
+          El formulario de WhatsApp (el template) se sella una vez por campaña. Cada persona
+          es un renglón del padrón. Polygon recibe un sello cada 500 renglones, no 150 mil
+          transacciones. Las lecturas y entregas van en tandas aparte.
         </p>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -414,6 +424,23 @@ export function CampaignIntegrityPanel({
           </p>
         ) : (
           <>
+            {templateSeal && (
+              <div className="rounded-md border p-3 text-sm">
+                <p className="text-muted-foreground">Formulario WhatsApp de esta campaña</p>
+                <p className="font-medium">
+                  {templateSeal.name}
+                  {templateSeal.lang ? <span className="text-muted-foreground font-normal"> · {templateSeal.lang}</span> : null}
+                </p>
+                {templateSeal.variables.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Variables: {templateSeal.variables.join(", ")}
+                  </p>
+                )}
+                <p className="text-xs font-mono text-muted-foreground mt-1" title={templateSeal.hash}>
+                  Huella del formulario: {shortHash(templateSeal.hash)}
+                </p>
+              </div>
+            )}
             {summary && (
               <div className="grid gap-3 sm:grid-cols-2 text-sm">
                 <div className="rounded-md border p-3">
@@ -638,6 +665,16 @@ export function CampaignIntegrityPanel({
                     <YesNo ok={result.content.match} label="El texto actual coincide con la huella guardada" />
                     <YesNo ok={result.send.merkleValid} label="La foja entra en el árbol de su tanda" />
                     <YesNo ok={result.send.onChainMatch} label="La raíz coincide con la transacción en Polygon" />
+                    {result.template?.name && (
+                      <p className="text-xs text-muted-foreground pt-1">
+                        Formulario: {result.template.name}
+                        {result.send.waVars && Object.keys(result.send.waVars).length > 0
+                          ? ` · renglón: ${Object.entries(result.send.waVars)
+                              .map(([k, v]) => `${k}=${v}`)
+                              .join(", ")}`
+                          : ""}
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-1.5">

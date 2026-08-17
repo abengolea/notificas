@@ -3,6 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb, getAdminBucket } from '@/lib/firebase-admin';
 import { enqueueCampaignFanout, enqueueCampaignWorker } from '@/lib/cloud-tasks';
 import { ensureSendBatch, resolveOpenSendBatchId, tandaIndexFromOffset } from '@/lib/campaign-integrity';
+import { sealCampaignWhatsAppTemplate } from '@/lib/wa-template-seal';
 import { RECIPIENT_CHUNK_SIZE } from '@/lib/campaign-recipients';
 import { isSyntheticCampaignEmail, phoneDigits } from '@/lib/parse-campaign-csv';
 import type { RecipientEntry } from '@/lib/types';
@@ -71,6 +72,9 @@ export async function POST(request: NextRequest) {
   }
 
   const campaign = campSnap.data()!;
+  if (offset === 0) {
+    await sealCampaignWhatsAppTemplate(campaignId).catch(() => null);
+  }
   if (campaign.estado === 'cancelada') {
     return NextResponse.json({ skipped: true, reason: 'cancelada' });
   }
@@ -234,6 +238,8 @@ async function processFanoutPage(
   const toProcess: string[] = []; // docIds a encolar en workers
   const batchOps = db.batch();
   let batchCount = 0;
+  let writeCount = 0;
+  const resetErrorIds = new Set<string>();
   const tandaIndex = tandaIndexFromOffset(offset);
   const integrityBatchId = await resolveOpenSendBatchId(campaignId, tandaIndex);
 
@@ -246,6 +252,14 @@ async function processFanoutPage(
     if (existing?.estado === 'enviado' || existing?.estado === 'leido') continue;
 
     if (existing) {
+      if (existing.estado === 'error' && !resetErrorIds.has(existing.id)) {
+        resetErrorIds.add(existing.id);
+        batchOps.update(db.collection('campaign_messages').doc(existing.id), {
+          estado: 'pendiente',
+          errorMsg: FieldValue.delete(),
+        });
+        writeCount += 1;
+      }
       toProcess.push(existing.id);
     } else {
       const ref = db.collection('campaign_messages').doc();
@@ -256,6 +270,7 @@ async function processFanoutPage(
         recipientNombre: row.nombre || null,
         recipientDni: row.dni || null,
         recipientLegajo: row.legajo || null,
+        recipientDias: row.dias || null,
         recipientTelefono: row.telefono || null,
         estado: 'pendiente',
         creditApplied: false,
@@ -265,11 +280,14 @@ async function processFanoutPage(
       });
       toProcess.push(ref.id);
       batchCount += 1;
+      writeCount += 1;
     }
   }
 
-  if (batchCount > 0) {
+  if (writeCount > 0) {
     await batchOps.commit();
+  }
+  if (batchCount > 0) {
     await ensureSendBatch({
       campaignId,
       orgId: String(campaign.orgId || ''),

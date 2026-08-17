@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,15 +15,26 @@ interface VerificationResult {
   messageId?: string;
   senderName?: string;
   recipientEmail?: string;
+  recipientDni?: string;
   sentAt?: string;
   hash?: string;
   blockchainVerified?: boolean;
+  integrityValid?: boolean | null;
+  snapshotHash?: string;
+  wamid?: string;
+  waBodyHash?: string;
+  waExplorerUrl?: string;
+  whatsappRole?: string;
+  contentHash?: string;
+  explorerUrl?: string;
+  summary?: string;
   fileName?: string;
   attachmentUrl?: string;
   isCampaignDocument?: boolean;
   kindLabel?: string;
   campaignNombre?: string;
   orgNombre?: string;
+  orgCuit?: string;
 }
 
 export default function VerifyPage() {
@@ -34,6 +45,52 @@ export default function VerifyPage() {
   const [result, setResult] = useState<VerificationResult | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const { toast } = useToast();
+
+  const autoVerifyDone = useRef(false);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = (params.get("id") || params.get("messageId") || "").trim();
+    if (!id || autoVerifyDone.current) return;
+    autoVerifyDone.current = true;
+    setMessageIdInput(id);
+    void (async () => {
+      setIsVerifying(true);
+      try {
+        const response = await fetch("/api/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messageId: id }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setResult({
+            isValid: true,
+            messageId: data?.data?.messageId || data?.data?.docId,
+            senderName: data?.data?.senderName,
+            recipientEmail: data?.data?.recipientEmail,
+            recipientDni: data?.data?.recipientDni,
+            sentAt: data?.data?.sentAt
+              ? new Date(data.data.sentAt).toLocaleString("es-ES")
+              : undefined,
+            blockchainVerified: data?.data?.blockchainVerified ?? true,
+            integrityValid: data?.data?.integrityValid ?? data?.data?.intact,
+            snapshotHash: data?.data?.snapshotHash,
+            wamid: data?.data?.wamid,
+            waBodyHash: data?.data?.waBodyHash?.stored || data?.data?.waBodyHash?.current,
+            waExplorerUrl: data?.data?.waExplorerUrl,
+            whatsappRole: data?.data?.whatsappRole,
+            contentHash: data?.data?.contentHash?.stored || data?.data?.contentHash?.current,
+            explorerUrl: data?.data?.explorerUrl,
+            summary: data?.data?.summary,
+            orgNombre: data?.data?.orgNombre,
+            orgCuit: data?.data?.orgCuit,
+          });
+        }
+      } finally {
+        setIsVerifying(false);
+      }
+    })();
+  }, []);
 
   const handleMessageIdVerification = async () => {
     const messageId = messageIdInput.trim();
@@ -62,10 +119,22 @@ export default function VerifyPage() {
           messageId: data?.data?.messageId || data?.data?.docId,
           senderName: data?.data?.senderName,
           recipientEmail: data?.data?.recipientEmail,
+          recipientDni: data?.data?.recipientDni,
           sentAt: data?.data?.sentAt
             ? new Date(data.data.sentAt).toLocaleString("es-ES")
             : undefined,
           blockchainVerified: data?.data?.blockchainVerified ?? true,
+          integrityValid: data?.data?.integrityValid ?? data?.data?.intact,
+          snapshotHash: data?.data?.snapshotHash,
+          wamid: data?.data?.wamid,
+          waBodyHash: data?.data?.waBodyHash?.stored || data?.data?.waBodyHash?.current,
+          waExplorerUrl: data?.data?.waExplorerUrl,
+          whatsappRole: data?.data?.whatsappRole,
+          contentHash: data?.data?.contentHash?.stored || data?.data?.contentHash?.current,
+          explorerUrl: data?.data?.explorerUrl,
+          summary: data?.data?.summary,
+          orgNombre: data?.data?.orgNombre,
+          orgCuit: data?.data?.orgCuit,
         };
         setResult(verification);
         toast({
@@ -506,6 +575,68 @@ export default function VerifyPage() {
                             </span>
                           </div>
                         )}
+                        {result.integrityValid === true && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-sm text-muted-foreground">Integridad:</span>
+                            <span className="text-sm font-medium">Coincide con el snapshot / Polygon</span>
+                          </div>
+                        )}
+                        {result.integrityValid === false && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-sm text-muted-foreground">Integridad:</span>
+                            <span className="text-sm font-medium text-destructive">No coincide</span>
+                          </div>
+                        )}
+                        {result.contentHash && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-sm text-muted-foreground">Hash intimación:</span>
+                            <span className="text-sm font-mono truncate max-w-[180px]" title={result.contentHash}>
+                              {result.contentHash.substring(0, 16)}…
+                            </span>
+                          </div>
+                        )}
+                        {result.wamid && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-sm text-muted-foreground">WAMID:</span>
+                            <span className="text-sm font-mono truncate max-w-[180px]" title={result.wamid}>
+                              {result.wamid}
+                            </span>
+                          </div>
+                        )}
+                        {result.waBodyHash && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-sm text-muted-foreground">Hash aviso WA:</span>
+                            <span className="text-sm font-mono truncate max-w-[180px]" title={result.waBodyHash}>
+                              {result.waBodyHash.substring(0, 16)}…
+                            </span>
+                          </div>
+                        )}
+                        {result.explorerUrl && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-sm text-muted-foreground">Polygon (intimación):</span>
+                            <a
+                              href={result.explorerUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-sm text-primary underline"
+                            >
+                              Ver transacción
+                            </a>
+                          </div>
+                        )}
+                        {result.waExplorerUrl && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-sm text-muted-foreground">Polygon (aviso WA):</span>
+                            <a
+                              href={result.waExplorerUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-sm text-primary underline"
+                            >
+                              Ver transacción
+                            </a>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -516,8 +647,12 @@ export default function VerifyPage() {
                         ¿Qué significa este resultado?
                       </h4>
                       <p className="text-sm text-blue-700">
-                        Este documento fue emitido oficialmente por Notificas.com y está certificado en la red Polygon. Puede ser utilizado como evidencia legal.
+                        {result.summary ||
+                          "Este documento fue emitido por Notificas.com. La integridad se recálcula contra el snapshot sellado y, si existe, contra la transacción en Polygon."}
                       </p>
+                      {result.whatsappRole && (
+                        <p className="text-sm text-blue-700 mt-2">{result.whatsappRole}</p>
+                      )}
                     </div>
                   </>
                 ) : (
@@ -577,7 +712,8 @@ export default function VerifyPage() {
               <h4 className="font-semibold text-foreground mb-2">2. ¿Qué se certifica?</h4>
               <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
                 <li><strong>Envío:</strong> Cuándo y por quién se envió el mensaje, con ID SMTP del servidor de correo</li>
-                <li><strong>Contenido:</strong> Hash criptográfico SHA-256 del asunto y cuerpo, registrado en Polygon</li>
+                <li><strong>Contenido intimado:</strong> Hash SHA-256 del texto del correo/lector, registrado en Polygon</li>
+                <li><strong>Aviso WhatsApp:</strong> Hash del pedido a Meta (template + variables + enlace). No es el texto de la intimación</li>
                 <li><strong>Recepción:</strong> Cuándo el destinatario accedió por primera vez al mensaje, encadenado al envío</li>
                 <li><strong>Lectura:</strong> Confirmación explícita de lectura por el destinatario</li>
                 <li><strong>Certificado PDF:</strong> Hash SHA-256 del PDF oficial, anclado en Polygon y encadenado al envío</li>

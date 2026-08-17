@@ -1,6 +1,7 @@
 /** Campos de `mail.polygonCertifications` que son hashes de TX (no metadata). */
 export const POLYGON_CERT_DISPLAY_ORDER = [
   'send',
+  'whatsapp',
   'waDelivered',
   'waRead',
   'contentAccess',
@@ -11,7 +12,8 @@ export const POLYGON_CERT_DISPLAY_ORDER = [
 ] as const;
 
 const BASE_LABELS: Record<string, string> = {
-  send: 'Envío certificado',
+  send: 'Envío certificado (texto intimado)',
+  whatsapp: 'Aviso WhatsApp (template + enlace)',
   waDelivered: 'WhatsApp entregado',
   waRead: 'WhatsApp leído',
   contentAccess: 'Acceso al contenido',

@@ -19,10 +19,20 @@ type PolygonCertificationsData = {
   read?: string;
   certificate?: string;
   contentHash?: string;
+  waBodyHash?: string;
+  whatsapp?: string;
+  whatsappPayload?: string;
   updatedAt?: unknown;
 };
 
-const NON_TX_KEYS = new Set(['contentHash', 'updatedAt', 'contentAccessVia']);
+const NON_TX_KEYS = new Set([
+  'contentHash',
+  'waBodyHash',
+  'whatsappPayload',
+  'whatsappPending',
+  'updatedAt',
+  'contentAccessVia',
+]);
 
 export default function PolygonCertifications({
   certifications,
@@ -127,8 +137,9 @@ export default function PolygonCertifications({
             );
           })}
           <p className="text-xs text-muted-foreground">
-            Solo se ancla el primer evento de cada hecho (envío, WhatsApp entregado, WhatsApp leído, acceso al contenido, lectura confirmada). Los clics o webhooks siguientes no generan otra transacción.
-            {certifications.contentHash && ' El contenido del mensaje está vinculado criptográficamente.'}
+            El envío ancla el texto intimado (correo/lector). El aviso de WhatsApp (template + enlace) es otra transacción. Entrega y lectura de WhatsApp son hitos posteriores, no el texto de la carta.
+            {certifications.contentHash && ' El contenido intimado está vinculado criptográficamente.'}
+            {certifications.waBodyHash && ' El aviso de WhatsApp tiene hash propio.'}
           </p>
         </div>
       </CardContent>

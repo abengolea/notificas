@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { recordEventLeaf } from "@/lib/campaign-integrity";
 import { certifyMailHitoIfNeeded } from "@/lib/certification-polygon";
+import { recordProviderEvent } from "@/lib/provider-events";
 
 // Callback URL canónica en Meta Developer Portal (app 1022568949756440):
 //   https://notificas.com.ar/api/whatsapp/webhook
@@ -64,7 +65,10 @@ async function processWebhookBody(body: any) {
     for (const change of entry.changes ?? []) {
       if (change.field !== "messages") continue;
       for (const status of change.value?.statuses ?? []) {
-        await processStatus(status).catch((e) =>
+        await processStatus(status, {
+          metadata: change.value?.metadata ?? null,
+          entryId: entry.id ?? null,
+        }).catch((e) =>
           console.error("❌ Error procesando status WA:", e?.message, status?.id)
         );
       }
@@ -72,7 +76,7 @@ async function processWebhookBody(body: any) {
   }
 }
 
-async function processStatus(status: any) {
+async function processStatus(status: any, extra?: { metadata?: unknown; entryId?: string | null }) {
   const wamid: string = status.id;
   const statusType: string = status.status; // sent | delivered | read | failed
   const recipientPhone: string = status.recipient_id ?? "Unknown";
@@ -124,9 +128,17 @@ async function processStatus(status: any) {
       // whatsapp_ids aún no existe (race condition: webhook llegó antes que el worker lo escribiera).
       // Guardar el evento pendiente — el worker lo procesará al escribir whatsapp_ids.
       await db.doc(`pending_wa_webhooks/${wamid}`).set(
-        { statusType, timestamp, recipientPhone, wamid, createdAt: FieldValue.serverTimestamp() },
+        { statusType, timestamp, recipientPhone, wamid, raw: status, createdAt: FieldValue.serverTimestamp() },
         { merge: true }
       );
+      await recordProviderEvent({
+        provider: "meta",
+        eventType: statusType,
+        providerMessageId: wamid,
+        recipient: recipientPhone,
+        providerTimestamp: timestamp,
+        raw: { status, metadata: extra?.metadata ?? null, entryId: extra?.entryId ?? null, pending: true },
+      }).catch(() => undefined);
       console.log(`⏳ Webhook ${statusType} guardado en pending_wa_webhooks/${wamid} — se procesará cuando llegue whatsapp_ids`);
       return;
     }
@@ -192,6 +204,17 @@ async function processStatus(status: any) {
 
   console.log(`✅ whatsapp_${statusType} registrado en mail/${mailDocId}`);
 
+  await recordProviderEvent({
+    mailId: mailDocId,
+    campaignId: recorded.campaignId || null,
+    provider: "meta",
+    eventType: statusType,
+    providerMessageId: wamid,
+    recipient: recipientPhone,
+    providerTimestamp: timestamp,
+    raw: { status, metadata: extra?.metadata ?? null, entryId: extra?.entryId ?? null },
+  }).catch((e) => console.warn("⚠️ No se pudo guardar raw WA:", e?.message));
+
   if (!recorded.campaignId && (statusType === "delivered" || statusType === "read")) {
     await certifyMailHitoIfNeeded({
       docId: mailDocId,
@@ -200,10 +223,15 @@ async function processStatus(status: any) {
   }
 
   // Propagar estado al campaign_message correspondiente
-  await syncCampaignMessage(db, mailDocId, statusType);
+  await syncCampaignMessage(db, mailDocId, statusType, timestamp);
 }
 
-async function syncCampaignMessage(db: ReturnType<typeof getAdminDb>, mailId: string, statusType: string) {
+async function syncCampaignMessage(
+  db: ReturnType<typeof getAdminDb>,
+  mailId: string,
+  statusType: string,
+  timestamp: string
+) {
   try {
     const snap = await db.collection('campaign_messages').where('mailId', '==', mailId).limit(1).get();
     if (snap.empty) return;
@@ -271,6 +299,7 @@ async function syncCampaignMessage(db: ReturnType<typeof getAdminDb>, mailId: st
         orgId: String(data.orgId || ''),
         messageId: snap.docs[0].id,
         eventType: statusType === 'delivered' ? 'wa_delivered' : 'wa_read',
+        occurredAt: timestamp,
       }).catch((e) => console.warn('⚠️ Hoja Merkle WA:', e?.message));
     }
     console.log(`✅ campaign_message sincronizado: ${statusType} para mail/${mailId}`);

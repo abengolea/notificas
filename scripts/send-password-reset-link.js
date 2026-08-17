@@ -146,9 +146,13 @@ async function main() {
   const fnUrl = (process.env.FIREBASE_SENDEMAIL_URL || DEFAULT_SENDEMAIL_URL).replace(/\/$/, "");
   console.log(`Llamando sendEmail (${fnUrl}) con docId=${mailId} …`);
 
+  const secret = (process.env.POLYGON_CERTIFY_SECRET || process.env.CAMPAIGN_WORKER_SECRET || "").trim();
   const cfRes = await fetch(fnUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(secret ? { "X-Certify-Secret": secret } : {}),
+    },
     body: JSON.stringify({ docId: mailId }),
   });
 

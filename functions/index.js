@@ -99,7 +99,31 @@ function formatWhatsAppSenderDisplay(senderName, fromEmail) {
  * @param {string[]|null} opts.templateVariables - campos del destinatario en orden: ['nombre','dni',...]
  * @param {object} opts.recipientData      - datos del destinatario para resolver variables
  */
-async function sendWhatsAppNotification({ accessToken, phoneNumberId, templateName, templateLang, toPhone, readerUrl, senderName, recipientName, templateVariables, recipientData }) {
+function resolveWhatsAppTemplateValue(field, rd, recipientName, toPhone, readerUrl) {
+  switch (field) {
+    case 'nombre':       return rd.nombre || recipientName || '';
+    case 'dni':          return rd.dni || '';
+    case 'legajo':       return rd.legajo || '';
+    case 'email':        return rd.email || '';
+    case 'telefono':     return rd.telefono || toPhone || '';
+    case 'dias':
+    case 'dias_atraso':  return rd.dias || rd.dias_atraso || '';
+    case 'url_lectura':
+    case 'boton_url':    return readerUrl;
+    default:             return rd[field] || '';
+  }
+}
+
+function readerUrlButtonSuffix(readerUrl) {
+  try {
+    const u = new URL(readerUrl);
+    return `${u.pathname}${u.search}`;
+  } catch {
+    return readerUrl || '';
+  }
+}
+
+async function sendWhatsAppNotification({ accessToken, phoneNumberId, templateName, templateLang, toPhone, readerUrl, senderName, recipientName, templateVariables, recipientData, urlButton }) {
   if (!accessToken || !phoneNumberId) {
     console.warn('⚠️ WhatsApp: secrets no configurados en Secret Manager');
     return null;
@@ -112,32 +136,43 @@ async function sendWhatsAppNotification({ accessToken, phoneNumberId, templateNa
 
   const url = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
   let payload;
+  let parameters = null;
+  let buttonParameters = null;
   if (templateName) {
     // Resolver variables del template según campaignTemplateVariables
     // Si hay templateVariables custom, usarlas; si no, fallback a [destinatario, remitente, url]
+    const rd = recipientData || {};
+    const bodyFields = (templateVariables && templateVariables.length > 0)
+      ? templateVariables.filter((field) => !(urlButton && (field === 'url_lectura' || field === 'boton_url')))
+      : null;
     let parameters;
-    if (templateVariables && templateVariables.length > 0) {
-      const rd = recipientData || {};
-      parameters = templateVariables.map((field) => {
-        let value;
-        switch (field) {
-          case 'nombre':      value = rd.nombre || recipientName || ''; break;
-          case 'dni':         value = rd.dni || ''; break;
-          case 'legajo':      value = rd.legajo || ''; break;
-          case 'email':       value = rd.email || ''; break;
-          case 'telefono':    value = rd.telefono || toPhone || ''; break;
-          case 'url_lectura': value = readerUrl; break;
-          default:            value = rd[field] || '';
-        }
-        return { type: 'text', text: String(value).substring(0, 1024) };
-      });
-    } else {
+    if (bodyFields && bodyFields.length > 0) {
+      parameters = bodyFields.map((field) => ({
+        type: 'text',
+        text: String(resolveWhatsAppTemplateValue(field, rd, recipientName, toPhone, readerUrl)).substring(0, 1024),
+      }));
+    } else if (!urlButton) {
       // Fallback legacy: {{1}} destinatario, {{2}} remitente, {{3}} url
       parameters = [
         { type: 'text', text: recipientName.substring(0, 50) },
         { type: 'text', text: senderName.substring(0, 50) },
         { type: 'text', text: readerUrl },
       ];
+    } else {
+      parameters = [];
+    }
+    const components = [];
+    if (parameters.length > 0) {
+      components.push({ type: 'body', parameters });
+    }
+    if (urlButton) {
+      buttonParameters = [{ type: 'text', text: readerUrlButtonSuffix(readerUrl).substring(0, 2000) }];
+      components.push({
+        type: 'button',
+        sub_type: 'url',
+        index: '0',
+        parameters: buttonParameters,
+      });
     }
     payload = {
       messaging_product: 'whatsapp',
@@ -146,7 +181,7 @@ async function sendWhatsAppNotification({ accessToken, phoneNumberId, templateNa
       template: {
         name: templateName,
         language: { code: templateLang || 'es_AR' },
-        components: [{ type: 'body', parameters }],
+        components,
       },
     };
   } else {
@@ -192,7 +227,24 @@ Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@noti
 
     if (res.ok) {
       console.log('📱 WhatsApp enviado:', data.messages?.[0]?.id);
-      return data.messages?.[0]?.id;
+      return {
+        id: data.messages?.[0]?.id,
+        requestSnapshot: {
+          to,
+          type: payload.type,
+          templateName: payload.template?.name || null,
+          templateLang: payload.template?.language?.code || null,
+          parameters: parameters || payload.template?.components?.find((c) => c.type === 'body')?.parameters || null,
+          buttons: typeof buttonParameters !== 'undefined' ? buttonParameters : null,
+          bodyText: payload.text?.body || null,
+          readerUrl,
+        },
+        graphResponse: {
+          messaging_product: data.messaging_product || 'whatsapp',
+          contacts: data.contacts || null,
+          messages: data.messages || null,
+        },
+      };
     }
 
     const errorCode = data?.error?.code;
@@ -262,6 +314,8 @@ function certifyPolygonEventOnce(docId, data, type, context, via) {
   const fieldByType = {
     receive: 'receive',
     read: 'read',
+    whatsapp: 'whatsapp',
+    wa_payload: 'whatsapp',
     wa_delivered: 'waDelivered',
     wa_read: 'waRead',
     content_access: 'contentAccess',
@@ -380,8 +434,16 @@ function injectTrackingIntoHtml(html, docId, token) {
 function whatsappErrorMessage(waId) {
   if (!waId) return 'La API de WhatsApp no devolvió un ID de mensaje';
   if (typeof waId === 'string') return null;
+  if (waId.id && typeof waId.id === 'string') return null;
   const err = waId.error || waId;
   return err.error?.message || err.message || (typeof err === 'string' ? err : JSON.stringify(err));
+}
+
+function whatsappResultId(waId) {
+  if (!waId) return null;
+  if (typeof waId === 'string') return waId;
+  if (typeof waId.id === 'string') return waId.id;
+  return null;
 }
 
 exports.sendEmail = onRequest(
@@ -397,6 +459,16 @@ exports.sendEmail = onRequest(
     const timestamp = new Date().toISOString();
     console.log(`🔥 [${timestamp}] Firebase Function sendEmail ejecutada`);
     try {
+      const expectedSecret = (polygonCertifySecret.value() || '').trim();
+      if (expectedSecret) {
+        const got = String(req.get('X-Certify-Secret') || req.get('x-certify-secret') || '').trim();
+        if (got !== expectedSecret) {
+          return res.status(401).json({ error: 'No autorizado' });
+        }
+      } else {
+        console.warn('⚠️ POLYGON_CERTIFY_SECRET vacío — sendEmail sin auth (solo entorno local)');
+      }
+
       const { docId } = req.body;
       console.log(`🔥 [${timestamp}] Procesando docId:`, docId);
       
@@ -503,12 +575,14 @@ exports.sendEmail = onRequest(
         senderName: formatWhatsAppSenderDisplay(emailData.senderName, from),
         recipientName: formatWhatsAppRecipientDisplay(emailData.recipientName),
         templateVariables: resolvedVariables,
+        urlButton: emailData.waUrlButton === true,
         recipientData: {
           nombre: emailData.recipientName,
           email: emailData.recipientEmail,
           telefono: recipientPhone,
           dni: emailData.recipientDni,
           legajo: emailData.recipientLegajo,
+          dias: emailData.recipientDias,
         },
       });
       const waErr = whatsappErrorMessage(waId);
@@ -520,6 +594,7 @@ exports.sendEmail = onRequest(
         return res.status(502).json({ success: false, error: waErr, channel: 'whatsapp-only' });
       }
 
+      const waOnlyId = whatsappResultId(waId);
       await docRef.update({
         delivery: { state: 'DELIVERED', time: FieldValue.serverTimestamp(), info: 'whatsapp-only' },
         tracking: {
@@ -531,13 +606,16 @@ exports.sendEmail = onRequest(
           movements: [],
         },
         readerUrl: readerUrlWa,
-        whatsappMessageId: waId,
+        whatsappMessageId: waOnlyId,
+        waRequestSnapshot: waId.requestSnapshot || null,
+        waGraphResponse: waId.graphResponse || null,
         source: 'whatsapp_campaign',
         sourceLabel: 'Campaña WhatsApp',
         sourceIcon: '📱',
       });
       try {
-        await getFirestore().doc(`whatsapp_ids/${waId}`).set({
+        certifyPolygonEventOnce(docId, emailData, 'whatsapp', 'sendEmail-wa-only');
+        await getFirestore().doc(`whatsapp_ids/${waOnlyId}`).set({
           mailDocId: docId,
           recipientPhone: formatPhoneForWhatsApp(recipientPhone) || recipientPhone,
           createdAt: FieldValue.serverTimestamp(),
@@ -545,8 +623,8 @@ exports.sendEmail = onRequest(
       } catch (e) {
         console.warn('⚠️ Error guardando whatsapp_ids (waOnly):', e.message);
       }
-      console.log('📱 WhatsApp WA-only enviado:', waId);
-      return res.status(200).json({ success: true, channel: 'whatsapp-only', whatsappId: waId });
+      console.log('📱 WhatsApp WA-only enviado:', waOnlyId);
+      return res.status(200).json({ success: true, channel: 'whatsapp-only', whatsappId: waOnlyId });
     }
 
     const subject = emailData.message?.subject || 'Sin asunto';
@@ -806,6 +884,13 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
         },
         // smtpMessageId guardado en campo raíz para que certify-event lo incluya en la TX de Polygon
         smtpMessageId: result.messageId,
+        smtpAccepted: {
+          messageId: result.messageId || null,
+          accepted: result.accepted || null,
+          rejected: result.rejected || null,
+          response: result.response || null,
+          envelope: result.envelope || null,
+        },
         tracking: {
           token: trackingToken,
           sentAt: FieldValue.serverTimestamp(),
@@ -882,16 +967,30 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
               senderName: waSender,
               recipientName: waRecipient,
               templateVariables: resolvedVariables,
+              urlButton: emailData.waUrlButton === true,
               recipientData: {
                 nombre: emailData.recipientName || '',
                 email: emailData.recipientEmail || '',
                 telefono: recipientPhone,
                 dni: emailData.recipientDni || '',
                 legajo: emailData.recipientLegajo || '',
+                dias: emailData.recipientDias || '',
               },
             });
-            if (resultWA && typeof resultWA === 'string') {
-              whatsappId = resultWA;
+            const waResultId = whatsappResultId(resultWA);
+            if (waResultId) {
+              whatsappId = waResultId;
+              if (resultWA.requestSnapshot) {
+                try {
+                  await docRef.update({
+                    waRequestSnapshot: resultWA.requestSnapshot,
+                    waGraphResponse: resultWA.graphResponse || null,
+                  });
+                } catch (e) {
+                  console.warn('⚠️ Error guardando waRequestSnapshot:', e.message);
+                }
+              }
+              certifyPolygonEventOnce(docId, emailData, 'whatsapp', 'sendEmail-wa');
               // Guardar wamid + movimiento (fire-and-forget para no bloquear la respuesta)
               const waMovement = {
                 id: crypto.randomUUID(),
@@ -1931,6 +2030,24 @@ async function processWhatsAppStatus(status) {
     return { wrote: true, reason: 'ok', data };
   });
 
+  if (recorded.wrote) {
+    try {
+      await db.collection('provider_events').add({
+        mailId: mailDocId,
+        campaignId: recorded.data?.campaignId || null,
+        provider: 'meta',
+        eventType: statusType,
+        providerMessageId: wamid,
+        recipient: recipientPhone,
+        providerTimestamp: timestamp,
+        raw: status,
+        receivedAt: FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      console.warn('⚠️ No se pudo guardar provider_event WA (CF):', e.message);
+    }
+  }
+
   if (!recorded.wrote) {
     if (recorded.reason === 'missing') {
       console.warn(`⚠️ Documento mail/${mailDocId} no encontrado`);
@@ -1952,6 +2069,7 @@ async function processWhatsAppStatus(status) {
     void fetch(`${APP_HOSTING_URL}/api/campaigns/integrity/event`, certifyEventFetchInit({
       mailId: mailDocId,
       eventType: statusType === 'delivered' ? 'wa_delivered' : 'wa_read',
+      occurredAt: timestamp,
     })).catch((e) => console.warn('⚠️ Integrity event WA:', e?.message));
   }
   console.log(`✅ whatsapp_${statusType} registrado en mail/${mailDocId}`);

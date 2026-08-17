@@ -1,5 +1,6 @@
 import { getAdminAuth } from "@/lib/firebase-admin";
 import { createMailDocumentAdmin } from "@/lib/email-server";
+import { sendEmailCfHeaders } from "@/lib/cf-send-auth";
 import { DEFAULT_CONTACT_FROM_EMAIL, getFirebaseSendEmailUrl } from "@/lib/mail-defaults";
 
 function escapeHtml(s: string) {
@@ -37,7 +38,7 @@ async function dispatchMailDoc(docId: string): Promise<SendAccountSetupEmailResu
   try {
     const cfRes = await fetch(fnUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: sendEmailCfHeaders(),
       body: JSON.stringify({ docId }),
       signal: cfController.signal,
     });

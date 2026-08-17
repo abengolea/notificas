@@ -4,6 +4,7 @@ import {
   certificarEnvio,
   certificarDocumento,
   certifyMailHitoIfNeeded,
+  certifyWhatsAppPayloadIfNeeded,
   POLYGON_HITO_FIELDS,
   type PolygonHitoType,
 } from '@/lib/certification-polygon';
@@ -109,11 +110,17 @@ export async function POST(request: NextRequest) {
         'polygonCertifications.certificate': txHash,
         'polygonCertifications.updatedAt': new Date(),
       });
+    } else if (type === 'whatsapp' || type === 'wa_payload') {
+      const result = await certifyWhatsAppPayloadIfNeeded(docId);
+      if (!result) {
+        return NextResponse.json({ success: true, skipped: 'campaña, en curso o sin aviso WA' });
+      }
+      txHash = result;
     } else {
       return NextResponse.json(
         {
           error:
-            'type debe ser send, wa_delivered, wa_read, content_access, read_confirmed o certificate',
+            'type debe ser send, whatsapp, wa_delivered, wa_read, content_access, read_confirmed o certificate',
         },
         { status: 400 }
       );

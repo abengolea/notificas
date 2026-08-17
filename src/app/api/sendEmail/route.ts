@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { verifyAuthToken } from '@/lib/auth-helper';
 import { computeContentHash } from '@/lib/certification';
-import { certificarEnvio } from '@/lib/certification-polygon';
+import { certificarEnvio, certifyWhatsAppPayloadIfNeeded } from '@/lib/certification-polygon';
+import { sendEmailCfHeaders } from '@/lib/cf-send-auth';
+import { sealEvidenceSnapshot } from '@/lib/evidence-snapshot';
 import { getFirebaseSendEmailUrl } from '@/lib/mail-defaults';
 import { guardarContactoDesdeMail } from '@/lib/contactos-server';
 
@@ -32,6 +34,9 @@ async function certifyInBackground(docId: string): Promise<void> {
       'polygonCertifications.updatedAt': new Date(),
     });
     console.log('🔗 Envío certificado en Polygon:', polygonTxHash);
+    await certifyWhatsAppPayloadIfNeeded(docId).catch((e) =>
+      console.warn('⚠️ Certificación aviso WhatsApp:', e instanceof Error ? e.message : e)
+    );
   } catch (err: any) {
     console.error('⚠️ Error certificando en Polygon (no afecta el envío):', err?.message);
   }
@@ -66,7 +71,7 @@ export async function POST(request: NextRequest) {
     try {
       response = await fetch(functionUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: sendEmailCfHeaders(),
         body: JSON.stringify({ docId }),
         signal: cfController.signal,
       });
@@ -94,6 +99,9 @@ export async function POST(request: NextRequest) {
     // Lanzar la certificación Polygon sin await — responde al cliente YA.
     // El void es intencional: Polygon es best-effort y nunca debe bloquear la UI.
     void certifyInBackground(docId);
+    void sealEvidenceSnapshot(docId).catch((e) =>
+      console.warn('⚠️ No se pudo sellar snapshot de evidencia:', e?.message)
+    );
 
     return NextResponse.json(result);
 

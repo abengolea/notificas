@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { sendEmailCfHeaders } from "@/lib/cf-send-auth";
 import { createMailDocumentAdmin } from "@/lib/email-server";
 import {
   DEFAULT_CONTACT_FROM_EMAIL,
@@ -126,7 +127,7 @@ export async function POST(request: NextRequest) {
     const fnUrl = getFirebaseSendEmailUrl();
     const cfRes = await fetch(fnUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: sendEmailCfHeaders(),
       body: JSON.stringify({ docId }),
     });
 

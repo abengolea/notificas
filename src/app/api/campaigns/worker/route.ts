@@ -10,7 +10,12 @@ import {
 import { normalizeEnviosDisponibles } from '@/lib/envios';
 import { invokeSendEmail } from '@/lib/send-mail-via-cf';
 import { computeContentHash } from '@/lib/certification';
-import { closeOpenBatches, recordEventLeaf, recordSendError, recordSendLeaf, sendBatchId } from '@/lib/campaign-integrity';
+import { recordEventLeaf, recordSendError, recordSendLeaf, sendBatchId } from '@/lib/campaign-integrity';
+import { sealEvidenceSnapshot } from '@/lib/evidence-snapshot';
+import { hashWhatsAppBody } from '@/lib/whatsapp-evidence';
+import { certifyWhatsAppPayloadIfNeeded } from '@/lib/certification-polygon';
+import { recipientWhatsAppVars, sealCampaignWhatsAppTemplate } from '@/lib/wa-template-seal';
+import { maybeCompleteCampaign } from '@/lib/campaign-complete';
 import { completeSimulatedSend, isCampaignSimulated } from '@/lib/campaign-simulate';
 import type { CampaignAttachment, RecipientEntry } from '@/lib/types';
 
@@ -57,6 +62,25 @@ async function recordSendIntegrity(params: {
     const mail = mailSnap.data() || {};
     const smtpMessageId = String(mail.smtpMessageId || mail.delivery?.info || mail.tracking?.messageId || '');
     const wamid = String(mail.whatsappMessageId || mail.tracking?.whatsappMessageId || '');
+    const waBodyHash = await hashWhatsAppBody(mail.waRequestSnapshot);
+    const campSnap = await db.collection('campaigns').doc(params.campaignId).get();
+    const camp = campSnap.data() || {};
+    let templateSealHash = String(camp.waTemplateSeal?.hash || '');
+    if (!templateSealHash && camp.waTemplateName) {
+      const sealed = await sealCampaignWhatsAppTemplate(params.campaignId);
+      templateSealHash = sealed?.hash || '';
+    }
+    const waVars = recipientWhatsAppVars(
+      Array.isArray(camp.waTemplateVariables) ? camp.waTemplateVariables : undefined,
+      {
+        nombre: String(mail.recipientName || ''),
+        dni: String(mail.recipientDni || ''),
+        legajo: String(mail.recipientLegajo || ''),
+        dias: String(mail.recipientDias || ''),
+        email: params.email,
+        telefono: params.phone,
+      }
+    );
 
     await recordSendLeaf({
       campaignId: params.campaignId,
@@ -69,10 +93,14 @@ async function recordSendIntegrity(params: {
       attachmentHashes: params.attachmentHashes,
       smtpMessageId,
       wamid,
+      waBodyHash,
+      templateSealHash,
+      waVars,
     });
 
     await db.collection('mail').doc(params.mailId).update({
       'polygonCertifications.contentHash': params.contentHash,
+      ...(waBodyHash ? { 'polygonCertifications.waBodyHash': waBodyHash } : {}),
       'polygonCertifications.updatedAt': new Date(),
     }).catch(() => undefined);
   } catch (err: unknown) {
@@ -92,7 +120,9 @@ async function processMessage(
   if (!msgSnap.exists) return 'skipped';
 
   const msg = msgSnap.data()!;
-  if (msg.estado === 'enviado' || msg.estado === 'leido') return 'skipped';
+  // Un error ya contabilizado no se vuelve a tirar el dado (Cloud Tasks reintenta el lote).
+  // El reintento manual resetea a pendiente en fanout/resend.
+  if (msg.estado === 'enviado' || msg.estado === 'leido' || msg.estado === 'error') return 'skipped';
 
   const canal: string = campaign.canal || 'email';
   const emailRaw = String(msg.recipientEmail || '').toLowerCase();
@@ -107,6 +137,7 @@ async function processMessage(
     dni: msg.recipientDni || undefined,
     legajo: msg.recipientLegajo || undefined,
     telefono: msg.recipientTelefono || undefined,
+    dias: msg.recipientDias || undefined,
   };
 
   const senderEmail = String(campaign.senderEmail || campaign.createdBy || 'contacto@notificas.com');
@@ -158,6 +189,7 @@ async function processMessage(
           recipientPhone: row.telefono?.trim() || undefined,
           recipientDni: row.dni || undefined,
           recipientLegajo: row.legajo || undefined,
+          recipientDias: row.dias || undefined,
           createdBy: uid,
           campaignId,
           campaignMessageId: messageDocId,
@@ -166,6 +198,7 @@ async function processMessage(
             waTemplateName: campaign.waTemplateName,
             waTemplateLang: campaign.waTemplateLang || 'es_AR',
             waTemplateVariables: campaign.waTemplateVariables || null,
+            ...(campaign.waUrlButton === true ? { waUrlButton: true } : {}),
           } : {}),
           ...(waOnly ? { waOnly: true } : {}),
           ...(isCampaignSimulated(campaign) ? { simulated: true } : {}),
@@ -284,6 +317,12 @@ async function processMessage(
     attachmentHashes: adjuntos.map((a) => a.hash).filter(Boolean),
     mailId,
   });
+  void sealEvidenceSnapshot(mailId).catch((e) =>
+    console.warn('⚠️ [worker] No se pudo sellar snapshot:', e instanceof Error ? e.message : e)
+  );
+  void certifyWhatsAppPayloadIfNeeded(mailId).catch((e) =>
+    console.warn('⚠️ [worker] No se pudo persistir hash WA:', e instanceof Error ? e.message : e)
+  );
 
   // Descontar crédito y marcar enviado.
   // No degradar waEstado si un webhook (o pending) ya lo subió a entregado/leido.
@@ -356,6 +395,7 @@ async function processMessage(
           orgId,
           messageId: messageDocId,
           eventType: st === 'delivered' ? 'wa_delivered' : 'wa_read',
+          occurredAt: typeof pending.timestamp === 'string' ? pending.timestamp : undefined,
         }).catch((e) => console.warn('⚠️ Hoja de hecho WA pendiente:', e?.message));
       }
       await db.doc(`pending_wa_webhooks/${wamid}`).delete();
@@ -365,47 +405,17 @@ async function processMessage(
   return 'sent';
 }
 
-async function applyStatsDelta(
+async function applyMessageStats(
   campRef: FirebaseFirestore.DocumentReference,
-  delta: { enviados: number; errores: number }
+  result: 'sent' | 'error' | 'skipped'
 ): Promise<void> {
-  const processed = delta.enviados + delta.errores;
-  if (processed <= 0) return;
-
-  const updates: Record<string, unknown> = {};
-  if (delta.enviados) updates['stats.enviados'] = FieldValue.increment(delta.enviados);
-  if (delta.errores) updates['stats.errores'] = FieldValue.increment(delta.errores);
-  updates['stats.pendientes'] = FieldValue.increment(-processed);
+  if (result === 'skipped') return;
+  const updates: Record<string, unknown> = {
+    'stats.pendientes': FieldValue.increment(-1),
+  };
+  if (result === 'sent') updates['stats.enviados'] = FieldValue.increment(1);
+  if (result === 'error') updates['stats.errores'] = FieldValue.increment(1);
   await campRef.update(updates);
-
-  const campSnap = await campRef.get();
-  const campData = campSnap.data() ?? {};
-  const st = (campData.stats || {}) as { pendientes?: number; enviados?: number; total?: number };
-  const pendientes = typeof st.pendientes === 'number' ? st.pendientes : 0;
-  if (pendientes > 0) return;
-
-  await campRef.update({
-    estado: 'completada',
-    completedAt: FieldValue.serverTimestamp(),
-    'stats.pendientes': 0,
-  });
-
-  const prepaid = typeof campData.creditsPrepaidAmount === 'number' ? campData.creditsPrepaidAmount : 0;
-  const alreadyRefunded = typeof campData.creditsRefunded === 'number' ? campData.creditsRefunded : 0;
-  const success = typeof st.enviados === 'number' ? st.enviados : 0;
-  const refund = Math.max(0, prepaid - success - alreadyRefunded);
-  const uid = String(campData.senderUid || campData.createdBy || '');
-  if (refund > 0 && uid && campData.managedByAdmin !== true) {
-    await getAdminDb().collection('users').doc(uid).update({
-      creditos: FieldValue.increment(refund),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-    await campRef.update({ creditsRefunded: alreadyRefunded + refund });
-  }
-
-  void closeOpenBatches(campRef.id, true).catch((e) =>
-    console.warn('⚠️ [worker] No se pudieron cerrar tandas al completar:', e?.message)
-  );
 }
 
 export async function POST(request: NextRequest) {
@@ -437,21 +447,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ skipped: true, reason: 'cancelada' });
   }
 
-  let sent = 0, errors = 0;
+  let sent = 0, errors = 0, skipped = 0;
 
   for (const messageDocId of messageDocIds) {
     try {
       const result = await processMessage(db, campaign, campaignId, messageDocId);
       if (result === 'sent') sent++;
       else if (result === 'error') errors++;
+      else skipped++;
+      await applyMessageStats(campRef, result);
     } catch (e: unknown) {
       if (e instanceof WorkerRetryError) throw e;
       const message = e instanceof Error ? e.message : String(e);
       console.error(`[campaign-worker] Error procesando ${messageDocId}:`, message);
-      errors++;
       try {
         const failed = await db.collection('campaign_messages').doc(messageDocId).get();
         const failedData = failed.data();
+        if (failedData?.estado === 'error') {
+          skipped++;
+          continue;
+        }
         await db.collection('campaign_messages').doc(messageDocId).update({
           estado: 'error',
           errorMsg: message || 'Error interno del worker',
@@ -463,13 +478,15 @@ export async function POST(request: NextRequest) {
             batchId: String(failedData.integritySendBatchId),
           });
         }
+        errors++;
+        await applyMessageStats(campRef, 'error');
       } catch {
         // Si esto falla, Cloud Tasks reintentará la tarea completa.
       }
     }
   }
 
-  await applyStatsDelta(campRef, { enviados: sent, errores: errors });
+  await maybeCompleteCampaign(campRef);
 
-  return NextResponse.json({ ok: true, sent, errors });
+  return NextResponse.json({ ok: true, sent, errors, skipped });
 }

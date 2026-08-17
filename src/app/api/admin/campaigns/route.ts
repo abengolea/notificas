@@ -15,6 +15,7 @@ const createSchema = z.object({
   waTemplateName: z.string().max(128).optional(),
   waTemplateLang: z.string().max(16).optional(),
   waTemplateVariables: z.array(z.string().max(40)).max(8).optional(),
+  waUrlButton: z.boolean().optional(),
   tandaSize: z.number().int().min(0).optional(),
   simulated: z.boolean().optional(),
 });
@@ -36,6 +37,7 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     waTemplateName: String(data.waTemplateName || ''),
     waTemplateLang: String(data.waTemplateLang || 'es_AR'),
     waTemplateVariables: Array.isArray(data.waTemplateVariables) ? data.waTemplateVariables : [],
+    waUrlButton: data.waUrlButton === true,
     managedByAdmin: data.managedByAdmin === true,
     simulated: data.simulated === true,
     senderUid: String(data.senderUid || ''),
@@ -113,6 +115,7 @@ export async function POST(request: NextRequest) {
             waTemplateName: parsed.data.waTemplateName.trim(),
             waTemplateLang: parsed.data.waTemplateLang?.trim() || 'es_AR',
             waTemplateVariables: parsed.data.waTemplateVariables?.filter(Boolean) || ['nombre', 'dni', 'legajo'],
+            ...(parsed.data.waUrlButton === true ? { waUrlButton: true } : {}),
           }
         : {}),
       senderUid: adminUserId,

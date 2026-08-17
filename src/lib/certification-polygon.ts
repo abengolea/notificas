@@ -1,6 +1,7 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { sendPolygonTransaction } from './blockchain';
 import { getAdminDb } from './firebase-admin';
+import { buildWhatsAppOnChainPayload, hashWhatsAppBody } from './whatsapp-evidence';
 
 /**
  * Registro en Firestore vía Admin (las reglas del cliente bloqueaban `blockchain_movements`).
@@ -325,6 +326,142 @@ export async function certificarRecepcion(
 
   console.log('✅ Primera lectura certificada en Polygon:', txHash);
   return txHash;
+}
+
+export async function certificarWhatsApp(opts: {
+  mailId: string;
+  wamid: string;
+  waBodyHash: string;
+  templateName: string;
+  to: string;
+}): Promise<{ txHash: string; payload: string }> {
+  const timestamp = new Date().toISOString();
+  const payload = buildWhatsAppOnChainPayload({
+    mailId: opts.mailId,
+    wamid: opts.wamid,
+    waBodyHash: opts.waBodyHash,
+    templateName: opts.templateName,
+    to: opts.to,
+    timestamp,
+  });
+
+  console.log('📱 Certificando aviso WhatsApp:', {
+    mailId: opts.mailId,
+    wamid: opts.wamid,
+    waBodyHash: opts.waBodyHash,
+  });
+
+  const txHash = await sendPolygonTransaction(payload);
+
+  await persistBlockchainMovement(
+    {
+      type: 'whatsapp',
+      messageId: opts.mailId,
+      wamid: opts.wamid,
+      waBodyHash: opts.waBodyHash,
+      templateName: opts.templateName || null,
+      to: opts.to,
+      txHash,
+      payload,
+    },
+    txHash,
+    'whatsapp'
+  );
+
+  console.log('✅ Aviso WhatsApp certificado en Polygon:', txHash);
+  return { txHash, payload };
+}
+
+/**
+ * Ancla el hash del aviso de WhatsApp (template + variables + URL).
+ * Campañas: solo persiste el hash (va en la hoja Merkle). 1:1: una TX WA|v1|…
+ */
+export async function certifyWhatsAppPayloadIfNeeded(mailId: string): Promise<string | null> {
+  const db = getAdminDb();
+  const mailRef = db.collection('mail').doc(mailId);
+  const pre = await mailRef.get();
+  if (!pre.exists) return null;
+  const preData = pre.data()!;
+  const waBodyHash = await hashWhatsAppBody(preData.waRequestSnapshot);
+  const wamid = String(preData.whatsappMessageId || preData.tracking?.whatsappMessageId || '');
+  if (!waBodyHash && !wamid) return null;
+
+  const snapTo = preData.waRequestSnapshot && typeof preData.waRequestSnapshot === 'object'
+    ? (preData.waRequestSnapshot as Record<string, unknown>)
+    : {};
+  const templateName = String(preData.waTemplateName || snapTo.templateName || '');
+  const to = String(preData.recipientPhone || snapTo.to || '');
+
+  const claim = await db.runTransaction(async (t) => {
+    const snap = await t.get(mailRef);
+    if (!snap.exists) return { action: 'skip' as const };
+    const data = snap.data()!;
+    const existing = (data.polygonCertifications || {}) as Record<string, unknown>;
+    const patch: Record<string, unknown> = {
+      'polygonCertifications.updatedAt': new Date(),
+    };
+    if (waBodyHash && existing.waBodyHash !== waBodyHash) {
+      patch['polygonCertifications.waBodyHash'] = waBodyHash;
+    }
+
+    if (data.campaignId) {
+      if (Object.keys(patch).length > 1) t.update(mailRef, patch);
+      return { action: 'campaign' as const };
+    }
+
+    const already = existing.whatsapp;
+    if (typeof already === 'string' && already) {
+      if (Object.keys(patch).length > 1) t.update(mailRef, patch);
+      return { action: 'exists' as const, txHash: already };
+    }
+    if (existing.whatsappPending) {
+      return { action: 'pending' as const };
+    }
+    if (!waBodyHash || !wamid) {
+      if (Object.keys(patch).length > 1) t.update(mailRef, patch);
+      return { action: 'skip' as const };
+    }
+
+    t.update(mailRef, {
+      ...patch,
+      'polygonCertifications.whatsappPending': true,
+    });
+
+    return { action: 'claim' as const };
+  });
+
+  if (claim.action === 'skip' || claim.action === 'campaign' || claim.action === 'pending') {
+    return null;
+  }
+  if (claim.action === 'exists') {
+    return claim.txHash;
+  }
+
+  try {
+    const { txHash, payload } = await certificarWhatsApp({
+      mailId,
+      wamid,
+      waBodyHash,
+      templateName,
+      to,
+    });
+    await mailRef.update({
+      'polygonCertifications.whatsapp': txHash,
+      'polygonCertifications.whatsappPayload': payload,
+      'polygonCertifications.waBodyHash': waBodyHash,
+      'polygonCertifications.whatsappPending': FieldValue.delete(),
+      'polygonCertifications.updatedAt': new Date(),
+    });
+    return txHash;
+  } catch (e) {
+    await mailRef
+      .update({
+        'polygonCertifications.whatsappPending': FieldValue.delete(),
+        'polygonCertifications.updatedAt': new Date(),
+      })
+      .catch(() => {});
+    throw e;
+  }
 }
 
 export async function certificarUsuario(userId: string, email: string): Promise<string> {

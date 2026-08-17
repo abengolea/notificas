@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCampaignOrgAccess } from '@/lib/campaign-access';
 import { listIntegrityBatches } from '@/lib/campaign-integrity';
+import { getAdminDb } from '@/lib/firebase-admin';
 
 export async function GET(request: NextRequest) {
   const campaignId = request.nextUrl.searchParams.get('campaignId') || '';
@@ -15,9 +16,20 @@ export async function GET(request: NextRequest) {
   const batches = await listIntegrityBatches(campaignId);
   const send = batches.filter((b) => b.kind === 'send');
   const events = batches.filter((b) => b.kind === 'event');
+  const camp = await getAdminDb().collection('campaigns').doc(campaignId).get();
+  const seal = camp.data()?.waTemplateSeal;
 
   return NextResponse.json({
     batches,
+    templateSeal: seal
+      ? {
+          hash: String(seal.hash || ''),
+          name: String(seal.templateName || ''),
+          lang: String(seal.templateLang || ''),
+          variables: Array.isArray(seal.templateVariables) ? seal.templateVariables : [],
+          urlButton: seal.urlButton === true,
+        }
+      : null,
     summary: {
       sendOpen: send.filter((b) => b.status === 'open' || b.status === 'sealing' || b.status === 'failed').length,
       sendAnchored: send.filter((b) => b.status === 'anchored').length,

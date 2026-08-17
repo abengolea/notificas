@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getAdminAuth } from "@/lib/firebase-admin";
 import { createMailDocumentAdmin } from "@/lib/email-server";
+import { sendEmailCfHeaders } from "@/lib/cf-send-auth";
 import { DEFAULT_CONTACT_FROM_EMAIL, getFirebaseSendEmailUrl } from "@/lib/mail-defaults";
 import { getLegacyMigrationStateCode } from "@/lib/legacy-migration-state-server";
 
@@ -132,7 +133,7 @@ export async function POST(request: NextRequest) {
     try {
       cfRes = await fetch(fnUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: sendEmailCfHeaders(),
         body: JSON.stringify({ docId }),
         signal: cfController.signal,
       });

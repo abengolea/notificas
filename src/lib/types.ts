@@ -156,6 +156,8 @@ export interface RecipientEntry {
   legajo?: string;
   telefono?: string;
   area?: string;
+  /** Días de atraso (variable de template WA, p. ej. GOcuotas). */
+  dias?: string;
 }
 
 export interface RecipientList {
@@ -207,6 +209,18 @@ export interface Campaign {
   waTemplateLang?: string;
   // Variables del template: ['nombre', 'dni', 'legajo'] → {{1}}, {{2}}, {{3}}
   waTemplateVariables?: string[];
+  /** El template de Meta tiene un botón URL; Notificas manda el link del lector ahí. */
+  waUrlButton?: boolean;
+  /** Huella única del formulario WA (una por campaña, no por destinatario). */
+  waTemplateSeal?: {
+    hash: string;
+    payload: string;
+    templateName: string;
+    templateLang: string;
+    templateVariables: string[];
+    urlButton: boolean;
+    sealedAt?: unknown;
+  };
   estado: 'borrador' | 'enviando' | 'completada' | 'cancelada';
   stats: {
     total: number;
@@ -233,6 +247,7 @@ export interface CampaignMessage {
   recipientDni?: string;
   recipientLegajo?: string;
   recipientTelefono?: string;
+  recipientDias?: string;
   // Estado unificado (para campañas single-canal o compatibilidad legacy)
   estado: 'pendiente' | 'enviado' | 'leido' | 'error';
   enviadoAt?: unknown;

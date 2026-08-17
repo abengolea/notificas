@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
       ...(c.waTemplateName       ? { waTemplateName:       c.waTemplateName }       : {}),
       ...(c.waTemplateLang       ? { waTemplateLang:       c.waTemplateLang }       : {}),
       ...(c.waTemplateVariables  ? { waTemplateVariables:  c.waTemplateVariables }  : {}),
+      ...(c.waUrlButton === true ? { waUrlButton: true } : {}),
       recipientCount: c.recipientCount ?? 0,
       stats: {
         total:     c.recipientCount ?? 0,

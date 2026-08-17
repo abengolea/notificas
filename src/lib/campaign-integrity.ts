@@ -28,6 +28,7 @@ export type IntegrityBatch = {
   merkleRoot?: string;
   txHash?: string;
   payload?: string;
+  templateSealHash?: string;
   errorMsg?: string;
   createdAt?: unknown;
   sealedAt?: unknown;
@@ -59,6 +60,7 @@ export async function resolveOpenSendBatchId(campaignId: string, tandaIndex: num
   return batchId;
 }
 
+/** Hojas nuevas: …|waBodyHash|templateSealHash. Las viejas se verifican con el leafPayload guardado. */
 export function buildSendLeafPayload(input: {
   campaignId: string;
   messageId: string;
@@ -68,6 +70,8 @@ export function buildSendLeafPayload(input: {
   attachmentHashes: string[];
   smtpMessageId: string;
   wamid: string;
+  waBodyHash?: string;
+  templateSealHash?: string;
 }): string {
   const att = [...input.attachmentHashes].filter(Boolean).sort().join(',');
   return [
@@ -81,6 +85,8 @@ export function buildSendLeafPayload(input: {
     att,
     input.smtpMessageId || '',
     input.wamid || '',
+    input.waBodyHash || '',
+    input.templateSealHash || '',
   ].join('|');
 }
 
@@ -174,6 +180,9 @@ export async function recordSendLeaf(params: {
   attachmentHashes: string[];
   smtpMessageId?: string;
   wamid?: string;
+  waBodyHash?: string;
+  templateSealHash?: string;
+  waVars?: Record<string, string>;
 }): Promise<{ leafHash: string; already: boolean }> {
   const db = getAdminDb();
   const msgRef = db.collection('campaign_messages').doc(params.messageId);
@@ -189,6 +198,8 @@ export async function recordSendLeaf(params: {
     attachmentHashes: params.attachmentHashes,
     smtpMessageId: params.smtpMessageId || '',
     wamid: params.wamid || '',
+    waBodyHash: params.waBodyHash || '',
+    templateSealHash: params.templateSealHash || '',
   });
   const leafHash = await sha256Hex(leafPayload);
 
@@ -224,6 +235,9 @@ export async function recordSendLeaf(params: {
       leafPayload,
       leafHash,
       contentHash: params.contentHash,
+      waBodyHash: params.waBodyHash || null,
+      templateSealHash: params.templateSealHash || null,
+      waVars: params.waVars || null,
       createdAt: FieldValue.serverTimestamp(),
     });
     t.update(msgRef, {
@@ -235,6 +249,9 @@ export async function recordSendLeaf(params: {
         contentHash: params.contentHash,
         smtpMessageId: params.smtpMessageId || null,
         wamid: params.wamid || null,
+        waBodyHash: params.waBodyHash || null,
+        templateSealHash: params.templateSealHash || null,
+        waVars: params.waVars || null,
       },
     });
     return { already: false as const };
@@ -453,7 +470,10 @@ export async function closeIntegrityBatch(
     const hashes = leaves.map((l) => l.leafHash);
     const tree = await buildMerkleTree(hashes);
     const prefix = kind === 'send' ? 'CAMPAIGN_SEND' : 'CAMPAIGN_EVENT';
-    const payload = [
+    const campSnap = kind === 'send' ? await db.collection('campaigns').doc(campaignId).get() : null;
+    const templateSealHash =
+      kind === 'send' ? String(campSnap?.data()?.waTemplateSeal?.hash || '') : '';
+    const payloadParts = [
       prefix,
       'v1',
       campaignId,
@@ -461,7 +481,9 @@ export async function closeIntegrityBatch(
       tree.root,
       String(leaves.length),
       new Date().toISOString(),
-    ].join('|');
+    ];
+    if (templateSealHash) payloadParts.push(templateSealHash);
+    const payload = payloadParts.join('|');
 
     const txHash = await Promise.race([
       sendPolygonTransaction(payload),
@@ -526,6 +548,7 @@ export async function closeIntegrityBatch(
       sealedAt: FieldValue.serverTimestamp(),
       accepting: false,
       errorMsg: FieldValue.delete(),
+      ...(templateSealHash ? { templateSealHash } : {}),
     });
     ops += 1;
     await flush();
@@ -569,6 +592,9 @@ export async function verifyCampaignMessage(campaignId: string, messageId: strin
         contentHash?: string;
         smtpMessageId?: string;
         wamid?: string;
+        waBodyHash?: string;
+        templateSealHash?: string;
+        waVars?: Record<string, string>;
       }
     | undefined;
 
@@ -654,11 +680,24 @@ export async function verifyCampaignMessage(campaignId: string, messageId: strin
       onChainMatch,
       smtpMessageId: send?.smtpMessageId || null,
       wamid: send?.wamid || null,
+      waBodyHash: send?.waBodyHash || null,
+      templateSealHash: send?.templateSealHash || null,
+      waVars: send?.waVars || null,
     },
+    template: campaign.waTemplateSeal
+      ? {
+          hash: String(campaign.waTemplateSeal.hash || ''),
+          name: String(campaign.waTemplateSeal.templateName || campaign.waTemplateName || ''),
+          lang: String(campaign.waTemplateSeal.templateLang || ''),
+          variables: Array.isArray(campaign.waTemplateSeal.templateVariables)
+            ? campaign.waTemplateSeal.templateVariables
+            : [],
+        }
+      : null,
     events: eventResults,
     intact,
     summary: intact
-      ? 'El contenido de este destinatario coincide con el lacre de su tanda en Polygon.'
+      ? 'Este destinatario es un renglón del padrón: el formulario (template) es el de la campaña y sus datos cierran contra la tanda en Polygon.'
       : !send?.txHash
         ? 'Este destinatario todavía no está en una tanda cerrada. Cerrá la tanda de envío para poder probarlo.'
         : 'Hay una diferencia: el contenido o la prueba Merkle no cierran contra la blockchain.',

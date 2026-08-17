@@ -80,12 +80,36 @@ service cloud.firestore {
         && r.get('senderName', '') == n.get('senderName', '');
     }
 
+    function mailEvidenceUnchanged() {
+      let r = resource.data;
+      let n = request.resource.data;
+      return mailCoreUnchanged()
+        && r.get('recipientPhone', '') == n.get('recipientPhone', '')
+        && r.get('recipientDni', '') == n.get('recipientDni', '')
+        && r.get('recipientLegajo', '') == n.get('recipientLegajo', '')
+        && r.get('attachments', null) == n.get('attachments', null)
+        && r.get('smtpMessageId', '') == n.get('smtpMessageId', '')
+        && r.get('whatsappMessageId', '') == n.get('whatsappMessageId', '')
+        && r.get('evidenceSnapshotHash', '') == n.get('evidenceSnapshotHash', '')
+        && r.get('waRequestSnapshot', null) == n.get('waRequestSnapshot', null);
+    }
+
+    function mailSealed() {
+      return resource.data.get('evidenceSealed', false) == true
+        || (
+          resource.data.keys().hasAll(['delivery'])
+          && resource.data.delivery.keys().hasAll(['state'])
+          && resource.data.delivery.state == 'DELIVERED'
+        );
+    }
+
     function mailSenderCanUpdate() {
-      return resource.data.get('createdBy', '') == request.auth.uid;
+      return resource.data.get('createdBy', '') == request.auth.uid
+        && (!mailSealed() || mailEvidenceUnchanged());
     }
 
     function mailRecipientSafeUpdate() {
-      return mailReadable() && mailCoreUnchanged();
+      return mailReadable() && mailEvidenceUnchanged();
     }
 
     // tracking / certificaciones Polygon solo vía Admin SDK (API server-side).
@@ -195,6 +219,21 @@ service cloud.firestore {
         && isOrgMemberById(resource.data.orgId);
     }
 
+    function campaignContentUnchanged() {
+      let r = resource.data;
+      let n = request.resource.data;
+      return r.get('cuerpo', '') == n.get('cuerpo', '')
+        && r.get('asunto', '') == n.get('asunto', '')
+        && r.get('adjuntos', []) == n.get('adjuntos', [])
+        && r.get('adjuntosPorDestinatario', null) == n.get('adjuntosPorDestinatario', null)
+        && r.get('waTemplateName', '') == n.get('waTemplateName', '')
+        && r.get('waTemplateLang', '') == n.get('waTemplateLang', '')
+        && r.get('waTemplateVariables', null) == n.get('waTemplateVariables', null)
+        && r.get('waUrlButton', false) == n.get('waUrlButton', false)
+        && r.get('waTemplateSeal', null) == n.get('waTemplateSeal', null)
+        && r.get('canal', '') == n.get('canal', '');
+    }
+
     match /campaigns/{campaignId} {
       allow read: if signedIn() && isOrgMemberById(resource.data.orgId);
 
@@ -205,7 +244,11 @@ service cloud.firestore {
 
       allow update: if signedIn()
         && resource.data.orgId is string
-        && isOrgMemberById(resource.data.orgId);
+        && isOrgMemberById(resource.data.orgId)
+        && (
+          resource.data.get('estado', 'borrador') == 'borrador'
+          || campaignContentUnchanged()
+        );
 
       allow delete: if false;
     }

@@ -12,6 +12,7 @@ const patchSchema = z.object({
   waTemplateName: z.string().max(128).optional(),
   waTemplateLang: z.string().max(16).optional(),
   waTemplateVariables: z.array(z.string().max(40)).max(8).optional(),
+  waUrlButton: z.boolean().optional(),
   tandaSize: z.number().int().min(0).optional(),
 });
 
@@ -32,6 +33,7 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     waTemplateName: String(data.waTemplateName || ''),
     waTemplateLang: String(data.waTemplateLang || 'es_AR'),
     waTemplateVariables: Array.isArray(data.waTemplateVariables) ? data.waTemplateVariables : [],
+    waUrlButton: data.waUrlButton === true,
     managedByAdmin: data.managedByAdmin === true,
     simulated: data.simulated === true,
     senderUid: String(data.senderUid || ''),
@@ -124,6 +126,7 @@ export async function PATCH(
     if (d.waTemplateName != null) patch.waTemplateName = d.waTemplateName.trim();
     if (d.waTemplateLang != null) patch.waTemplateLang = d.waTemplateLang.trim() || 'es_AR';
     if (d.waTemplateVariables != null) patch.waTemplateVariables = d.waTemplateVariables.filter(Boolean);
+    if (d.waUrlButton != null) patch.waUrlButton = d.waUrlButton === true;
     if (d.tandaSize != null) patch.tandaSize = d.tandaSize;
 
     await ref.update(patch);

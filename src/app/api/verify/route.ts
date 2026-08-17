@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { FieldPath, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { adminDb, getAdminDb } from "@/lib/firebase-admin";
 import { findIssuedDocument, type IssuedDocumentRecord } from "@/lib/issued-documents";
+import { buildPublicEvidence } from "@/lib/public-evidence";
 import { extractVerifyHints, type IssuedDocKind, type VerifyHints } from "@/lib/verify-hints";
 
 const PAGE_SIZE = 200;
@@ -161,6 +162,7 @@ function buildResponsePayload(
 
   const blockchainVerified =
     isPolygonTxHash(data.polygonCertifications?.send) ||
+    isPolygonTxHash(data.polygonCertifications?.whatsapp) ||
     isPolygonTxHash(data.polygonCertifications?.waDelivered) ||
     isPolygonTxHash(data.polygonCertifications?.waRead) ||
     isPolygonTxHash(data.polygonCertifications?.contentAccess) ||
@@ -281,19 +283,18 @@ export async function POST(request: NextRequest) {
     }
     if (messageId && !hints.messageId) hints.messageId = messageId;
 
-    // Verificación por messageId (certificado de lectura)
+    // Verificación por messageId (certificado de lectura + recálculo de integridad)
     if (messageId && !hash) {
-      const docRef = adminDb.collection("mail").doc(messageId);
-      const docSnap = await docRef.get();
-
-      if (docSnap.exists) {
-        const payload = buildResponsePayload(
-          docSnap as MailDocument,
-          null,
-          null,
-          { isCertificateVerification: true }
-        );
-        return NextResponse.json({ success: true, data: payload });
+      const evidence = await buildPublicEvidence(messageId);
+      if (evidence) {
+        return NextResponse.json({
+          success: true,
+          data: {
+            ...evidence,
+            isCertificate: true,
+            integrityValid: evidence.intact,
+          },
+        });
       }
 
       const fromId =
@@ -381,6 +382,23 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+export async function GET(request: NextRequest) {
+  const messageId =
+    request.nextUrl.searchParams.get("messageId") ||
+    request.nextUrl.searchParams.get("id");
+  if (!messageId) {
+    return NextResponse.json({ error: "messageId o id es requerido" }, { status: 400 });
+  }
+  const evidence = await buildPublicEvidence(messageId);
+  if (!evidence) {
+    return NextResponse.json({ error: "Documento no encontrado", messageId }, { status: 404 });
+  }
+  return NextResponse.json({
+    success: true,
+    data: { ...evidence, isCertificate: true, integrityValid: evidence.intact },
+  });
 }
 
 

@@ -5,15 +5,15 @@ import { getAdminDb } from '@/lib/firebase-admin';
 import { normalizeEnviosDisponibles } from '@/lib/envios';
 import { getOrgIfMember, maxRecipientsForPlan } from '@/lib/org-server';
 import { enqueueCampaignFanout } from '@/lib/cloud-tasks';
+import { sealCampaignWhatsAppTemplate } from '@/lib/wa-template-seal';
 import type { RecipientEntry } from '@/lib/types';
 import { z } from 'zod';
 
 const bodySchema = z.object({
   campaignId: z.string().min(1),
   orgId: z.string().min(1),
+  retryErrors: z.boolean().optional(),
 });
-
-type MsgState = 'pendiente' | 'enviado' | 'leido' | 'error';
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,8 +44,8 @@ export async function POST(request: NextRequest) {
     if (String(campaign.orgId) !== parsed.data.orgId) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
     }
-    if (campaign.estado !== 'enviando') {
-      return NextResponse.json({ error: 'La campaña debe estar en estado enviando' }, { status: 400 });
+    if (campaign.estado === 'cancelada') {
+      return NextResponse.json({ error: 'La campaña está cancelada' }, { status: 400 });
     }
 
     const plan = String(orgGate.data.plan || 'starter');
@@ -88,83 +88,86 @@ export async function POST(request: NextRequest) {
     const userSnap = await userRef.get();
     const creditosInicial = normalizeEnviosDisponibles(userSnap.data()?.creditos);
 
-    let cobrosEsperados: number;
-    let pendingCount: number;
+    const successCount = await db
+      .collection('campaign_messages')
+      .where('campaignId', '==', parsed.data.campaignId)
+      .where('estado', 'in', ['enviado', 'leido'])
+      .count()
+      .get();
+    const successTotal = successCount.data().count;
+    const remaining = Math.max(0, totalRecipients - successTotal);
+    const dailyLimit =
+      typeof campaign.tandaSize === 'number' && campaign.tandaSize > 0 ? campaign.tandaSize : remaining;
+    const thisRun = parsed.data.retryErrors ? remaining : (dailyLimit > 0 ? Math.min(dailyLimit, remaining) : remaining);
+    const tandaCap = successTotal + thisRun;
+    const pendingCount = thisRun;
 
-    if (useStorage) {
-      // Para campañas con Storage: contar mensajes ya exitosos y restar.
-      const successCount = await db
-        .collection('campaign_messages')
-        .where('campaignId', '==', parsed.data.campaignId)
-        .where('estado', 'in', ['enviado', 'leido'])
-        .count()
-        .get();
-      const successTotal = successCount.data().count;
-      cobrosEsperados = Math.max(0, totalRecipients - successTotal);
-      pendingCount = cobrosEsperados;
-    } else {
-      const loadMsgIndex = async () => {
-        const existingSnap = await db
-          .collection('campaign_messages')
-          .where('campaignId', '==', parsed.data.campaignId)
-          .get();
-        const byEmail = new Map<string, { id: string; estado: MsgState; creditApplied?: boolean; mailId?: string }>();
-        existingSnap.docs.forEach((docItem) => {
-          const data = docItem.data();
-          const em = String(data.recipientEmail || '').toLowerCase();
-          byEmail.set(em, {
-            id: docItem.id,
-            estado: (data.estado as MsgState) || 'pendiente',
-            creditApplied: !!data.creditApplied,
-            mailId: typeof data.mailId === 'string' ? data.mailId : undefined,
-          });
-        });
-        return byEmail;
-      };
-
-      const byEmail = await loadMsgIndex();
-
-      const trabajo = recipientData.filter((row) => {
-        const email = row.email.trim().toLowerCase();
-        const cur = byEmail.get(email);
-        if (!cur) return true;
-        if (cur.estado === 'enviado' || cur.estado === 'leido') return false;
-        if (cur.estado === 'error') return true;
-        if (cur.estado === 'pendiente') return true;
-        return false;
+    if (thisRun === 0) {
+      return NextResponse.json({
+        queued: false,
+        reason: 'tanda_completa',
+        alreadySent: successTotal,
+        total: totalRecipients,
       });
-
-      cobrosEsperados = trabajo.filter((row) => {
-        const email = row.email.trim().toLowerCase();
-        const cur = byEmail.get(email);
-        if (!cur) return true;
-        if (cur.estado === 'error') return true;
-        if (cur.estado === 'pendiente' && !cur.creditApplied) return true;
-        return false;
-      }).length;
-      pendingCount = trabajo.length;
     }
 
-    if (creditosInicial < cobrosEsperados) {
+    const prepaidAlready = typeof campaign.creditsPrepaidAmount === 'number' ? campaign.creditsPrepaidAmount : 0;
+    const refundedAlready = typeof campaign.creditsRefunded === 'number' ? campaign.creditsRefunded : 0;
+    const unusedPrepaid = Math.max(0, prepaidAlready - refundedAlready - successTotal);
+    const chargeNow = parsed.data.retryErrors ? 0 : Math.max(0, thisRun - unusedPrepaid);
+
+    if (creditosInicial < chargeNow) {
       return NextResponse.json(
         {
-          error: `Envíos insuficientes: necesitás ${cobrosEsperados}, tenés ${creditosInicial}`,
+          error: `Envíos insuficientes: necesitás ${chargeNow}, tenés ${creditosInicial}`,
         },
         { status: 400 }
       );
     }
 
     const senderEmail = decoded!.email || '';
+    const previousEstado = String(campaign.estado || 'borrador');
+    const startedAt = campaign.startedAt ? {} : { startedAt: FieldValue.serverTimestamp() };
+    const startOffset = parsed.data.retryErrors
+      ? 0
+      : (typeof campaign.fanoutResumeOffset === 'number' ? campaign.fanoutResumeOffset : 0);
 
-    // Guardar email del remitente en la campaña para que los workers lo usen sin token de usuario.
-    await campRef.update({
-      senderEmail: senderEmail,
-      senderUid: uid,
-      enqueuedAt: FieldValue.serverTimestamp(),
-    });
+    try {
+      await db.runTransaction(async (t) => {
+        const uSnap = await t.get(userRef);
+        const c = normalizeEnviosDisponibles(uSnap.data()?.creditos);
+        if (c < chargeNow) throw new Error(`Envíos insuficientes: necesitás ${chargeNow}, tenés ${c}`);
+        if (chargeNow > 0) {
+          t.update(userRef, {
+            creditos: FieldValue.increment(-chargeNow),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        }
+        t.update(campRef, {
+          estado: 'enviando',
+          senderEmail,
+          senderUid: uid,
+          tandaCap,
+          creditsPrepaidAmount: prepaidAlready + chargeNow,
+          'stats.total': totalRecipients,
+          'stats.pendientes': remaining,
+          ...(parsed.data.retryErrors ? { 'stats.errores': 0 } : {}),
+          enqueuedAt: FieldValue.serverTimestamp(),
+          ...startedAt,
+        });
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error al reservar créditos';
+      return NextResponse.json({ error: msg }, { status: 400 });
+    }
 
-    // Encolar el fanout que creará los campaign_messages y los workers de envío.
-    await enqueueCampaignFanout(parsed.data.campaignId, 0);
+    try {
+      await sealCampaignWhatsAppTemplate(parsed.data.campaignId).catch(() => null);
+      await enqueueCampaignFanout(parsed.data.campaignId, startOffset);
+    } catch (e) {
+      await campRef.update({ estado: previousEstado }).catch(() => undefined);
+      throw e;
+    }
 
     return NextResponse.json({ queued: true, total: totalRecipients, pending: pendingCount });
   } catch (e: unknown) {
