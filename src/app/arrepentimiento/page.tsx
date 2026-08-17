@@ -14,7 +14,7 @@ export const metadata: Metadata = createPageMetadata({
 
 export default function ArrepentimientoPage() {
   return (
-    <div className="flex flex-col min-h-screen bg-background text-foreground">
+    <div className="brand-canvas flex min-h-screen flex-col text-foreground">
       <JsonLd
         data={breadcrumbJsonLd([
           { name: 'Inicio', path: '/' },

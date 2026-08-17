@@ -141,7 +141,7 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
+    <div className="brand-canvas relative flex min-h-screen items-center justify-center p-4">
       <div className="absolute right-4 top-4 md:right-8 md:top-8">
         <ThemeToggle />
       </div>

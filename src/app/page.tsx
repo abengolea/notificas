@@ -149,7 +149,7 @@ const corporateCapabilities = [
 
 export default function LandingPage() {
   return (
-    <div className="landing-page flex min-h-screen flex-col text-foreground">
+    <div className="brand-canvas flex min-h-screen flex-col text-foreground">
       <JsonLd data={organizationJsonLd()} />
       <JsonLd data={websiteJsonLd()} />
       <JsonLd data={serviceJsonLd()} />

@@ -258,7 +258,7 @@ export default function VerifyPage() {
   };
 
   return (
-    <div className="relative min-h-screen bg-background py-8">
+    <div className="brand-canvas relative min-h-screen py-8">
       <div className="absolute right-4 top-4 md:right-8 z-10">
         <ThemeToggle />
       </div>
