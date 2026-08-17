@@ -3,6 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { certificarRecepcion } from '@/lib/certification-polygon';
 import { recordEventLeaf } from '@/lib/campaign-integrity';
+import { syncCampaignMessageLinkClick } from '@/lib/campaign-click-sync';
 
 function extractBrowserInfo(userAgent: string) {
   const match = userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)\/(\d+)/);
@@ -158,7 +159,9 @@ export async function POST(request: NextRequest) {
       const alreadyLoggedReaderOpen = existingMovements.some(
         (m) => m.type === 'reader_magic_open',
       );
-      if (alreadyLoggedReaderOpen || messageData.tracking?.opened) {
+      // Solo omitir si ya hay apertura del reader. `tracking.opened` puede venir
+      // de una visita al panel (app_opened) y no debe tapar la lectura real del correo.
+      if (alreadyLoggedReaderOpen) {
         return { skipped: true, reason: 'already_logged' };
       }
 
@@ -203,6 +206,8 @@ export async function POST(request: NextRequest) {
     });
 
     if (txResult.skipped) {
+      // Campañas solo-WA: el link del mensaje apunta directo al reader.
+      await syncCampaignMessageLinkClick(messageId, 'auto');
       return NextResponse.json(
         { success: true, skipped: true, reason: txResult.reason },
         { status: 200 },
@@ -219,7 +224,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (txResult.wasFirstOpen) {
-      void syncCampaignMessageRead(messageId);
+      await syncCampaignMessageRead(messageId);
+      await syncCampaignMessageLinkClick(messageId, 'auto');
       void (async () => {
         try {
           const msgSnap = await adminDb.collection('campaign_messages').where('mailId', '==', messageId).limit(1).get();

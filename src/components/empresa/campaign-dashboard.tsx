@@ -610,6 +610,7 @@ export function CampaignDashboard() {
               {showEmail && (
                 <>
                   <TableHead><span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />Estado email</span></TableHead>
+                  <TableHead><span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />Click</span></TableHead>
                   <TableHead><span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />TX envío</span></TableHead>
                   <TableHead><span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />TX lectura</span></TableHead>
                 </>
@@ -619,6 +620,7 @@ export function CampaignDashboard() {
                   <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />Estado WA</span></TableHead>
                   <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />Entregado</span></TableHead>
                   <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />Leído WA</span></TableHead>
+                  <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />Click</span></TableHead>
                   <TableHead><span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" />TX blockchain</span></TableHead>
                 </>
               )}
@@ -627,7 +629,7 @@ export function CampaignDashboard() {
           <TableBody>
             {msgLoading ? (
               Array.from({ length: 8 }).map((_, i) => {
-                const cols = 3 + (showEmail ? 3 : 0) + (showWa ? 4 : 0);
+                const cols = 3 + (showEmail ? 4 : 0) + (showWa ? 5 : 0);
                 return (
                   <TableRow key={i}>
                     {Array.from({ length: cols }).map((_, j) => (
@@ -638,7 +640,7 @@ export function CampaignDashboard() {
               })
             ) : messages.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3 + (showEmail ? 3 : 0) + (showWa ? 4 : 0)} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={3 + (showEmail ? 4 : 0) + (showWa ? 5 : 0)} className="text-center text-muted-foreground py-8">
                   No hay mensajes con el filtro seleccionado.
                 </TableCell>
               </TableRow>
@@ -667,6 +669,9 @@ export function CampaignDashboard() {
                   {showEmail && (
                     <>
                       <TableCell>{msgEstadoBadge(m.emailEstado || m.estado)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {fmtTs(m.emailClickAt) ?? "—"}
+                      </TableCell>
                       <TableCell>
                         {(m.emailTxEnvio || m.txHashEnvio) ? (
                           <a href={`https://polygonscan.com/tx/${m.emailTxEnvio || m.txHashEnvio}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary text-xs">
@@ -691,6 +696,9 @@ export function CampaignDashboard() {
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {fmtTs(m.waLeidoAt) ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {fmtTs(m.waClickAt) ?? "—"}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1">

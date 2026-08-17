@@ -59,11 +59,13 @@ export async function GET(request: NextRequest) {
       estado: string;
       enviadoAt?: unknown;
       leidoAt?: unknown;
+      emailClickAt?: unknown;
       txHashEnvio?: string;
       txHashLectura?: string;
       waEstado?: string;
       waEntregadoAt?: unknown;
       waLeidoAt?: unknown;
+      waClickAt?: unknown;
       waTxEnvio?: string;
       waTxEntregado?: string;
       waTxLeido?: string;
@@ -87,11 +89,13 @@ export async function GET(request: NextRequest) {
           estado: String(m.estado || ''),
           enviadoAt: m.enviadoAt,
           leidoAt: m.leidoAt,
+          emailClickAt: m.emailClickAt,
           txHashEnvio: m.txHashEnvio || m.emailTxEnvio,
           txHashLectura: m.txHashLectura || m.emailTxLectura,
           waEstado: m.waEstado,
           waEntregadoAt: m.waEntregadoAt,
           waLeidoAt: m.waLeidoAt,
+          waClickAt: m.waClickAt,
           waTxEnvio: m.waTxEnvio,
           waTxEntregado: m.waTxEntregado,
           waTxLeido: m.waTxLeido,
@@ -131,8 +135,8 @@ export async function GET(request: NextRequest) {
 
     const tableHead: string[] = ['#', 'Nombre', 'DNI', 'Legajo'];
     if (showWa)    tableHead.push('Teléfono');
-    if (showEmail) tableHead.push('Estado', 'Enviado', 'Leído', 'TX envío', 'TX lectura');
-    if (showWa)    tableHead.push('Estado WA', 'Entregado WA', 'Leído WA', 'TX env WA', 'TX ent WA', 'TX leí WA');
+    if (showEmail) tableHead.push('Estado', 'Enviado', 'Leído', 'Click', 'TX envío', 'TX lectura');
+    if (showWa)    tableHead.push('Estado WA', 'Entregado WA', 'Leído WA', 'Click WA', 'TX env WA', 'TX ent WA', 'TX leí WA');
 
     const tableBody = truncated.map((m, i) => {
       const base = [
@@ -148,6 +152,7 @@ export async function GET(request: NextRequest) {
           m.estado,
           formatTs(m.enviadoAt),
           formatTs(m.leidoAt),
+          formatTs(m.emailClickAt),
           shortTx(m.txHashEnvio),
           shortTx(m.txHashLectura),
         );
@@ -158,6 +163,7 @@ export async function GET(request: NextRequest) {
           m.waEstado || m.estado || '—',
           formatTs(m.waEntregadoAt),
           formatTs(m.waLeidoAt),
+          formatTs(m.waClickAt),
           shortTx(m.waTxEnvio),
           shortTx(m.waTxEntregado),
           shortTx(m.waTxLeido),

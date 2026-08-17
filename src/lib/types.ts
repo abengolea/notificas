@@ -232,6 +232,8 @@ export interface CampaignMessage {
   emailEstado?: 'pendiente' | 'enviado' | 'leido' | 'error';
   emailEnviadoAt?: unknown;
   emailLeidoAt?: unknown;
+  emailClickAt?: unknown;
+  emailClickCount?: number;
   emailTxEnvio?: string;
   emailTxLectura?: string;
   emailError?: string;
@@ -240,6 +242,8 @@ export interface CampaignMessage {
   waEnviadoAt?: unknown;
   waEntregadoAt?: unknown;
   waLeidoAt?: unknown;
+  waClickAt?: unknown;
+  waClickCount?: number;
   waTxEnvio?: string;
   waTxEntregado?: string;
   waTxLeido?: string;

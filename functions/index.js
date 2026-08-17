@@ -435,7 +435,12 @@ exports.sendEmail = onRequest(
 
     // Campaña WhatsApp-only: no enviar email, solo registrar tracking y enviar WA.
     if (emailData.waOnly === true) {
-      const readerUrlWa = `${APP_HOSTING_URL}/reader/${encodeURIComponent(docId)}?k=${encodeURIComponent(trackingToken)}`;
+      const waDigits = formatPhoneForWhatsApp(emailData.recipientPhone);
+      const rParam =
+        waDigits && waDigits.length >= 10
+          ? `&r=${encodeURIComponent(base64UrlEncode(waDigits))}`
+          : '';
+      const readerUrlWa = `${APP_HOSTING_URL}/linkRedirect?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}&src=whatsapp${rParam}`;
       await docRef.update({
         delivery: { state: 'DELIVERED', time: FieldValue.serverTimestamp(), info: 'whatsapp-only' },
         tracking: {
@@ -812,7 +817,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
                 waDigits && waDigits.length >= 10
                   ? `&r=${encodeURIComponent(base64UrlEncode(waDigits))}`
                   : '';
-              return `${LINK_REDIRECT_URL}?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}&src=whatsapp${rParam}`;
+              return `${APP_HOSTING_URL}/linkRedirect?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}&src=whatsapp${rParam}`;
             })();
             const waRecipient = formatWhatsAppRecipientDisplay(emailData.recipientName);
             const waSender = formatWhatsAppSenderDisplay(emailData.senderName || from, from);
@@ -1164,6 +1169,31 @@ async function handleAttachmentTrackingRedirect(req, res, opts) {
 
 const linkRedirectOptions = { region: REGION, secrets: [polygonCertifySecret], timeoutSeconds: 180, memory: '512MiB' };
 
+/** Propaga el click del enlace a campaign_messages (dashboard de campañas). */
+async function syncCampaignMessageClick(mailDocId, isWhatsApp) {
+  try {
+    const db = getFirestore();
+    const snap = await db.collection('campaign_messages').where('mailId', '==', String(mailDocId)).limit(1).get();
+    if (snap.empty) return;
+    const ref = snap.docs[0].ref;
+    const prev = snap.docs[0].data() || {};
+    const update = {};
+    if (isWhatsApp) {
+      if (!prev.waClickAt) update.waClickAt = FieldValue.serverTimestamp();
+      update.waClickCount = FieldValue.increment(1);
+    } else {
+      if (!prev.emailClickAt) update.emailClickAt = FieldValue.serverTimestamp();
+      update.emailClickCount = FieldValue.increment(1);
+    }
+    if (Object.keys(update).length) {
+      await ref.update(update);
+      console.log(`✅ campaign_message click (${isWhatsApp ? 'WA' : 'email'}) mail/${mailDocId}`);
+    }
+  } catch (e) {
+    console.warn('⚠️ syncCampaignMessageClick:', e?.message);
+  }
+}
+
 async function linkRedirectHandler(req, res) {
   try {
     const { msg, u, k, src, r, att } = req.query;
@@ -1276,6 +1306,7 @@ async function linkRedirectHandler(req, res) {
             }
             await docRef.update(updateData);
             certifyPolygonEventOnce(msg, data, 'receive', isWhatsApp ? 'whatsapp_cta' : 'email_cta');
+            await syncCampaignMessageClick(msg, isWhatsApp);
             console.log(isWhatsApp ? '✅ whatsapp_link_clicked (enlace corto) registrado' : '✅ link_clicked (CTA) registrado');
           }
         } else {
@@ -1434,7 +1465,8 @@ async function linkRedirectHandler(req, res) {
       }
       await docRef.update(updateData);
       certifyPolygonEventOnce(msg, data, 'receive', isWhatsApp ? 'whatsapp_link' : 'email_link');
-      
+      await syncCampaignMessageClick(msg, isWhatsApp);
+
       console.log('✅ Tracking updated successfully');
     } else {
       console.log('❌ Token invalid or missing');
