@@ -247,20 +247,29 @@ function getCertifyRecipientId(data) {
   );
 }
 
-function certifyPolygonEventOnce(docId, data, type, context) {
+function certifyPolygonEventOnce(docId, data, type, context, via) {
   if (data?.campaignId) return;
-  if (!docId || !['receive', 'read'].includes(type)) return;
-  if (data?.polygonCertifications?.[type]) {
+  if (!docId) return;
+
+  const fieldByType = {
+    receive: 'receive',
+    read: 'read',
+    wa_delivered: 'waDelivered',
+    wa_read: 'waRead',
+    content_access: 'contentAccess',
+    read_confirmed: 'readConfirmed',
+  };
+  const field = fieldByType[type];
+  if (!field) return;
+  if (data?.polygonCertifications?.[field]) {
     console.log(`🔗 Polygon ${type} ya certificado (${context})`);
     return;
   }
 
   const certifyUrl = `${APP_HOSTING_URL}/api/polygon/certify-event`;
-  void fetch(certifyUrl, certifyEventFetchInit({
-    docId: String(docId),
-    type,
-    userId: getCertifyRecipientId(data),
-  }))
+  const body = { docId: String(docId), type, userId: getCertifyRecipientId(data) };
+  if (via) body.via = via;
+  void fetch(certifyUrl, certifyEventFetchInit(body))
     .then(async (certifyRes) => {
       if (!certifyRes.ok) {
         console.warn(`⚠️ Polygon certify ${type} (${context}):`, await certifyRes.text());
@@ -1159,7 +1168,7 @@ async function handleAttachmentTrackingRedirect(req, res, opts) {
   try {
     await docRef.update(attachmentUpdate);
     console.log('✅ Adjunto desde correo — attachment_opened registrado');
-    certifyPolygonEventOnce(docRef.id, data, 'receive', 'attachment_opened');
+    certifyPolygonEventOnce(docRef.id, data, 'content_access', 'attachment_opened', 'attachment');
   } catch (updateErr) {
     // La apertura del archivo no debe romperse por un fallo de tracking.
     console.error('⚠️ No se pudo registrar attachment_opened; redirigiendo igual:', updateErr?.message);
@@ -1305,7 +1314,7 @@ async function linkRedirectHandler(req, res) {
               updateData['tracking.openCount'] = FieldValue.increment(1);
             }
             await docRef.update(updateData);
-            certifyPolygonEventOnce(msg, data, 'receive', isWhatsApp ? 'whatsapp_cta' : 'email_cta');
+            certifyPolygonEventOnce(msg, data, 'content_access', isWhatsApp ? 'whatsapp_cta' : 'email_cta', isWhatsApp ? 'whatsapp' : 'email');
             await syncCampaignMessageClick(msg, isWhatsApp);
             console.log(isWhatsApp ? '✅ whatsapp_link_clicked (enlace corto) registrado' : '✅ link_clicked (CTA) registrado');
           }
@@ -1464,7 +1473,7 @@ async function linkRedirectHandler(req, res) {
         updateData['tracking.openCount'] = FieldValue.increment(1);
       }
       await docRef.update(updateData);
-      certifyPolygonEventOnce(msg, data, 'receive', isWhatsApp ? 'whatsapp_link' : 'email_link');
+      certifyPolygonEventOnce(msg, data, 'content_access', isWhatsApp ? 'whatsapp_link' : 'email_link', isWhatsApp ? 'whatsapp' : 'email');
       await syncCampaignMessageClick(msg, isWhatsApp);
 
       console.log('✅ Tracking updated successfully');
@@ -1541,7 +1550,7 @@ exports.confirmRead = onRequest({ region: REGION, secrets: [polygonCertifySecret
       const certifyUrl = `${APP_HOSTING_URL}/api/polygon/certify-event`;
       const certifyRes = await fetch(certifyUrl, certifyEventFetchInit({
         docId: String(msg),
-        type: 'read',
+        type: 'read_confirmed',
         userId: data?.recipientEmail,
       }));
       if (!certifyRes.ok) console.warn('⚠️ Polygon certify read:', await certifyRes.text());
@@ -1886,10 +1895,9 @@ async function processWhatsAppStatus(status) {
   const isCampaignMail = Boolean(data.campaignId);
   if (!isCampaignMail) {
     if (statusType === 'delivered') {
-      certifyPolygonEventOnce(mailDocId, data, 'receive', 'whatsapp_delivered');
+      certifyPolygonEventOnce(mailDocId, data, 'wa_delivered', 'whatsapp_delivered');
     } else if (statusType === 'read') {
-      certifyPolygonEventOnce(mailDocId, data, 'receive', 'whatsapp_read');
-      certifyPolygonEventOnce(mailDocId, data, 'read', 'whatsapp_read');
+      certifyPolygonEventOnce(mailDocId, data, 'wa_read', 'whatsapp_read');
     }
   } else if (statusType === 'delivered' || statusType === 'read') {
     void fetch(`${APP_HOSTING_URL}/api/campaigns/integrity/event`, certifyEventFetchInit({

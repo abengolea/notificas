@@ -4,11 +4,17 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ExternalLink, ShieldCheck, AlertTriangle, CheckCircle } from 'lucide-react';
+import { POLYGON_CERT_DISPLAY_ORDER, polygonCertLabel } from '@/lib/polygon-cert-labels';
 
 const POLYGON_EXPLORER = 'https://polygonscan.com';
 
 type PolygonCertificationsData = {
   send?: string;
+  waDelivered?: string;
+  waRead?: string;
+  contentAccess?: string;
+  contentAccessVia?: string;
+  readConfirmed?: string;
   receive?: string;
   read?: string;
   certificate?: string;
@@ -16,12 +22,7 @@ type PolygonCertificationsData = {
   updatedAt?: unknown;
 };
 
-const EVENT_LABELS: Record<string, { label: string; short: string }> = {
-  send: { label: 'Envío certificado', short: 'Envío' },
-  receive: { label: 'Recepción certificada', short: 'Recepción' },
-  read: { label: 'Lectura certificada', short: 'Lectura' },
-  certificate: { label: 'Certificado PDF anclado', short: 'PDF' },
-};
+const NON_TX_KEYS = new Set(['contentHash', 'updatedAt', 'contentAccessVia']);
 
 export default function PolygonCertifications({
   certifications,
@@ -36,7 +37,6 @@ export default function PolygonCertifications({
   } | null>(null);
 
   useEffect(() => {
-    // Verificar integridad si hay tx de envío (la API obtiene el hash desde blockchain)
     if (!messageId || !certifications?.send) return;
     fetch('/api/verify-content-integrity', {
       method: 'POST',
@@ -58,10 +58,13 @@ export default function PolygonCertifications({
     return null;
   }
 
-  const NON_TX_KEYS = new Set(['contentHash', 'updatedAt']);
-  const entries = (Object.entries(certifications) as [string, unknown][]).filter(
-    ([key, value]) => !NON_TX_KEYS.has(key) && value && typeof value === 'string'
-  ) as [string, string][];
+  const order = POLYGON_CERT_DISPLAY_ORDER as readonly string[];
+  const entries = order
+    .filter((key) => {
+      const value = (certifications as Record<string, unknown>)[key];
+      return !NON_TX_KEYS.has(key) && typeof value === 'string' && value.startsWith('0x');
+    })
+    .map((key) => [key, (certifications as Record<string, string>)[key]] as [string, string]);
 
   if (entries.length === 0 && !certifications.contentHash) return null;
 
@@ -96,7 +99,7 @@ export default function PolygonCertifications({
       <CardContent className="px-4 pb-4 pt-0">
         <div className="space-y-2">
           {entries.map(([event, txHash]) => {
-            const { label } = EVENT_LABELS[event] || { label: event };
+            const label = polygonCertLabel(event, certifications.contentAccessVia);
             const explorerUrl = `${POLYGON_EXPLORER}/tx/${txHash}`;
             return (
               <div
@@ -124,7 +127,7 @@ export default function PolygonCertifications({
             );
           })}
           <p className="text-xs text-muted-foreground">
-            Cada transacción certifica un hito del mensaje en blockchain.
+            Solo se ancla el primer evento de cada hecho (envío, WhatsApp entregado, WhatsApp leído, acceso al contenido, lectura confirmada). Los clics o webhooks siguientes no generan otra transacción.
             {certifications.contentHash && ' El contenido del mensaje está vinculado criptográficamente.'}
           </p>
         </div>

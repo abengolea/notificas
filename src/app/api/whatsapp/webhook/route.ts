@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { recordEventLeaf } from "@/lib/campaign-integrity";
+import { certifyMailHitoIfNeeded } from "@/lib/certification-polygon";
 
 // Callback URL canónica en Meta Developer Portal (app 1022568949756440):
 //   https://notificas.com.ar/api/whatsapp/webhook
@@ -173,7 +174,11 @@ async function processStatus(status: any) {
     }
 
     t.update(mailRef, update);
-    return { wrote: true as const, reason: "ok" as const };
+    return {
+      wrote: true as const,
+      reason: "ok" as const,
+      campaignId: data.campaignId ? String(data.campaignId) : "",
+    };
   });
 
   if (!recorded.wrote) {
@@ -186,6 +191,13 @@ async function processStatus(status: any) {
   }
 
   console.log(`✅ whatsapp_${statusType} registrado en mail/${mailDocId}`);
+
+  if (!recorded.campaignId && (statusType === "delivered" || statusType === "read")) {
+    await certifyMailHitoIfNeeded({
+      docId: mailDocId,
+      hito: statusType === "delivered" ? "wa_delivered" : "wa_read",
+    }).catch((e) => console.warn("⚠️ Polygon hito WA:", e?.message));
+  }
 
   // Propagar estado al campaign_message correspondiente
   await syncCampaignMessage(db, mailDocId, statusType);

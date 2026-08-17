@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import fs from 'fs';
 import path from 'path';
 import { computeContentHash } from './certification';
+import { POLYGON_CERT_DISPLAY_ORDER, polygonCertLabel } from './polygon-cert-labels';
 
 interface MailMessageContent {
   html?: string;
@@ -48,8 +49,14 @@ interface MailData {
   attachments?: MailAttachment[];
   polygonCertifications?: {
     send?: string;
+    waDelivered?: string;
+    waRead?: string;
+    contentAccess?: string;
+    contentAccessVia?: string;
+    readConfirmed?: string;
     receive?: string;
     read?: string;
+    certificate?: string;
     contentHash?: string;
   };
 }
@@ -736,11 +743,12 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   const polygonCerts = mailData.polygonCertifications;
   const POLYGON_EXPLORER = 'https://polygonscan.com';
   const polygonEntries = polygonCerts
-    ? [
-        { label: 'Envío', txHash: polygonCerts.send },
-        { label: 'Recepción', txHash: polygonCerts.receive },
-        { label: 'Lectura', txHash: polygonCerts.read },
-      ].filter((e) => e.txHash && typeof e.txHash === 'string')
+    ? POLYGON_CERT_DISPLAY_ORDER
+        .map((key) => ({
+          label: polygonCertLabel(key, polygonCerts.contentAccessVia),
+          txHash: (polygonCerts as Record<string, string | undefined>)[key],
+        }))
+        .filter((e) => e.txHash && typeof e.txHash === 'string' && e.txHash.startsWith('0x'))
     : [];
 
   if (polygonEntries.length > 0) {

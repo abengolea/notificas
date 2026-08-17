@@ -4,7 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { verifyAuthToken } from '@/lib/auth-helper';
 import { generateCertificatePDF } from '@/lib/certificate-generator';
-import { certificarLectura, certificarDocumento } from '@/lib/certification-polygon';
+import { certificarDocumento } from '@/lib/certification-polygon';
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,20 +39,6 @@ export async function POST(request: NextRequest) {
 
     if (!isAuthorized) {
       return NextResponse.json({ error: 'No autorizado para descargar este certificado' }, { status: 403 });
-    }
-
-    // Certificar lectura en Polygon al descargar certificado (si no está ya certificada)
-    if (!mailData?.polygonCertifications?.read) {
-      try {
-        const recipientId = mailData?.recipientEmail || mailData?.to?.[0] || 'recipient';
-        const txHash = await certificarLectura(messageId, recipientId);
-        await messageRef.update({
-          'polygonCertifications.read': txHash,
-          'polygonCertifications.updatedAt': new Date(),
-        });
-      } catch (e: any) {
-        console.warn('⚠️ Polygon certify read (download-certificate):', e?.message);
-      }
     }
 
     // Detener el tracking - marcar como certificado

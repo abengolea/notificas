@@ -21,13 +21,6 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-function certifyEventHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const secret = process.env.POLYGON_CERTIFY_SECRET?.trim();
-  if (secret) headers['X-Certify-Secret'] = secret;
-  return headers;
-}
-
 export async function OPTIONS() {
   return new NextResponse(null, { status: 200, headers: CORS_HEADERS });
 }
@@ -182,27 +175,6 @@ export async function POST(request: NextRequest) {
     }
 
     const appOpenMovement = txResult.movement!;
-    const wasFirstOpen = txResult.wasFirstOpen;
-
-    if (wasFirstOpen || !messageData.polygonCertifications?.receive) {
-      try {
-        const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9006';
-        const certifyRes = await fetch(`${base}/api/polygon/certify-event`, {
-          method: 'POST',
-          headers: certifyEventHeaders(),
-          body: JSON.stringify({
-            docId: messageId,
-            type: 'receive',
-            userId: messageData.recipientEmail || messageData.to?.[0],
-          }),
-        });
-        if (!certifyRes.ok) {
-          console.warn('⚠️ Polygon certify receive (app-open):', await certifyRes.text());
-        }
-      } catch (e: any) {
-        console.warn('⚠️ Polygon certify receive failed:', e?.message);
-      }
-    }
 
     return NextResponse.json(
       { success: true, movementId: appOpenMovement.id },

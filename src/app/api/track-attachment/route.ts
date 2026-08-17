@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb, adminAuth } from '@/lib/firebase-admin';
-import { certificarRecepcion } from '@/lib/certification-polygon';
+import { certifyMailHitoIfNeeded } from '@/lib/certification-polygon';
 
 function extractBrowserInfo(userAgent: string) {
   const match = userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)\/(\d+)/);
@@ -138,19 +138,17 @@ export async function POST(request: NextRequest) {
       'tracking.movements': FieldValue.arrayUnion(attachmentMovement),
     });
 
-    if (!messageData.polygonCertifications?.receive) {
-      try {
-        const txHash = await certificarRecepcion(messageId, recipientEmail || primaryRecipientEmail || 'recipient');
-        await messageRef.update({
-          'polygonCertifications.receive': txHash,
-          'polygonCertifications.updatedAt': new Date(),
-        });
-      } catch (certifyError: unknown) {
+    if (!messageData.campaignId) {
+      void certifyMailHitoIfNeeded({
+        docId: messageId,
+        hito: 'content_access',
+        via: 'attachment',
+      }).catch((certifyError: unknown) => {
         console.warn(
-          '⚠️ Polygon certify receive (attachment):',
+          '⚠️ Polygon certify content_access (attachment):',
           certifyError instanceof Error ? certifyError.message : certifyError
         );
-      }
+      });
     }
 
     return NextResponse.json({ success: true, movementId: attachmentMovement.id });

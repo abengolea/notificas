@@ -66,6 +66,10 @@ function buildResponsePayload(
 
   const blockchainVerified =
     isPolygonTxHash(data.polygonCertifications?.send) ||
+    isPolygonTxHash(data.polygonCertifications?.waDelivered) ||
+    isPolygonTxHash(data.polygonCertifications?.waRead) ||
+    isPolygonTxHash(data.polygonCertifications?.contentAccess) ||
+    isPolygonTxHash(data.polygonCertifications?.readConfirmed) ||
     isPolygonTxHash(data.polygonCertifications?.receive) ||
     isPolygonTxHash(data.polygonCertifications?.read) ||
     isPolygonTxHash(attachment?.integrityCertificate?.txHash);

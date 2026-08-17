@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
-import { certificarRecepcion } from '@/lib/certification-polygon';
+import { certifyMailHitoIfNeeded } from '@/lib/certification-polygon';
 import { recordEventLeaf } from '@/lib/campaign-integrity';
 import { syncCampaignMessageLinkClick } from '@/lib/campaign-click-sync';
 
@@ -18,44 +18,23 @@ function generateUUID() {
 }
 
 /**
- * Certifica la primera apertura en Polygon en segundo plano.
- * Encadena la TX al sendTxHash y contentHash del envío para prueba judicial completa.
- * Nunca bloquea la respuesta HTTP — es fire-and-forget con manejo de errores.
+ * Certifica el acceso al contenido (reader) en Polygon. No pisa WhatsApp entregado/leído.
  */
-async function certifyFirstReadInBackground(
-  docId: string,
-  recipientId: string,
-  sendTxHash: string | undefined,
-  contentHash: string | undefined,
-): Promise<void> {
+async function certifyContentAccessInBackground(docId: string): Promise<void> {
   try {
-    const snap = await adminDb.collection('mail').doc(docId).get();
-    const existing = snap.data()?.polygonCertifications || {};
-    if (existing.receive) {
-      console.log('ℹ️ Polygon receive ya certificado para', docId);
-      return;
-    }
-
     const txHash = await Promise.race([
-      certificarRecepcion(docId, recipientId, sendTxHash, contentHash),
+      certifyMailHitoIfNeeded({ docId, hito: 'content_access', via: 'reader' }),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout certificación Polygon RECEIVE (>40s)')), 40_000)
+        setTimeout(() => reject(new Error('Timeout certificación Polygon CONTENT_ACCESS (>40s)')), 40_000)
       ),
     ]);
-
-    await adminDb.collection('mail').doc(docId).update({
-      'polygonCertifications.receive': txHash,
-      'polygonCertifications.updatedAt': new Date(),
-    });
-    console.log('🔗 Primera lectura certificada en Polygon:', txHash);
-
-    // Propagar TX de lectura al campaign_message correspondiente
+    if (!txHash) return;
     const msgSnap = await adminDb.collection('campaign_messages').where('mailId', '==', docId).limit(1).get();
     if (!msgSnap.empty) {
       await msgSnap.docs[0].ref.update({ txHashLectura: txHash, emailTxLectura: txHash });
     }
   } catch (err: any) {
-    console.error('⚠️ Error certificando FIRST_READ en Polygon (no afecta la apertura):', err?.message);
+    console.error('⚠️ Error certificando CONTENT_ACCESS en Polygon (no afecta la apertura):', err?.message);
   }
 }
 
@@ -130,9 +109,6 @@ export async function POST(request: NextRequest) {
       movementId: string;
       wasFirstOpen: boolean;
       certify: boolean;
-      recipientId: string;
-      sendTxHash?: string;
-      contentHash?: string;
       isCampaign: boolean;
     };
     type TxSkip = { skipped: true; reason: string };
@@ -189,19 +165,13 @@ export async function POST(request: NextRequest) {
 
       const isCampaign = Boolean(messageData.campaignId);
       const certify =
-        wasFirstOpen && !isCampaign && !messageData.polygonCertifications?.receive;
+        !isCampaign && !messageData.polygonCertifications?.contentAccess;
       return {
         skipped: false,
         movementId: movement.id,
         wasFirstOpen,
         certify,
         isCampaign,
-        recipientId:
-          messageData.recipientEmail || messageData.to?.[0] || 'recipient',
-        sendTxHash: messageData.polygonCertifications?.send as string | undefined,
-        contentHash: messageData.polygonCertifications?.contentHash as
-          | string
-          | undefined,
       };
     });
 
@@ -215,12 +185,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (txResult.certify) {
-      void certifyFirstReadInBackground(
-        messageId,
-        txResult.recipientId,
-        txResult.sendTxHash,
-        txResult.contentHash,
-      );
+      void certifyContentAccessInBackground(messageId);
     }
 
     if (txResult.wasFirstOpen) {

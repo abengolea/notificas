@@ -26,6 +26,153 @@ async function persistBlockchainMovement(
   }
 }
 
+export const POLYGON_HITO_FIELDS = {
+  wa_delivered: 'waDelivered',
+  wa_read: 'waRead',
+  content_access: 'contentAccess',
+  read_confirmed: 'readConfirmed',
+} as const;
+
+export type PolygonHitoType = keyof typeof POLYGON_HITO_FIELDS;
+
+const HITO_PREFIX: Record<PolygonHitoType, string> = {
+  wa_delivered: 'WA_DELIVERED',
+  wa_read: 'WA_READ',
+  content_access: 'CONTENT_ACCESS',
+  read_confirmed: 'READ_CONFIRMED',
+};
+
+/**
+ * Certifica un hecho concreto (canal + tipo) en Polygon.
+ * Cada hito es independiente: WhatsApp entregado no tapa el acceso al correo.
+ */
+export async function certificarHito(opts: {
+  messageId: string;
+  userId: string;
+  hito: PolygonHitoType;
+  sendTxHash?: string;
+  contentHash?: string;
+  via?: string;
+}): Promise<string> {
+  const { messageId, userId, hito, sendTxHash, contentHash, via } = opts;
+  const timestamp = new Date().toISOString();
+  const parts = [HITO_PREFIX[hito], messageId, userId];
+  if (contentHash) parts.push(contentHash);
+  if (via) parts.push(`via:${via}`);
+  if (sendTxHash) parts.push(`ref:${sendTxHash}`);
+  parts.push(timestamp);
+  const payload = parts.join('|');
+
+  console.log(`🔗 Certificando hito ${hito}:`, { messageId, userId, via: via ?? null });
+
+  const txHash = await sendPolygonTransaction(payload);
+
+  await persistBlockchainMovement(
+    {
+      type: hito,
+      userId,
+      messageId,
+      txHash,
+      payload,
+      sendTxHash: sendTxHash ?? null,
+      contentHash: contentHash ?? null,
+      via: via ?? null,
+    },
+    txHash,
+    hito
+  );
+
+  return txHash;
+}
+
+/** Idempotente: un solo TX por hito. Reserva el cupo antes de gastar gas. */
+export async function certifyMailHitoIfNeeded(opts: {
+  docId: string;
+  hito: PolygonHitoType;
+  via?: string;
+}): Promise<string | null> {
+  const { docId, hito, via } = opts;
+  const field = POLYGON_HITO_FIELDS[hito];
+  const pendingField = `${field}Pending`;
+  const db = getAdminDb();
+  const mailRef = db.collection('mail').doc(docId);
+
+  const claim = await db.runTransaction(async (t) => {
+    const snap = await t.get(mailRef);
+    const data = snap.data();
+    if (!data || data.campaignId) return { action: 'skip' as const, txHash: null as string | null };
+
+    const existing = (data.polygonCertifications || {}) as Record<string, unknown>;
+    const already = existing[field];
+    if (typeof already === 'string' && already) {
+      return { action: 'exists' as const, txHash: already };
+    }
+    if (existing[pendingField]) {
+      return { action: 'pending' as const, txHash: null as string | null };
+    }
+
+    const recipientId =
+      data.recipientEmail ||
+      (Array.isArray(data.to) ? data.to[0] : data.to) ||
+      'recipient';
+
+    t.update(mailRef, {
+      [`polygonCertifications.${pendingField}`]: true,
+      'polygonCertifications.updatedAt': new Date(),
+    });
+
+    return {
+      action: 'claim' as const,
+      txHash: null as string | null,
+      recipientId: String(recipientId),
+      sendTxHash: existing.send as string | undefined,
+      contentHash: existing.contentHash as string | undefined,
+    };
+  });
+
+  if (claim.action === 'skip' || claim.action === 'pending') {
+    if (claim.action === 'pending') {
+      console.log(`ℹ️ Polygon ${hito} ya en curso para`, docId);
+    }
+    return claim.txHash;
+  }
+  if (claim.action === 'exists') {
+    console.log(`ℹ️ Polygon ${hito} ya certificado para`, docId);
+    return claim.txHash;
+  }
+
+  try {
+    const txHash = await certificarHito({
+      messageId: docId,
+      userId: claim.recipientId,
+      hito,
+      sendTxHash: claim.sendTxHash,
+      contentHash: claim.contentHash,
+      via,
+    });
+
+    const update: Record<string, unknown> = {
+      [`polygonCertifications.${field}`]: txHash,
+      [`polygonCertifications.${pendingField}`]: FieldValue.delete(),
+      'polygonCertifications.updatedAt': new Date(),
+    };
+    if (hito === 'content_access' && via) {
+      update['polygonCertifications.contentAccessVia'] = via;
+    }
+    await mailRef.update(update);
+    console.log(`✅ Hito ${hito} certificado en Polygon:`, txHash);
+    return txHash;
+  } catch (e) {
+    await mailRef
+      .update({
+        [`polygonCertifications.${pendingField}`]: FieldValue.delete(),
+        'polygonCertifications.updatedAt': new Date(),
+      })
+      .catch(() => {});
+    throw e;
+  }
+}
+
 export async function certificarLectura(messageId: string, userId: string): Promise<string> {
   const timestamp = new Date().toISOString();
   const payload = `READ|${messageId}|${userId}|${timestamp}`;
