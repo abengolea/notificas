@@ -382,7 +382,7 @@ export function CampaignWizard({
       return;
     }
     const tandaNew = tandaSize > 0 ? Math.min(tandaSize, recipientTotal) : recipientTotal;
-    if (sendNow && creditos < tandaNew) {
+    if (sendNow && !isAdmin && creditos < tandaNew) {
       toast({ title: "Envíos insuficientes", description: `Esta tanda necesita ${tandaNew.toLocaleString("es-AR")}` , variant: "destructive" });
       return;
     }
@@ -1211,7 +1211,7 @@ export function CampaignWizard({
                 Consumo: <strong>1 envío</strong> por destinatario exitoso.
                 {isAdmin ? (
                   <>
-                    {" "}Saldo de {adminBillingEmail || "la empresa"}: <strong>{creditos.toLocaleString("es-AR")}</strong>.
+                    {" "}Se factura a {adminBillingEmail || "la empresa"}; no hace falta cargar saldo.
                   </>
                 ) : (
                   <> Tu saldo: <strong>{creditos}</strong>.</>
@@ -1234,12 +1234,6 @@ export function CampaignWizard({
                       Cada vez que dispares, salen como máximo este número de destinatarios nuevos. Hoy WhatsApp permite 2.000. Cuando te suban el cupo, cambialo (ej. 10.000) y volvé a enviar.
                     </p>
                   </div>
-                  {creditos < (tandaSize > 0 ? Math.min(tandaSize, recipientTotal) : recipientTotal) && (
-                    <p className="text-destructive">
-                      Saldo insuficiente para esta tanda — necesitás{" "}
-                      {(tandaSize > 0 ? Math.min(tandaSize, recipientTotal) : recipientTotal) - creditos} envíos más.
-                    </p>
-                  )}
                 </>
               ) : (
                 <>

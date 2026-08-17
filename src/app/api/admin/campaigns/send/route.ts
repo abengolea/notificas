@@ -3,7 +3,6 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { z } from 'zod';
 import { assertAdminSession } from '@/lib/assert-admin-session';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { normalizeEnviosDisponibles } from '@/lib/envios';
 import { enqueueCampaignFanout } from '@/lib/cloud-tasks';
 
 const bodySchema = z.object({
@@ -70,22 +69,6 @@ export async function POST(request: NextRequest) {
     const org = orgSnap.data() || {};
     const senderUid = String(campaign.senderUid || campaign.createdBy || org.adminUserId || '');
     const senderEmail = String(campaign.senderEmail || org.adminUserEmail || '');
-    if (!senderUid) {
-      return NextResponse.json({ error: 'La campaña no tiene usuario de cobro (senderUid)' }, { status: 400 });
-    }
-
-    const userSnap = await db.collection('users').doc(senderUid).get();
-    const creditos = normalizeEnviosDisponibles(userSnap.data()?.creditos);
-    if (creditos < thisRun) {
-      return NextResponse.json(
-        {
-          error: `Envíos insuficientes en ${senderEmail || senderUid}: esta tanda necesita ${thisRun}, hay ${creditos}`,
-          cobrosEsperados: thisRun,
-          creditos,
-        },
-        { status: 400 }
-      );
-    }
 
     const startedAt = campaign.startedAt ? {} : { startedAt: FieldValue.serverTimestamp() };
     await campRef.update({
@@ -94,6 +77,7 @@ export async function POST(request: NextRequest) {
       tandaCap,
       senderUid,
       senderEmail,
+      managedByAdmin: true,
       enqueuedAt: FieldValue.serverTimestamp(),
       ...startedAt,
     });
@@ -106,7 +90,7 @@ export async function POST(request: NextRequest) {
       tandaSize: dailyLimit,
       alreadySent,
       pendingThisTanda: thisRun,
-      creditos,
+      billedTo: senderEmail || org.nombre || campaign.orgId,
     });
   } catch (e: unknown) {
     console.error('POST /api/admin/campaigns/send', e);

@@ -252,12 +252,12 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
             {estadoBadge(c.estado)}
             {showEmail && <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5" />Email</span>}
             {showWa && <span className="inline-flex items-center gap-1"><MessageCircle className="h-3.5 w-3.5 text-emerald-600" />WhatsApp</span>}
-            <span>{data.org.nombre} · cobra {data.org.adminUserEmail}</span>
+            <span>{data.org.nombre} · se factura a {data.org.adminUserEmail || "la empresa"}</span>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
           {c.estado !== "cancelada" && (
-            <Button disabled={!canSend || sending || data.creditos < thisTanda} onClick={() => setConfirmSend(true)} className="gap-2">
+            <Button disabled={!canSend || sending} onClick={() => setConfirmSend(true)} className="gap-2">
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               {c.estado === "borrador" ? "Iniciar envío" : "Enviar esta tanda"}
             </Button>
@@ -310,7 +310,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
           <CardTitle>Límite por envío</CardTitle>
           <CardDescription>
             Cada vez que apretás Enviar, salen como máximo este número de destinatarios nuevos. Cuando WhatsApp te suba el cupo, cambialo y volvé a disparar.
-            Saldo: {data.creditos.toLocaleString("es-AR")} envíos.
+            Los envíos exitosos se facturan a {data.org.adminUserEmail || data.org.nombre}; no hace falta cargar saldo.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -330,11 +330,6 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
             Este envío mandaría <strong>{thisTanda.toLocaleString("es-AR")}</strong> nuevos
             {already > 0 ? ` (ya van ${already.toLocaleString("es-AR")})` : null}.
           </p>
-          {data.creditos < thisTanda && (
-            <p className="text-sm text-destructive">
-              Faltan envíos. Cargalos en Admin → Usuarios sobre {data.org.adminUserEmail}.
-            </p>
-          )}
         </CardContent>
       </Card>
 
@@ -434,8 +429,8 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
           <AlertDialogHeader>
             <AlertDialogTitle>¿Confirmar envío masivo?</AlertDialogTitle>
             <AlertDialogDescription>
-              Estás por encolar hasta {thisTanda.toLocaleString("es-AR")} notificaciones. Se descuentan créditos de{" "}
-              {data.org.adminUserEmail}. Si el día 1 falla mucho, no sigas.
+              Estás por encolar hasta {thisTanda.toLocaleString("es-AR")} notificaciones para {data.org.nombre}.
+              Se facturan los envíos exitosos; no se descuenta saldo. Si el día 1 falla mucho, no sigas.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

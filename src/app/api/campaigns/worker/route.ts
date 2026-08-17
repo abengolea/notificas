@@ -198,10 +198,12 @@ async function processMessage(
     if (m.estado === 'leido') return;
     if (m.estado === 'enviado' && m.creditApplied) return;
     if (!m.creditApplied) {
-      const uSnap = await t.get(userRef);
-      const c = normalizeEnviosDisponibles(uSnap.data()?.creditos);
-      if (c < 1) throw new Error('Sin envíos disponibles');
-      t.update(userRef, { creditos: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() });
+      if (campaign.managedByAdmin !== true) {
+        const uSnap = await t.get(userRef);
+        const c = normalizeEnviosDisponibles(uSnap.data()?.creditos);
+        if (c < 1) throw new Error('Sin envíos disponibles');
+        t.update(userRef, { creditos: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() });
+      }
     }
     const now = FieldValue.serverTimestamp();
     const channelUpdate: Record<string, unknown> = {
