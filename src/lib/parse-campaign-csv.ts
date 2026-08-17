@@ -1,9 +1,56 @@
 import type { CanalCampaign, RecipientEntry } from '@/lib/types';
 
-const PHONE_RE = /^\+?[\d\s\-().]{7,20}$/;
+const PHONE_E164_RE = /^\+\d{10,15}$/;
+const CSV_SEPARATOR_ERROR =
+  'El archivo usa punto y coma (;) como separador. Guardalo como CSV con coma (,) desde Excel: Archivo → Guardar como → CSV UTF-8 (delimitado por comas).';
 
 export function normalizePhone(raw: string): string {
   return raw.replace(/[\s\-().]/g, '');
+}
+
+export function phoneDigits(raw: string | undefined): string {
+  return (raw || '').replace(/\D/g, '');
+}
+
+/**
+ * Normaliza un teléfono argentino a E.164 con `+` (ej. +5491112345678).
+ *
+ * SYNC: la lógica de dígitos DEBE mantenerse igual a `formatPhoneForWhatsApp`
+ * en functions/index.js (allá se guarda sin `+`; acá con `+` para el CSV/UI).
+ * Si cambia una, cambiar la otra. Plan futuro: extraer a un paquete compartido
+ * (hoy Next.js y Cloud Functions no comparten módulos).
+ */
+export function toWhatsAppPhone(raw: string): string | undefined {
+  if (!raw || typeof raw !== 'string') return undefined;
+  let digits = raw.replace(/\D/g, '');
+  if (digits.length < 8) return undefined;
+  if (digits.startsWith('0')) digits = digits.slice(1);
+  let result: string;
+  if (digits.startsWith('54')) {
+    if (digits.startsWith('549') && digits.length >= 12) result = digits;
+    else if (digits[2] === '9') result = digits;
+    else result = '549' + digits.slice(2);
+  } else if (digits.startsWith('9') && digits.length === 11) {
+    result = '54' + digits;
+  } else {
+    result = '549' + digits;
+  }
+  if (result.length < 10) return undefined;
+  const e164 = `+${result}`;
+  return PHONE_E164_RE.test(e164) ? e164 : undefined;
+}
+
+export function isSyntheticCampaignEmail(email: string | undefined): boolean {
+  const e = (email || '').trim().toLowerCase();
+  return !e || e.endsWith('@wa.internal') || e.endsWith('@notificas.internal');
+}
+
+export function detectCsvSeparatorError(headerLine: string): string | null {
+  const commaCols = headerLine.split(',').map((c) => c.trim()).filter(Boolean);
+  if (commaCols.length >= 2) return null;
+  const semiCols = headerLine.split(';').map((c) => c.trim()).filter(Boolean);
+  if (semiCols.length >= 2) return CSV_SEPARATOR_ERROR;
+  return null;
 }
 
 export function csvPlaceholder(canal: CanalCampaign): string {
@@ -52,7 +99,7 @@ export function parseCsvDataLine(
   const nombre = cells[cols.iNombre] || '';
   const email = cols.iEmail >= 0 ? (cells[cols.iEmail] || '').toLowerCase() : `sin-email-${rowNumber}@wa.internal`;
   const rawPhone = cols.iTelefono >= 0 ? cells[cols.iTelefono] || undefined : undefined;
-  const telefono = rawPhone ? normalizePhone(rawPhone) : undefined;
+  const telefono = rawPhone ? toWhatsAppPhone(rawPhone) : undefined;
   const dni = cols.iDni >= 0 ? cells[cols.iDni] || undefined : undefined;
   const legajo = cols.iLegajo >= 0 ? cells[cols.iLegajo] || undefined : undefined;
   const needEmail = canal === 'email' || canal === 'ambos';
@@ -60,8 +107,32 @@ export function parseCsvDataLine(
   if (!nombre || !dni) return null;
   if (needEmail && !email.includes('@')) return null;
   if (needPhone && !telefono) return null;
-  if (telefono && !PHONE_RE.test(rawPhone || '')) return null;
   return { email, nombre, telefono, dni, legajo };
+}
+
+export function dedupeRecipientsForCanal(
+  rows: RecipientEntry[],
+  canal: CanalCampaign
+): { rows: RecipientEntry[]; phoneDuplicates: number } {
+  const needPhone = canal === 'whatsapp' || canal === 'ambos';
+  if (!needPhone) return { rows, phoneDuplicates: 0 };
+  const seen = new Set<string>();
+  const out: RecipientEntry[] = [];
+  let phoneDuplicates = 0;
+  for (const row of rows) {
+    const key = phoneDigits(row.telefono);
+    if (!key) {
+      out.push(row);
+      continue;
+    }
+    if (seen.has(key)) {
+      phoneDuplicates += 1;
+      continue;
+    }
+    seen.add(key);
+    out.push(row);
+  }
+  return { rows: out, phoneDuplicates };
 }
 
 export type CsvInspectResult = {
@@ -76,6 +147,10 @@ export async function inspectCampaignCsv(file: File, canal: CanalCampaign): Prom
   const text = await file.text();
   const lines = text.split(/\r?\n/);
   const headerLine = lines.find((l) => l.trim()) || '';
+  const sepErr = detectCsvSeparatorError(headerLine);
+  if (sepErr) {
+    return { error: sepErr, count: 0, skipped: 0, sample: [] };
+  }
   const cols = parseCsvHeaderLine(headerLine, canal);
   if (!cols) {
     return {
@@ -85,6 +160,8 @@ export async function inspectCampaignCsv(file: File, canal: CanalCampaign): Prom
       sample: [],
     };
   }
+  const needPhone = canal === 'whatsapp' || canal === 'ambos';
+  const seenPhones = new Set<string>();
   let count = 0;
   let skipped = 0;
   const sample: string[] = [];
@@ -95,6 +172,14 @@ export async function inspectCampaignCsv(file: File, canal: CanalCampaign): Prom
     if (!row) {
       skipped += 1;
       continue;
+    }
+    if (needPhone) {
+      const key = phoneDigits(row.telefono);
+      if (key && seenPhones.has(key)) {
+        skipped += 1;
+        continue;
+      }
+      if (key) seenPhones.add(key);
     }
     count += 1;
     if (sample.length < 3) sample.push(row.nombre);
@@ -110,16 +195,35 @@ export async function inspectCampaignCsv(file: File, canal: CanalCampaign): Prom
   return { error: null, count, skipped, sample };
 }
 
-/** Parsea un CSV completo (listas chicas). Para 150k usar inspect + upload por chunks. */
-export function parseCsvQuick(text: string, canal: CanalCampaign): RecipientEntry[] {
+export type ParseCsvQuickResult = {
+  rows: RecipientEntry[];
+  phoneDuplicates: number;
+  error: string | null;
+};
+
+export function parseCsvQuickResult(text: string, canal: CanalCampaign): ParseCsvQuickResult {
   const lines = text.split(/\r?\n/).filter(Boolean);
-  if (!lines.length) return [];
+  if (!lines.length) return { rows: [], phoneDuplicates: 0, error: null };
+  const sepErr = detectCsvSeparatorError(lines[0]);
+  if (sepErr) return { rows: [], phoneDuplicates: 0, error: sepErr };
   const cols = parseCsvHeaderLine(lines[0], canal);
-  if (!cols) return [];
+  if (!cols) {
+    return {
+      rows: [],
+      phoneDuplicates: 0,
+      error: `CSV inválido. Campos requeridos: ${csvCamposRequeridos(canal)}`,
+    };
+  }
   const out: RecipientEntry[] = [];
   for (let r = 1; r < lines.length; r++) {
     const row = parseCsvDataLine(lines[r], cols, canal, r);
     if (row) out.push(row);
   }
-  return out;
+  const deduped = dedupeRecipientsForCanal(out, canal);
+  return { rows: deduped.rows, phoneDuplicates: deduped.phoneDuplicates, error: null };
+}
+
+/** Parsea un CSV completo (listas chicas). Para 150k usar inspect + upload por chunks. */
+export function parseCsvQuick(text: string, canal: CanalCampaign): RecipientEntry[] {
+  return parseCsvQuickResult(text, canal).rows;
 }
