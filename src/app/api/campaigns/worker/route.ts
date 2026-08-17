@@ -167,44 +167,13 @@ async function processMessage(
   // Escribir whatsapp_ids aquí (en el worker de Next.js, garantizando await antes de responder HTTP).
   // El CF escribe el WAMID en mail.whatsappMessageId antes de responder; lo indexamos en whatsapp_ids
   // para que el webhook de Meta resuelva wamid → mailDocId → campaign_message.
-  // También procesamos eventos pendientes guardados si el webhook llegó antes que este write.
+  let wamid: string | undefined;
   if (canal === 'whatsapp' || canal === 'ambos') {
     const mailSnap = await db.collection('mail').doc(mailId).get();
-    const wamid = mailSnap.data()?.whatsappMessageId as string | undefined;
+    const mailData = mailSnap.data();
+    wamid = (mailData?.whatsappMessageId || mailData?.tracking?.whatsappMessageId) as string | undefined;
     if (wamid) {
       await db.collection('whatsapp_ids').doc(wamid).set({ mailDocId: mailId }, { merge: true });
-
-      // Procesar eventos WA pendientes que llegaron antes de que existiera whatsapp_ids
-      const pendingSnap = await db.doc(`pending_wa_webhooks/${wamid}`).get();
-      if (pendingSnap.exists) {
-        const pending = pendingSnap.data()!;
-        const st = pending.statusType as string;
-        const now = FieldValue.serverTimestamp();
-        const update: Record<string, unknown> = {};
-        if (st === 'delivered') {
-          update.waEstado = 'entregado';
-          update.waEntregadoAt = now;
-        } else if (st === 'read') {
-          update.waEstado = 'leido';
-          update.waLeidoAt = now;
-          update.estado = 'leido';
-          update.leidoAt = now;
-          await db.collection('campaigns').doc(campaignId).update({ 'stats.leidos': FieldValue.increment(1) });
-        } else if (st === 'failed') {
-          update.waEstado = 'error';
-        }
-        if (Object.keys(update).length) await msgRef.update(update);
-        if (st === 'delivered' || st === 'read') {
-          void recordEventLeaf({
-            campaignId,
-            orgId,
-            messageId: messageDocId,
-            eventType: st === 'delivered' ? 'wa_delivered' : 'wa_read',
-          }).catch((e) => console.warn('⚠️ Hoja de hecho WA pendiente:', e?.message));
-        }
-        await db.doc(`pending_wa_webhooks/${wamid}`).delete();
-        console.log(`✅ Evento WA pendiente '${st}' procesado para wamid=${wamid}`);
-      }
     }
   }
 
@@ -221,11 +190,13 @@ async function processMessage(
   });
 
   // Descontar crédito y marcar enviado.
+  // No degradar waEstado si un webhook (o pending) ya lo subió a entregado/leido.
   const userRef = db.collection('users').doc(uid);
   await db.runTransaction(async (t) => {
     const msgT = await t.get(msgRef);
     const m = msgT.data()!;
-    if (m.estado === 'enviado' || m.estado === 'leido') return;
+    if (m.estado === 'leido') return;
+    if (m.estado === 'enviado' && m.creditApplied) return;
     if (!m.creditApplied) {
       const uSnap = await t.get(userRef);
       const c = normalizeEnviosDisponibles(uSnap.data()?.creditos);
@@ -235,20 +206,62 @@ async function processMessage(
     const now = FieldValue.serverTimestamp();
     const channelUpdate: Record<string, unknown> = {
       creditApplied: true,
-      estado: 'enviado',
-      enviadoAt: now,
       errorMsg: null,
     };
+    if (m.estado !== 'enviado' && m.estado !== 'leido') {
+      channelUpdate.estado = 'enviado';
+      channelUpdate.enviadoAt = now;
+    }
     if (canal === 'email' || canal === 'ambos') {
-      channelUpdate.emailEstado = 'enviado';
-      channelUpdate.emailEnviadoAt = now;
+      if (m.emailEstado !== 'leido') {
+        channelUpdate.emailEstado = 'enviado';
+        channelUpdate.emailEnviadoAt = now;
+      }
     }
     if (canal === 'whatsapp' || canal === 'ambos') {
-      channelUpdate.waEstado = 'enviado';
-      channelUpdate.waEnviadoAt = now;
+      const wa = String(m.waEstado || '');
+      if (wa !== 'entregado' && wa !== 'leido') {
+        channelUpdate.waEstado = 'enviado';
+        channelUpdate.waEnviadoAt = now;
+      }
     }
     t.update(msgRef, channelUpdate);
   });
+
+  // Procesar eventos WA que llegaron antes de whatsapp_ids (después de marcar enviado,
+  // para no pisar entregado/leido con el transaction de arriba).
+  if (wamid) {
+    const pendingSnap = await db.doc(`pending_wa_webhooks/${wamid}`).get();
+    if (pendingSnap.exists) {
+      const pending = pendingSnap.data()!;
+      const st = pending.statusType as string;
+      const now = FieldValue.serverTimestamp();
+      const update: Record<string, unknown> = {};
+      if (st === 'delivered') {
+        update.waEstado = 'entregado';
+        update.waEntregadoAt = now;
+      } else if (st === 'read') {
+        update.waEstado = 'leido';
+        update.waLeidoAt = now;
+        update.estado = 'leido';
+        update.leidoAt = now;
+        await db.collection('campaigns').doc(campaignId).update({ 'stats.leidos': FieldValue.increment(1) });
+      } else if (st === 'failed') {
+        update.waEstado = 'error';
+      }
+      if (Object.keys(update).length) await msgRef.update(update);
+      if (st === 'delivered' || st === 'read') {
+        void recordEventLeaf({
+          campaignId,
+          orgId,
+          messageId: messageDocId,
+          eventType: st === 'delivered' ? 'wa_delivered' : 'wa_read',
+        }).catch((e) => console.warn('⚠️ Hoja de hecho WA pendiente:', e?.message));
+      }
+      await db.doc(`pending_wa_webhooks/${wamid}`).delete();
+      console.log(`✅ Evento WA pendiente '${st}' procesado para wamid=${wamid}`);
+    }
+  }
 }
 
 async function refreshStats(

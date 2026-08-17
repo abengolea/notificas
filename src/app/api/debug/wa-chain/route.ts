@@ -66,8 +66,11 @@ export async function GET(request: NextRequest) {
           recipientPhone: d.recipientPhone,
           waOnly: d.waOnly,
           whatsappMessageId: wamid,
-          trackingWhatsappDelivered: d.tracking?.whatsappDelivered,
-          trackingWhatsappRead: d.tracking?.whatsappRead,
+          trackingWhatsappDelivered: d.tracking?.whatsappDelivered ?? false,
+          trackingWhatsappRead: d.tracking?.whatsappRead ?? false,
+          waMovements: (d.tracking?.movements ?? [])
+            .filter((m: { type?: string }) => String(m.type || '').startsWith('whatsapp_'))
+            .map((m: { type?: string; timestamp?: string }) => ({ type: m.type, timestamp: m.timestamp })),
         };
       } else {
         mailData = { exists: false };
@@ -76,10 +79,15 @@ export async function GET(request: NextRequest) {
 
     // 3. Leer whatsapp_ids
     let waIdEntry: Record<string, unknown> | null = null;
+    let pendingEntry: Record<string, unknown> | null = null;
     if (wamid) {
       const waSnap = await db.doc(`whatsapp_ids/${wamid}`).get();
       waIdEntry = waSnap.exists
         ? { exists: true, ...waSnap.data() }
+        : { exists: false };
+      const pendingSnap = await db.doc(`pending_wa_webhooks/${wamid}`).get();
+      pendingEntry = pendingSnap.exists
+        ? { exists: true, ...pendingSnap.data() }
         : { exists: false };
     }
 
@@ -93,6 +101,7 @@ export async function GET(request: NextRequest) {
       mailDoc: mailData,
       wamid,
       whatsappIdsEntry: waIdEntry,
+      pendingWebhook: pendingEntry,
       diagnostico: !mailId
         ? '❌ Sin mailId en campaign_message'
         : !mailData?.exists
@@ -101,7 +110,9 @@ export async function GET(request: NextRequest) {
         ? '❌ Sin whatsappMessageId en mail doc (WA no se envió o no se guardó el WAMID)'
         : !waIdEntry?.exists
         ? '❌ whatsapp_ids no existe (bug fire-and-forget: deployar CF fix)'
-        : '✅ Cadena completa — webhook debería funcionar',
+        : mailData?.trackingWhatsappDelivered
+        ? '✅ Cadena completa y Meta ya reportó delivered en este mail doc'
+        : '✅ Cadena completa — si el dashboard sigue en enviado, el webhook no actualizó este mail (revisar callback URL de Meta)',
     };
   }));
 

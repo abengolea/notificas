@@ -3,6 +3,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { recordEventLeaf } from "@/lib/campaign-integrity";
 
+// Callback URL canónica en Meta Developer Portal (app 1022568949756440):
+//   https://notificas.com.ar/api/whatsapp/webhook
+//   objeto: whatsapp_business_account → campo: messages
 // GET: Meta verifica el webhook con hub.challenge
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -21,8 +24,10 @@ export async function GET(request: NextRequest) {
 
 // POST: Meta envía eventos de estado (sent/delivered/read/failed)
 export async function POST(request: NextRequest) {
-  // Responder 200 inmediatamente — Meta reintenta si no recibe respuesta rápida
   const body = await request.json().catch(() => null);
+  console.log(
+    `📥 WA webhook POST object=${body?.object ?? "null"} entries=${body?.entry?.length ?? 0}`
+  );
 
   // Procesar de forma síncrona antes de retornar — Cloud Run mata promesas en background
   // al enviar la respuesta HTTP. Meta tolera hasta ~20s; nuestras queries de Firestore son <5s.
@@ -31,6 +36,15 @@ export async function POST(request: NextRequest) {
   );
 
   return new NextResponse("OK", { status: 200 });
+}
+
+function wamidLookupKeys(wamid: string): string[] {
+  const id = wamid.trim();
+  if (!id) return [];
+  const keys = [id];
+  if (id.startsWith("wamid.")) keys.push(id.slice("wamid.".length));
+  else keys.push(`wamid.${id}`);
+  return [...new Set(keys)];
 }
 
 async function processWebhookBody(body: any) {
@@ -64,22 +78,29 @@ async function processStatus(status: any) {
 
   // Resolver mailDocId: primero por índice whatsapp_ids, luego fallback por query en mail.
   let mailDocId: string | null = null;
-  const idDoc = await db.doc(`whatsapp_ids/${wamid}`).get();
-  if (idDoc.exists) {
-    mailDocId = idDoc.data()!.mailDocId as string;
-  } else {
+  for (const key of wamidLookupKeys(wamid)) {
+    const idDoc = await db.doc(`whatsapp_ids/${key}`).get();
+    if (idDoc.exists) {
+      mailDocId = idDoc.data()!.mailDocId as string;
+      break;
+    }
+  }
+  if (!mailDocId) {
     // Fallback: buscar en colección mail por whatsappMessageId (waOnly) o tracking.whatsappMessageId
-    const byWamid = await db.collection('mail')
-      .where('whatsappMessageId', '==', wamid)
-      .limit(1).get();
-    if (!byWamid.empty) {
-      mailDocId = byWamid.docs[0].id;
-    } else {
-      const byTracking = await db.collection('mail')
-        .where('tracking.whatsappMessageId', '==', wamid)
+    for (const key of wamidLookupKeys(wamid)) {
+      const byWamid = await db.collection("mail")
+        .where("whatsappMessageId", "==", key)
+        .limit(1).get();
+      if (!byWamid.empty) {
+        mailDocId = byWamid.docs[0].id;
+        break;
+      }
+      const byTracking = await db.collection("mail")
+        .where("tracking.whatsappMessageId", "==", key)
         .limit(1).get();
       if (!byTracking.empty) {
         mailDocId = byTracking.docs[0].id;
+        break;
       }
     }
     if (mailDocId) {
