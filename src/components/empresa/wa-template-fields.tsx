@@ -22,7 +22,7 @@ import {
   usesNotificasDefaultTemplate,
 } from "@/lib/wa-template-fields";
 
-const KNOWN_FIELDS = new Set(WA_TEMPLATE_VARIABLE_OPTIONS.map((o) => o.value));
+const KNOWN_FIELDS: Set<string> = new Set(WA_TEMPLATE_VARIABLE_OPTIONS.map((o) => o.value));
 const CUSTOM_FIELD = "__custom__";
 
 export type WaTemplateFieldsValue = {
