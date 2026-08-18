@@ -34,6 +34,7 @@ const whatsappPhoneNumberId = defineSecret('WHATSAPP_PHONE_NUMBER_ID');
 const smtpPass = defineSecret('SMTP_PASS');
 // Mismo valor que App Hosting POLYGON_CERTIFY_SECRET — protege /api/polygon/certify-event
 const polygonCertifySecret = defineSecret('POLYGON_CERTIFY_SECRET');
+const campaignWorkerSecret = defineSecret('CAMPAIGN_WORKER_SECRET');
 // Token de verificación del webhook de WhatsApp (se define en Meta Developer Portal)
 const whatsappVerifyToken = defineSecret('WHATSAPP_VERIFY_TOKEN');
 // App Secret de Meta (firma X-Hub-Signature-256 del webhook)
@@ -2333,6 +2334,41 @@ exports.retryCertifyPendingSends = onSchedule(
     }
 
     console.log(`🔄 retryCertifyPendingSends: ${ok} OK, ${fail} fallidos`);
+  }
+);
+
+/**
+ * Red de seguridad: si el Cloud Task de las 9:00 no arrancó el lote, a las 9:15
+ * recorre campañas en "enviando" y dispara /api/campaigns/daily-cron.
+ */
+exports.resumeCampaignDailyTandas = onSchedule(
+  {
+    schedule: '15 9 * * *',
+    timeZone: 'America/Argentina/Buenos_Aires',
+    region: REGION,
+    secrets: [campaignWorkerSecret],
+    timeoutSeconds: 540,
+  },
+  async () => {
+    const secret = (campaignWorkerSecret.value() || '').trim();
+    if (!secret) {
+      console.error('resumeCampaignDailyTandas: CAMPAIGN_WORKER_SECRET vacío');
+      return;
+    }
+    const res = await fetch(`${APP_HOSTING_URL}/api/campaigns/daily-cron`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Worker-Secret': secret,
+      },
+      body: '{}',
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      console.error('resumeCampaignDailyTandas HTTP', res.status, text.slice(0, 500));
+      return;
+    }
+    console.log('resumeCampaignDailyTandas', text.slice(0, 1500));
   }
 );
 

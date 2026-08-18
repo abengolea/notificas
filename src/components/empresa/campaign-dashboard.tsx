@@ -30,6 +30,7 @@ import {
   Loader2,
   RefreshCw,
   Play,
+  Pause,
   Pencil,
   Mail,
   MessageCircle,
@@ -42,6 +43,8 @@ import {
   Save,
 } from "lucide-react";
 import { canEditWhatsAppTemplate, isUnsentCampaign } from "@/lib/campaign-edit";
+import { DailyQuotaField } from "@/components/empresa/daily-quota-field";
+import { DEFAULT_TANDA_SIZE } from "@/lib/campaign-tanda";
 import { explainWhatsAppSendError, WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-template-fields";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 import {
@@ -82,6 +85,7 @@ function campaignEstadoBadge(estado: string) {
     case "borrador":   return <Badge variant="secondary">borrador</Badge>;
     case "enviando":   return <Badge className="bg-blue-600 hover:bg-blue-600">enviando</Badge>;
     case "completada": return <Badge className="bg-emerald-600 hover:bg-emerald-600">completada</Badge>;
+    case "pausada":   return <Badge className="bg-amber-600 hover:bg-amber-600">pausada</Badge>;
     case "cancelada":  return <Badge variant="destructive">cancelada</Badge>;
     default:           return <Badge variant="outline">{estado}</Badge>;
   }
@@ -241,6 +245,7 @@ export function CampaignDashboard({
   const [debouncedQ, setDebouncedQ] = useState("");
   const [selected, setSelected]     = useState<Set<string>>(new Set());
   const [busy, setBusy]             = useState(false);
+  const [quotaDraft, setQuotaDraft] = useState(DEFAULT_TANDA_SIZE);
   const [refreshKey, setRefreshKey] = useState(0);
   const [verifyTarget, setVerifyTarget] = useState<string | undefined>();
   const [savingTpl, setSavingTpl] = useState(false);
@@ -263,6 +268,11 @@ export function CampaignDashboard({
     );
     setTplUrlButton(campaign.waUrlButton === true);
   }, [campaign]);
+  useEffect(() => {
+    if (typeof campaign?.tandaSize === "number" && campaign.tandaSize > 0) {
+      setQuotaDraft(campaign.tandaSize);
+    }
+  }, [campaign?.id, campaign?.tandaSize]);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q), 400);
     return () => clearTimeout(t);
@@ -312,14 +322,35 @@ export function CampaignDashboard({
     }
   }
 
+  async function guardarTopeDiario() {
+    if (!campaign) return;
+    setBusy(true);
+    try {
+      const res = await campaignRequest(mode, "/api/campaigns/quota", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId, orgId, tandaSize: quotaDraft }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se pudo guardar");
+      toast({
+        title: "Tope diario guardado",
+        description: `Los próximos días salen de a ${quotaDraft.toLocaleString("es-AR")}. El lote de hoy no cambia.`,
+      });
+    } catch (e: unknown) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Falló", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function descargarReporte() {
     setBusy(true);
     try {
-      const p = new URLSearchParams({
-        campaignId, orgId,
-        estado: filter === "all" ? "todos" : filter,
-        ...(q.trim() ? { nombre: q.trim() } : {}),
-      });
+      const p = new URLSearchParams({ campaignId, orgId });
+      if (filter === "waWmidMissing") p.set("flag", "waWmidMissing");
+      else p.set("estado", filter === "all" ? "todos" : filter);
+      if (q.trim()) p.set("nombre", q.trim());
       const res = await campaignRequest(mode, `/api/campaigns/report?${p}`);
       if (!res.ok) { toast({ title: "No se pudo generar el PDF", variant: "destructive" }); return; }
       const blob = await res.blob();
@@ -329,21 +360,37 @@ export function CampaignDashboard({
       a.download = `reporte-${suffix ? suffix + "-" : ""}${campaignId}.pdf`;
       a.click();
       URL.revokeObjectURL(a.href);
+      if (res.headers.get("X-Notificas-Truncated") === "1") {
+        toast({
+          title: "PDF recortado",
+          description: `El PDF muestra como máximo 500 filas. Para el listado completo usá el CSV.`,
+        });
+      }
     } finally {
       setBusy(false);
     }
   }
 
-  async function descargarCsv() {
+  async function descargarCsv(kind: "vista" | "errores" | "completo") {
     setBusy(true);
     try {
-      const url = `/api/campaigns/export?campaignId=${encodeURIComponent(campaignId)}&orgId=${encodeURIComponent(orgId)}`;
+      const p = new URLSearchParams({ campaignId, orgId });
+      if (kind === "errores") p.set("estado", "error");
+      else if (kind === "vista") {
+        if (filter === "waWmidMissing") p.set("flag", "waWmidMissing");
+        else if (filter !== "all") p.set("estado", filter);
+      }
+      if (kind === "completo") {
+        toast({ title: "Armando CSV completo", description: "En campañas grandes puede tardar unos minutos." });
+      }
+      const url = `/api/campaigns/export?${p}`;
       const res = await campaignRequest(mode, url);
       if (!res.ok) { toast({ title: "No se pudo generar el CSV", variant: "destructive" }); return; }
       const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `evidencia-${campaignId.slice(0, 8)}.csv`;
+      const tag = kind === "errores" ? "errores" : kind === "vista" && filter !== "all" ? filter : "completo";
+      a.download = `evidencia-${tag}-${campaignId.slice(0, 8)}.csv`;
       a.click();
       URL.revokeObjectURL(a.href);
     } finally {
@@ -404,6 +451,52 @@ export function CampaignDashboard({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error");
       toast({ title: "Campaña cancelada", description: "Los mensajes pendientes no se enviarán." });
+    } catch (e: unknown) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Falló", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function pausarCampana() {
+    if (!campaign) return;
+    setBusy(true);
+    try {
+      const url = isAdmin ? "/api/admin/campaigns/pause" : "/api/campaigns/pause";
+      const res = await campaignRequest(mode, url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isAdmin ? { campaignId } : { campaignId, orgId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error");
+      toast({ title: "Campaña pausada", description: "El lote de mañana no arranca hasta que la reanudés." });
+    } catch (e: unknown) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Falló", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reanudarCampana() {
+    if (!campaign) return;
+    setBusy(true);
+    try {
+      const url = isAdmin ? "/api/admin/campaigns/resume" : "/api/campaigns/resume";
+      const res = await campaignRequest(mode, url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isAdmin ? { campaignId } : { campaignId, orgId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error");
+      toast({ title: "Campaña reanudada" });
+    } catch (e: unknown) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Falló", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  }
     } catch (e: unknown) {
       toast({ title: "Error", description: e instanceof Error ? e.message : "Falló", variant: "destructive" });
     } finally {
@@ -548,6 +641,18 @@ export function CampaignDashboard({
             </Button>
           )}
           {campaign.estado === "enviando" && (
+            <Button variant="outline" onClick={pausarCampana} disabled={busy} className="gap-2">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4" />}
+              Pausar campaña
+            </Button>
+          )}
+          {campaign.estado === "pausada" && (
+            <Button onClick={reanudarCampana} disabled={busy} className="gap-2">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+              Reanudar
+            </Button>
+          )}
+          {(campaign.estado === "enviando" || campaign.estado === "pausada") && (
             <Button variant="destructive" onClick={cancelarCampana} disabled={busy} className="gap-2">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
               Cancelar campaña
@@ -590,27 +695,31 @@ export function CampaignDashboard({
                 Descargar <ChevronDown className="h-3 w-3 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuContent align="end" className="w-72">
               <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                PDF — imprime el filtro activo (máx 500 filas)
+                PDF — para imprimir (máx. 500 filas)
               </DropdownMenuLabel>
               <DropdownMenuItem onClick={descargarReporte} className="gap-2">
                 <Download className="h-4 w-4" />
-                <span>
-                  PDF
-                  {(filter !== "all" || q.trim()) && (
-                    <span className="ml-1 text-xs text-muted-foreground">
-                      ({[filter !== "all" ? filter : "", q.trim() ? `"${q.trim()}"` : ""].filter(Boolean).join(" · ")})
-                    </span>
-                  )}
-                </span>
+                PDF de esta vista
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                CSV — evidencia completa sin límite
+                Excel / CSV — sin tope de filas
               </DropdownMenuLabel>
-              <DropdownMenuItem onClick={descargarCsv} className="gap-2">
-                <Download className="h-4 w-4" /> CSV con TX hashes y WAMID
+              <DropdownMenuItem onClick={() => descargarCsv("vista")} className="gap-2">
+                <Download className="h-4 w-4" />
+                CSV de esta vista
+              </DropdownMenuItem>
+              {stats && stats.errores > 0 && (
+                <DropdownMenuItem onClick={() => descargarCsv("errores")} className="gap-2">
+                  <Download className="h-4 w-4" />
+                  CSV solo errores ({stats.errores.toLocaleString("es-AR")})
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => descargarCsv("completo")} className="gap-2">
+                <Download className="h-4 w-4" />
+                CSV de toda la campaña
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -660,6 +769,23 @@ export function CampaignDashboard({
               <Progress value={enviadoPct} className="h-2" />
             </div>
           )}
+          {mode === "empresa" && !campaign.simulated && showWa && campaign.estado !== "cancelada" && campaign.estado !== "completada" && (
+            <div className="rounded-lg border bg-card p-4 space-y-3">
+              <DailyQuotaField
+                value={quotaDraft}
+                onChange={setQuotaDraft}
+                hint={
+                  fmtTs(campaign.nextDailyAt)
+                    ? `El lote de hoy ya está fijado. Próximo arranque: ${fmtTs(campaign.nextDailyAt)}.`
+                    : "Cuando Meta aumente el cupo del número, subí este valor y guardá. Rige mañana a las 9:00."
+                }
+              />
+              <Button variant="secondary" size="sm" disabled={busy || quotaDraft === (campaign.tandaSize || 0)} onClick={() => void guardarTopeDiario()} className="gap-2">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Guardar tope de los próximos días
+              </Button>
+            </div>
+          )}
         </>
       )}
       </>
@@ -678,20 +804,31 @@ export function CampaignDashboard({
                 Descargar <ChevronDown className="h-3 w-3 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuContent align="end" className="w-72">
               <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                PDF — imprime el filtro activo (máx 500 filas)
+                PDF — para imprimir (máx. 500 filas)
               </DropdownMenuLabel>
               <DropdownMenuItem onClick={descargarReporte} className="gap-2">
                 <Download className="h-4 w-4" />
-                PDF
+                PDF de esta vista
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                CSV — evidencia completa sin límite
+                Excel / CSV — sin tope de filas
               </DropdownMenuLabel>
-              <DropdownMenuItem onClick={descargarCsv} className="gap-2">
-                <Download className="h-4 w-4" /> CSV con TX hashes y WAMID
+              <DropdownMenuItem onClick={() => descargarCsv("vista")} className="gap-2">
+                <Download className="h-4 w-4" />
+                CSV de esta vista
+              </DropdownMenuItem>
+              {stats && stats.errores > 0 && (
+                <DropdownMenuItem onClick={() => descargarCsv("errores")} className="gap-2">
+                  <Download className="h-4 w-4" />
+                  CSV solo errores ({stats.errores.toLocaleString("es-AR")})
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => descargarCsv("completo")} className="gap-2">
+                <Download className="h-4 w-4" />
+                CSV de toda la campaña
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

@@ -426,17 +426,29 @@ async function processMessage(
   return 'sent';
 }
 
-async function applyMessageStats(
+async function applyWorkerStats(
   campRef: FirebaseFirestore.DocumentReference,
-  result: 'sent' | 'error' | 'skipped'
+  sent: number,
+  errors: number
 ): Promise<void> {
-  if (result === 'skipped') return;
+  const done = sent + errors;
+  if (done <= 0) return;
   const updates: Record<string, unknown> = {
-    'stats.pendientes': FieldValue.increment(-1),
+    'stats.pendientes': FieldValue.increment(-done),
   };
-  if (result === 'sent') updates['stats.enviados'] = FieldValue.increment(1);
-  if (result === 'error') updates['stats.errores'] = FieldValue.increment(1);
-  await campRef.update(updates);
+  if (sent > 0) updates['stats.enviados'] = FieldValue.increment(sent);
+  if (errors > 0) updates['stats.errores'] = FieldValue.increment(errors);
+  let last: unknown;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      await campRef.update(updates);
+      return;
+    } catch (e) {
+      last = e;
+      await new Promise((r) => setTimeout(r, 100 * 2 ** attempt));
+    }
+  }
+  throw last instanceof Error ? last : new Error('No se pudieron actualizar stats');
 }
 
 export async function POST(request: NextRequest) {
@@ -464,11 +476,16 @@ export async function POST(request: NextRequest) {
   }
 
   const campaign = campSnap.data()!;
-  if (campaign.estado === 'cancelada') {
-    return NextResponse.json({ skipped: true, reason: 'cancelada' });
+  if (campaign.estado === 'cancelada' || campaign.estado === 'pausada') {
+    return NextResponse.json({ skipped: true, reason: String(campaign.estado) });
   }
 
   let sent = 0, errors = 0, skipped = 0;
+
+  const flushStatsAndRethrow = async (err: unknown): Promise<never> => {
+    await applyWorkerStats(campRef, sent, errors).catch(() => undefined);
+    throw err;
+  };
 
   for (const messageDocId of messageDocIds) {
     try {
@@ -476,15 +493,19 @@ export async function POST(request: NextRequest) {
       if (result === 'sent') sent++;
       else if (result === 'error') errors++;
       else skipped++;
-      await applyMessageStats(campRef, result);
     } catch (e: unknown) {
-      if (e instanceof WorkerRetryError) throw e;
+      if (e instanceof WorkerRetryError) await flushStatsAndRethrow(e);
       const message = e instanceof Error ? e.message : String(e);
       console.error(`[campaign-worker] Error procesando ${messageDocId}:`, message);
       try {
         const failed = await db.collection('campaign_messages').doc(messageDocId).get();
         const failedData = failed.data();
-        if (failedData?.estado === 'error') {
+        const st = String(failedData?.estado || '');
+        if (st === 'enviado' || st === 'leido') {
+          sent++;
+          continue;
+        }
+        if (st === 'error') {
           skipped++;
           continue;
         }
@@ -500,13 +521,13 @@ export async function POST(request: NextRequest) {
           });
         }
         errors++;
-        await applyMessageStats(campRef, 'error');
       } catch {
         // Si esto falla, Cloud Tasks reintentará la tarea completa.
       }
     }
   }
 
+  await applyWorkerStats(campRef, sent, errors);
   await maybeCompleteCampaign(campRef);
 
   return NextResponse.json({ ok: true, sent, errors, skipped });

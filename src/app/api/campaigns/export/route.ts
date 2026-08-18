@@ -22,7 +22,6 @@ function csvRow(fields: unknown[]): string {
   return fields.map(csvEscape).join(',');
 }
 
-/** Lee mail docs en paralelo, en chunks de 100 para no saturar Firestore. */
 async function fetchMailDocs(
   db: FirebaseFirestore.Firestore,
   mailIds: string[]
@@ -39,11 +38,105 @@ async function fetchMailDocs(
   return result;
 }
 
+const HEADER = [
+  'N°',
+  'Nombre',
+  'Email',
+  'Teléfono',
+  'DNI',
+  'Legajo',
+  'Estado WA/Email',
+  'Estado WA entrega',
+  'Error',
+  'Enviado (UTC)',
+  'Leído (UTC)',
+  'Click enlace (UTC)',
+  'WAMID (WhatsApp)',
+  'SMTP Message-ID',
+  'Hash contenido',
+  'Hash aviso WhatsApp',
+  'Hash snapshot',
+  'Merkle root',
+  'TX Polygon — envío',
+  'TX Polygon — lectura',
+  'Verificar en Polygonscan',
+  'Verificar en Notificas',
+];
+
+function messagesQuery(
+  db: FirebaseFirestore.Firestore,
+  campaignId: string,
+  estado: string,
+  flag: string,
+): FirebaseFirestore.Query {
+  let q: FirebaseFirestore.Query = db.collection('campaign_messages').where('campaignId', '==', campaignId);
+  if (flag === 'waWmidMissing') q = q.where('waWmidMissing', '==', true);
+  else if (estado && estado !== 'all' && estado !== 'todos') q = q.where('estado', '==', estado);
+  return q;
+}
+
+function rowFields(
+  rowNum: number,
+  m: FirebaseFirestore.DocumentData,
+  mail: FirebaseFirestore.DocumentData,
+  docId: string,
+  mailId: string | undefined,
+): unknown[] {
+  const wamid = String(mail.whatsappMessageId || mail.tracking?.whatsappMessageId || '');
+  const phone = String(mail.recipientPhone || m.recipientTelefono || '');
+  const txEnvio = String(
+    m.integrity?.send?.txHash || mail.polygonCertifications?.send || m.txHashEnvio || ''
+  );
+  const txLectura = String(mail.polygonCertifications?.read || m.txHashLectura || '');
+  const polygonscanUrl = txEnvio ? `https://polygonscan.com/tx/${txEnvio}` : '';
+  const appBase = (process.env.NEXT_PUBLIC_APP_URL || 'https://notificas.com.ar').replace(/\/$/, '');
+  const verifyUrl = `${appBase}/verify?id=${encodeURIComponent(mailId || docId)}`;
+  const contentHash = String(m.integrity?.send?.contentHash || mail.polygonCertifications?.contentHash || '');
+  const waBodyHash = String(m.integrity?.send?.waBodyHash || mail.polygonCertifications?.waBodyHash || '');
+  const snapshotHash = String(mail.evidenceSnapshotHash || '');
+  const merkleRoot = String(m.integrity?.send?.merkleRoot || '');
+  const smtpId = String(mail.smtpMessageId || mail.delivery?.info || '');
+  const movements: { type?: string }[] = Array.isArray(mail.tracking?.movements)
+    ? mail.tracking.movements
+    : [];
+  const waDelivery =
+    movements.find((mv) => mv.type === 'whatsapp_read')?.type ||
+    movements.find((mv) => mv.type === 'whatsapp_delivered')?.type ||
+    movements.find((mv) => mv.type === 'whatsapp_sent')?.type ||
+    '';
+  return [
+    rowNum,
+    m.recipientNombre || '',
+    m.recipientEmail || '',
+    phone,
+    m.recipientDni || '',
+    m.recipientLegajo || '',
+    m.estado || '',
+    waDelivery.replace('whatsapp_', ''),
+    m.errorMsg || '',
+    formatTs(m.enviadoAt),
+    formatTs(m.leidoAt),
+    formatTs(m.waClickAt || m.emailClickAt),
+    wamid,
+    smtpId,
+    contentHash,
+    waBodyHash,
+    snapshotHash,
+    merkleRoot,
+    txEnvio,
+    txLectura,
+    polygonscanUrl,
+    verifyUrl,
+  ];
+}
+
 export async function GET(request: NextRequest) {
   try {
     const campaignId = request.nextUrl.searchParams.get('campaignId');
     const orgId = request.nextUrl.searchParams.get('orgId');
     const asJson = request.nextUrl.searchParams.get('format') === 'json';
+    const estado = request.nextUrl.searchParams.get('estado') || 'all';
+    const flag = request.nextUrl.searchParams.get('flag') || '';
     if (!campaignId || !orgId) {
       return NextResponse.json({ error: 'campaignId y orgId requeridos' }, { status: 400 });
     }
@@ -54,144 +147,92 @@ export async function GET(request: NextRequest) {
     const db = getAdminDb();
     const campSnap = await db.collection('campaigns').doc(campaignId).get();
     const campaign = campSnap.data() || {};
-
-    const HEADER = [
-      'N°',
-      'Nombre',
-      'Email',
-      'Teléfono',
-      'DNI',
-      'Legajo',
-      'Estado WA/Email',
-      'Estado WA entrega',
-      'Enviado (UTC)',
-      'Leído (UTC)',
-      'Click enlace (UTC)',
-      'WAMID (WhatsApp)',
-      'SMTP Message-ID',
-      'Hash contenido',
-      'Hash aviso WhatsApp',
-      'Hash snapshot',
-      'Merkle root',
-      'TX Polygon — envío',
-      'TX Polygon — lectura',
-      'Verificar en Polygonscan',
-      'Verificar en Notificas',
-    ];
-
-    const lines: string[] = [csvRow(HEADER)];
-    const jsonRows: Record<string, unknown>[] = [];
-    const PAGE = 200;
-    let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
-    let rowNum = 0;
-    for (;;) {
-      let q: FirebaseFirestore.Query = db
-        .collection('campaign_messages')
-        .where('campaignId', '==', campaignId)
-        .orderBy('recipientNombre')
-        .limit(PAGE);
-      if (lastDoc) q = q.startAfter(lastDoc);
-      const pageSnap = await q.get();
-      if (pageSnap.empty) break;
-
-      const mailIds = pageSnap.docs
-        .map((d) => d.data().mailId as string | undefined)
-        .filter((id): id is string => !!id);
-      const mailDocs = await fetchMailDocs(db, mailIds);
-
-      for (const d of pageSnap.docs) {
-        const m = d.data();
-        const mail = m.mailId ? (mailDocs.get(m.mailId) ?? {}) : {};
-        const wamid = String(mail.whatsappMessageId || mail.tracking?.whatsappMessageId || '');
-        const phone = String(mail.recipientPhone || m.recipientTelefono || '');
-        const txEnvio = String(
-          m.integrity?.send?.txHash || mail.polygonCertifications?.send || m.txHashEnvio || ''
-        );
-        const txLectura = String(mail.polygonCertifications?.read || m.txHashLectura || '');
-        const polygonscanUrl = txEnvio ? `https://polygonscan.com/tx/${txEnvio}` : '';
-        const appBase = (process.env.NEXT_PUBLIC_APP_URL || 'https://notificas.com.ar').replace(/\/$/, '');
-        const verifyUrl = `${appBase}/verify?id=${encodeURIComponent(m.mailId || d.id)}`;
-        const contentHash = String(m.integrity?.send?.contentHash || mail.polygonCertifications?.contentHash || '');
-        const waBodyHash = String(m.integrity?.send?.waBodyHash || mail.polygonCertifications?.waBodyHash || '');
-        const snapshotHash = String(mail.evidenceSnapshotHash || '');
-        const merkleRoot = String(m.integrity?.send?.merkleRoot || '');
-        const smtpId = String(mail.smtpMessageId || mail.delivery?.info || '');
-        const movements: { type?: string }[] = Array.isArray(mail.tracking?.movements)
-          ? mail.tracking.movements
-          : [];
-        const waDelivery =
-          movements.find((mv) => mv.type === 'whatsapp_read')?.type ||
-          movements.find((mv) => mv.type === 'whatsapp_delivered')?.type ||
-          movements.find((mv) => mv.type === 'whatsapp_sent')?.type ||
-          '';
-        rowNum += 1;
-        jsonRows.push({
-          n: rowNum,
-          nombre: m.recipientNombre || '',
-          email: m.recipientEmail || '',
-          telefono: phone,
-          dni: m.recipientDni || '',
-          legajo: m.recipientLegajo || '',
-          estado: m.estado || '',
-          waEntrega: waDelivery.replace('whatsapp_', ''),
-          enviadoAt: formatTs(m.enviadoAt),
-          leidoAt: formatTs(m.leidoAt),
-          wamid,
-          smtpMessageId: smtpId,
-          contentHash,
-          waBodyHash,
-          snapshotHash,
-          merkleRoot,
-          txEnvio,
-          txLectura,
-          polygonscanUrl,
-          verifyUrl,
-        });
-        lines.push(
-          csvRow([
-            rowNum,
-            m.recipientNombre || '',
-            m.recipientEmail || '',
-            phone,
-            m.recipientDni || '',
-            m.recipientLegajo || '',
-            m.estado || '',
-            waDelivery.replace('whatsapp_', ''),
-            formatTs(m.enviadoAt),
-            formatTs(m.leidoAt),
-            formatTs(m.waClickAt || m.emailClickAt),
-            wamid,
-            smtpId,
-            contentHash,
-            waBodyHash,
-            snapshotHash,
-            merkleRoot,
-            txEnvio,
-            txLectura,
-            polygonscanUrl,
-            verifyUrl,
-          ])
-        );
-      }
-      lastDoc = pageSnap.docs[pageSnap.docs.length - 1];
-      if (pageSnap.size < PAGE) break;
-    }
-
     const baseName = `reporte-${String(campaign.nombre || campaignId).replace(/[^a-z0-9]/gi, '-').slice(0, 40)}`;
+    const suffix = flag === 'waWmidMissing' ? 'wamid' : (estado !== 'all' && estado !== 'todos' ? estado : 'completo');
+    const filename = `${baseName}-${suffix}.csv`;
+    const PAGE = 200;
+
     if (asJson) {
+      const jsonRows: Record<string, unknown>[] = [];
+      let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+      let rowNum = 0;
+      for (;;) {
+        let q = messagesQuery(db, campaignId, estado, flag).orderBy('recipientNombre').limit(PAGE);
+        if (lastDoc) q = q.startAfter(lastDoc);
+        const pageSnap = await q.get();
+        if (pageSnap.empty) break;
+        const mailIds = pageSnap.docs
+          .map((d) => d.data().mailId as string | undefined)
+          .filter((id): id is string => !!id);
+        const mailDocs = await fetchMailDocs(db, mailIds);
+        for (const d of pageSnap.docs) {
+          rowNum += 1;
+          const m = d.data();
+          const mail = m.mailId ? (mailDocs.get(m.mailId) ?? {}) : {};
+          const fields = rowFields(rowNum, m, mail, d.id, m.mailId);
+          jsonRows.push({
+            n: fields[0],
+            nombre: fields[1],
+            email: fields[2],
+            telefono: fields[3],
+            dni: fields[4],
+            legajo: fields[5],
+            estado: fields[6],
+            waEntrega: fields[7],
+            errorMsg: fields[8],
+            enviadoAt: fields[9],
+            leidoAt: fields[10],
+            wamid: fields[12],
+          });
+        }
+        lastDoc = pageSnap.docs[pageSnap.docs.length - 1];
+        if (pageSnap.size < PAGE) break;
+      }
       return NextResponse.json({
         campaignId,
         campaignNombre: campaign.nombre || '',
         exportedAt: new Date().toISOString(),
+        filter: { estado, flag },
         rows: jsonRows,
       });
     }
 
-    // BOM (﻿) para que Excel en Windows abra UTF-8 correctamente sin configuración extra.
-    const csv = '﻿' + lines.join('\r\n');
-    const filename = `${baseName}.csv`;
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          controller.enqueue(encoder.encode('\uFEFF' + csvRow(HEADER) + '\r\n'));
+          let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+          let rowNum = 0;
+          for (;;) {
+            let q = messagesQuery(db, campaignId, estado, flag).orderBy('recipientNombre').limit(PAGE);
+            if (lastDoc) q = q.startAfter(lastDoc);
+            const pageSnap = await q.get();
+            if (pageSnap.empty) break;
+            const mailIds = pageSnap.docs
+              .map((d) => d.data().mailId as string | undefined)
+              .filter((id): id is string => !!id);
+            const mailDocs = await fetchMailDocs(db, mailIds);
+            const chunk: string[] = [];
+            for (const d of pageSnap.docs) {
+              rowNum += 1;
+              const m = d.data();
+              const mail = m.mailId ? (mailDocs.get(m.mailId) ?? {}) : {};
+              chunk.push(csvRow(rowFields(rowNum, m, mail, d.id, m.mailId)));
+            }
+            controller.enqueue(encoder.encode(chunk.join('\r\n') + '\r\n'));
+            lastDoc = pageSnap.docs[pageSnap.docs.length - 1];
+            if (pageSnap.size < PAGE) break;
+          }
+          controller.close();
+        } catch (err) {
+          console.error('GET /api/campaigns/export stream', err);
+          controller.error(err);
+        }
+      },
+    });
 
-    return new NextResponse(csv, {
+    return new NextResponse(stream, {
       status: 200,
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',

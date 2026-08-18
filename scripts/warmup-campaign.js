@@ -5,7 +5,8 @@
  * Uso:
  *   node scripts/warmup-campaign.js --campaign=<campaignId> --org=<orgId> --dia=<1|2|3>
  *
- * El límite diario se edita en la campaña (campo tandaSize / "Límite por envío").
+ * El límite diario se edita en la campaña (campo tandaSize / "Envíos por día").
+ * Un cambio a mitad de campaña rige al día siguiente (tandaDayQuota queda congelado hoy).
  * Día 1 = 2.000 (cupo actual de Meta). Subilo en la UI cuando WhatsApp lo permita.
  *
  * Requiere: FIREBASE_PROJECT_ID, CAMPAIGN_WORKER_SECRET en env.

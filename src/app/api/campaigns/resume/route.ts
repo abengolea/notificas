@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
+import { requeuePendingCampaignMessages, startCampaignTanda } from '@/lib/campaign-start-tanda';
 import { z } from 'zod';
 
 const bodySchema = z.object({
@@ -15,7 +16,6 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
-
     const { campaignId, orgId } = parsed.data;
     const denied = await requireCampaignOrgAccess(request, orgId, campaignId);
     if (denied) return denied;
@@ -26,21 +26,28 @@ export async function POST(request: NextRequest) {
     if (!campSnap.exists || String(campSnap.data()!.orgId) !== orgId) {
       return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 });
     }
-
-    const estado = campSnap.data()!.estado;
-    if (estado === 'cancelada') {
-      return NextResponse.json({ ok: true, already: true });
+    const campaign = campSnap.data()!;
+    if (String(campaign.estado) !== 'pausada') {
+      return NextResponse.json({ error: 'La campaña no está pausada' }, { status: 400 });
     }
 
     await campRef.update({
-      estado: 'cancelada',
-      cancelledAt: FieldValue.serverTimestamp(),
+      estado: 'enviando',
+      resumedAt: FieldValue.serverTimestamp(),
       fanoutActive: false,
     });
 
-    return NextResponse.json({ ok: true });
-  } catch (e) {
-    console.error('POST /api/campaigns/cancel', e);
-    return NextResponse.json({ error: 'Error al cancelar campaña' }, { status: 500 });
+    const requeued = await requeuePendingCampaignMessages(campaignId);
+    const result = await startCampaignTanda({
+      campaignId,
+      requireStorage: Boolean(campaign.recipientStoragePath),
+      chargeCredits: true,
+    });
+    return NextResponse.json({ ok: true, requeued, ...result });
+  } catch (e: unknown) {
+    console.error('POST /api/campaigns/resume', e);
+    const msg = e instanceof Error ? e.message : 'Error al reanudar campaña';
+    const status = typeof (e as { status?: number }).status === 'number' ? (e as { status: number }).status : 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 }

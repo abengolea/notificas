@@ -42,8 +42,14 @@ export function sendBatchId(tandaIndex: number): string {
   return `send-${tandaIndex}`;
 }
 
-export function eventBatchId(at = new Date()): string {
-  return `events-${at.toISOString().slice(0, 10)}`;
+export function eventDayKey(at = new Date()): string {
+  return at.toISOString().slice(0, 10);
+}
+
+/** Lote 1 del día: events-YYYY-MM-DD. Si ese se lacró, events-YYYY-MM-DD-2, -3, … */
+export function eventBatchId(at = new Date(), seq = 1): string {
+  const day = eventDayKey(at);
+  return seq <= 1 ? `events-${day}` : `events-${day}-${seq}`;
 }
 
 export function tandaIndexFromOffset(offset: number): number {
@@ -58,6 +64,17 @@ export async function resolveOpenSendBatchId(campaignId: string, tandaIndex: num
     return `${batchId}-${Date.now()}`;
   }
   return batchId;
+}
+
+/** Sobre de hechos del día que todavía acepta hojas. Si el de 500 ya se lacró, abre el siguiente. */
+export async function resolveOpenEventBatchId(campaignId: string, at = new Date()): Promise<string> {
+  const col = batchesCol(campaignId);
+  for (let seq = 1; seq <= 400; seq++) {
+    const id = eventBatchId(at, seq);
+    const snap = await col.doc(id).get();
+    if (!snap.exists || snap.data()?.status === 'open') return id;
+  }
+  return `events-${eventDayKey(at)}-${Date.now()}`;
 }
 
 /** Hojas nuevas: …|waBodyHash|templateSealHash. Las viejas se verifican con el leafPayload guardado. */
@@ -299,10 +316,9 @@ export async function recordEventLeaf(params: {
 }): Promise<{ leafHash: string; already: boolean; batchId: string }> {
   const db = getAdminDb();
   const occurredAt = params.occurredAt || new Date().toISOString();
-  const batchId = eventBatchId(new Date(occurredAt));
-  const batchRef = batchesCol(params.campaignId).doc(batchId);
+  const at = new Date(occurredAt);
+  const dayKey = eventDayKey(Number.isNaN(at.getTime()) ? new Date() : at);
   const leafId = `${params.messageId}_${params.eventType}`;
-  const leafRef = batchRef.collection('leaves').doc(leafId);
   const msgRef = db.collection('campaign_messages').doc(params.messageId);
 
   const msgSnap = await msgRef.get();
@@ -318,49 +334,81 @@ export async function recordEventLeaf(params: {
   });
   const leafHash = await sha256Hex(leafPayload);
 
-  const already = await db.runTransaction(async (t) => {
-    const existing = await t.get(leafRef);
-    if (existing.exists) return true;
+  let batchId = await resolveOpenEventBatchId(params.campaignId, Number.isNaN(at.getTime()) ? new Date() : at);
+  let already = false;
 
-    const batchSnap = await t.get(batchRef);
-    if (!batchSnap.exists) {
-      t.set(batchRef, {
-        campaignId: params.campaignId,
-        orgId: params.orgId || String(msg?.orgId || ''),
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const batchRef = batchesCol(params.campaignId).doc(batchId);
+    const leafRef = batchRef.collection('leaves').doc(leafId);
+
+    const outcome = await db.runTransaction(async (t) => {
+      const msgT = await t.get(msgRef);
+      const msgNow = msgT.data();
+      if (msgNow?.integrity?.events?.[params.eventType]?.leafHash) {
+        return 'already' as const;
+      }
+
+      const existing = await t.get(leafRef);
+      if (existing.exists) return 'already' as const;
+
+      const batchSnap = await t.get(batchRef);
+      const st = batchSnap.exists ? String(batchSnap.data()?.status || '') : 'open';
+      if (batchSnap.exists && st !== 'open') return 'sealed' as const;
+
+      if (!batchSnap.exists) {
+        t.set(batchRef, {
+          campaignId: params.campaignId,
+          orgId: params.orgId || String(msgNow?.orgId || msg?.orgId || ''),
+          kind: 'event',
+          dayKey,
+          status: 'open',
+          accepting: true,
+          expectedCount: 0,
+          sealedCount: 0,
+          leafCount: 1,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      } else {
+        t.update(batchRef, { leafCount: FieldValue.increment(1) });
+      }
+
+      t.set(leafRef, {
         kind: 'event',
-        dayKey: batchId.replace(/^events-/, ''),
-        status: 'open',
-        accepting: true,
-        expectedCount: 0,
-        sealedCount: 0,
-        leafCount: 1,
+        eventType: params.eventType,
+        messageId: params.messageId,
+        occurredAt,
+        sendLeafHash,
+        leafPayload,
+        leafHash,
         createdAt: FieldValue.serverTimestamp(),
       });
-    } else {
-      t.update(batchRef, { leafCount: FieldValue.increment(1) });
-    }
+      t.update(msgRef, {
+        [`integrity.events.${params.eventType}`]: {
+          batchId,
+          leafHash,
+          occurredAt,
+        },
+      });
+      return 'ok' as const;
+    });
 
-    t.set(leafRef, {
-      kind: 'event',
-      eventType: params.eventType,
-      messageId: params.messageId,
-      occurredAt,
-      sendLeafHash,
-      leafPayload,
-      leafHash,
-      createdAt: FieldValue.serverTimestamp(),
-    });
-    t.update(msgRef, {
-      [`integrity.events.${params.eventType}`]: {
-        batchId,
-        leafHash,
-        occurredAt,
-      },
-    });
-    return false;
-  });
+    if (outcome === 'already') {
+      already = true;
+      break;
+    }
+    if (outcome === 'sealed') {
+      batchId = await resolveOpenEventBatchId(
+        params.campaignId,
+        Number.isNaN(at.getTime()) ? new Date() : at
+      );
+      continue;
+    }
+    already = false;
+    break;
+  }
 
   if (!already) {
+    const batchRef = batchesCol(params.campaignId).doc(batchId);
     if ((await batchRef.get()).data()?.leafCount === 1) {
       void enqueueIntegrityClose(params.campaignId, batchId, EVENT_CLOSE_DELAY_SEC).catch((e) =>
         console.warn('⚠️ No se pudo encolar cierre de tanda de hechos:', e?.message)

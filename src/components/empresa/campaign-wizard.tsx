@@ -60,6 +60,7 @@ import { assignFilesToRecipientsGreedy, scoreFileForRecipient } from "@/lib/camp
 import { uploadCampaignCsvInChunks, uploadCampaignRecipients } from "@/lib/upload-campaign-recipients";
 import { csvCamposRequeridos, csvPlaceholder, detectCsvSeparatorError, inspectCampaignCsv, parseCsvQuickResult, phoneDigits } from "@/lib/parse-campaign-csv";
 import { DEFAULT_TANDA_SIZE } from "@/lib/campaign-tanda";
+import { DailyQuotaField } from "@/components/empresa/daily-quota-field";
 import {
   SIM_RECIPIENT_DEFAULT,
   SIM_RECIPIENT_MAX,
@@ -591,7 +592,7 @@ export function CampaignWizard({
             waTemplateLang,
             waTemplateVariables: waTemplateVariables.filter(Boolean),
             waUrlButton,
-            tandaSize: sendNow ? (simulated ? 0 : tandaSize) : 0,
+            tandaSize: simulated ? 0 : tandaSize,
             simulated,
           }),
         });
@@ -1578,21 +1579,25 @@ export function CampaignWizard({
               </p>
               )}
               {isAdmin && !simulated ? (
+                <DailyQuotaField
+                  value={tandaSize}
+                  onChange={setTandaSize}
+                  hint="Hoy sale como máximo este lote. Mañana a las 9:00 (y un cron a las 9:15 por si falló) arranca el siguiente. Si Meta sube el cupo del número, cambiá este valor: rige mañana."
+                />
+              ) : !simulated && (canal === "whatsapp" || canal === "ambos") ? (
                 <>
-                  <div className="space-y-1 pt-1 max-w-xs">
-                    <Label className="text-xs">Límite por envío</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={tandaSize}
-                      onChange={(e) => {
-                        const n = Number(e.target.value);
-                        if (Number.isInteger(n) && n >= 0) setTandaSize(n);
-                      }}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Cada vez que dispares, salen como máximo este número de destinatarios nuevos. Hoy WhatsApp permite 2.000. Cuando te suban el cupo, cambialo (ej. 10.000) y volvé a enviar.
-                    </p>
+                  <DailyQuotaField
+                    value={tandaSize}
+                    onChange={setTandaSize}
+                    hint="Tope de destinatarios nuevos por día, según el cupo de WhatsApp. Cuando Meta lo suba, cambialo acá. El lote de hoy no se mueve; rige mañana a las 9:00."
+                  />
+                  {creditos < (tandaSize > 0 ? Math.min(tandaSize, recipients.length || existingRecipientCount) : recipients.length) && (
+                    <p className="text-destructive">Saldo insuficiente para el lote de hoy.</p>
+                  )}
+                  <div className="space-y-1 pt-1">
+                    <Label className="text-xs">Programar envío (opcional)</Label>
+                    <Input type="datetime-local" value={scheduleIso} onChange={(e) => setScheduleIso(e.target.value)} className="max-w-xs" />
+                    <p className="text-xs text-muted-foreground">Sin fecha → envío inmediato. Con fecha futura → queda en borrador.</p>
                   </div>
                 </>
               ) : !isAdmin ? (
@@ -1640,7 +1645,7 @@ export function CampaignWizard({
                 </>
               ) : (
                 <>
-              Estás por enviar {isAdmin ? (tandaSize > 0 ? Math.min(tandaSize, recipientTotal) : recipientTotal).toLocaleString("es-AR") : recipientTotal.toLocaleString("es-AR")} notificaciones certificadas. Esta acción no se puede deshacer.
+              Estás por enviar {isAdmin ? (tandaSize > 0 ? Math.min(tandaSize, recipientTotal) : recipientTotal).toLocaleString("es-AR") : recipientTotal.toLocaleString("es-AR")} notificaciones certificadas{isAdmin ? " (lote de hoy)" : ""}. Esta acción no se puede deshacer.
                 </>
               )}
               {submitting && uploadProgress ? (

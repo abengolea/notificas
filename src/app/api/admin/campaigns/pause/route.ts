@@ -24,18 +24,25 @@ export async function POST(request: NextRequest) {
     if (!campSnap.exists) {
       return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 });
     }
-    if (campSnap.data()!.estado === 'cancelada') {
+    const estado = String(campSnap.data()!.estado || '');
+    if (estado === 'cancelada' || estado === 'completada') {
+      return NextResponse.json({ error: `No se puede pausar una campaña ${estado}` }, { status: 400 });
+    }
+    if (estado === 'pausada') {
       return NextResponse.json({ ok: true, already: true });
+    }
+    if (estado !== 'enviando') {
+      return NextResponse.json({ error: 'Solo se puede pausar una campaña en envío' }, { status: 400 });
     }
 
     await campRef.update({
-      estado: 'cancelada',
-      cancelledAt: FieldValue.serverTimestamp(),
+      estado: 'pausada',
+      pausedAt: FieldValue.serverTimestamp(),
       fanoutActive: false,
     });
     return NextResponse.json({ ok: true });
   } catch (e) {
-    console.error('POST /api/admin/campaigns/cancel', e);
-    return NextResponse.json({ error: 'Error al cancelar campaña' }, { status: 500 });
+    console.error('POST /api/admin/campaigns/pause', e);
+    return NextResponse.json({ error: 'Error al pausar campaña' }, { status: 500 });
   }
 }

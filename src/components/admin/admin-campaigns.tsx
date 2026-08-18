@@ -28,6 +28,8 @@ function estadoLabel(estado: string) {
       return <Badge className="bg-blue-600 hover:bg-blue-600">enviando</Badge>;
     case "completada":
       return <Badge className="bg-emerald-600 hover:bg-emerald-600">completada</Badge>;
+    case "pausada":
+      return <Badge className="bg-amber-600 hover:bg-amber-600">pausada</Badge>;
     case "cancelada":
       return <Badge variant="destructive">cancelada</Badge>;
     default:

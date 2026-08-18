@@ -167,11 +167,25 @@ async function enqueueTask(
 
 /** Encola el fanout que crea campaign_messages y encola los sends. */
 export async function enqueueCampaignFanout(campaignId: string, offset: number): Promise<void> {
-  const ts = Date.now();
   await enqueueTask(
     '/api/campaigns/fanout',
     { campaignId, offset },
-    `fanout-${campaignId}-${offset}-${ts}`
+    `fanout-${campaignId}-${offset}`
+  );
+}
+
+/** Arranca el lote diario (día calendario Argentina). */
+export async function enqueueCampaignDaily(
+  campaignId: string,
+  dayKey: string,
+  delaySeconds: number
+): Promise<void> {
+  const safeDay = dayKey.replace(/[^0-9-]/g, '');
+  await enqueueTask(
+    '/api/campaigns/daily',
+    { campaignId, dayKey: safeDay },
+    `daily-${campaignId}-${safeDay}`,
+    delaySeconds
   );
 }
 
@@ -180,11 +194,12 @@ export async function enqueueCampaignWorker(
   campaignId: string,
   messageDocIds: string[]
 ): Promise<void> {
-  const ts = Date.now();
+  const first = messageDocIds[0] || 'x';
+  const last = messageDocIds[messageDocIds.length - 1] || first;
   await enqueueTask(
     '/api/campaigns/worker',
     { campaignId, messageDocIds },
-    `send-${campaignId}-${messageDocIds[0]}-${ts}`
+    `send-${campaignId}-${first}-${last}-${messageDocIds.length}`
   );
 }
 

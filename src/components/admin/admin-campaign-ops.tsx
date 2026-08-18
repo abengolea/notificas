@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Loader2, Mail, MessageCircle, Pencil, Play, RefreshCw, Save, Upload, XCircle, FlaskConical } from "lucide-react";
+import { Loader2, Mail, MessageCircle, Pause, Pencil, Play, RefreshCw, Save, Upload, XCircle, FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,7 +21,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { csvCamposRequeridos, csvPlaceholder } from "@/lib/parse-campaign-csv";
 import { uploadCampaignCsvInChunks } from "@/lib/upload-campaign-recipients";
-import { DEFAULT_TANDA_SIZE } from "@/lib/campaign-tanda";
+import { DEFAULT_TANDA_SIZE, campaignDayKey, planDailySend } from "@/lib/campaign-tanda";
 import {
   SIM_RECIPIENT_DEFAULT,
   SIM_RECIPIENT_MAX,
@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 import { CampaignDashboard } from "@/components/empresa/campaign-dashboard";
 import { canEditWhatsAppTemplate, isUnsentCampaign } from "@/lib/campaign-edit";
 import { WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-template-fields";
-import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
+import { DailyQuotaField } from "@/components/empresa/daily-quota-field";
 
 type CampaignPayload = {
   id: string;
@@ -44,6 +44,11 @@ type CampaignPayload = {
   estado: string;
   recipientCount: number;
   tandaSize: number;
+  tandaDayKey?: string;
+  tandaDayQuota?: number;
+  tandaDaySentStart?: number;
+  nextDailyAt?: string | null;
+  nextDailyDayKey?: string;
   simulated?: boolean;
   waTemplateName: string;
   waTemplateLang: string;
@@ -67,6 +72,8 @@ function estadoBadge(estado: string) {
       return <Badge className="bg-blue-600 hover:bg-blue-600">enviando</Badge>;
     case "completada":
       return <Badge className="bg-emerald-600 hover:bg-emerald-600">completada</Badge>;
+    case "pausada":
+      return <Badge className="bg-amber-600 hover:bg-amber-600">pausada</Badge>;
     case "cancelada":
       return <Badge variant="destructive">cancelada</Badge>;
     default:
@@ -233,11 +240,14 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "No se pudo enviar");
       if (json.reason === "tanda_completa") {
-        toast({ title: "Esta tanda ya está completa", description: "Subí el tope (día 2 o 3) y volvé a disparar." });
+        toast({
+          title: "Cupo de hoy completo",
+          description: "El lote de hoy ya salió. Podés cambiar el cupo; rige mañana.",
+        });
       } else {
         toast({
           title: "Tanda encolada",
-          description: `${json.pendingThisTanda?.toLocaleString("es-AR")} envíos nuevos (ya había ${json.alreadySent?.toLocaleString("es-AR")})`,
+          description: `${json.pendingThisTanda?.toLocaleString("es-AR")} envíos nuevos (ya había ${json.alreadySent?.toLocaleString("es-AR")}). El lote de mañana arranca solo a las 9:00.`,
         });
       }
       setConfirmSend(false);
@@ -266,6 +276,43 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
     await load();
   }
 
+  async function pauseCampaign() {
+    const res = await fetch("/api/admin/campaigns/pause", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ campaignId }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      toast({ title: "Error", description: json.error || "No se pudo pausar", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Campaña pausada", description: "No arranca el lote de mañana hasta que la reanudés." });
+    await load();
+  }
+
+  async function resumeCampaign() {
+    const res = await fetch("/api/admin/campaigns/resume", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ campaignId }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      toast({ title: "Error", description: json.error || "No se pudo reanudar", variant: "destructive" });
+      return;
+    }
+    toast({
+      title: "Campaña reanudada",
+      description: json.queued
+        ? `${Number(json.pendingThisTanda || 0).toLocaleString("es-AR")} envíos encolados`
+        : "Sigue mañana a las 9:00, o cuando haya cupo de hoy.",
+    });
+    await load();
+  }
+
   if (loading || !data) {
     return (
       <div className="p-2 max-w-6xl space-y-4">
@@ -279,11 +326,23 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
   const c = data.campaign;
   const already = data.alreadySent ?? c.stats.enviados;
   const remaining = Math.max(0, c.recipientCount - already);
-  const thisTanda = tandaSize > 0 ? Math.min(tandaSize, remaining) : remaining;
+  const plan = planDailySend({
+    campaign: {
+      tandaSize: c.simulated ? 0 : tandaSize,
+      tandaDayKey: c.tandaDayKey,
+      tandaDayQuota: c.tandaDayQuota,
+      tandaDaySentStart: c.tandaDaySentStart,
+    },
+    alreadySent: already,
+    totalRecipients: c.recipientCount,
+  });
+  const thisTanda = c.simulated ? remaining : plan.thisRun;
+  const todayLocked = Boolean(c.tandaDayKey && c.tandaDayKey === campaignDayKey());
+  const upcomingChanged = todayLocked && tandaSize !== (c.tandaSize || 0);
   const stats = c.stats;
   const leidoPct = stats.enviados > 0 ? Math.round((stats.leidos / stats.enviados) * 100) : 0;
   const enviadoPct = stats.total > 0 ? Math.round((stats.enviados / stats.total) * 100) : 0;
-  const canSend = c.recipientCount > 0 && c.estado !== "cancelada" && thisTanda > 0;
+  const canSend = c.recipientCount > 0 && c.estado !== "cancelada" && c.estado !== "pausada" && thisTanda > 0;
   const canEditContent = isUnsentCampaign(c);
   const canEditTpl = canEditWhatsAppTemplate(c);
   const showEmail = c.canal === "email" || c.canal === "ambos";
@@ -319,10 +378,22 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
               </Link>
             </Button>
           )}
-          {c.estado !== "cancelada" && (
+          {c.estado !== "cancelada" && c.estado !== "pausada" && (
             <Button disabled={!canSend || sending} onClick={() => setConfirmSend(true)} className="gap-2">
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              {c.estado === "borrador" ? (c.simulated ? "Iniciar simulación" : "Iniciar envío") : "Enviar esta tanda"}
+              {c.estado === "borrador" ? (c.simulated ? "Iniciar simulación" : "Iniciar envío de hoy") : "Enviar lote de hoy"}
+            </Button>
+          )}
+          {c.estado === "enviando" && (
+            <Button variant="outline" onClick={() => void pauseCampaign()} className="gap-2">
+              <Pause className="h-4 w-4" />
+              Pausar campaña
+            </Button>
+          )}
+          {c.estado === "pausada" && (
+            <Button onClick={() => void resumeCampaign()} className="gap-2">
+              <Play className="h-4 w-4" />
+              Reanudar
             </Button>
           )}
           {c.estado !== "cancelada" && (
@@ -358,7 +429,22 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
         ))}
       </div>
 
-      {c.estado === "enviando" && (
+      {c.estado === "pausada" ? (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+          Campaña pausada. No sale el lote de mañana hasta que la reanudés. El cupo que guardes rige al día siguiente de reanudar.
+        </div>
+      ) : c.estado === "enviando" && thisTanda === 0 && remaining > 0 ? (
+        <div className="rounded-md border bg-muted/40 p-3 text-sm">
+          El lote de hoy está completo ({plan.sentToday.toLocaleString("es-AR")} de {plan.dailyQuota.toLocaleString("es-AR")}).
+          Quedan {remaining.toLocaleString("es-AR")} destinatarios.
+          {" "}El próximo lote arranca solo {c.nextDailyAt
+            ? new Date(c.nextDailyAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })
+            : "mañana a las 9:00"}
+          {tandaSize !== plan.dailyQuota
+            ? ` (próximos días: ${tandaSize.toLocaleString("es-AR")})`
+            : ""}.
+        </div>
+      ) : c.estado === "enviando" ? (
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <RefreshCw className="h-4 w-4 animate-spin" />
@@ -366,37 +452,45 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
           </div>
           <Progress value={enviadoPct} className="h-2" />
         </div>
-      )}
+      ) : null}
 
       {!c.simulated && (
       <Card>
         <CardHeader>
-          <CardTitle>Límite por envío</CardTitle>
+          <CardTitle>Lote diario</CardTitle>
           <CardDescription>
-            Cada vez que apretás Enviar, salen como máximo este número de destinatarios nuevos. Cuando WhatsApp te suba el cupo, cambialo y volvé a disparar.
-            Los envíos exitosos se facturan a {data.org.adminUserEmail || data.org.nombre}; no hace falta cargar saldo.
+            Cada día sale como máximo este número de destinatarios nuevos. El lote del día siguiente arranca solo a las 9:00 (Argentina). Si lo cambiás a mitad de campaña, el nuevo cupo rige mañana. Pausá para que no siga.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-2 max-w-xs">
-            <Label className="text-xs shrink-0">Máximo</Label>
-            <Input
-              type="number"
-              min={1}
-              value={tandaSize}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                if (Number.isInteger(n) && n >= 0) setTandaSize(n);
-              }}
-            />
-          </div>
+          <DailyQuotaField
+            value={tandaSize}
+            onChange={setTandaSize}
+            hint="Cuando Meta suba el cupo Unique Users del número (1.000 → 10.000 → 100.000), cambiá este valor. El lote de hoy queda; rige mañana a las 9:00."
+          />
           <p className="text-sm">
-            Este envío mandaría <strong>{thisTanda.toLocaleString("es-AR")}</strong> nuevos
-            {already > 0 ? ` (ya van ${already.toLocaleString("es-AR")})` : null}.
+            Hoy: cupo <strong>{plan.dailyQuota > 0 ? plan.dailyQuota.toLocaleString("es-AR") : "sin tope"}</strong>
+            {plan.dailyQuota > 0 ? (
+              <>
+                {" "}· ya van {plan.sentToday.toLocaleString("es-AR")} · quedan{" "}
+                {plan.remainingToday.toLocaleString("es-AR")}
+              </>
+            ) : null}
+            . Próximos días: <strong>{tandaSize.toLocaleString("es-AR")}</strong>.
+          </p>
+          {todayLocked && tandaSize !== (c.tandaDayQuota || 0) ? (
+            <p className="text-xs text-muted-foreground">
+              El cambio a {tandaSize.toLocaleString("es-AR")} no mueve el lote de hoy
+              {upcomingChanged ? "; guardalo y mañana se usa ese número." : "."}
+            </p>
+          ) : null}
+          <p className="text-sm">
+            Este disparo mandaría <strong>{thisTanda.toLocaleString("es-AR")}</strong> nuevos
+            {already > 0 ? ` (ya van ${already.toLocaleString("es-AR")} en total)` : null}.
           </p>
           <Button variant="secondary" disabled={saving} onClick={() => void saveTemplate()}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-            Guardar límite
+            Guardar cupo de los próximos días
           </Button>
         </CardContent>
       </Card>
@@ -531,8 +625,8 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
                 </>
               ) : (
                 <>
-              Estás por encolar hasta {thisTanda.toLocaleString("es-AR")} notificaciones para {data.org.nombre}.
-              Se facturan los envíos exitosos; no se descuenta saldo. Si el día 1 falla mucho, no sigas.
+              Estás por encolar hasta {thisTanda.toLocaleString("es-AR")} notificaciones para {data.org.nombre} (lote de hoy).
+              El cupo de los próximos días es {tandaSize.toLocaleString("es-AR")}; si lo cambiás, rige mañana.
                 </>
               )}
             </AlertDialogDescription>

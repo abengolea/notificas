@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     const orgId = sp.get('orgId');
     const estadoFilter = (sp.get('estado') || 'todos') as EstadoFilter;
     const nombreFilter = (sp.get('nombre') || '').trim();
+    const flag = sp.get('flag') || '';
     const limitParam = parseInt(sp.get('limit') || String(MAX_ROWS), 10);
     const limit = Math.min(Math.max(1, limitParam), MAX_ROWS);
 
@@ -49,7 +50,9 @@ export async function GET(request: NextRequest) {
     let q: FirebaseFirestore.Query = db
       .collection('campaign_messages')
       .where('campaignId', '==', campaignId);
-    if (estadoFilter !== 'todos') {
+    if (flag === 'waWmidMissing') {
+      q = q.where('waWmidMissing', '==', true);
+    } else if (estadoFilter !== 'todos') {
       q = q.where('estado', '==', estadoFilter);
     }
     q = q.orderBy('recipientNombre').limit(limit);
@@ -262,6 +265,9 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
+        'X-Notificas-Row-Count': String(truncated.length),
+        'X-Notificas-Truncated': totalFiltrados > truncated.length || msgSnap.size >= limit ? '1' : '0',
+        'X-Notificas-Max-Rows': String(MAX_ROWS),
       },
     });
   } catch (e) {

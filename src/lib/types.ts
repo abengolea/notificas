@@ -191,10 +191,22 @@ export interface Campaign {
   recipientEmails: string[];
   recipientData: RecipientEntry[];
   recipientCount: number;
-  /** Máximo de envíos *nuevos* cada vez que se dispara (cupo diario de WhatsApp). */
+  /** Cupo de envíos nuevos por día para los días siguientes. Un cambio rige mañana. */
   tandaSize?: number;
-  /** Tope de offset de la corrida actual (yaEnviados + tandaSize). Lo calcula el send. */
+  /** Día calendario (YYYY-MM-DD, Argentina) del cupo congelado. */
+  tandaDayKey?: string;
+  /** Cupo vigente hoy (no cambia si se edita tandaSize). */
+  tandaDayQuota?: number;
+  /** Enviados acumulados al arrancar el día (para saber cuántos van hoy). */
+  tandaDaySentStart?: number;
+  /** Tope de offset de la corrida actual (yaEnviados + cupo de hoy). Lo calcula el send. */
   tandaCap?: number;
+  /** Fanout de esta corrida todavía encolando destinatarios. */
+  fanoutActive?: boolean;
+  fanoutLockAt?: unknown;
+  /** Próximo lote automático (día YYYY-MM-DD Argentina). */
+  nextDailyDayKey?: string;
+  nextDailyAt?: unknown;
   /** Creada y operada desde el panel admin (campañas masivas). */
   managedByAdmin?: boolean;
   /** Admin: recorre fanout/workers/dashboard sin Mailgun ni Meta. */
@@ -221,7 +233,7 @@ export interface Campaign {
     urlButton: boolean;
     sealedAt?: unknown;
   };
-  estado: 'borrador' | 'enviando' | 'completada' | 'cancelada';
+  estado: 'borrador' | 'enviando' | 'pausada' | 'completada' | 'cancelada';
   stats: {
     total: number;
     enviados: number;

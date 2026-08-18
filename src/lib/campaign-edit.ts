@@ -21,7 +21,7 @@ export function canEditWhatsAppTemplate(data: {
   stats?: { enviados?: unknown } | null;
 }): boolean {
   const estado = String(data.estado || "borrador");
-  if (estado === "enviando") return false;
+  if (estado === "enviando" || estado === "pausada") return false;
   const enviados = typeof data.stats?.enviados === "number" ? data.stats.enviados : 0;
   return enviados === 0;
 }

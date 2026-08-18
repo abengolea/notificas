@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb, getAdminBucket } from '@/lib/firebase-admin';
 import { enqueueCampaignFanout, enqueueCampaignWorker } from '@/lib/cloud-tasks';
+import { scheduleNextDailySend, campaignIsStopped } from '@/lib/campaign-daily';
 import { ensureSendBatch, resolveOpenSendBatchId, tandaIndexFromOffset } from '@/lib/campaign-integrity';
 import { sealCampaignWhatsAppTemplate } from '@/lib/wa-template-seal';
 import { RECIPIENT_CHUNK_SIZE } from '@/lib/campaign-recipients';
@@ -13,7 +14,7 @@ const FANOUT_PAGE = RECIPIENT_CHUNK_SIZE;
 // Destinatarios que recibe cada worker de envío.
 const SEND_BATCH = 20;
 // 0 = sin límite cuando el doc no trae tandaSize.
-// El default de UI (2000) vive en campaign-tanda.ts y se persiste en campaign.tandaSize.
+// El default de UI vive en campaign-tanda.ts (DEFAULT_TANDA_SIZE) y se persiste en campaign.tandaSize.
 const DEFAULT_TANDA_SIZE = 0;
 
 /** Clave única: email real, o teléfono en dígitos (ignora emails sintéticos WA). */
@@ -75,8 +76,9 @@ export async function POST(request: NextRequest) {
   if (offset === 0) {
     await sealCampaignWhatsAppTemplate(campaignId).catch(() => null);
   }
-  if (campaign.estado === 'cancelada') {
-    return NextResponse.json({ skipped: true, reason: 'cancelada' });
+  if (campaign.estado === 'cancelada' || campaign.estado === 'pausada') {
+    await campRef.update({ fanoutActive: false }).catch(() => undefined);
+    return NextResponse.json({ skipped: true, reason: String(campaign.estado) });
   }
 
   // Tope de ESTA corrida: campaign.tandaCap (yaEnviados + límite diario), no el número que ve el usuario.
@@ -101,16 +103,13 @@ export async function POST(request: NextRequest) {
     const chunkRecipients: RecipientEntry[] = JSON.parse(content.toString('utf-8'));
     const limited = applyTandaLimit(chunkRecipients, offset, effectiveTandaSize);
     if (limited.page.length === 0) {
-      await campRef.update({ fanoutResumeOffset: offset });
+      await concludeFanout(campRef, campaignId, campaign, offset, false);
       return NextResponse.json({ done: true, offset, reason: 'tanda_agotada' });
     }
     const hasMoreChunks = chunkIndex + 1 < (campaign.recipientChunkCount ?? 0);
-    if (hasMoreChunks && !limited.tandaAgotada) {
-      await enqueueCampaignFanout(campaignId, limited.nextOffset);
-    } else if (limited.tandaAgotada) {
-      await campRef.update({ fanoutResumeOffset: limited.nextOffset });
-    }
-    return await processFanoutPage(db, campaign, campaignId, limited.page, offset);
+    const result = await processFanoutPage(db, campaign, campaignId, limited.page, offset);
+    await concludeFanout(campRef, campaignId, campaign, limited.nextOffset, hasMoreChunks && !limited.tandaAgotada);
+    return result;
   } else if (Array.isArray(campaign.recipientData) && campaign.recipientData.length > 0) {
     allRecipients = campaign.recipientData as RecipientEntry[];
   } else if (Array.isArray(campaign.recipientEmails) && campaign.recipientEmails.length > 0) {
@@ -130,16 +129,13 @@ export async function POST(request: NextRequest) {
     const listPage = listSnap.docs.map((d) => d.data() as RecipientEntry);
     const limited = applyTandaLimit(listPage, offset, effectiveTandaSize);
     if (limited.page.length === 0) {
-      await campRef.update({ fanoutResumeOffset: offset });
+      await concludeFanout(campRef, campaignId, campaign, offset, false);
       return NextResponse.json({ done: true, offset, reason: 'tanda_agotada' });
     }
     const hasMore = listPage.length === FANOUT_PAGE;
-    if (hasMore && !limited.tandaAgotada) {
-      await enqueueCampaignFanout(campaignId, limited.nextOffset);
-    } else if (limited.tandaAgotada) {
-      await campRef.update({ fanoutResumeOffset: limited.nextOffset });
-    }
-    return await processFanoutPage(db, campaign, campaignId, limited.page, offset);
+    const listResult = await processFanoutPage(db, campaign, campaignId, limited.page, offset);
+    await concludeFanout(campRef, campaignId, campaign, limited.nextOffset, hasMore && !limited.tandaAgotada);
+    return listResult;
   }
 
   const pageLimit = effectiveTandaSize > 0
@@ -148,18 +144,52 @@ export async function POST(request: NextRequest) {
 
   const page = allRecipients.slice(offset, offset + pageLimit);
   if (page.length === 0) {
+    await concludeFanout(campRef, campaignId, campaign, offset, false);
     return NextResponse.json({ done: true, offset });
   }
 
   const nextOffset = offset + page.length;
   const tandaAgotada = effectiveTandaSize > 0 && nextOffset >= effectiveTandaSize;
-  if (nextOffset < allRecipients.length && !tandaAgotada) {
-    await enqueueCampaignFanout(campaignId, nextOffset);
-  } else if (tandaAgotada) {
-    await campRef.update({ fanoutResumeOffset: nextOffset });
-  }
+  const inlineResult = await processFanoutPage(db, campaign, campaignId, page, offset);
+  await concludeFanout(
+    campRef,
+    campaignId,
+    campaign,
+    nextOffset,
+    nextOffset < allRecipients.length && !tandaAgotada
+  );
+  return inlineResult;
+}
 
-  return await processFanoutPage(db, campaign, campaignId, page, offset);
+async function concludeFanout(
+  campRef: FirebaseFirestore.DocumentReference,
+  campaignId: string,
+  campaign: FirebaseFirestore.DocumentData,
+  resumeOffset: number,
+  continueNext: boolean
+): Promise<void> {
+  const fresh = await campRef.get();
+  const now = fresh.data() || campaign;
+  if (campaignIsStopped(now)) {
+    await campRef.update({
+      fanoutResumeOffset: resumeOffset,
+      fanoutActive: false,
+    });
+    return;
+  }
+  if (continueNext) {
+    await enqueueCampaignFanout(campaignId, resumeOffset);
+    return;
+  }
+  await campRef.update({
+    fanoutResumeOffset: resumeOffset,
+    fanoutActive: false,
+  });
+  const total = typeof now.recipientCount === 'number' ? now.recipientCount : 0;
+  const inlineLen = Array.isArray(now.recipientData) ? now.recipientData.length : 0;
+  if (resumeOffset < (total || inlineLen)) {
+    await scheduleNextDailySend(campaignId);
+  }
 }
 
 /** Corta la página si el tope de tanda se alcanza a mitad de chunk. */

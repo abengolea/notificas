@@ -34,6 +34,9 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     recipientChunkCount: typeof data.recipientChunkCount === 'number' ? data.recipientChunkCount : 0,
     recipientStoragePath: typeof data.recipientStoragePath === 'string' ? data.recipientStoragePath : '',
     tandaSize: typeof data.tandaSize === 'number' ? data.tandaSize : 0,
+    tandaDayKey: typeof data.tandaDayKey === 'string' ? data.tandaDayKey : '',
+    tandaDayQuota: typeof data.tandaDayQuota === 'number' ? data.tandaDayQuota : 0,
+    tandaDaySentStart: typeof data.tandaDaySentStart === 'number' ? data.tandaDaySentStart : 0,
     waTemplateName: String(data.waTemplateName || ''),
     waTemplateLang: String(data.waTemplateLang || 'es_AR'),
     waTemplateVariables: Array.isArray(data.waTemplateVariables) ? data.waTemplateVariables : [],
@@ -52,6 +55,8 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     createdAt: data.createdAt?.toDate?.()?.toISOString?.() ?? null,
     startedAt: data.startedAt?.toDate?.()?.toISOString?.() ?? null,
     completedAt: data.completedAt?.toDate?.()?.toISOString?.() ?? null,
+    nextDailyDayKey: typeof data.nextDailyDayKey === 'string' ? data.nextDailyDayKey : '',
+    nextDailyAt: data.nextDailyAt?.toDate?.()?.toISOString?.() ?? null,
   };
 }
 
