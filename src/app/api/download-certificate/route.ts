@@ -57,7 +57,8 @@ function freezeMovements(movements: unknown): Record<string, unknown>[] {
 }
 
 function pdfResponse(messageId: string, buffer: Buffer) {
-  return new NextResponse(new Uint8Array(buffer), {
+  const body = Uint8Array.from(buffer);
+  return new NextResponse(body, {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',
