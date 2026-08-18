@@ -719,26 +719,26 @@ export default function VerifyPage() {
             <div>
               <h4 className="font-semibold text-foreground mb-2">1. ¿Qué es Notificas.com?</h4>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Notificas.com emite constancias técnicas de notificaciones digitales. El texto se hashea y ese hash se ancla en Polygon (red pública). Las TX confirmadas no se alteran. El expediente en la plataforma se conserva; no es una blockchain.
+                Notificas.com deja constancia de un mensaje digital: qué se envió, a quién y cuándo. La huella de ese texto queda en Polygon, una red pública que no se puede reescribir. El expediente (el texto y los eventos) se guarda en Notificas; no está “dentro” de la blockchain.
               </p>
             </div>
 
             <div>
               <h4 className="font-semibold text-foreground mb-2">2. ¿Qué se certifica?</h4>
               <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-                <li><strong>Envío:</strong> Hash del texto e ID SMTP si el servidor de correo aceptó el mensaje (no prueba casilla)</li>
-                <li><strong>Contenido intimado:</strong> Hash SHA-256 del texto del correo/lector, anclado en Polygon</li>
-                <li><strong>Aviso WhatsApp:</strong> Hash del pedido a Meta (template + variables + enlace). No es el texto de la intimación salvo que coincidan</li>
-                <li><strong>Recepción:</strong> Primer click al lector, si ocurre — no es la apertura del buzón</li>
-                <li><strong>Lectura:</strong> Confirmación en el lector, o Meta marca el template como leído</li>
-                <li><strong>Certificado PDF:</strong> Se emite una sola vez. Su hash se ancla en Polygon. No se recertifica</li>
+                <li><strong>Envío:</strong> qué texto salió y si el servidor de correo lo tomó para enviar (no prueba que haya llegado a la bandeja)</li>
+                <li><strong>Contenido:</strong> huella del texto que ve el destinatario en el correo o en el lector</li>
+                <li><strong>Aviso WhatsApp:</strong> la plantilla de Meta con los datos de esa persona, no la carta completa salvo que coincidan</li>
+                <li><strong>Recepción:</strong> primer click al enlace de lectura, si ocurre — no es haber abierto Gmail u Outlook</li>
+                <li><strong>Lectura:</strong> confirmación en nuestra pantalla, o WhatsApp marca el aviso como leído</li>
+                <li><strong>Certificado PDF:</strong> se emite una sola vez, como una foto de ese momento. No se le agregan hechos posteriores</li>
               </ul>
             </div>
 
             <div>
               <h4 className="font-semibold text-foreground mb-2">3. ¿Por qué es inmutable?</h4>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Las transacciones confirmadas en Polygon (polygonscan.com) no se pueden modificar. El hash en cadena es la referencia para el contenido. Adjuntos y PDFs lacrados no se pisan durante 5 años. El expediente en Firestore no es inmutable: por eso se copia al bucket lacrado al sellar.
+                Lo publicado en Polygon (polygonscan.com) no se puede cambiar. Esa huella sirve para comprobar que el texto es el mismo. Adjuntos y PDFs quedan trabados 5 años. El archivo de trabajo en Notificas se copia a ese depósito trabado al enviar, para que el texto también sobreviva.
               </p>
             </div>
 
@@ -754,7 +754,7 @@ export default function VerifyPage() {
             <div className="bg-muted/50 p-4 rounded-lg border">
               <h4 className="font-semibold text-foreground mb-2">5. Valor probatorio</h4>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Los PDF de Notificas son constancias técnicas con hashes y TX verificables de forma independiente. Se pueden presentar en un expediente. No equivalen a una carta documento. Quien juzga decide qué valor les da. El certificado de lectura se emite una sola vez.
+                Estos PDF se pueden presentar en un expediente. No son una carta documento. Quien juzga decide qué valor les da. El certificado de lectura se saca una sola vez: es una foto de ese instante.
               </p>
             </div>
 

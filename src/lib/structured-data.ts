@@ -61,7 +61,7 @@ export function serviceJsonLd() {
     name: "Notificaciones fehacientes digitales",
     serviceType: "Notificación fehaciente digital certificada en blockchain",
     description:
-      "Notificaciones digitales con hash en Polygon, constancia de envío, template de WhatsApp y certificado de lectura emitido una sola vez. Campañas de volumen por WhatsApp y email, previa cotización.",
+      "Enviá un mensaje y dejá constancia de qué salió, a quién y cuándo. El certificado de lectura se emite una sola vez. Campañas de volumen por WhatsApp y correo, previa cotización.",
     provider: { "@id": `${SITE_URL}/#organization` },
     areaServed: {
       "@type": "Country",

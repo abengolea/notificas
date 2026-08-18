@@ -499,7 +499,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       doc.setFontSize(9);
       setTextColor(COLORS.textMuted);
       const freezeNotice = doc.splitTextToSize(
-        'Este PDF se emite una sola vez. Incluye los eventos registrados hasta esta emisión. No se vuelve a generar ni se le agregan lecturas, rebotes u otros hitos posteriores.',
+        'Este documento es una foto de los hechos al emitirlo. No se vuelve a emitir. Una lectura o un rebote posteriores no aparecen acá. Podés descargar otra vez la misma copia.',
         contentWidth
       );
       doc.text(freezeNotice, pageWidth / 2, yPosition, { align: 'center' });
@@ -530,7 +530,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     doc.setFontSize(8.5);
     setTextColor(COLORS.textMuted);
 
-    const line1 = `Notificas.com · constancia técnica · certificado de lectura emitido una sola vez`;
+    const line1 = `Notificas.com · constancia técnica · este certificado de lectura se emite una sola vez`;
     const line2 = `ID de certificado: ${messageId} · Página ${pageNumber} de ${pageCount}`;
     const maxW = contentWidth - 16;
     const lines1 = doc.splitTextToSize(line1, maxW);

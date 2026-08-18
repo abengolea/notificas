@@ -15,7 +15,7 @@ export const DEFAULT_TITLE =
   "Notificas | Notificaciones fehacientes digitales certificadas en blockchain";
 
 export const DEFAULT_DESCRIPTION =
-  "Notificaciones digitales con hash en Polygon: constancia de envío, template de WhatsApp y certificado de lectura emitido una sola vez. Campañas de volumen por WhatsApp y email, previa cotización.";
+  "Enviá un mensaje y dejá constancia de qué salió, a quién y cuándo. El certificado de lectura se emite una sola vez. Campañas de volumen por WhatsApp y correo, previa cotización.";
 
 export const SITE_KEYWORDS = [
   "notificaciones fehacientes",

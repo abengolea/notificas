@@ -94,7 +94,7 @@ export async function generateConstanciaEnvioPdf(data: ConstanciaEnvioInput): Pr
   doc.setFontSize(9);
   setMuted();
   const aviso = doc.splitTextToSize(
-    "Documento técnico al momento del sello. No es el certificado de lectura. Ese otro PDF se emite una sola vez, cuando lo descargás, y no se vuelve a certificar.",
+    "Documento al momento del envío. No es el certificado de lectura. Ese otro PDF lo emitís después, una sola vez, y no se le agregan hechos posteriores.",
     contentWidth
   );
   doc.text(aviso, pageWidth / 2, y, { align: "center" });

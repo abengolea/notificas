@@ -279,8 +279,8 @@ function MessageContent() {
                     </div>
                     <p className="text-sm text-gray-600 max-w-2xl mx-auto">
                       {trackingStopped 
-                        ? 'El PDF ya se emitió. Podés bajar la misma copia. No se recertifica ni se le agregan eventos posteriores.'
-                        : 'Se emite una sola vez, con los eventos de ahora. Después no se vuelve a certificar. Si todavía esperás una lectura o un rebote, esperá.'
+                        ? 'El PDF ya se emitió. Podés bajar la misma copia. No se le agregan lecturas ni rebotes nuevos.'
+                        : 'Se saca una sola vez, como una foto de este momento. Si todavía esperás una lectura o un rebote, esperá.'
                       }
                     </p>
                     {id && (
@@ -299,10 +299,10 @@ function MessageContent() {
                           Certificado emitido
                         </div>
                         <p className="text-xs text-green-800">
-                          Esta copia quedó fija. Los eventos posteriores no entran en este PDF.
+                          Esta copia quedó fija. Lo que pase después no entra en este PDF.
                         </p>
                         <p className="text-xs text-green-800 mt-1">
-                          Es una constancia técnica con hashes verificables. Quien juzga decide su valor.
+                          Es una constancia para presentar. Un juez decide qué valor le da.
                         </p>
                       </div>
                     )}

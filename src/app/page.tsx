@@ -33,7 +33,7 @@ import {
 const HOME_TITLE =
   'Notificas | Notificaciones fehacientes digitales certificadas en blockchain';
 const HOME_DESCRIPTION =
-  'Notificaciones digitales con hash en Polygon: constancia de envío, template de WhatsApp y certificado de lectura emitido una sola vez. Campañas de volumen por WhatsApp y email, previa cotización.';
+  'Enviá un mensaje y dejá constancia de qué salió, a quién y cuándo. El certificado de lectura se emite una sola vez. Campañas de volumen por WhatsApp y correo, previa cotización.';
 
 export const metadata: Metadata = {
   ...createPageMetadata({
@@ -64,7 +64,7 @@ const features: { icon: LucideIcon; title: string; description: string }[] = [
   {
     icon: ShieldCheck,
     title: 'Comunicaciones certificadas',
-    description: 'El texto se hashea y ese hash se ancla en Polygon. Las TX no se alteran. El expediente en la plataforma se conserva 5 años; no es una cadena de bloques.',
+    description: 'De cada mensaje queda una huella en una red pública (Polygon). Esa huella no se puede cambiar. El texto y los eventos se conservan 5 años en Notificas.',
   },
   {
     icon: Send,
@@ -74,22 +74,22 @@ const features: { icon: LucideIcon; title: string; description: string }[] = [
   {
     icon: Cpu,
     title: 'Costos',
-    description: 'Más económico y rápido que una carta documento, con hashes verificables. No la reemplaza si la ley pide esa forma.',
+    description: 'Más económico y rápido que una carta documento, con un rastro comprobable. No la reemplaza si la ley pide esa forma.',
   },
   {
     icon: ArrowRight,
     title: 'Trazabilidad completa',
-    description: 'Queda el envío (SMTP aceptó o rebotó), el template de WhatsApp que Meta entrega o lee, y el acceso al lector si ocurre. Cada hito se puede anclar en Polygon.',
+    description: 'Anotamos si el correo salió o rebotó, si WhatsApp llegó al celular o se leyó, y si abrieron el enlace. Cada hecho se puede comprobar después.',
   },
   {
     icon: ShieldCheck,
     title: 'Prueba en juicio',
-    description: 'Constancia técnica con hashes y TX verificables. Se puede presentar en un expediente; quien juzga decide su valor. El PDF de lectura se emite una sola vez.',
+    description: 'Bajás un PDF para un expediente. Un juez decide qué valor le da. El certificado de lectura es una foto de ese momento: se emite una sola vez.',
   },
   {
     icon: ShieldCheck,
     title: 'Almacenamiento',
-    description: 'Adjuntos y PDFs lacrados 5 años. Las TX en Polygon son permanentes. El texto sellado no se borra a pedido en ese plazo.',
+    description: 'Adjuntos, PDFs y el texto del envío se guardan 5 años y no se borran a pedido. Lo publicado en Polygon queda para siempre.',
   },
 ];
 
@@ -97,27 +97,27 @@ const certifiedEvents: { icon: LucideIcon; title: string; description: string }[
   {
     icon: Send,
     title: 'Envío',
-    description: 'Hash SHA-256 del texto, destinatario y, si aplica, ID SMTP cuando el servidor de correo aceptó el mensaje. Aceptado no es «llegó a la casilla».',
+    description: 'Qué texto salió, a quién y cuándo. Si el servidor de correo lo tomó para enviar, queda anotado. Eso no significa que haya llegado a la bandeja.',
   },
   {
     icon: MessageCircle,
     title: 'Notificación por WhatsApp',
-    description: 'Se hashea el pedido a Meta (plantilla + datos). Meta informa delivered/read sobre ese template, no sobre el cuerpo libre de la carta.',
+    description: 'Se registra la plantilla que Meta aprobó, con los datos de esa persona. Meta avisa si llegó al teléfono o si lo leyeron. No es la carta completa, salvo que la plantilla sea ese texto.',
   },
   {
     icon: Inbox,
     title: 'Recepción',
-    description: 'Primer click al lector digital, si ocurre. No es la apertura del buzón de correo.',
+    description: 'El primer click al enlace de la notificación, si ocurre. No es “abrió el correo en Gmail o Outlook”.',
   },
   {
     icon: CheckCircle,
     title: 'Lectura confirmada',
-    description: 'El destinatario confirma en el lector, o Meta marca el template como leído. Son hechos distintos y se anotan por separado.',
+    description: 'O la persona confirma en nuestra pantalla de lectura, o WhatsApp marca el aviso como leído. Son dos hechos distintos.',
   },
   {
     icon: FileText,
     title: 'Certificado PDF',
-    description: 'Se emite una sola vez. El hash de ese PDF se ancla en Polygon. Después no se recertifica: eventos posteriores no entran.',
+    description: 'Lo emitís una sola vez, como una foto. Lo que pase después (otra lectura, un rebote) no entra en ese archivo. Podés volver a bajar la misma copia.',
   },
 ];
 
@@ -161,10 +161,10 @@ export default function LandingPage() {
           <div className="container grid items-start gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:gap-16">
             <div className="landing-hero-copy max-w-2xl">
               <h1 className="mb-5 text-balance text-3xl font-bold tracking-tight sm:text-4xl md:text-[2.75rem] md:leading-tight">
-                Notificas: notificaciones fehacientes digitales con respaldo blockchain
+                Notificas: notificaciones digitales con constancia de envío y lectura
               </h1>
               <p className="landing-hero-muted mb-8 max-w-[65ch] text-pretty text-base leading-relaxed sm:text-lg">
-                Hasheamos el contenido y el envío en Polygon. SMTP aceptado no es entrega al buzón. WhatsApp certifica el template de Meta. El certificado de lectura se emite una sola vez.
+                Queda qué enviaste, a quién y cuándo. El correo aceptado no es lo mismo que “llegó a la bandeja”. WhatsApp deja rastro de la plantilla de Meta, no de la carta entera. El certificado de lectura se saca una sola vez.
               </p>
               <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
                 <Button size="lg" className="w-full sm:w-auto" asChild>

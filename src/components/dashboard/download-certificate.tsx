@@ -88,8 +88,8 @@ export function DownloadCertificate({
                   <FileText className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                   <div className="text-sm text-foreground">
                     <p>
-                      Este PDF ya fue emitido. Vas a bajar la misma copia, con los eventos de esa fecha.
-                      No se recertifica: lecturas o rebotes posteriores no entran.
+                      Este PDF ya fue emitido. Vas a bajar la misma foto de esa fecha.
+                      No se arma de nuevo: lecturas o rebotes posteriores no entran.
                     </p>
                   </div>
                 </div>
@@ -99,9 +99,8 @@ export function DownloadCertificate({
                   <div className="text-sm text-warning-foreground">
                     <p className="font-medium mb-1">Se emite una sola vez</p>
                     <p>
-                      Este PDF queda lacrado con los eventos de ahora y su hash se ancla en Polygon.
-                      No se vuelve a certificar. Si después hay lectura, rebote u otros hitos, no entran en este archivo.
-                      Podés descargar la misma copia más tarde. Si todavía esperás un evento, cancelá.
+                      Es como una foto: quedan los hechos de ahora. Después no se saca otra con lecturas o rebotes nuevos.
+                      Podés volver a bajar esta misma copia. Si todavía esperás que alguien lea o que llegue un rebote, cancelá y esperá.
                     </p>
                   </div>
                 </div>
@@ -119,8 +118,8 @@ export function DownloadCertificate({
               
               <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
                 <p className="text-sm text-foreground">
-                  Constancia técnica verificable. No reemplaza una forma legal que la ley exija.
-                  Quien juzga decide qué valor le da.
+                Constancia técnica verificable. No reemplaza una carta documento ni otra forma que la ley pida.
+                Un juez decide qué valor le da.
                 </p>
               </div>
             </div>

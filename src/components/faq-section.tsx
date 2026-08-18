@@ -55,9 +55,9 @@ const faqItems: FaqItem[] = [
     question: FAQ_CLAIMS[7].question,
     answer: (
       <>
-        Ingresá a {linkVerify} y subí el PDF o ingresá el ID del mensaje. El sistema compara el hash del documento con el anclado en Polygon. También podés chequear la TX en{" "}
+        Ingresá a {linkVerify} y subí el PDF o ingresá el ID del mensaje. Comparamos la huella del archivo con la que quedó en Polygon. También podés copiar el código de transacción del PDF y buscarlo en{" "}
         <a href="https://polygonscan.com" target="_blank" rel="noopener noreferrer" className="text-primary font-medium underline-offset-4 hover:underline">polygonscan.com</a>
-        {" "}con el hash que figura en el PDF.
+        .
       </>
     ),
   },
@@ -77,7 +77,7 @@ const faqItems: FaqItem[] = [
     question: FAQ_CLAIMS[10].question,
     answer: (
       <>
-        WhatsApp usa plantillas aprobadas por Meta, sujetas a sus políticas y cupos. En email registramos lo que el servidor aceptó, un rebote si nos llega, y el acceso al lector si ocurre. Cada campaña se cotiza; no publicamos tarifas de Meta. Pedí una cotización en{" "}
+        WhatsApp usa plantillas que Meta tiene que haber aprobado, con sus reglas y cupos. En el correo anotamos si nuestro servidor lo aceptó, si nos llega un rebote, y si la persona abrió el enlace de lectura. Cada campaña se cotiza; no publicamos tarifas de Meta. Pedí una cotización en{" "}
         <Link
           href="/#cotizacion"
           className="text-primary font-medium underline-offset-4 hover:underline"
@@ -119,7 +119,7 @@ export function FaqSection() {
             Preguntas frecuentes
           </h2>
           <p className="max-w-[65ch] text-base leading-relaxed text-muted-foreground md:text-lg">
-            Todo lo que necesitás saber sobre el servicio, la certificación en blockchain y cómo usar la plataforma.
+            Qué queda registrado, qué no, y cómo usar el certificado.
           </p>
         </div>
         <Accordion
