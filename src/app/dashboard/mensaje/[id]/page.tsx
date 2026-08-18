@@ -275,18 +275,19 @@ function MessageContent() {
                   <div className="text-center space-y-4">
                     <div className="flex items-center justify-center gap-2 text-lg font-semibold text-gray-700">
                       <FileText className="h-5 w-5" />
-                      {trackingStopped ? 'Descargar Certificado de Lectura' : 'Generar Certificado de Lectura'}
+                      {trackingStopped ? 'Certificado de lectura emitido' : 'Certificado de lectura'}
                     </div>
                     <p className="text-sm text-gray-600 max-w-2xl mx-auto">
                       {trackingStopped 
-                        ? 'Descarga el certificado PDF oficial ya generado con toda la información del mensaje, movimientos registrados y documentos adjuntos para presentar ante autoridades.'
-                        : 'Descarga un certificado PDF oficial con toda la información del mensaje, movimientos registrados y documentos adjuntos para presentar ante autoridades.'
+                        ? 'El PDF ya se emitió. Podés bajar la misma copia. No se recertifica ni se le agregan eventos posteriores.'
+                        : 'Se emite una sola vez, con los eventos de ahora. Después no se vuelve a certificar. Si todavía esperás una lectura o un rebote, esperá.'
                       }
                     </p>
                     {id && (
                       <DownloadCertificate 
                         messageId={id}
                         onDownload={handleDownloadCertificate}
+                        alreadyIssued={trackingStopped}
                       />
                     )}
                     
@@ -295,13 +296,13 @@ function MessageContent() {
                       <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
                         <div className="flex items-center justify-center gap-2 text-sm font-semibold text-green-700 mb-2">
                           <CheckCircle className="h-4 w-4" />
-                          Certificado Generado
+                          Certificado emitido
                         </div>
                         <p className="text-xs text-green-800">
-                          El tracking ha sido detenido. Ya no se registrarán nuevos movimientos para este mensaje.
+                          Esta copia quedó fija. Los eventos posteriores no entran en este PDF.
                         </p>
                         <p className="text-xs text-green-800 mt-1">
-                          ✅ Este mensaje está listo para ser presentado ante autoridades judiciales.
+                          Es una constancia técnica con hashes verificables. Quien juzga decide su valor.
                         </p>
                       </div>
                     )}

@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { getAdminDb, writeWormSnapshot } from "@/lib/firebase-admin";
+import { persistConstanciaEnvio } from "@/lib/constancia-envio-pdf";
 import { computeContentHash } from "@/lib/certification";
 import { sha256Hex } from "@/lib/merkle";
 import { recordProviderEvent } from "@/lib/provider-events";
@@ -48,6 +49,12 @@ export type EvidenceSnapshot = {
 
 function str(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
+/** Copia lacrada del expediente ya sellado. Nunca reconstruye desde el mail vivo. */
+async function persistSealedArtifacts(mailId: string, snapshot: EvidenceSnapshot): Promise<void> {
+  await writeWormSnapshot(mailId, snapshot);
+  await persistConstanciaEnvio(mailId, snapshot);
 }
 
 function attachmentList(mail: FirebaseFirestore.DocumentData) {
@@ -104,7 +111,13 @@ export async function sealEvidenceSnapshot(mailId: string): Promise<EvidenceSnap
   const db = getAdminDb();
   const snapRef = db.collection("evidence_snapshots").doc(mailId);
   const existing = await snapRef.get();
-  if (existing.exists) return existing.data() as EvidenceSnapshot;
+  if (existing.exists) {
+    const sealedExisting = existing.data() as EvidenceSnapshot;
+    await persistSealedArtifacts(mailId, sealedExisting).catch((e) =>
+      console.warn("⚠️ WORM / constancia (ya sellado):", e instanceof Error ? e.message : e)
+    );
+    return sealedExisting;
+  }
 
   const mailSnap = await db.collection("mail").doc(mailId).get();
   if (!mailSnap.exists) return null;
@@ -228,11 +241,24 @@ export async function sealEvidenceSnapshot(mailId: string): Promise<EvidenceSnap
     }).catch(() => undefined);
   }
 
-  return { ...record, sealedAt: new Date() } as EvidenceSnapshot;
+  const sealed = created
+    ? ({ ...record, sealedAt: new Date() } as EvidenceSnapshot)
+    : ((await snapRef.get()).data() as EvidenceSnapshot | undefined) ?? null;
+  if (sealed) {
+    await persistSealedArtifacts(mailId, sealed).catch((e) =>
+      console.warn("⚠️ WORM / constancia:", e instanceof Error ? e.message : e)
+    );
+  }
+  return sealed;
 }
 
 export async function getEvidenceSnapshot(mailId: string): Promise<EvidenceSnapshot | null> {
   const snap = await getAdminDb().collection("evidence_snapshots").doc(mailId).get();
   if (!snap.exists) return null;
-  return snap.data() as EvidenceSnapshot;
+  const data = snap.data() as EvidenceSnapshot;
+  // Primera escritura gana. Copia el expediente ya sellado; no reconstruye desde mail.
+  await persistSealedArtifacts(mailId, data).catch((e) =>
+    console.warn("⚠️ WORM / constancia (lectura):", e instanceof Error ? e.message : e)
+  );
+  return data;
 }

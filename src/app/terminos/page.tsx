@@ -40,10 +40,7 @@ export default function TerminosPage() {
           <section>
             <h2 className="text-lg font-semibold mb-2">2. Objeto del servicio</h2>
             <p>
-              Notificas.com es una plataforma de notificaciones fehacientes digitales que permite a sus
-              usuarios enviar comunicaciones electrónicas con trazabilidad certificada. El envío, contenido,
-              recepción y lectura de cada mensaje se registra de forma inmutable en la red Polygon (blockchain
-              pública y descentralizada), generando constancias con valor probatorio.
+              Notificas.com es una plataforma de notificaciones digitales con constancia técnica. El envío y el contenido se hashean y ese hash puede anclarse en Polygon. SMTP aceptado no implica entrega en la casilla. WhatsApp deja constancia del template aprobado por Meta. El certificado de lectura se emite una sola vez. Estas constancias no reemplazan una forma legal que la ley exija.
             </p>
             <p className="mt-2">
               Asimismo, Notificas podrá prestar a empresas y organizaciones servicios de procesamiento,
@@ -223,6 +220,9 @@ export default function TerminosPage() {
             <p>
               La documentación asociada a las comunicaciones se conserva por un período no inferior a
               cinco (5) años desde la fecha de envío, salvo disposición legal que exija un plazo mayor.
+              Adjuntos y PDFs lacrados no se pisan ni se borran en ese plazo. Las transacciones en Polygon
+              son permanentes. El expediente sellado (incluido el texto) no se elimina a pedido durante
+              esos cinco años.
             </p>
           </section>
 

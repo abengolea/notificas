@@ -114,7 +114,53 @@ export function getEvidenceBucket() {
 }
 
 export function isEvidenceObjectPath(path: string): boolean {
-  return path.startsWith('pdfs/') || path.startsWith('certificates/');
+  return (
+    path.startsWith('pdfs/') ||
+    path.startsWith('certificates/') ||
+    path.startsWith('evidence-snapshots/')
+  );
+}
+
+export function wormSnapshotPath(mailId: string) {
+  return `evidence-snapshots/${mailId}.json`;
+}
+
+function jsonReplacer(_key: string, value: unknown) {
+  if (value instanceof Date) return value.toISOString();
+  if (value && typeof value === 'object') {
+    if (typeof (value as { toDate?: () => Date }).toDate === 'function') {
+      try {
+        return (value as { toDate: () => Date }).toDate().toISOString();
+      } catch {
+        return value;
+      }
+    }
+    const secs = (value as { seconds?: number; _seconds?: number }).seconds
+      ?? (value as { _seconds?: number })._seconds;
+    if (typeof secs === 'number') return new Date(secs * 1000).toISOString();
+  }
+  return value;
+}
+
+/** Expediente sellado en el bucket lacrado. Si ya existe, no pisa (WORM). */
+export async function writeWormSnapshot(mailId: string, snapshot: unknown): Promise<void> {
+  if (!mailId) return;
+  const file = getEvidenceBucket().file(wormSnapshotPath(mailId));
+  const [exists] = await file.exists();
+  if (exists) return;
+  const body = JSON.stringify(snapshot, jsonReplacer);
+  try {
+    await file.save(Buffer.from(body, 'utf8'), {
+      resumable: false,
+      contentType: 'application/json; charset=utf-8',
+      metadata: { cacheControl: 'private,max-age=31536000' },
+      preconditionOpts: { ifGenerationMatch: 0 },
+    });
+  } catch (e: unknown) {
+    const code = typeof e === 'object' && e && 'code' in e ? Number((e as { code?: number }).code) : 0;
+    if (code === 412) return;
+    throw e;
+  }
 }
 
 /** Copia al bucket lacrado si aún no existe. Un overwrite ahí lo rechaza GCS. */

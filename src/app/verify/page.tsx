@@ -719,26 +719,26 @@ export default function VerifyPage() {
             <div>
               <h4 className="font-semibold text-foreground mb-2">1. ¿Qué es Notificas.com?</h4>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Notificas.com es un sistema de notificaciones fehacientes digitales que permite enviar comunicaciones con valor probatorio. Cada mensaje enviado queda registrado de forma inmutable en la blockchain de Polygon (red pública, descentralizada y auditable).
+                Notificas.com emite constancias técnicas de notificaciones digitales. El texto se hashea y ese hash se ancla en Polygon (red pública). Las TX confirmadas no se alteran. El expediente en la plataforma se conserva; no es una blockchain.
               </p>
             </div>
 
             <div>
               <h4 className="font-semibold text-foreground mb-2">2. ¿Qué se certifica?</h4>
               <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-                <li><strong>Envío:</strong> Cuándo y por quién se envió el mensaje, con ID SMTP del servidor de correo</li>
-                <li><strong>Contenido intimado:</strong> Hash SHA-256 del texto del correo/lector, registrado en Polygon</li>
-                <li><strong>Aviso WhatsApp:</strong> Hash del pedido a Meta (template + variables + enlace). No es el texto de la intimación</li>
-                <li><strong>Recepción:</strong> Cuándo el destinatario accedió por primera vez al mensaje, encadenado al envío</li>
-                <li><strong>Lectura:</strong> Confirmación explícita de lectura por el destinatario</li>
-                <li><strong>Certificado PDF:</strong> Hash SHA-256 del PDF oficial, anclado en Polygon y encadenado al envío</li>
+                <li><strong>Envío:</strong> Hash del texto e ID SMTP si el servidor de correo aceptó el mensaje (no prueba casilla)</li>
+                <li><strong>Contenido intimado:</strong> Hash SHA-256 del texto del correo/lector, anclado en Polygon</li>
+                <li><strong>Aviso WhatsApp:</strong> Hash del pedido a Meta (template + variables + enlace). No es el texto de la intimación salvo que coincidan</li>
+                <li><strong>Recepción:</strong> Primer click al lector, si ocurre — no es la apertura del buzón</li>
+                <li><strong>Lectura:</strong> Confirmación en el lector, o Meta marca el template como leído</li>
+                <li><strong>Certificado PDF:</strong> Se emite una sola vez. Su hash se ancla en Polygon. No se recertifica</li>
               </ul>
             </div>
 
             <div>
               <h4 className="font-semibold text-foreground mb-2">3. ¿Por qué es inmutable?</h4>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Las transacciones se registran en la blockchain de Polygon (polygonscan.com). Una vez confirmadas, no pueden modificarse. La verificación de integridad del contenido utiliza el hash almacenado en la blockchain como fuente de verdad, no en bases de datos centralizadas.
+                Las transacciones confirmadas en Polygon (polygonscan.com) no se pueden modificar. El hash en cadena es la referencia para el contenido. Adjuntos y PDFs lacrados no se pisan durante 5 años. El expediente en Firestore no es inmutable: por eso se copia al bucket lacrado al sellar.
               </p>
             </div>
 
@@ -754,7 +754,7 @@ export default function VerifyPage() {
             <div className="bg-muted/50 p-4 rounded-lg border">
               <h4 className="font-semibold text-foreground mb-2">5. Valor probatorio</h4>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Los certificados emitidos por Notificas.com pueden ser presentados ante autoridades administrativas, judiciales o cualquier organismo público o privado como medio de prueba del envío, contenido, recepción y/o lectura del mensaje. Las transacciones en blockchain son verificables de forma independiente en polygonscan.com.
+                Los PDF de Notificas son constancias técnicas con hashes y TX verificables de forma independiente. Se pueden presentar en un expediente. No equivalen a una carta documento. Quien juzga decide qué valor les da. El certificado de lectura se emite una sola vez.
               </p>
             </div>
 

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { FAQ_CLAIMS } from "@/lib/honest-claims";
 
 /** Dominio canónico de producción (App Hosting). */
 export const SITE_URL = (
@@ -14,7 +15,7 @@ export const DEFAULT_TITLE =
   "Notificas | Notificaciones fehacientes digitales certificadas en blockchain";
 
 export const DEFAULT_DESCRIPTION =
-  "Enviá notificaciones fehacientes digitales con valor probatorio. Certificá envío, recepción y lectura en Polygon. Notificaciones de alto volumen para empresas por WhatsApp y Email, previa cotización.";
+  "Notificaciones digitales con hash en Polygon: constancia de envío, template de WhatsApp y certificado de lectura emitido una sola vez. Campañas de volumen por WhatsApp y email, previa cotización.";
 
 export const SITE_KEYWORDS = [
   "notificaciones fehacientes",
@@ -55,63 +56,7 @@ export const SITE_CONTACT = {
 } as const;
 
 /** FAQs en texto plano para Schema.org FAQPage (sin JSX). */
-export const FAQ_SEO_ITEMS: ReadonlyArray<{ question: string; answer: string }> = [
-  {
-    question: "¿Qué es Notificas?",
-    answer:
-      "Notificas es una plataforma de notificaciones fehacientes digitales. Cada comunicación que enviás queda certificada en la red Polygon (blockchain pública): el contenido del mensaje, la fecha y hora de envío, la recepción y la lectura del destinatario. Todo queda registrado de forma inmutable y verificable por cualquier persona.",
-  },
-  {
-    question: "¿Qué eventos se certifican en blockchain?",
-    answer:
-      "Certificamos cuatro eventos en cadena: el envío (con hash SHA-256 del contenido e ID del servidor SMTP), la recepción (primer acceso fehaciente del destinatario), la lectura confirmada (cuando el destinatario confirma explícitamente haber leído), y el certificado PDF (hash del documento oficial, encadenado al envío). Todos los eventos están vinculados entre sí mediante referencias criptográficas.",
-  },
-  {
-    question: "¿Qué pasa con el canal de WhatsApp?",
-    answer:
-      "Además del correo electrónico, enviamos una notificación por WhatsApp al destinatario. Registramos el envío del mensaje, la entrega al dispositivo, la apertura del enlace y la lectura del contenido. Todos estos eventos también quedan certificados en Polygon.",
-  },
-  {
-    question: "¿Equivale a una carta documento?",
-    answer:
-      "Es más económico, más rápido y con mayor trazabilidad que una carta documento tradicional — hasta 20 veces más barato, sin necesidad de concurrir a ninguna oficina. El certificado que generamos tiene valor probatorio y puede presentarse ante autoridades judiciales o administrativas. Para casos específicos que exijan una forma legal determinada, consultá con tu asesor legal.",
-  },
-  {
-    question: "¿Qué pasa si el destinatario no abre el correo?",
-    answer:
-      "Igual queda constancia del envío certificado en Polygon. Si el destinatario no abre el mensaje, el sistema registra el intento de entrega y el estado de la comunicación. Podés también notificar por WhatsApp simultáneamente, lo que amplia la cobertura del intento fehaciente. El certificado PDF refleja todos los eventos ocurridos hasta el momento en que lo descargás.",
-  },
-  {
-    question: "¿Por cuánto tiempo se conserva la documentación?",
-    answer:
-      "Toda la documentación asociada a tus envíos se conserva por un mínimo de 5 años. Las transacciones en Polygon son permanentes por naturaleza: ningún tercero, ni siquiera Notificas, puede modificarlas o eliminarlas una vez confirmadas.",
-  },
-  {
-    question: "¿Cómo se usa el certificado en un juicio o reclamo?",
-    answer:
-      "Desde el dashboard podés descargar el certificado PDF oficial de cualquier envío. Ese documento incluye todos los eventos certificados, los hashes SHA-256, los hash de transacción en Polygon y la cadena de eventos. El hash del propio PDF también queda anclado en blockchain, lo que garantiza que no fue alterado. Podés presentarlo directamente en cualquier expediente.",
-  },
-  {
-    question: "¿Cómo verifico que un certificado es auténtico?",
-    answer:
-      "Ingresá a la sección Verificar certificado y subí el PDF o ingresá el ID del mensaje. El sistema compara el hash del documento con el registrado en Polygon. Si coincide, el certificado es auténtico y no fue modificado. También podés verificar la transacción de forma independiente en polygonscan.com ingresando el hash de TX que figura en el PDF.",
-  },
-  {
-    question: "¿Cómo empiezo a usar Notificas?",
-    answer:
-      "Creá tu cuenta en Registro — el proceso toma menos de dos minutos. Desde el dashboard podés cargar créditos y empezar a enviar notificaciones certificadas de inmediato. Para cuentas corporativas o de volumen, usá el acceso empresas.",
-  },
-  {
-    question: "¿Notificas ofrece notificaciones de alto volumen para empresas?",
-    answer:
-      "Sí. Además de las notificaciones individuales mediante créditos, Notificas ofrece soluciones para empresas y organizaciones que necesitan procesar cientos o miles de notificaciones por WhatsApp o Email, con personalización, trazabilidad individual, certificación tecnológica mediante blockchain y reportes. Las campañas corporativas se implementan previa evaluación técnica y cotización personalizada.",
-  },
-  {
-    question: "¿Cómo funcionan las campañas corporativas por WhatsApp y Email?",
-    answer:
-      "WhatsApp Business Platform permite realizar comunicaciones empresariales mediante plantillas previamente aprobadas cuando corresponda. La disponibilidad, velocidad y volumen de procesamiento están sujetos a las políticas y a los límites de capacidad habilitados por Meta. En Email, Notificas registra los estados técnicamente disponibles para cada comunicación, como enviado, acceso al contenido o error. Notificas administra el procesamiento, el envío, la trazabilidad y la certificación tecnológica; no publica tarifas de Meta en el sitio: cada campaña se cotiza de forma particular.",
-  },
-];
+export const FAQ_SEO_ITEMS = FAQ_CLAIMS;
 
 export function absoluteUrl(path = "/"): string {
   if (/^https?:\/\//i.test(path)) return path;

@@ -438,12 +438,11 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   y += 6;
   doc.setFontSize(9);
   const declaracion =
-    `Por medio del presente, Notificas.com, en su carácter de sistema de notificaciones fehacientes digitales, ` +
-    `deja constancia de que ${remitente}${input.orgCuit ? ` (CUIT ${input.orgCuit})` : ''} remitió a ${destinatario} ` +
+    `Por medio del presente, Notificas.com deja constancia técnica de que ${remitente}${input.orgCuit ? ` (CUIT ${input.orgCuit})` : ''} remitió a ${destinatario} ` +
     `una comunicación digital en el marco de la campaña «${input.campaignNombre}», ` +
     `cuyo texto se transcribe a continuación tal como le fue enviado.` +
     ` Los hechos de envío, entrega y lectura que se detallan son los registrados por el sistema a la fecha de emisión. ` +
-    `Esta constancia no implica conformidad del destinatario con el contenido.`;
+    `Esta constancia no equivale a una carta documento ni implica conformidad del destinatario con el contenido.`;
   y = writeWrapped(doc, declaracion, 14, y, 182, 4.2);
   y += 6;
 

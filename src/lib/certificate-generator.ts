@@ -478,7 +478,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     doc.setFontSize(9.5);
     setTextColor(COLORS.textMuted);
     doc.text(
-      'Sistema de notificaciones fehacientes digitales',
+      'Constancia técnica de notificación digital',
       pageWidth / 2,
       headerY + 55,
       { align: 'center' }
@@ -494,9 +494,20 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       setTextColor(COLORS.textMain);
       doc.text('Certificado oficial de lectura', pageWidth / 2, yPosition, { align: 'center' });
 
-      drawHorizontalRule(yPosition + 12);
+      yPosition += 16;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      setTextColor(COLORS.textMuted);
+      const freezeNotice = doc.splitTextToSize(
+        'Este PDF se emite una sola vez. Incluye los eventos registrados hasta esta emisión. No se vuelve a generar ni se le agregan lecturas, rebotes u otros hitos posteriores.',
+        contentWidth
+      );
+      doc.text(freezeNotice, pageWidth / 2, yPosition, { align: 'center' });
+      yPosition += freezeNotice.length * 12;
 
-      yPosition += 30;
+      drawHorizontalRule(yPosition + 10);
+
+      yPosition += 28;
     } else {
       const continuationTitleY = headerY + 78;
       doc.setFont('helvetica', 'bold');
@@ -519,7 +530,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     doc.setFontSize(8.5);
     setTextColor(COLORS.textMuted);
 
-    const line1 = `Notificas.com · notificaciones fehacientes digitales`;
+    const line1 = `Notificas.com · constancia técnica · certificado de lectura emitido una sola vez`;
     const line2 = `ID de certificado: ${messageId} · Página ${pageNumber} de ${pageCount}`;
     const maxW = contentWidth - 16;
     const lines1 = doc.splitTextToSize(line1, maxW);

@@ -20,9 +20,15 @@ interface DownloadCertificateProps {
   messageId: string;
   onDownload: () => Promise<void>;
   disabled?: boolean;
+  /** Ya existe el PDF emitido: misma copia, no se recertifica. */
+  alreadyIssued?: boolean;
 }
 
-export function DownloadCertificate({ messageId, onDownload, disabled = false }: DownloadCertificateProps) {
+export function DownloadCertificate({
+  onDownload,
+  disabled = false,
+  alreadyIssued = false,
+}: DownloadCertificateProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const { toast } = useToast();
 
@@ -31,8 +37,10 @@ export function DownloadCertificate({ messageId, onDownload, disabled = false }:
     try {
       await onDownload();
       toast({
-        title: "Certificado descargado",
-        description: "El certificado PDF ha sido generado y descargado exitosamente.",
+        title: alreadyIssued ? "Certificado descargado" : "Certificado emitido",
+        description: alreadyIssued
+          ? "Es la misma copia lacrada. No se volvió a certificar."
+          : "Este PDF quedó emitido. No se vuelve a generar con eventos posteriores.",
         variant: "default",
       });
     } catch (error: any) {
@@ -57,12 +65,12 @@ export function DownloadCertificate({ messageId, onDownload, disabled = false }:
           {isDownloading ? (
             <>
               <FileText className="mr-2 h-4 w-4 animate-pulse" />
-              Generando Certificado...
+              {alreadyIssued ? "Descargando…" : "Emitiendo certificado…"}
             </>
           ) : (
             <>
               <Download className="mr-2 h-4 w-4" />
-              Descargar Certificado
+              {alreadyIssued ? "Descargar certificado" : "Emitir certificado de lectura"}
             </>
           )}
         </Button>
@@ -71,50 +79,64 @@ export function DownloadCertificate({ messageId, onDownload, disabled = false }:
         <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-primary" />
-            Descargar Certificado de Lectura
+            {alreadyIssued ? "Descargar certificado de lectura" : "Emitir certificado de lectura"}
           </AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3">
-              <div className="flex items-start gap-2 p-3 bg-warning/10 border border-warning/50 rounded-lg">
-                <AlertTriangle className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-warning-foreground">
-                  <p className="font-medium mb-1">Importante:</p>
-                  <p>Al descargar el certificado, el sistema <strong>detendrá automáticamente</strong> la captura de nuevos movimientos de tracking para este mensaje.</p>
+              {alreadyIssued ? (
+                <div className="flex items-start gap-2 p-3 bg-muted/60 border rounded-lg">
+                  <FileText className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-foreground">
+                    <p>
+                      Este PDF ya fue emitido. Vas a bajar la misma copia, con los eventos de esa fecha.
+                      No se recertifica: lecturas o rebotes posteriores no entran.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex items-start gap-2 p-3 bg-warning/10 border border-warning/50 rounded-lg">
+                  <AlertTriangle className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-warning-foreground">
+                    <p className="font-medium mb-1">Se emite una sola vez</p>
+                    <p>
+                      Este PDF queda lacrado con los eventos de ahora y su hash se ancla en Polygon.
+                      No se vuelve a certificar. Si después hay lectura, rebote u otros hitos, no entran en este archivo.
+                      Podés descargar la misma copia más tarde. Si todavía esperás un evento, cancelá.
+                    </p>
+                  </div>
+                </div>
+              )}
               
               <div className="space-y-2 text-sm">
-                <p><strong>El certificado incluirá:</strong></p>
+                <p><strong>Incluye lo registrado hasta la emisión:</strong></p>
                 <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                  <li>Información completa del mensaje</li>
-                  <li>Historial completo de movimientos</li>
-                  <li>Documentos adjuntos con hashes de integridad</li>
-                  <li>Enlaces verificables a todos los archivos</li>
-                  <li>Certificación blockchain de autenticidad</li>
+                  <li>Texto, destinatario y hashes SHA-256</li>
+                  <li>Eventos de correo y WhatsApp de ese momento</li>
+                  <li>Adjuntos con su hash</li>
+                  <li>TX en Polygon, si ya existen</li>
                 </ul>
               </div>
               
               <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
                 <p className="text-sm text-foreground">
-                  <strong>Uso legal:</strong> Este certificado puede ser presentado ante autoridades judiciales como prueba de notificación fehaciente.
+                  Constancia técnica verificable. No reemplaza una forma legal que la ley exija.
+                  Quien juzga decide qué valor le da.
                 </p>
               </div>
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel>{alreadyIssued ? "Cerrar" : "Esperar más eventos"}</AlertDialogCancel>
           <AlertDialogAction 
             onClick={handleDownload}
             className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Download className="mr-2 h-4 w-4" />
-            Generar y Descargar
+            {alreadyIssued ? "Descargar copia" : "Emitir y descargar"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
   );
 }
-
-
