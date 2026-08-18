@@ -24,6 +24,7 @@ export type CreateMailAdminParams = {
   recipientEmail?: string;
   recipientPhone?: string;
   recipientDni?: string;
+  recipientCuit?: string;
   recipientLegajo?: string;
   recipientDias?: string;
   senderName?: string;
@@ -56,6 +57,7 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
     recipientEmail,
     recipientPhone,
     recipientDni,
+    recipientCuit,
     recipientLegajo,
     recipientDias,
     senderName,
@@ -105,7 +107,8 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
   const recNorm = normalizedEmailIdentity(recipientEmail);
   if (recNorm) payload.recipientEmail = recNorm;
   if (recipientPhone) payload.recipientPhone = recipientPhone;
-  if (recipientDni) payload.recipientDni = recipientDni;
+  if (recipientDni) payload.recipientDni = recipientDni.replace(/\D/g, '');
+  if (recipientCuit) payload.recipientCuit = recipientCuit.replace(/\D/g, '');
   if (recipientLegajo) payload.recipientLegajo = recipientLegajo;
   if (recipientDias) payload.recipientDias = recipientDias;
   if (waTemplateName) payload.waTemplateName = waTemplateName;

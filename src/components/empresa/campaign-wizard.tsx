@@ -1245,7 +1245,7 @@ export function CampaignWizard({
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    El orden debe coincidir exactamente con las variables del cuerpo en Meta. Para esta plantilla de mora suele ser {{1}} nombre y {{2}} días de atraso.
+                    El orden debe coincidir exactamente con las variables del cuerpo en Meta. Para esta plantilla de mora suele ser {"{{1}}"} nombre y {"{{2}}"} días de atraso.
                   </p>
                   <div className="flex items-start gap-3 rounded-md border p-3">
                     <Checkbox

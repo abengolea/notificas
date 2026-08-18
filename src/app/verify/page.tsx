@@ -16,6 +16,7 @@ interface VerificationResult {
   senderName?: string;
   recipientEmail?: string;
   recipientDni?: string;
+  recipientCuit?: string;
   sentAt?: string;
   hash?: string;
   blockchainVerified?: boolean;
@@ -69,6 +70,7 @@ export default function VerifyPage() {
             senderName: data?.data?.senderName,
             recipientEmail: data?.data?.recipientEmail,
             recipientDni: data?.data?.recipientDni,
+            recipientCuit: data?.data?.recipientCuit,
             sentAt: data?.data?.sentAt
               ? new Date(data.data.sentAt).toLocaleString("es-ES")
               : undefined,
@@ -120,6 +122,7 @@ export default function VerifyPage() {
           senderName: data?.data?.senderName,
           recipientEmail: data?.data?.recipientEmail,
           recipientDni: data?.data?.recipientDni,
+          recipientCuit: data?.data?.recipientCuit,
           sentAt: data?.data?.sentAt
             ? new Date(data.data.sentAt).toLocaleString("es-ES")
             : undefined,
@@ -557,6 +560,18 @@ export default function VerifyPage() {
                               <span className="text-sm text-muted-foreground">Destinatario:</span>
                               <span className="text-sm font-medium">{result.recipientEmail}</span>
                             </div>
+                            {result.recipientDni && (
+                              <div className="flex justify-between gap-3">
+                                <span className="text-sm text-muted-foreground">DNI:</span>
+                                <span className="text-sm font-medium">{result.recipientDni}</span>
+                              </div>
+                            )}
+                            {result.recipientCuit && (
+                              <div className="flex justify-between gap-3">
+                                <span className="text-sm text-muted-foreground">CUIT:</span>
+                                <span className="text-sm font-medium">{result.recipientCuit}</span>
+                              </div>
+                            )}
                           </>
                         )}
                       </div>

@@ -132,7 +132,7 @@ export function ContactoHistorial({ contacto, isOpen, onClose, userEmail }: Cont
   const getEstadoTexto = (estado: string) => {
     switch (estado) {
       case 'DELIVERED':
-        return 'Entregado'
+        return 'Aceptado por el servidor de correo'
       case 'PENDING':
         return 'Pendiente'
       case 'ERROR':

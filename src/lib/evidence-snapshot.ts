@@ -20,6 +20,7 @@ export type EvidenceSnapshot = {
     email: string;
     phone: string;
     dni: string;
+    cuit?: string;
     legajo: string;
   };
   channel: string;
@@ -173,6 +174,7 @@ export async function sealEvidenceSnapshot(mailId: string): Promise<EvidenceSnap
       email: recipientEmail,
       phone: recipientPhone,
       dni: recipientDni,
+      cuit: str(mail.recipientCuit).replace(/\D/g, ""),
       legajo: str(mail.recipientLegajo),
     },
     channel: mail.waOnly ? "whatsapp" : recipientPhone ? "ambos" : "email",

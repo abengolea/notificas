@@ -163,7 +163,7 @@ function docsToSortedDisplayMessages(
       } else if (emailOpenedCount > 0 || appOpenedCount > 0) {
         lastStatus = "Abierto";
       } else if (emailSentCount > 0) {
-        lastStatus = "Entregado";
+        lastStatus = "Aceptado por SMTP";
       } else {
         lastStatus = "Pendiente";
       }
@@ -553,7 +553,7 @@ export default function DashboardClient() {
                   ? 'default'
                   : message.lastStatus === 'Abierto'
                     ? 'secondary'
-                    : message.lastStatus === 'Entregado'
+                    : message.lastStatus === 'Aceptado por SMTP'
                       ? 'outline'
                       : message.lastStatus === 'Error'
                         ? 'destructive'
@@ -639,7 +639,7 @@ export default function DashboardClient() {
                           variant={
                             message.lastStatus === 'Leído' ? 'default' : 
                             message.lastStatus === 'Abierto' ? 'secondary' :
-                            message.lastStatus === 'Entregado' ? 'outline' :
+                            message.lastStatus === 'Aceptado por SMTP' ? 'outline' :
                             message.lastStatus === 'Error' ? 'destructive' : 'secondary'
                           }
                         >

@@ -4,6 +4,7 @@ import { getAdminDb } from "@/lib/firebase-admin";
 import { recordEventLeaf } from "@/lib/campaign-integrity";
 import { certifyMailHitoIfNeeded } from "@/lib/certification-polygon";
 import { recordProviderEvent } from "@/lib/provider-events";
+import { verifyWhatsAppHubSignature } from "@/lib/whatsapp-webhook-auth";
 
 // Callback URL canónica en Meta Developer Portal (app 1022568949756440):
 //   https://notificas.com.ar/api/whatsapp/webhook
@@ -26,7 +27,28 @@ export async function GET(request: NextRequest) {
 
 // POST: Meta envía eventos de estado (sent/delivered/read/failed)
 export async function POST(request: NextRequest) {
-  const body = await request.json().catch(() => null);
+  const raw = await request.text();
+  const appSecret = (process.env.WHATSAPP_APP_SECRET || "").trim();
+  if (appSecret) {
+    const ok = verifyWhatsAppHubSignature(
+      raw,
+      request.headers.get("x-hub-signature-256"),
+      appSecret
+    );
+    if (!ok) {
+      console.warn("⚠️ WhatsApp webhook: firma X-Hub-Signature-256 inválida");
+      return new NextResponse("Forbidden", { status: 403 });
+    }
+  } else {
+    console.error("⚠️ WHATSAPP_APP_SECRET no configurado: el webhook acepta eventos sin firma");
+  }
+
+  let body: Record<string, unknown> | null = null;
+  try {
+    body = raw ? JSON.parse(raw) : null;
+  } catch {
+    return new NextResponse("Bad Request", { status: 400 });
+  }
   console.log(
     `📥 WA webhook POST object=${body?.object ?? "null"} entries=${body?.entry?.length ?? 0}`
   );

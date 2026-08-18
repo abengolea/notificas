@@ -2,7 +2,10 @@ import { stripRichTextToPlainText } from '@/lib/rich-text';
 
 export type ComposeDraft = {
   recipient: string;
+  recipientName?: string;
   recipientPhone: string;
+  recipientDni?: string;
+  recipientCuit?: string;
   subject: string;
   content: string;
   savedAt: number;
@@ -16,11 +19,14 @@ export function composeDraftKey(uid: string) {
 }
 
 export function hasComposeDraftContent(
-  draft: Pick<ComposeDraft, 'recipient' | 'recipientPhone' | 'subject' | 'content'>,
+  draft: Pick<ComposeDraft, 'recipient' | 'recipientPhone' | 'subject' | 'content' | 'recipientName' | 'recipientDni' | 'recipientCuit'>,
 ) {
   return (
     !!draft.recipient?.trim() ||
+    !!draft.recipientName?.trim() ||
     !!draft.recipientPhone?.trim() ||
+    !!draft.recipientDni?.trim() ||
+    !!draft.recipientCuit?.trim() ||
     !!draft.subject?.trim() ||
     stripRichTextToPlainText(draft.content || '').length > 0
   );

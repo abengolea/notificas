@@ -61,12 +61,13 @@ import {
 
 function buildComposeMailHtml(params: {
   recipientEmail: string;
+  recipientName?: string;
   content: string;
   sender: string;
   uploadedAttachments: UploadedFile[];
 }): string {
   const { recipientEmail, content, sender, uploadedAttachments } = params;
-  const recipientName = recipientEmail.split("@")[0];
+  const recipientName = params.recipientName?.trim() || recipientEmail.split("@")[0];
   const contentSection = content?.trim()
     ? `
                 <div class="message-content" data-email-hide style="margin: 20px 0;">
@@ -219,6 +220,9 @@ type SelectedAttachment = {
 
 const messageSchema = z.object({
   recipient: z.string().email({ message: "Dirección de correo electrónico inválida." }),
+  recipientName: z.string().optional().refine((v) => !v || v.trim().length >= 2, "Ingresá nombre y apellido"),
+  recipientDni: z.string().optional().refine((v) => !v || /^\d{7,8}$/.test(v.replace(/\D/g, "")), "DNI de 7 u 8 dígitos"),
+  recipientCuit: z.string().optional().refine((v) => !v || /^\d{11}$/.test(v.replace(/\D/g, "")), "CUIT de 11 dígitos"),
   recipientPhone: z.string().optional().refine((v) => !v || /^[\d\s\+\-\(\)]{8,25}$/.test(v), "Número inválido. Ej: +54 11 1234-5678, 011 1234-5678, 9 11 1234-5678"),
   subject: z
     .string()
@@ -394,6 +398,9 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
         mode: "onBlur", // Evita validar en cada tecla mientras el usuario escribe o busca contactos
         defaultValues: {
             recipient: "",
+            recipientName: "",
+            recipientDni: "",
+            recipientCuit: "",
             recipientPhone: "",
             subject: "",
             content: "",
@@ -428,6 +435,9 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
         const values = form.getValues();
         const draft = {
             recipient: values.recipient || "",
+            recipientName: values.recipientName || "",
+            recipientDni: values.recipientDni || "",
+            recipientCuit: values.recipientCuit || "",
             recipientPhone: values.recipientPhone || "",
             subject: values.subject || "",
             content: values.content || "",
@@ -471,6 +481,9 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
         const draft = readComposeDraft(user.uid);
         if (draft && hasComposeDraftContent(draft)) {
             form.setValue("recipient", draft.recipient || "");
+            form.setValue("recipientName", draft.recipientName || "");
+            form.setValue("recipientDni", draft.recipientDni || "");
+            form.setValue("recipientCuit", draft.recipientCuit || "");
             form.setValue("recipientPhone", draft.recipientPhone || "");
             form.setValue("subject", draft.subject || "");
             form.setValue("content", draft.content || "");
@@ -489,6 +502,9 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
         const subscription = form.watch((values) => {
             const draft = {
                 recipient: values.recipient || "",
+                recipientName: values.recipientName || "",
+                recipientDni: values.recipientDni || "",
+                recipientCuit: values.recipientCuit || "",
                 recipientPhone: values.recipientPhone || "",
                 subject: values.subject || "",
                 content: values.content || "",
@@ -559,9 +575,11 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                     from: 'contacto@notificas.com',
                     replyTo: sender,
                     senderName: user.email,
-                    recipientName: recipientEmail.split('@')[0],
+                    recipientName: data.recipientName?.trim() || recipientEmail.split('@')[0],
                     recipientEmail,
                     recipientPhone: phoneForWhatsApp,
+                    recipientDni: data.recipientDni?.replace(/\D/g, "") || undefined,
+                    recipientCuit: data.recipientCuit?.replace(/\D/g, "") || undefined,
                     createdBy: user.uid,
                     skipAutoSend: true,
                 }),
@@ -601,6 +619,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
 
             const html = buildComposeMailHtml({
                 recipientEmail,
+                recipientName: data.recipientName?.trim() || recipientEmail.split("@")[0],
                 content: sanitizedContent,
                 sender,
                 uploadedAttachments,
@@ -774,6 +793,44 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                         error={form.formState.errors.recipient?.message}
                         placeholder="destinatario@ejemplo.com"
                     />
+                </div>
+                <div className="grid gap-2">
+                    <Label htmlFor="recipientName">Nombre y apellido</Label>
+                    <Input
+                        id="recipientName"
+                        {...form.register("recipientName")}
+                        placeholder="Juan Pérez"
+                    />
+                    {form.formState.errors.recipientName && (
+                        <p className="text-sm text-destructive">{form.formState.errors.recipientName.message}</p>
+                    )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid gap-2">
+                        <Label htmlFor="recipientDni">DNI</Label>
+                        <Input
+                            id="recipientDni"
+                            inputMode="numeric"
+                            {...form.register("recipientDni")}
+                            placeholder="30123456"
+                        />
+                        <p className="text-xs text-muted-foreground">Recomendado para intimaciones.</p>
+                        {form.formState.errors.recipientDni && (
+                            <p className="text-sm text-destructive">{form.formState.errors.recipientDni.message}</p>
+                        )}
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="recipientCuit">CUIT (opcional)</Label>
+                        <Input
+                            id="recipientCuit"
+                            inputMode="numeric"
+                            {...form.register("recipientCuit")}
+                            placeholder="20-30123456-7"
+                        />
+                        {form.formState.errors.recipientCuit && (
+                            <p className="text-sm text-destructive">{form.formState.errors.recipientCuit.message}</p>
+                        )}
+                    </div>
                 </div>
                 <div className="grid gap-2">
                     <Label htmlFor="recipientPhone">

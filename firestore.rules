@@ -85,8 +85,13 @@ service cloud.firestore {
       let n = request.resource.data;
       return mailCoreUnchanged()
         && r.get('recipientPhone', '') == n.get('recipientPhone', '')
+        && r.get('recipientName', '') == n.get('recipientName', '')
         && r.get('recipientDni', '') == n.get('recipientDni', '')
+        && r.get('recipientCuit', '') == n.get('recipientCuit', '')
         && r.get('recipientLegajo', '') == n.get('recipientLegajo', '')
+        && r.get('certificateIssuedAt', '') == n.get('certificateIssuedAt', '')
+        && r.get('certificateStoragePath', '') == n.get('certificateStoragePath', '')
+        && r.get('certificateMovements', null) == n.get('certificateMovements', null)
         && r.get('attachments', null) == n.get('attachments', null)
         && r.get('smtpMessageId', '') == n.get('smtpMessageId', '')
         && r.get('whatsappMessageId', '') == n.get('whatsappMessageId', '')

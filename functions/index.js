@@ -29,6 +29,8 @@ const smtpPass = defineSecret('SMTP_PASS');
 const polygonCertifySecret = defineSecret('POLYGON_CERTIFY_SECRET');
 // Token de verificación del webhook de WhatsApp (se define en Meta Developer Portal)
 const whatsappVerifyToken = defineSecret('WHATSAPP_VERIFY_TOKEN');
+// App Secret de Meta (firma X-Hub-Signature-256 del webhook)
+const whatsappAppSecret = defineSecret('WHATSAPP_APP_SECRET');
 // Template aprobado en Meta (requerido para contactar usuarios fuera de ventana 24h)
 const whatsappTemplateName = defineString('WHATSAPP_TEMPLATE_NAME', { default: '' });
 const whatsappTemplateLanguage = defineString('WHATSAPP_TEMPLATE_LANGUAGE', { default: 'es_AR' });
@@ -2127,8 +2129,23 @@ async function processWhatsAppStatus(status) {
   }
 }
 
+function verifyWhatsAppHubSignature(rawBody, signatureHeader, appSecret) {
+  const secret = (appSecret || '').trim();
+  const header = String(signatureHeader || '').trim();
+  if (!secret || !header.startsWith('sha256=')) return false;
+  const received = header.slice('sha256='.length);
+  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  try {
+    const a = Buffer.from(expected, 'hex');
+    const b = Buffer.from(received, 'hex');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
 exports.whatsappWebhook = onRequest(
-  { region: REGION, secrets: [whatsappVerifyToken, polygonCertifySecret] },
+  { region: REGION, secrets: [whatsappVerifyToken, polygonCertifySecret, whatsappAppSecret] },
   async (req, res) => {
     // GET: verificación del webhook por Meta Developer Portal
     if (req.method === 'GET') {
@@ -2145,6 +2162,18 @@ exports.whatsappWebhook = onRequest(
     }
 
     if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+
+    const appSecret = whatsappAppSecret.value();
+    if (appSecret) {
+      const raw = req.rawBody || Buffer.from(typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}));
+      const ok = verifyWhatsAppHubSignature(raw, req.get('x-hub-signature-256'), appSecret);
+      if (!ok) {
+        console.warn('⚠️ WhatsApp webhook CF: firma X-Hub-Signature-256 inválida');
+        return res.status(403).send('Forbidden');
+      }
+    } else {
+      console.error('⚠️ WHATSAPP_APP_SECRET no configurado: el webhook CF acepta eventos sin firma');
+    }
 
     try {
       const body = req.body;

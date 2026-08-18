@@ -60,8 +60,7 @@ function MailMessageView({ data }: { data: any }) {
   let state = data?.delivery?.state || 'PENDIENTE';
 
   // Traducir estados al español
-  if (state === 'DELIVERED') state = 'Entregado';
-  if (state === 'SUCCESS') state = 'Entregado';
+  if (state === 'DELIVERED' || state === 'SUCCESS') state = 'Aceptado por el servidor de correo';
   if (state === 'ERROR') state = 'Error';
   if (state === 'PENDING') state = 'Pendiente';
 

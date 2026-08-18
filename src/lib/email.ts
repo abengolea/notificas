@@ -14,6 +14,8 @@ export type ScheduleEmailParams = {
   recipientName?: string;
   recipientEmail?: string;
   recipientPhone?: string; // Teléfono para enviar WhatsApp
+  recipientDni?: string;
+  recipientCuit?: string;
   senderName?: string;
   createdBy?: string; // UID del usuario que envía (para certificación Polygon)
 };
@@ -32,7 +34,7 @@ function normalizedEmailIdentity(value?: string): string | undefined {
 }
 
 export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend?: boolean }): Promise<string> {
-  const { to, subject, html, text, from, replyTo, cc, bcc, recipientName, recipientEmail, recipientPhone, senderName, createdBy, skipAutoSend = false } = params;
+  const { to, subject, html, text, from, replyTo, cc, bcc, recipientName, recipientEmail, recipientPhone, recipientDni, recipientCuit, senderName, createdBy, skipAutoSend = false } = params;
 
   const payload: any = {
     to: normalizeEmailList(to),
@@ -53,6 +55,8 @@ export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend
   const recNorm = normalizedEmailIdentity(recipientEmail) ?? payload.to[0] ?? '';
   if (recNorm) payload.recipientEmail = recNorm;
   if (recipientPhone) payload.recipientPhone = recipientPhone;
+  if (recipientDni) payload.recipientDni = recipientDni.replace(/\D/g, '');
+  if (recipientCuit) payload.recipientCuit = recipientCuit.replace(/\D/g, '');
   const sendNorm = normalizedEmailIdentity(senderName);
   if (sendNorm) payload.senderName = sendNorm;
   if (createdBy) payload.createdBy = createdBy;

@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import jsPDF from 'jspdf';
 import fs from 'fs';
 import path from 'path';
@@ -41,6 +42,7 @@ interface MailData {
   recipientEmail?: string;
   recipientName?: string;
   recipientDni?: string;
+  recipientCuit?: string;
   recipientPhone?: string;
   recipientLegajo?: string;
   whatsappMessageId?: string;
@@ -78,6 +80,8 @@ interface CertificateData {
   mailData: MailData;
   movements: any[];
   attachments: any[];
+  /** Primera emisión. Si falta, el PDF cambia en cada descarga. */
+  issuedAt?: Date;
 }
 
 const MOVEMENT_TYPE_LABELS: Record<string, string> = {
@@ -146,6 +150,10 @@ function attachmentStableId(att: MailAttachment & Record<string, unknown>, index
   return `${messageId}_${index}`;
 }
 
+function utcStamp(d: Date): string {
+  return d.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
+}
+
 export async function generateCertificatePDF(data: CertificateData): Promise<Blob> {
   const { messageId, mailData, movements = [], attachments = [] } = data;
 
@@ -167,7 +175,22 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 42;
-  const emissionDate = new Date();
+  const emissionDate =
+    data.issuedAt instanceof Date && !Number.isNaN(data.issuedAt.getTime())
+      ? data.issuedAt
+      : new Date();
+
+  const pdfMeta = doc as jsPDF & {
+    setCreationDate?: (date: Date) => unknown;
+    setFileId?: (id: string) => unknown;
+  };
+  pdfMeta.setCreationDate?.(emissionDate);
+  pdfMeta.setFileId?.(
+    createHash('sha256')
+      .update(`notificas-cert|${messageId}|${emissionDate.toISOString()}`)
+      .digest('hex')
+      .slice(0, 32)
+  );
 
   const toDate = (value?: any): Date | null => {
     if (!value) return null;
@@ -182,7 +205,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
 
   const formatDate = (value?: any) => {
     const date = toDate(value);
-    return date ? date.toLocaleString('es-ES') : 'No disponible';
+    return date ? utcStamp(date) : 'No disponible';
   };
 
   const sanitizeHtml = (html?: string) => {
@@ -536,7 +559,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   };
   
   const summaryLeft = [
-    { label: 'Fecha de emisión', value: emissionDate.toLocaleString('es-ES') },
+    { label: 'Fecha de emisión (UTC)', value: utcStamp(emissionDate) },
     { label: 'Estado de entrega', value: formatState(deliveryState) },
     { label: 'Estado de lectura', value: formatState(readStatus) }
   ];
@@ -640,6 +663,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     ...(mailData.orgCuit ? [{ label: 'CUIT del remitente', value: mailData.orgCuit }] : []),
     { label: 'Destinatario', value: mailData.recipientName || mailData.recipientEmail || 'No especificado' },
     ...(mailData.recipientDni ? [{ label: 'DNI / identificación', value: String(mailData.recipientDni) }] : []),
+    ...(mailData.recipientCuit ? [{ label: 'CUIT', value: String(mailData.recipientCuit) }] : []),
     { label: 'Email del destinatario', value: mailData.recipientEmail || 'No especificado' },
     ...(mailData.recipientPhone ? [{ label: 'Teléfono', value: String(mailData.recipientPhone) }] : []),
     { label: 'Asunto', value: mailData.message?.subject || 'Sin asunto declarado' },
@@ -1106,7 +1130,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   
   // Texto de declaración más formal y estructurado - más aire y líneas más cortas
   ensureSpace(12);
-  const declarationText = `Por medio del presente, Notificas.com, en su carácter de Sistema de Notificaciones Fehacientes Digitales, certifica y deja constancia de que el mensaje identificado como "${messageId}" fue remitido, entregado y, en su caso, leído conforme a los registros técnicos que obran en sus bases de datos.`;
+  const declarationText = `Por medio del presente, Notificas.com deja constancia de que el mensaje identificado como "${messageId}" fue remitido conforme a los registros técnicos que obran en sus bases. La aceptación SMTP acredita que el servidor de correo recibió el mensaje, no que llegó a la casilla. Los hechos de WhatsApp (aceptado, entregado al dispositivo, leído) se consignan por separado cuando existen.`;
   
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
@@ -1126,12 +1150,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     'El contenido del mensaje (asunto y cuerpo) ha sido certificado mediante hash SHA-256 en la blockchain. Cualquier alteración del contenido produciría un hash diferente, permitiendo detectar modificaciones.',
     'Los documentos adjuntos incorporados, en caso de existir, han sido validados mediante hash SHA-256, garantizando su integridad e inalterabilidad.',
     'El presente certificado puede ser presentado ante autoridades administrativas, judiciales o cualquier organismo público o privado como medio de prueba del envío, contenido y recepción del mensaje certificado.',
-    `La emisión de este certificado se efectuó el ${emissionDate.toLocaleDateString('es-ES', { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    })} a las ${emissionDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} horas.`
+    `La emisión de este certificado se efectuó el ${utcStamp(emissionDate)}. La lista de eventos y la fecha de emisión quedan fijas en la primera generación; las descargas posteriores entregan el mismo PDF.`
   ];
   
   statements.forEach((statement) => {

@@ -121,6 +121,7 @@ export async function buildPublicEvidence(mailId: string) {
     recipientEmail: snapshot?.recipient.email || mail.recipientEmail || mail.to?.[0],
     recipientNombre: snapshot?.recipient.nombre || mail.recipientName || null,
     recipientDni: snapshot?.recipient.dni || mail.recipientDni || null,
+    recipientCuit: snapshot?.recipient.cuit || mail.recipientCuit || null,
     recipientPhone: snapshot?.recipient.phone || mail.recipientPhone || null,
     subject: snapshot?.subject || mail.message?.subject || null,
     sentAt:
