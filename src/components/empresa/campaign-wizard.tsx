@@ -795,12 +795,6 @@ export function CampaignWizard({
         adjuntos: adjuntosGlobales,
         recipientListId: listId || null,
       };
-        nombre: campaniaNombre.trim(),
-        asunto: asunto.trim(),
-        cuerpo: cuerpo.trim(),
-        adjuntos: adjuntosGlobales,
-        recipientListId: listId || null,
-      };
 
       const token = await user.getIdToken();
       let campaignId = editCampaignId || "";
@@ -1405,9 +1399,8 @@ export function CampaignWizard({
                     Template de WhatsApp
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Si lo dejás vacío se usa notificaciones_notificas: el sistema pone el nombre,
-                    el remitente y el mismo link del lector que el correo. Solo completá otro
-                    nombre si el template de Meta es distinto.
+                    Si lo dejás vacío se usa notificaciones_notificas (3 variables). Si ponés otro
+                    nombre aprobado en Meta, mapeá cada {"{{N}}"} — podés agregar las que haga falta.
                   </p>
                 </div>
                 <WaTemplateFields

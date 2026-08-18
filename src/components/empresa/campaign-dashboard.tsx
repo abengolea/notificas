@@ -436,6 +436,8 @@ export function CampaignDashboard({
       setSavingTpl(false);
     }
   }
+
+  async function reintentarErrores() {
     if (!campaign) return;
     setBusy(true);
     try {
@@ -444,6 +446,12 @@ export function CampaignDashboard({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(isAdmin ? { campaignId, retryErrors: true } : { campaignId, orgId, retryErrors: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Error");
+      toast({
+        title: "Reintento",
+        description: `${data.pending ?? data.pendingThisTanda ?? data.total ?? 0} mensajes encolados`,
       });
     } catch (e: unknown) {
       toast({ title: "Error", description: e instanceof Error ? e.message : "Falló", variant: "destructive" });
