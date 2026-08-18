@@ -94,7 +94,7 @@ export function getAdminStorage(): Storage {
   return adminStorageInstance;
 }
 
-/** Retorna el bucket de Storage con nombre explícito (no depende de storageBucket en initializeApp). */
+/** Bucket de trabajo (Firebase). Campañas y URLs de descarga viven acá. */
 export function getAdminBucket() {
   const projectId =
     process.env.FIREBASE_PROJECT_ID ?? process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? '';
@@ -103,6 +103,27 @@ export function getAdminBucket() {
     process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
     `${projectId}.appspot.com`;
   return getAdminStorage().bucket(bucketName);
+}
+
+/** Copia WORM: adjuntos y certificados. No se pisan ni se borran durante 5 años. */
+export const EVIDENCE_BUCKET_NAME =
+  process.env.EVIDENCE_STORAGE_BUCKET || 'notificas-f9953-evidence';
+
+export function getEvidenceBucket() {
+  return getAdminStorage().bucket(EVIDENCE_BUCKET_NAME);
+}
+
+export function isEvidenceObjectPath(path: string): boolean {
+  return path.startsWith('pdfs/') || path.startsWith('certificates/');
+}
+
+/** Copia al bucket lacrado si aún no existe. Un overwrite ahí lo rechaza GCS. */
+export async function sealEvidenceCopy(path: string): Promise<void> {
+  if (!path || !isEvidenceObjectPath(path)) return;
+  const dest = getEvidenceBucket().file(path);
+  const [exists] = await dest.exists();
+  if (exists) return;
+  await getAdminBucket().file(path).copy(dest);
 }
 
 

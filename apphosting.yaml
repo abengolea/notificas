@@ -99,6 +99,10 @@ env:
     availability:
       - BUILD
       - RUNTIME
+  - variable: EVIDENCE_STORAGE_BUCKET
+    value: "notificas-f9953-evidence"
+    availability:
+      - RUNTIME
   - variable: WHATSAPP_VERIFY_TOKEN
     secret: WHATSAPP_VERIFY_TOKEN
     availability:

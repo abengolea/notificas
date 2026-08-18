@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
-import { adminDb, getAdminBucket } from '@/lib/firebase-admin';
+import { adminDb, getAdminBucket, getEvidenceBucket, sealEvidenceCopy } from '@/lib/firebase-admin';
 import { verifyAuthToken } from '@/lib/auth-helper';
 import { generateCertificatePDF } from '@/lib/certificate-generator';
 import { certificarDocumento } from '@/lib/certification-polygon';
@@ -69,12 +69,15 @@ function pdfResponse(messageId: string, buffer: Buffer) {
 }
 
 async function readStoredPdf(storagePath: string): Promise<Buffer | null> {
-  try {
-    const [stored] = await getAdminBucket().file(storagePath).download();
-    return stored?.length ? stored : null;
-  } catch {
-    return null;
+  for (const bucket of [getAdminBucket(), getEvidenceBucket()]) {
+    try {
+      const [stored] = await bucket.file(storagePath).download();
+      if (stored?.length) return stored;
+    } catch {
+      // probar el otro bucket
+    }
   }
+  return null;
 }
 
 export async function POST(request: NextRequest) {
@@ -195,6 +198,11 @@ export async function POST(request: NextRequest) {
         metadata: { cacheControl: 'private,max-age=31536000' },
         preconditionOpts: { ifGenerationMatch: 0 },
       });
+      try {
+        await sealEvidenceCopy(storagePath);
+      } catch (sealErr: unknown) {
+        console.warn('⚠️ Copia WORM del certificado:', sealErr instanceof Error ? sealErr.message : sealErr);
+      }
     } catch (e: unknown) {
       const code = typeof e === 'object' && e && 'code' in e ? Number((e as { code?: number }).code) : 0;
       if (code === 412) {

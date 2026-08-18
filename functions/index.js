@@ -1,8 +1,10 @@
 const { onRequest } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { onObjectFinalized } = require('firebase-functions/v2/storage');
 const { defineSecret, defineString } = require('firebase-functions/params');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getStorage } = require('firebase-admin/storage');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const cheerio = require('cheerio');
@@ -280,6 +282,10 @@ Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@noti
 
 const REGION = 'us-central1';
 const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'notificas-f9953';
+const FIREBASE_STORAGE_BUCKET =
+  process.env.FIREBASE_STORAGE_BUCKET || 'notificas-f9953.firebasestorage.app';
+const EVIDENCE_STORAGE_BUCKET =
+  process.env.EVIDENCE_STORAGE_BUCKET || 'notificas-f9953-evidence';
 const LINK_REDIRECT_URL = 'https://linkredirect-ju7n3yysfq-uc.a.run.app';
 const CONFIRM_READ_URL = 'https://confirmread-ju7n3yysfq-uc.a.run.app';
 // IMPORTANTE: Siempre usar la URL de producción para los enlaces en correos
@@ -2285,5 +2291,25 @@ exports.retryCertifyPendingSends = onSchedule(
     }
 
     console.log(`🔄 retryCertifyPendingSends: ${ok} OK, ${fail} fallidos`);
+  }
+);
+
+/** Copia adjuntos y certificados al bucket WORM (5 años, no se pisan ni se borran). */
+exports.sealEvidenceObject = onObjectFinalized(
+  {
+    region: REGION,
+    bucket: FIREBASE_STORAGE_BUCKET,
+  },
+  async (event) => {
+    const name = event.data?.name;
+    if (!name || !(name.startsWith('pdfs/') || name.startsWith('certificates/'))) return;
+    const dest = getStorage().bucket(EVIDENCE_STORAGE_BUCKET).file(name);
+    const [exists] = await dest.exists();
+    if (exists) {
+      console.log('WORM ya sellado:', name);
+      return;
+    }
+    await getStorage().bucket(event.data.bucket).file(name).copy(dest);
+    console.log('WORM copiado:', name);
   }
 );
