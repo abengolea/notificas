@@ -49,8 +49,9 @@ export async function POST(request: NextRequest) {
   } catch {
     return new NextResponse("Bad Request", { status: 400 });
   }
+  const entries = body?.entry;
   console.log(
-    `📥 WA webhook POST object=${body?.object ?? "null"} entries=${body?.entry?.length ?? 0}`
+    `📥 WA webhook POST object=${String(body?.object ?? "null")} entries=${Array.isArray(entries) ? entries.length : 0}`
   );
 
   // Procesar de forma síncrona antes de retornar — Cloud Run mata promesas en background

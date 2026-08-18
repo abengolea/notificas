@@ -57,7 +57,7 @@ function freezeMovements(movements: unknown): Record<string, unknown>[] {
 }
 
 function pdfResponse(messageId: string, buffer: Buffer) {
-  return new NextResponse(buffer, {
+  return new NextResponse(new Uint8Array(buffer), {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',
@@ -139,7 +139,16 @@ export async function POST(request: NextRequest) {
           'tracking.trackingStoppedAt': issuedAtIso,
         });
       }
-      return { issuedAt, issuedAtIso, movements, mailDataFresh: { ...data, certificateIssuedAt: issuedAtIso, certificateMovements: movements } };
+      return {
+        issuedAt,
+        issuedAtIso,
+        movements,
+        mailDataFresh: {
+          ...data,
+          certificateIssuedAt: issuedAtIso,
+          certificateMovements: movements,
+        } as FirebaseFirestore.DocumentData,
+      };
     });
 
     const { issuedAt, issuedAtIso, movements, mailDataFresh } = freeze;
