@@ -252,10 +252,82 @@ export async function sealEvidenceSnapshot(mailId: string): Promise<EvidenceSnap
   return sealed;
 }
 
-export async function getEvidenceSnapshot(mailId: string): Promise<EvidenceSnapshot | null> {
+export async function readEvidenceSnapshot(mailId: string): Promise<EvidenceSnapshot | null> {
   const snap = await getAdminDb().collection("evidence_snapshots").doc(mailId).get();
   if (!snap.exists) return null;
-  const data = snap.data() as EvidenceSnapshot;
+  return snap.data() as EvidenceSnapshot;
+}
+
+export async function findEvidenceSnapshot(opts: {
+  mailId?: string | null;
+  campaignMessageId?: string | null;
+}): Promise<EvidenceSnapshot | null> {
+  const mailId = (opts.mailId || "").trim();
+  if (mailId) {
+    const byId = await readEvidenceSnapshot(mailId);
+    if (byId) return byId;
+  }
+  const campaignMessageId = (opts.campaignMessageId || "").trim();
+  if (!campaignMessageId) return null;
+  const q = await getAdminDb()
+    .collection("evidence_snapshots")
+    .where("campaignMessageId", "==", campaignMessageId)
+    .limit(1)
+    .get();
+  if (q.empty) return null;
+  return q.docs[0].data() as EvidenceSnapshot;
+}
+
+/** Sobrescribe identidad y contenido vivos con el expediente lacrado. */
+export function overlayMailWithSnapshot(
+  mail: FirebaseFirestore.DocumentData,
+  snapshot: EvidenceSnapshot
+): FirebaseFirestore.DocumentData {
+  const liveMessage =
+    mail.message && typeof mail.message === "object" ? (mail.message as Record<string, unknown>) : {};
+  const liveAtt = Array.isArray(mail.attachments) ? (mail.attachments as Array<Record<string, unknown>>) : [];
+  const liveCert =
+    mail.polygonCertifications && typeof mail.polygonCertifications === "object"
+      ? (mail.polygonCertifications as Record<string, unknown>)
+      : {};
+  return {
+    ...mail,
+    recipientName: snapshot.recipient.nombre,
+    recipientEmail: snapshot.recipient.email,
+    recipientPhone: snapshot.recipient.phone,
+    recipientDni: snapshot.recipient.dni,
+    recipientCuit: snapshot.recipient.cuit || mail.recipientCuit,
+    recipientLegajo: snapshot.recipient.legajo,
+    senderName: snapshot.sender.email || mail.senderName,
+    from: snapshot.sender.email || mail.from,
+    orgNombre: snapshot.sender.orgNombre || mail.orgNombre,
+    orgCuit: snapshot.sender.orgCuit || mail.orgCuit,
+    evidenceSnapshotHash: snapshot.snapshotHash,
+    whatsappMessageId: snapshot.whatsapp.wamid || mail.whatsappMessageId,
+    smtpMessageId: snapshot.smtp.messageId || mail.smtpMessageId,
+    smtpAccepted: snapshot.smtp.accepted ?? mail.smtpAccepted,
+    message: {
+      ...liveMessage,
+      subject: snapshot.subject,
+      contentText: snapshot.contentText,
+      text: snapshot.contentText,
+    },
+    attachments: snapshot.attachments.map((a) => {
+      const live = liveAtt.find((x) => String(x.fileName || x.nombre || "") === a.fileName) || {};
+      return { ...live, fileName: a.fileName, hash: a.hash, fileSize: a.fileSize };
+    }),
+    polygonCertifications: {
+      ...liveCert,
+      contentHash: snapshot.contentHash,
+      waBodyHash: snapshot.whatsapp.bodyHash || liveCert.waBodyHash,
+    },
+    waRequestSnapshot: snapshot.whatsapp.requestSnapshot ?? mail.waRequestSnapshot,
+  };
+}
+
+export async function getEvidenceSnapshot(mailId: string): Promise<EvidenceSnapshot | null> {
+  const data = await readEvidenceSnapshot(mailId);
+  if (!data) return null;
   // Primera escritura gana. Copia el expediente ya sellado; no reconstruye desde mail.
   await persistSealedArtifacts(mailId, data).catch((e) =>
     console.warn("⚠️ WORM / constancia (lectura):", e instanceof Error ? e.message : e)

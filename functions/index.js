@@ -2242,16 +2242,16 @@ exports.whatsappWebhook = onRequest(
 
     if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
-    const appSecret = whatsappAppSecret.value();
-    if (appSecret) {
-      const raw = req.rawBody || Buffer.from(typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}));
-      const ok = verifyWhatsAppHubSignature(raw, req.get('x-hub-signature-256'), appSecret);
-      if (!ok) {
-        console.warn('⚠️ WhatsApp webhook CF: firma X-Hub-Signature-256 inválida');
-        return res.status(403).send('Forbidden');
-      }
-    } else {
-      console.error('⚠️ WHATSAPP_APP_SECRET no configurado: el webhook CF acepta eventos sin firma');
+    const appSecret = (whatsappAppSecret.value() || '').trim();
+    if (!appSecret) {
+      console.error('WHATSAPP_APP_SECRET no configurado: se rechaza el webhook CF');
+      return res.status(401).send('Unauthorized');
+    }
+    const raw = req.rawBody || Buffer.from(typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}));
+    const ok = verifyWhatsAppHubSignature(raw, req.get('x-hub-signature-256'), appSecret);
+    if (!ok) {
+      console.warn('⚠️ WhatsApp webhook CF: firma X-Hub-Signature-256 inválida');
+      return res.status(403).send('Forbidden');
     }
 
     try {

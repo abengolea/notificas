@@ -5,6 +5,7 @@ import path from 'path';
 import QRCode from 'qrcode';
 import { computeContentHash } from './certification';
 import { POLYGON_CERT_DISPLAY_ORDER, polygonCertLabel } from './polygon-cert-labels';
+import { emailDeliveryLabel } from './email-delivery-label';
 
 interface MailMessageContent {
   html?: string;
@@ -23,6 +24,8 @@ interface MailTracking {
   clickCount?: number;
   readConfirmed?: boolean;
   readConfirmedAt?: any;
+  whatsappDelivered?: boolean;
+  whatsappRead?: boolean;
   movements?: any[];
 }
 
@@ -46,6 +49,9 @@ interface MailData {
   recipientPhone?: string;
   recipientLegajo?: string;
   whatsappMessageId?: string;
+  smtpMessageId?: string;
+  smtpAccepted?: unknown;
+  emailBounce?: unknown;
   evidenceSnapshotHash?: string;
   orgNombre?: string;
   orgCuit?: string;
@@ -88,7 +94,7 @@ const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   email_sent: 'Correo enviado',
   email_bounced: 'Correo rebotó (no llegó al buzón)',
   email_opened: 'Correo abierto (pixel)',
-  reader_magic_open: 'Acceso fehaciente al reader digital',
+  reader_magic_open: 'Acceso al reader digital',
   app_opened: 'Apertura en app web',
   message_received: 'Mensaje recibido',
   read_confirmed: 'Lectura confirmada',
@@ -492,7 +498,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(16);
       setTextColor(COLORS.textMain);
-      doc.text('Certificado oficial de lectura', pageWidth / 2, yPosition, { align: 'center' });
+      doc.text('Certificado de lectura — constancia técnica', pageWidth / 2, yPosition, { align: 'center' });
 
       yPosition += 16;
       doc.setFont('helvetica', 'normal');
@@ -557,12 +563,15 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   // SECCIÓN 1: RESUMEN EJECUTIVO
   // ========================================
   // Cuadro resumen con datos esenciales para lectura rápida
-  const deliveryState = (mailData.delivery?.state || 'Pendiente de notificar').toString().replace(/_/g, ' ');
-  const readStatus = mailData.tracking?.readConfirmed ? 'Lectura acreditada' : 'Lectura pendiente';
+  const deliveryState = emailDeliveryLabel(
+    mailData.delivery?.state,
+    (mailData as { emailBounce?: unknown }).emailBounce
+  );
   const openCount = mailData.tracking?.openCount ?? 0;
-  const clickCount = mailData.tracking?.clickCount ?? 0;
-  const movementCount = movements.length;
   const attachmentsCount = attachments.length;
+  const emailOpened = Boolean(mailData.tracking?.opened) || openCount > 0 || Boolean(mailData.tracking?.readConfirmed);
+  const waDelivered = Boolean((mailData.tracking as { whatsappDelivered?: boolean } | undefined)?.whatsappDelivered);
+  const hasWhatsApp = Boolean(mailData.recipientPhone || mailData.whatsappMessageId);
 
   // Datos clave en dos columnas - formato destacado para impresión B&N
   // Estados en mayúsculas para mejor legibilidad
@@ -572,14 +581,17 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   
   const summaryLeft = [
     { label: 'Fecha de emisión (UTC)', value: utcStamp(emissionDate) },
-    { label: 'Estado de entrega', value: formatState(deliveryState) },
-    { label: 'Estado de lectura', value: formatState(readStatus) }
+    { label: 'Correo — aceptación SMTP', value: formatState(deliveryState) },
+    { label: 'Correo — abierto (pixel / reader)', value: emailOpened ? 'SÍ' : 'NO CONSTA' }
   ];
   
   const summaryRight = [
     { label: 'Identificador de mensaje', value: messageId, monospace: true },
-    { label: 'Aperturas registradas', value: `${openCount}` },
-    { label: 'Adjuntos certificados', value: `${attachmentsCount}` }
+    {
+      label: hasWhatsApp ? 'WhatsApp — entregado al dispositivo' : 'Adjuntos certificados',
+      value: hasWhatsApp ? (waDelivered ? 'SÍ (META)' : 'NO CONSTA') : `${attachmentsCount}`
+    },
+    { label: hasWhatsApp ? 'Adjuntos certificados' : 'Aperturas registradas', value: hasWhatsApp ? `${attachmentsCount}` : `${openCount}` }
   ];
   
   // Calcular altura dinámica del cuadro de resumen
@@ -1138,11 +1150,11 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   // ========================================
   // SECCIÓN 6: DECLARACIÓN DE AUTENTICIDAD
   // ========================================
-  drawSectionTitle('Declaración de autenticidad y valor probatorio');
+  drawSectionTitle('Declaración técnica');
   
   // Texto de declaración más formal y estructurado - más aire y líneas más cortas
   ensureSpace(12);
-  const declarationText = `Por medio del presente, Notificas.com deja constancia de que el mensaje identificado como "${messageId}" fue remitido conforme a los registros técnicos que obran en sus bases. La aceptación SMTP acredita que el servidor de correo recibió el mensaje, no que llegó a la casilla. Los hechos de WhatsApp (aceptado, entregado al dispositivo, leído) se consignan por separado cuando existen.`;
+  const declarationText = `Notificas.com deja constancia técnica de que el mensaje "${messageId}" figura en sus registros de envío. La aceptación SMTP acredita que el proveedor de correo recibió el mensaje, no que llegó a la casilla. Los hechos de WhatsApp (aceptado, entregado al dispositivo, leído) se consignan solo si Meta los confirmó. Este documento no califica valor legal.`;
   
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
@@ -1158,11 +1170,11 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   
   // Puntos de la declaración - mejor espaciado
   const statements = [
-    'Todos los eventos asociados al mensaje (envío, entrega, apertura, lectura y accesos) han sido registrados con sellado criptográfico inmutable, preservando la integridad, trazabilidad y orden cronológico de los mismos.',
-    'El contenido del mensaje (asunto y cuerpo) ha sido certificado mediante hash SHA-256 en la blockchain. Cualquier alteración del contenido produciría un hash diferente, permitiendo detectar modificaciones.',
-    'Los documentos adjuntos incorporados, en caso de existir, han sido validados mediante hash SHA-256, garantizando su integridad e inalterabilidad.',
-    'El presente certificado puede ser presentado ante autoridades administrativas, judiciales o cualquier organismo público o privado como medio de prueba del envío, contenido y recepción del mensaje certificado.',
-    `La emisión de este certificado se efectuó el ${utcStamp(emissionDate)}. La lista de eventos y la fecha de emisión quedan fijas en la primera generación; las descargas posteriores entregan el mismo PDF.`
+    'Los eventos listados son los congelados al emitir este certificado. Hechos posteriores no aparecen en esta copia.',
+    'El contenido (asunto y cuerpo) se certifica con hash SHA-256. Cualquier alteración produce un hash distinto.',
+    'Los adjuntos, si existen, se identifican con hash SHA-256.',
+    'Este PDF reproduce hechos técnicos. No constituye por sí mismo prueba fehaciente; esa calificación corresponde a la autoridad competente.',
+    `Emisión: ${utcStamp(emissionDate)}. La lista de eventos queda fija en la primera generación; las descargas posteriores entregan el mismo PDF.`
   ];
   
   statements.forEach((statement) => {

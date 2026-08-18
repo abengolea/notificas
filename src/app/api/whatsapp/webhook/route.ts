@@ -29,18 +29,18 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const raw = await request.text();
   const appSecret = (process.env.WHATSAPP_APP_SECRET || "").trim();
-  if (appSecret) {
-    const ok = verifyWhatsAppHubSignature(
-      raw,
-      request.headers.get("x-hub-signature-256"),
-      appSecret
-    );
-    if (!ok) {
-      console.warn("⚠️ WhatsApp webhook: firma X-Hub-Signature-256 inválida");
-      return new NextResponse("Forbidden", { status: 403 });
-    }
-  } else {
-    console.error("⚠️ WHATSAPP_APP_SECRET no configurado: el webhook acepta eventos sin firma");
+  if (!appSecret) {
+    console.error("WHATSAPP_APP_SECRET no configurado: se rechaza el webhook");
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
+  const ok = verifyWhatsAppHubSignature(
+    raw,
+    request.headers.get("x-hub-signature-256"),
+    appSecret
+  );
+  if (!ok) {
+    console.warn("⚠️ WhatsApp webhook: firma X-Hub-Signature-256 inválida");
+    return new NextResponse("Forbidden", { status: 403 });
   }
 
   let body: Record<string, unknown> | null = null;

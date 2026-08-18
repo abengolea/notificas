@@ -283,6 +283,10 @@ export type ActaDestinatarioInput = {
   asuntoPersonalizado?: string;
   cuerpoPersonalizado?: string;
   attachments?: Array<{ nombre: string; hash?: string }>;
+  /** True si identidad y texto salen de evidence_snapshots (WORM). */
+  evidenceSealed?: boolean;
+  smtpMessageId?: string;
+  wamid?: string;
   chronology: {
     emailEnviadoAt?: string;
     emailLeidoAt?: string;
@@ -294,7 +298,7 @@ export type ActaDestinatarioInput = {
   summary: string;
   contentHash: string;
   storedHash: string | null;
-  contentMatch: boolean;
+  contentMatch: boolean | null;
   send: {
     batchId: string | null;
     txHash: string | null;
@@ -382,16 +386,16 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   const email = input.recipientEmail && !isSyntheticEmail(input.recipientEmail) ? input.recipientEmail : '';
   const cuerpo = stripHtml(input.cuerpoPersonalizado || '');
   const asunto = (input.asuntoPersonalizado || input.campaignAsunto || '').trim();
-  const destinatario = input.recipientNombre || email || 'el destinatario';
+  const destinatario = input.recipientNombre || email || (input.evidenceSealed === false ? 'Destinatario no transcrito' : 'el destinatario');
   const remitente = input.orgNombre || 'la organización remitente';
 
   doc.setFillColor(13, 148, 136);
   doc.rect(0, 0, 210, 28, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(14);
-  doc.text('CONSTANCIA INDIVIDUAL DE COMUNICACIÓN FEHACIENTE', 14, 12);
+  doc.text('CONSTANCIA INDIVIDUAL DE COMUNICACIÓN DIGITAL', 14, 12);
   doc.setFontSize(8);
-  doc.text('Parte I — Constancia legal  ·  Notificas.com', 14, 19);
+  doc.text('Parte I — Hechos técnicos  ·  Notificas.com', 14, 19);
   doc.setFontSize(7);
   doc.text('El anexo técnico para perito consta al final de este documento.', 14, 24);
   doc.setTextColor(15, 23, 42);
@@ -430,19 +434,36 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   doc.text(`Campaña: ${input.campaignNombre}  ·  ${canalLabel(input.canal)}`, 14, y);
   y += 8;
 
+  if (input.evidenceSealed === false) {
+    y = ensureY(doc, y, 16);
+    doc.setFillColor(254, 243, 199);
+    doc.rect(14, y - 4, 182, 14, 'F');
+    doc.setTextColor(146, 64, 14);
+    doc.setFontSize(8);
+    y = writeWrapped(
+      doc,
+      'No hay evidence_snapshot sellado. No se transcribe identidad ni texto desde registros operativos. El anexo técnico solo muestra hashes y Merkle si existen.',
+      16,
+      y,
+      178,
+      3.6
+    );
+    y += 8;
+    doc.setTextColor(15, 23, 42);
+  }
+
   doc.setTextColor(15, 23, 42);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text('Declaración', 14, y);
+  doc.text('Declaración técnica', 14, y);
   doc.setFont('helvetica', 'normal');
   y += 6;
   doc.setFontSize(9);
-  const declaracion =
-    `Por medio del presente, Notificas.com deja constancia técnica de que ${remitente}${input.orgCuit ? ` (CUIT ${input.orgCuit})` : ''} remitió a ${destinatario} ` +
-    `una comunicación digital en el marco de la campaña «${input.campaignNombre}», ` +
-    `cuyo texto se transcribe a continuación tal como le fue enviado.` +
-    ` Los hechos de envío, entrega y lectura que se detallan son los registrados por el sistema a la fecha de emisión. ` +
-    `Esta constancia no equivale a una carta documento ni implica conformidad del destinatario con el contenido.`;
+  const declaracion = input.evidenceSealed
+    ? `Notificas.com reproduce información lacrada al momento del envío (evidence_snapshot) y hechos posteriores de proveedores externos. ` +
+      `${remitente}${input.orgCuit ? ` (CUIT ${input.orgCuit})` : ''} figura como remitente de la comunicación a ${destinatario} en la campaña «${input.campaignNombre}». ` +
+      `El texto transcrito es el del snapshot, no un recálculo posterior. Este documento certifica hechos técnicos; no califica valor legal ni equivale a carta documento.`
+    : `No se reproduce el contenido ni la identidad desde documentos mutables. Consulte el anexo técnico y, si existe, la constancia de envío WORM. Este documento no califica valor legal.`;
   y = writeWrapped(doc, declaracion, 14, y, 182, 4.2);
   y += 6;
 
@@ -468,6 +489,9 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
       ...(asunto ? [['Asunto', asunto]] : []),
       ['Canal', canalLabel(input.canal)],
       ['Identificador de mensaje', input.messageId],
+      ...(input.smtpMessageId ? [['SMTP Message-ID (aceptación)', input.smtpMessageId]] : []),
+      ...(input.wamid ? [['WAMID (Meta)', input.wamid]] : []),
+      ['Fuente de identidad y texto', input.evidenceSealed ? 'evidence_snapshot (inmutable)' : 'Sin snapshot sellado'],
       ['Fecha de emisión', input.generatedAt],
     ],
   });
@@ -484,7 +508,9 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   doc.setTextColor(71, 85, 105);
   y = writeWrapped(
     doc,
-    'Se transcribe el texto intimado a este destinatario (variables ya sustituidas). Es el mismo contenido cuya huella SHA-256 se describe en el anexo técnico.',
+    input.evidenceSealed
+      ? 'Se transcribe el texto del snapshot sellado (variables ya sustituidas). Es el mismo contenido cuya huella SHA-256 se describe en el anexo técnico.'
+      : 'El texto no se transcribe: no hay snapshot sellado. Un recálculo desde el template vivo no sería prueba del envío original.',
     14,
     y,
     182,
@@ -505,7 +531,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   if (cuerpo) {
     y = writeWrapped(doc, cuerpo, 14, y, 182, 4.2);
   } else {
-    y = writeWrapped(doc, 'No se registró texto intimado para este destinatario.', 14, y, 182, 4.2);
+    y = writeWrapped(doc, 'Sin texto en snapshot sellado. No se reconstruye desde la campaña.', 14, y, 182, 4.2);
   }
   y += 8;
 
@@ -538,7 +564,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   doc.setTextColor(71, 85, 105);
   y = writeWrapped(
     doc,
-    'Fechas en que el sistema registró el envío, la entrega y, en su caso, la lectura. Un hecho pendiente no niega el envío: solo indica que aún no consta ese evento.',
+    'Correo: la aceptación SMTP no es entrega en la casilla. WhatsApp: enviado / entregado al dispositivo / leído se consignan por separado cuando Meta lo confirma. Un hecho pendiente no niega el envío.',
     14,
     y,
     182,
@@ -552,16 +578,16 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   if (showEmail) {
     const [envFecha, envObs] = hechoFecha(input.chronology.emailEnviadoAt);
     const [leiFecha, leiObs] = hechoFecha(input.chronology.emailLeidoAt);
-    chronoRows.push(['Correo enviado', envFecha, envObs]);
-    chronoRows.push(['Correo abierto / leído', leiFecha, leiObs]);
+    chronoRows.push(['Correo aceptado por el proveedor SMTP', envFecha, envObs]);
+    chronoRows.push(['Correo abierto (pixel / reader)', leiFecha, leiObs]);
   }
   if (showWa) {
     const [envFecha, envObs] = hechoFecha(input.chronology.waEnviadoAt);
     const [entFecha, entObs] = hechoFecha(input.chronology.waEntregadoAt);
     const [leiFecha, leiObs] = hechoFecha(input.chronology.waLeidoAt);
-    chronoRows.push(['WhatsApp enviado', envFecha, envObs]);
-    chronoRows.push(['WhatsApp entregado al dispositivo', entFecha, entObs]);
-    chronoRows.push(['WhatsApp leído', leiFecha, leiObs]);
+    chronoRows.push(['WhatsApp enviado (aceptado por Meta)', envFecha, envObs]);
+    chronoRows.push(['WhatsApp entregado al dispositivo (Meta)', entFecha, entObs]);
+    chronoRows.push(['WhatsApp leído (Meta)', leiFecha, leiObs]);
   }
   autoTable(doc, {
     startY: y,
@@ -577,15 +603,15 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(15, 23, 42);
-  doc.text('Valor probatorio', 14, y);
+  doc.text('Alcance de este documento', 14, y);
   y += 6;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   const statements = [
-    'El presente documento puede ser presentado ante autoridades administrativas, judiciales o cualquier organismo público o privado como medio de prueba del envío, del contenido intimado y, en su caso, de la recepción o lectura.',
-    'La notificación, sus metadatos de envío, recepción y lectura quedan certificados y registrados en la red Polygon a través de Notificas.com. Esta constancia no implica conformidad con el contenido.',
-    'La inmutabilidad de los hechos la aporta la transacción pública citada en el anexo técnico, no este PDF. Si se altera el texto intimado, la huella SHA-256 deja de coincidir.',
-    `La emisión de esta constancia se efectuó el ${input.generatedAt}.`,
+    'Este PDF reproduce hechos técnicos registrados por Notificas y, cuando corresponde, por Meta o el proveedor SMTP. No constituye por sí mismo prueba fehaciente ni calificación jurídica; esa valoración corresponde a la autoridad competente.',
+    'La integridad del contenido es verificable con la huella SHA-256 y, si hay tanda anclada, con la transacción de Polygon citada en el anexo. Alterar el texto hace que la huella deje de coincidir.',
+    'Aceptación SMTP no significa que el mensaje haya llegado a la casilla del destinatario. Entrega y lectura de WhatsApp se informan solo si Meta las confirmó.',
+    `Emisión: ${input.generatedAt}.`,
   ];
   for (const statement of statements) {
     y = ensureY(doc, y, 10);
@@ -643,7 +669,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     styles: { fontSize: 8, cellPadding: 1.4, textColor: [15, 23, 42] },
     columnStyles: { 0: { cellWidth: 130 }, 1: { cellWidth: 50, fontStyle: 'bold' } },
     body: [
-      ['El texto actual coincide con la huella guardada', checkLabel(input.contentMatch)],
+      ['El texto del snapshot coincide con la huella guardada', checkLabel(input.contentMatch)],
       ['La foja entra en el árbol de su tanda', checkLabel(input.send.merkleValid)],
       ['La raíz coincide con la transacción en Polygon', checkLabel(input.send.onChainMatch)],
     ],
@@ -744,7 +770,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     doc.setPage(page);
     const part =
       page < techStartPage
-        ? 'Parte I — Constancia legal'
+        ? 'Parte I — Hechos técnicos'
         : 'Parte II — Anexo técnico';
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);

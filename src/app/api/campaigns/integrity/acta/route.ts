@@ -3,10 +3,13 @@ import { requireCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { verifyCampaignMessage } from '@/lib/campaign-integrity';
 import { buildActaDestinatarioPdf, buildActaTandaPdf, type ActaLeafRow } from '@/lib/campaign-integrity-pdf';
-import { personalizeCampaignText } from '@/lib/campaign-email-html';
+import { findEvidenceSnapshot } from '@/lib/evidence-snapshot';
+import {
+  listProviderEventsForCampaignMessage,
+  listProviderEventsForMail,
+} from '@/lib/provider-events';
 import { recordIssuedDocument, sha256Hex } from '@/lib/issued-documents';
 import { campaignVerifyRef } from '@/lib/verify-hints';
-import type { CampaignAttachment } from '@/lib/types';
 
 function formatSealedAt(v: unknown): string | undefined {
   if (!v) return undefined;
@@ -31,8 +34,18 @@ function formatSealedAt(v: unknown): string | undefined {
 function toIso(v: unknown): string | undefined {
   if (!v) return undefined;
   if (typeof v === 'string') {
+    if (/^\d+$/.test(v.trim())) {
+      const n = Number(v);
+      const ms = n < 1e12 ? n * 1000 : n;
+      const d = new Date(ms);
+      return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+    }
     const d = new Date(v);
     return Number.isNaN(d.getTime()) ? v : d.toISOString();
+  }
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    const ms = v < 1e12 ? v * 1000 : v;
+    return new Date(ms).toISOString();
   }
   if (typeof v === 'object' && v && 'toDate' in v && typeof (v as { toDate: () => Date }).toDate === 'function') {
     try {
@@ -48,22 +61,20 @@ function toIso(v: unknown): string | undefined {
   return undefined;
 }
 
-function attachmentsFor(
-  campaign: FirebaseFirestore.DocumentData,
-  emailKey: string
-): Array<{ nombre: string; hash?: string }> {
-  const glob = Array.isArray(campaign.adjuntos) ? (campaign.adjuntos as CampaignAttachment[]) : [];
-  const por = campaign.adjuntosPorDestinatario as Record<string, unknown> | undefined;
-  const key = emailKey.trim().toLowerCase();
-  let extra: CampaignAttachment[] = [];
-  if (por && typeof por === 'object' && !Array.isArray(por)) {
-    const row = por[key];
-    if (Array.isArray(row)) extra = row as CampaignAttachment[];
+function providerEventTime(ev: Record<string, unknown>): string | undefined {
+  return toIso(ev.providerTimestamp) || toIso(ev.receivedAt);
+}
+
+function firstEventTime(
+  events: Array<Record<string, unknown>>,
+  pred: (ev: Record<string, unknown>) => boolean
+): string | undefined {
+  for (const ev of events) {
+    if (!pred(ev)) continue;
+    const t = providerEventTime(ev);
+    if (t) return t;
   }
-  return [...glob, ...extra].map((a) => ({
-    nombre: String(a.nombre || 'Adjunto'),
-    hash: typeof a.hash === 'string' ? a.hash : undefined,
-  }));
+  return undefined;
 }
 
 export async function GET(request: NextRequest) {
@@ -91,40 +102,67 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Destinatario no encontrado' }, { status: 404 });
     }
     const msg = msgSnap.data()!;
+    const mailId = typeof msg.mailId === 'string' ? msg.mailId : '';
+    const snapshot = await findEvidenceSnapshot({ mailId, campaignMessageId: messageId });
     const verified = await verifyCampaignMessage(campaignId, messageId);
-    const row = {
-      nombre: String(verified.recipientNombre || msg.recipientNombre || ''),
-      dni: typeof msg.recipientDni === 'string' ? msg.recipientDni : undefined,
-      legajo: typeof msg.recipientLegajo === 'string' ? msg.recipientLegajo : undefined,
-    };
     const evByType = Object.fromEntries(verified.events.map((ev) => [ev.type, ev]));
+
+    const providerFromMail = mailId ? await listProviderEventsForMail(mailId) : [];
+    const providerFromMsg = await listProviderEventsForCampaignMessage(messageId);
+    const seen = new Set<string>();
+    const providerEvents: Array<Record<string, unknown>> = [];
+    for (const ev of [...providerFromMail, ...providerFromMsg]) {
+      if (seen.has(ev.id)) continue;
+      seen.add(ev.id);
+      providerEvents.push(ev as Record<string, unknown>);
+    }
+
+    const smtpAcceptedAt =
+      firstEventTime(providerEvents, (e) => e.provider === 'smtp' && e.eventType === 'accepted') ||
+      toIso(snapshot?.sealedAt);
+    const emailOpenedAt =
+      firstEventTime(providerEvents, (e) => e.eventType === 'email_read' || e.eventType === 'opened') ||
+      toIso(evByType.email_read?.occurredAt);
+    const waDeliveredAt =
+      firstEventTime(providerEvents, (e) => e.provider === 'meta' && e.eventType === 'delivered') ||
+      toIso(evByType.wa_delivered?.occurredAt);
+    const waReadAt =
+      firstEventTime(providerEvents, (e) => e.provider === 'meta' && e.eventType === 'read') ||
+      toIso(evByType.wa_read?.occurredAt);
+    const waSentAt =
+      firstEventTime(providerEvents, (e) => e.provider === 'meta' && e.eventType === 'sent') ||
+      (snapshot?.whatsapp.wamid ? toIso(snapshot.sealedAt) : undefined);
+
     const pdf = await buildActaDestinatarioPdf({
-      orgNombre: String(org.nombre || ''),
-      orgCuit: typeof org.cuit === 'string' ? org.cuit : undefined,
+      orgNombre: String(snapshot?.sender.orgNombre || org.nombre || ''),
+      orgCuit: snapshot?.sender.orgCuit || (typeof org.cuit === 'string' ? org.cuit : undefined),
       campaignId,
       campaignNombre: String(campaign.nombre || ''),
-      campaignAsunto: typeof campaign.asunto === 'string' ? campaign.asunto : undefined,
+      campaignAsunto: snapshot?.subject || (typeof campaign.asunto === 'string' ? campaign.asunto : undefined),
       generatedAt: new Date().toLocaleString('es-AR'),
       messageId,
-      canal: typeof campaign.canal === 'string' ? campaign.canal : undefined,
-      recipientNombre: String(verified.recipientNombre || msg.recipientNombre || ''),
-      recipientEmail: String(verified.recipientEmail || msg.recipientEmail || ''),
-      recipientTelefono: String(verified.recipientTelefono || msg.recipientTelefono || ''),
-      recipientDni: typeof msg.recipientDni === 'string' ? msg.recipientDni : undefined,
-      recipientLegajo: typeof msg.recipientLegajo === 'string' ? msg.recipientLegajo : undefined,
-      asuntoPersonalizado: personalizeCampaignText(String(campaign.asunto || ''), row),
-      cuerpoPersonalizado: personalizeCampaignText(String(campaign.cuerpo || ''), row),
-      attachments: attachmentsFor(campaign, String(msg.recipientEmail || '')),
+      canal: snapshot?.channel || (typeof campaign.canal === 'string' ? campaign.canal : undefined),
+      recipientNombre: snapshot?.recipient.nombre || '',
+      recipientEmail: snapshot?.recipient.email || '',
+      recipientTelefono: snapshot?.recipient.phone || '',
+      recipientDni: snapshot?.recipient.dni || undefined,
+      recipientLegajo: snapshot?.recipient.legajo || undefined,
+      asuntoPersonalizado: snapshot?.subject || '',
+      cuerpoPersonalizado: snapshot?.contentText || '',
+      attachments: (snapshot?.attachments || []).map((a) => ({ nombre: a.fileName, hash: a.hash })),
+      evidenceSealed: Boolean(snapshot),
+      smtpMessageId: snapshot?.smtp.messageId || verified.send.smtpMessageId || undefined,
+      wamid: snapshot?.whatsapp.wamid || verified.send.wamid || undefined,
       chronology: {
-        emailEnviadoAt: toIso(msg.emailEnviadoAt || msg.enviadoAt),
-        emailLeidoAt: toIso(msg.emailLeidoAt || msg.leidoAt) || evByType.email_read?.occurredAt,
-        waEnviadoAt: toIso(msg.waEnviadoAt),
-        waEntregadoAt: toIso(msg.waEntregadoAt) || evByType.wa_delivered?.occurredAt,
-        waLeidoAt: toIso(msg.waLeidoAt) || evByType.wa_read?.occurredAt,
+        emailEnviadoAt: smtpAcceptedAt,
+        emailLeidoAt: emailOpenedAt,
+        waEnviadoAt: waSentAt,
+        waEntregadoAt: waDeliveredAt,
+        waLeidoAt: waReadAt,
       },
       intact: verified.intact,
       summary: verified.summary,
-      contentHash: verified.content.currentHash,
+      contentHash: snapshot?.contentHash || verified.content.currentHash,
       storedHash: verified.content.storedHash,
       contentMatch: verified.content.match,
       send: {
@@ -144,10 +182,10 @@ export async function GET(request: NextRequest) {
       kind: 'campaign_acta_recipient',
       campaignId,
       orgId,
-      orgNombre: String(org.nombre || ''),
+      orgNombre: String(snapshot?.sender.orgNombre || org.nombre || ''),
       campaignNombre: String(campaign.nombre || ''),
       messageId,
-      recipientNombre: String(verified.recipientNombre || ''),
+      recipientNombre: String(snapshot?.recipient.nombre || ''),
       txHash: verified.send.txHash,
       fileName: `acta-destinatario-${messageId}.pdf`,
     });

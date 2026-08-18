@@ -5,6 +5,7 @@ import { adminDb, getAdminBucket, getEvidenceBucket, sealEvidenceCopy } from '@/
 import { verifyAuthToken } from '@/lib/auth-helper';
 import { generateCertificatePDF } from '@/lib/certificate-generator';
 import { certificarDocumento } from '@/lib/certification-polygon';
+import { findEvidenceSnapshot, overlayMailWithSnapshot } from '@/lib/evidence-snapshot';
 
 function certificateStoragePath(messageId: string) {
   return `certificates/${messageId}/certificado-lectura.pdf`;
@@ -157,9 +158,18 @@ export async function POST(request: NextRequest) {
 
     const { issuedAt, issuedAtIso, movements, mailDataFresh } = freeze;
 
+    const snapshot = await findEvidenceSnapshot({
+      mailId: messageId,
+      campaignMessageId:
+        typeof mailDataFresh.campaignMessageId === 'string' ? mailDataFresh.campaignMessageId : null,
+    });
+
     let orgNombre: string | undefined;
     let orgCuit: string | undefined;
-    if (typeof mailDataFresh.campaignId === 'string' && mailDataFresh.campaignId) {
+    if (snapshot?.sender.orgNombre || snapshot?.sender.orgCuit) {
+      orgNombre = snapshot.sender.orgNombre || undefined;
+      orgCuit = snapshot.sender.orgCuit || undefined;
+    } else if (typeof mailDataFresh.campaignId === 'string' && mailDataFresh.campaignId) {
       const camp = await adminDb.collection('campaigns').doc(mailDataFresh.campaignId).get();
       const orgId = camp.exists ? String(camp.data()?.orgId || '') : '';
       if (orgId) {
@@ -171,18 +181,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const sealedMail = snapshot ? overlayMailWithSnapshot(mailDataFresh, snapshot) : mailDataFresh;
+
     const certificateData = {
       messageId,
       issuedAt: parseIssuedAt(mailDataFresh.certificateIssuedAt) || issuedAt,
       mailData: {
-        ...mailDataFresh,
-        orgNombre,
-        orgCuit,
+        ...sealedMail,
+        orgNombre: orgNombre || sealedMail.orgNombre,
+        orgCuit: orgCuit || sealedMail.orgCuit,
         whatsappMessageId:
-          mailDataFresh.whatsappMessageId || mailDataFresh.tracking?.whatsappMessageId,
+          sealedMail.whatsappMessageId || sealedMail.tracking?.whatsappMessageId,
       },
       movements,
-      attachments: mailDataFresh.attachments || []
+      attachments: sealedMail.attachments || []
     };
 
     const pdfBlob = await generateCertificatePDF(certificateData);

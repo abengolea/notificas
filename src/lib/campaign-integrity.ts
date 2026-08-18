@@ -1,7 +1,6 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { sendPolygonTransaction } from '@/lib/blockchain';
-import { computeContentHash } from '@/lib/certification';
 import { buildMerkleTree, getMerkleProof, sha256Hex, verifyMerkleProof } from '@/lib/merkle';
 import { enqueueIntegrityClose } from '@/lib/cloud-tasks';
 
@@ -648,15 +647,16 @@ export async function verifyCampaignMessage(campaignId: string, messageId: strin
 
   const campSnap = await db.collection('campaigns').doc(campaignId).get();
   const campaign = campSnap.data() || {};
-  const { personalizeCampaignText } = await import('@/lib/campaign-email-html');
-  const body = personalizeCampaignText(String(campaign.cuerpo || ''), {
-    nombre: String(msg.recipientNombre || ''),
-    dni: msg.recipientDni,
-    legajo: msg.recipientLegajo,
+  const { findEvidenceSnapshot } = await import('@/lib/evidence-snapshot');
+  const snapshot = await findEvidenceSnapshot({
+    mailId: typeof msg.mailId === 'string' ? msg.mailId : null,
+    campaignMessageId: messageId,
   });
-  const currentHash = await computeContentHash(body);
   const storedHash = send?.contentHash || '';
-  const contentMatch = Boolean(storedHash) && currentHash === storedHash;
+  const currentHash = snapshot?.contentHash || storedHash || '';
+  const contentMatch = snapshot
+    ? Boolean(storedHash) && currentHash === storedHash
+    : null;
 
   let merkleValid: boolean | null = null;
   if (send?.leafHash && send.proof && send.merkleRoot != null && typeof send.leafIndex === 'number') {
@@ -706,13 +706,14 @@ export async function verifyCampaignMessage(campaignId: string, messageId: strin
     })
   );
 
-  const intact = contentMatch && merkleValid === true && onChainMatch !== false;
+  const intact =
+    merkleValid === true && onChainMatch !== false && contentMatch !== false;
 
   return {
     messageId,
-    recipientNombre: msg.recipientNombre || '',
-    recipientEmail: msg.recipientEmail || '',
-    recipientTelefono: msg.recipientTelefono || '',
+    recipientNombre: snapshot?.recipient.nombre || msg.recipientNombre || '',
+    recipientEmail: snapshot?.recipient.email || msg.recipientEmail || '',
+    recipientTelefono: snapshot?.recipient.phone || msg.recipientTelefono || '',
     content: {
       currentHash,
       storedHash: storedHash || null,

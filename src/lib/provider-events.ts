@@ -47,10 +47,19 @@ export async function recordProviderEvent(input: ProviderEventInput): Promise<st
   return ref.id;
 }
 
-export async function listProviderEventsForMail(mailId: string, limit = 20) {
+export async function listProviderEventsForMail(mailId: string, limit = 40) {
   const snap = await getAdminDb()
     .collection("provider_events")
     .where("mailId", "==", mailId)
+    .limit(limit)
+    .get();
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+export async function listProviderEventsForCampaignMessage(campaignMessageId: string, limit = 40) {
+  const snap = await getAdminDb()
+    .collection("provider_events")
+    .where("campaignMessageId", "==", campaignMessageId)
     .limit(limit)
     .get();
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
