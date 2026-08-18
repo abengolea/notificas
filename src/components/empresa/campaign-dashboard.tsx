@@ -39,8 +39,11 @@ import {
   ShieldCheck,
   Users,
   FileText,
+  Save,
 } from "lucide-react";
-import { isUnsentCampaign } from "@/lib/campaign-edit";
+import { canEditWhatsAppTemplate, isUnsentCampaign } from "@/lib/campaign-edit";
+import { explainWhatsAppSendError, WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-template-fields";
+import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -240,8 +243,26 @@ export function CampaignDashboard({
   const [busy, setBusy]             = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [verifyTarget, setVerifyTarget] = useState<string | undefined>();
+  const [savingTpl, setSavingTpl] = useState(false);
+  const [tplName, setTplName] = useState("");
+  const [tplLang, setTplLang] = useState("es_AR");
+  const [tplVars, setTplVars] = useState<string[]>([...WA_TEMPLATE_DEFAULT_VARS]);
+  const [tplUrlButton, setTplUrlButton] = useState(false);
 
-  // Debounce de búsqueda para no lanzar una query por cada keystroke
+  const syncedTplId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!campaign) return;
+    if (syncedTplId.current === campaign.id) return;
+    syncedTplId.current = campaign.id;
+    setTplName(String(campaign.waTemplateName || ""));
+    setTplLang(String(campaign.waTemplateLang || "es_AR"));
+    setTplVars(
+      Array.isArray(campaign.waTemplateVariables) && campaign.waTemplateVariables.length
+        ? campaign.waTemplateVariables
+        : [...WA_TEMPLATE_DEFAULT_VARS]
+    );
+    setTplUrlButton(campaign.waUrlButton === true);
+  }, [campaign]);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q), 400);
     return () => clearTimeout(t);
@@ -390,7 +411,31 @@ export function CampaignDashboard({
     }
   }
 
-  async function reintentarErrores() {
+  async function guardarTemplateWa() {
+    if (!campaign) return;
+    setSavingTpl(true);
+    try {
+      const res = await campaignRequest(mode, "/api/campaigns/wa-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId,
+          orgId,
+          waTemplateName: tplName.trim(),
+          waTemplateLang: tplLang,
+          waTemplateVariables: tplVars.filter(Boolean),
+          waUrlButton: tplUrlButton,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se pudo guardar el template");
+      toast({ title: "Template guardado", description: "Reintentá los errores para usar el mapping nuevo." });
+    } catch (e: unknown) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "No se pudo guardar", variant: "destructive" });
+    } finally {
+      setSavingTpl(false);
+    }
+  }
     if (!campaign) return;
     setBusy(true);
     try {
@@ -463,6 +508,12 @@ export function CampaignDashboard({
   const showWa    = campaign.canal === "whatsapp" || campaign.canal === "ambos";
 
   const tableCols = 4 + (showEmail ? 1 : 0) + (showWa ? 1 : 0);
+  const canEditTpl = showWa && canEditWhatsAppTemplate(campaign);
+  const waErrorHint =
+    showWa && stats && stats.errores > 0
+      ? messages.map((m) => explainWhatsAppSendError(m.waError || m.errorMsg)).find(Boolean) ||
+        "Si WhatsApp falló, el template de Meta tiene que coincidir con las variables de esta campaña. Ajustalo en Mensaje y reintentá."
+      : null;
 
   return (
     <div className={embedded ? "space-y-6" : "p-6 md:p-8 max-w-6xl space-y-6"}>
@@ -506,6 +557,12 @@ export function CampaignDashboard({
                 <Pencil className="h-4 w-4" />
                 Editar
               </Link>
+            </Button>
+          )}
+          {showWa && canEditWhatsAppTemplate(campaign) && !isUnsentCampaign(campaign) && (
+            <Button variant="outline" onClick={() => setSection("mensaje")} className="gap-2">
+              <Pencil className="h-4 w-4" />
+              Editar template WA
             </Button>
           )}
           {campaign.estado === "borrador" && !isAdmin && (
@@ -696,6 +753,16 @@ export function CampaignDashboard({
             )}
             <p className="text-xs text-muted-foreground">Solo filas en error pueden seleccionarse individualmente.</p>
           </div>
+          {waErrorHint && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
+              {waErrorHint}{" "}
+              {canEditTpl && (
+                <button type="button" className="underline font-medium" onClick={() => setSection("mensaje")}>
+                  Editar template
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="rounded-md border overflow-x-auto">
             <Table>
@@ -849,30 +916,64 @@ export function CampaignDashboard({
             </div>
           )}
           {showWa && (
-            <div className="rounded-md border p-4 bg-muted/30 space-y-2 text-sm">
+            <div className="rounded-md border p-4 bg-muted/30 space-y-3 text-sm">
               <p className="font-medium flex items-center gap-2">
                 <MessageCircle className="h-4 w-4 text-emerald-500" />
                 WhatsApp
               </p>
-              {campaign.waTemplateName ? (
-                <p className="text-muted-foreground">
-                  Template: <span className="font-mono text-foreground">{campaign.waTemplateName}</span>
-                  {campaign.waTemplateLang && <span className="ml-2 text-xs">({campaign.waTemplateLang})</span>}
-                </p>
+              <p className="text-xs text-muted-foreground">
+                El aviso de WhatsApp no es el cuerpo de email: Meta solo acepta el template aprobado,
+                con las mismas variables y en el mismo orden.
+              </p>
+              {canEditTpl ? (
+                <>
+                  <WaTemplateFields
+                    idPrefix="dash-wa"
+                    value={{
+                      name: tplName,
+                      lang: tplLang,
+                      variables: tplVars,
+                      urlButton: tplUrlButton,
+                    }}
+                    onChange={(next) => {
+                      setTplName(next.name);
+                      setTplLang(next.lang);
+                      setTplVars(next.variables);
+                      setTplUrlButton(next.urlButton);
+                    }}
+                  />
+                  <Button onClick={() => void guardarTemplateWa()} disabled={savingTpl || busy} className="gap-2">
+                    {savingTpl ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    Guardar template
+                  </Button>
+                </>
               ) : (
-                <p className="text-muted-foreground">
-                  Template: <span className="font-medium text-foreground">el registrado por defecto de Notificas</span>
-                </p>
-              )}
-              {campaign.waTemplateVariables && campaign.waTemplateVariables.length > 0 && (
-                <p className="text-muted-foreground">
-                  Variables: {campaign.waTemplateVariables.map((v, i) => (
-                    <span key={i} className="inline-block mr-2">
-                      <span className="text-xs text-muted-foreground">{`{{${i + 1}}}`} = </span>
-                      <span className="font-medium text-foreground">{v}</span>
-                    </span>
-                  ))}
-                </p>
+                <>
+                  {campaign.waTemplateName ? (
+                    <p className="text-muted-foreground">
+                      Template: <span className="font-mono text-foreground">{campaign.waTemplateName}</span>
+                      {campaign.waTemplateLang && <span className="ml-2 text-xs">({campaign.waTemplateLang})</span>}
+                    </p>
+                  ) : (
+                    <p className="text-muted-foreground">
+                      Template: <span className="font-mono text-foreground">notificaciones_notificas</span>
+                      <span className="ml-2 text-xs">(por defecto · nombre, remitente, lector)</span>
+                    </p>
+                  )}
+                  {campaign.waTemplateVariables && campaign.waTemplateVariables.length > 0 && (
+                    <p className="text-muted-foreground">
+                      Variables: {campaign.waTemplateVariables.map((v, i) => (
+                        <span key={i} className="inline-block mr-2">
+                          <span className="text-xs text-muted-foreground">{`{{${i + 1}}}`} = </span>
+                          <span className="font-medium text-foreground">{v}</span>
+                        </span>
+                      ))}
+                    </p>
+                  )}
+                  {campaign.waUrlButton ? (
+                    <p className="text-muted-foreground">Botón URL: sí</p>
+                  ) : null}
+                </>
               )}
               {campaign.cuerpo && (
                 <p className="text-muted-foreground whitespace-pre-wrap border-t pt-2">{campaign.cuerpo}</p>

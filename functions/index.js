@@ -39,8 +39,25 @@ const whatsappVerifyToken = defineSecret('WHATSAPP_VERIFY_TOKEN');
 // App Secret de Meta (firma X-Hub-Signature-256 del webhook)
 const whatsappAppSecret = defineSecret('WHATSAPP_APP_SECRET');
 // Template aprobado en Meta (requerido para contactar usuarios fuera de ventana 24h)
-const whatsappTemplateName = defineString('WHATSAPP_TEMPLATE_NAME', { default: '' });
+const whatsappTemplateName = defineString('WHATSAPP_TEMPLATE_NAME', { default: 'notificaciones_notificas' });
 const whatsappTemplateLanguage = defineString('WHATSAPP_TEMPLATE_LANGUAGE', { default: 'es_AR' });
+
+function usesNotificasDefaultTemplate(name) {
+  const n = String(name || '').trim().toLowerCase();
+  return !n || n === 'notificaciones_notificas';
+}
+
+function resolveCampaignWhatsAppTemplate(emailData) {
+  const campaignName = String(emailData?.waTemplateName || '').trim();
+  const globalName = whatsappTemplateName.value()?.trim() || 'notificaciones_notificas';
+  const useDefault = usesNotificasDefaultTemplate(campaignName);
+  return {
+    templateName: useDefault ? globalName : campaignName,
+    templateLang: String(emailData?.waTemplateLang || '').trim() || whatsappTemplateLanguage.value()?.trim() || 'es_AR',
+    templateVariables: useDefault ? null : (Array.isArray(emailData?.waTemplateVariables) ? emailData.waTemplateVariables : null),
+    urlButton: useDefault ? false : emailData?.waUrlButton === true,
+  };
+}
 
 /**
  * Dígitos E.164 argentinos sin `+` (ej. 5491112345678).
@@ -108,7 +125,7 @@ function formatWhatsAppSenderDisplay(senderName, fromEmail) {
  * @param {string[]|null} opts.templateVariables - campos del destinatario en orden: ['nombre','dni',...]
  * @param {object} opts.recipientData      - datos del destinatario para resolver variables
  */
-function resolveWhatsAppTemplateValue(field, rd, recipientName, toPhone, readerUrl) {
+function resolveWhatsAppTemplateValue(field, rd, recipientName, toPhone, readerUrl, senderName) {
   switch (field) {
     case 'nombre':       return rd.nombre || recipientName || '';
     case 'dni':          return rd.dni || '';
@@ -117,6 +134,8 @@ function resolveWhatsAppTemplateValue(field, rd, recipientName, toPhone, readerU
     case 'telefono':     return rd.telefono || toPhone || '';
     case 'dias':
     case 'dias_atraso':  return rd.dias || rd.dias_atraso || '';
+    case 'remitente':
+    case 'empresa':      return senderName || '';
     case 'url_lectura':
     case 'boton_url':    return readerUrl;
     default:             return rd[field] || '';
@@ -151,14 +170,15 @@ async function sendWhatsAppNotification({ accessToken, phoneNumberId, templateNa
     // Resolver variables del template según campaignTemplateVariables
     // Si hay templateVariables custom, usarlas; si no, fallback a [destinatario, remitente, url]
     const rd = recipientData || {};
-    const bodyFields = (templateVariables && templateVariables.length > 0)
+    // Array (aunque vacío) = mapping explícito de la campaña. null/undefined = fallback legacy.
+    const hasCustomVars = Array.isArray(templateVariables);
+    const bodyFields = hasCustomVars
       ? templateVariables.filter((field) => !(urlButton && (field === 'url_lectura' || field === 'boton_url')))
       : null;
-    let parameters;
-    if (bodyFields && bodyFields.length > 0) {
+    if (bodyFields) {
       parameters = bodyFields.map((field) => ({
         type: 'text',
-        text: String(resolveWhatsAppTemplateValue(field, rd, recipientName, toPhone, readerUrl)).substring(0, 1024),
+        text: String(resolveWhatsAppTemplateValue(field, rd, recipientName, toPhone, readerUrl, senderName)).substring(0, 1024),
       }));
     } else if (!urlButton) {
       // Fallback legacy: {{1}} destinatario, {{2}} remitente, {{3}} url
@@ -169,6 +189,16 @@ async function sendWhatsAppNotification({ accessToken, phoneNumberId, templateNa
       ];
     } else {
       parameters = [];
+    }
+    const emptyParam = parameters.findIndex((p) => !String(p.text || '').trim());
+    if (emptyParam >= 0) {
+      const fieldLabel = bodyFields ? bodyFields[emptyParam] : ['nombre', 'remitente', 'url'][emptyParam];
+      return {
+        error: {
+          code: 131008,
+          message: `(#131008) Variable {{${emptyParam + 1}}} (${fieldLabel || 'texto'}) está vacía. Meta no acepta parámetros vacíos. Quitá esa variable o completá el dato del destinatario.`,
+        },
+      };
     }
     const components = [];
     if (parameters.length > 0) {
@@ -449,7 +479,15 @@ function whatsappErrorMessage(waId) {
   if (typeof waId === 'string') return null;
   if (waId.id && typeof waId.id === 'string') return null;
   const err = waId.error || waId;
-  return err.error?.message || err.message || (typeof err === 'string' ? err : JSON.stringify(err));
+  const nested = err.error || err;
+  const code = nested.code || err.code;
+  const raw = nested.message || err.message || (typeof err === 'string' ? err : JSON.stringify(err));
+  if (code === 131008 || /required parameter is missing/i.test(String(raw || ''))) {
+    if (String(raw).includes('está vacía')) return raw;
+    return `(#131008) Falta un parámetro del template de WhatsApp. Suele ser una variable {{N}} vacía, distinta cantidad que en Meta, o un botón URL no activado en la campaña.`;
+  }
+  if (code && !String(raw).includes(`#${code}`)) return `(#${code}) ${raw}`;
+  return raw;
 }
 
 function whatsappResultId(waId) {
@@ -576,19 +614,15 @@ exports.sendEmail = onRequest(
 
       const token = whatsappAccessToken.value();
       const phoneId = whatsappPhoneNumberId.value();
-      const campaignTemplateName = emailData.waTemplateName?.trim() || '';
-      const globalTemplateName   = whatsappTemplateName.value()?.trim() || '';
-      const resolvedTemplate     = campaignTemplateName || globalTemplateName || null;
-      const resolvedLang         = emailData.waTemplateLang?.trim() || whatsappTemplateLanguage.value()?.trim() || 'es_AR';
-      const resolvedVariables    = Array.isArray(emailData.waTemplateVariables) ? emailData.waTemplateVariables : null;
+      const waTpl = resolveCampaignWhatsAppTemplate(emailData);
       const waId = await sendWhatsAppNotification({
         accessToken: token, phoneNumberId: phoneId,
-        templateName: resolvedTemplate, templateLang: resolvedLang,
+        templateName: waTpl.templateName, templateLang: waTpl.templateLang,
         toPhone: recipientPhone, readerUrl: readerUrlWa,
         senderName: formatWhatsAppSenderDisplay(emailData.senderName, from),
         recipientName: formatWhatsAppRecipientDisplay(emailData.recipientName),
-        templateVariables: resolvedVariables,
-        urlButton: emailData.waUrlButton === true,
+        templateVariables: waTpl.templateVariables,
+        urlButton: waTpl.urlButton,
         recipientData: {
           nombre: emailData.recipientName,
           email: emailData.recipientEmail,
@@ -966,13 +1000,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
             whatsappError = 'Secrets WHATSAPP_ACCESS_TOKEN o WHATSAPP_PHONE_NUMBER_ID no configurados';
             console.warn('⚠️', whatsappError);
           } else {
-            // Template: usa el de la campaña si existe, si no el global configurado en la CF
-            const campaignTemplateName = emailData.waTemplateName?.trim() || '';
-            const globalTemplateName   = whatsappTemplateName.value()?.trim() || '';
-            const resolvedTemplate     = campaignTemplateName || globalTemplateName || null;
-            const resolvedLang         = emailData.waTemplateLang?.trim() || whatsappTemplateLanguage.value()?.trim() || 'es_AR';
-            const resolvedVariables    = Array.isArray(emailData.waTemplateVariables) ? emailData.waTemplateVariables : null;
-
+            const waTpl = resolveCampaignWhatsAppTemplate(emailData);
             const whatsappLink = (() => {
               const waDigits = formatPhoneForWhatsApp(recipientPhone);
               const rParam =
@@ -986,14 +1014,14 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
             const resultWA = await sendWhatsAppNotification({
               accessToken: token,
               phoneNumberId: phoneId,
-              templateName: resolvedTemplate,
-              templateLang: resolvedLang,
+              templateName: waTpl.templateName,
+              templateLang: waTpl.templateLang,
               toPhone: recipientPhone,
               readerUrl: whatsappLink,
               senderName: waSender,
               recipientName: waRecipient,
-              templateVariables: resolvedVariables,
-              urlButton: emailData.waUrlButton === true,
+              templateVariables: waTpl.templateVariables,
+              urlButton: waTpl.urlButton,
               recipientData: {
                 nombre: emailData.recipientName || '',
                 email: emailData.recipientEmail || '',
@@ -1769,9 +1797,23 @@ function parseCertifySubject(subject) {
   return null;
 }
 
+function inboundAuthorized(req) {
+  const expected = (polygonCertifySecret.value() || '').trim();
+  if (!expected) {
+    console.warn('⚠️ POLYGON_CERTIFY_SECRET vacío — processIncomingEmail sin auth (solo entorno local)');
+    return true;
+  }
+  const header = String(req.get('X-Certify-Secret') || req.get('x-certify-secret') || '').trim();
+  const token = String(req.query.token || req.query.secret || '').trim();
+  return header === expected || token === expected;
+}
+
 // Función para procesar correos entrantes desde clientes de email externos
-exports.processIncomingEmail = onRequest({ region: REGION, secrets: [smtpPass] }, async (req, res) => {
+exports.processIncomingEmail = onRequest({ region: REGION, secrets: [smtpPass, polygonCertifySecret] }, async (req, res) => {
   try {
+    if (!inboundAuthorized(req)) {
+      return res.status(401).json({ error: 'No autorizado' });
+    }
     console.log('📧 Procesando correo entrante:', req.body);
 
     const incoming = req.body && typeof req.body === 'object' ? req.body : {};

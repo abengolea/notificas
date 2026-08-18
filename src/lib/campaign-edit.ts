@@ -12,6 +12,23 @@ export function isUnsentCampaign(data: {
 export const UNSENT_EDIT_ERROR =
   "Solo se puede editar una campaña que todavía no se envió.";
 
+/**
+ * Template de WhatsApp: se puede cambiar si no hay envíos exitosos
+ * (borrador, cancelada, o completada que solo tuvo errores).
+ */
+export function canEditWhatsAppTemplate(data: {
+  estado?: unknown;
+  stats?: { enviados?: unknown } | null;
+}): boolean {
+  const estado = String(data.estado || "borrador");
+  if (estado === "enviando") return false;
+  const enviados = typeof data.stats?.enviados === "number" ? data.stats.enviados : 0;
+  return enviados === 0;
+}
+
+export const WA_TEMPLATE_EDIT_ERROR =
+  "Solo se puede editar el template de WhatsApp si todavía no hubo envíos exitosos.";
+
 export function toDatetimeLocalValue(ts: unknown): string {
   let d: Date | null = null;
   if (!ts) return "";

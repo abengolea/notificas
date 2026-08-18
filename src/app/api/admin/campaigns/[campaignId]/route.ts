@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { assertAdminSession } from '@/lib/assert-admin-session';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { normalizeEnviosDisponibles } from '@/lib/envios';
-import { isUnsentCampaign, UNSENT_EDIT_ERROR } from '@/lib/campaign-edit';
+import { canEditWhatsAppTemplate, isUnsentCampaign, UNSENT_EDIT_ERROR, WA_TEMPLATE_EDIT_ERROR } from '@/lib/campaign-edit';
+import { whatsappTemplateCampaignPatch } from '@/lib/campaign-wa-template-patch';
 import type { CanalCampaign } from '@/lib/types';
 
 const patchSchema = z.object({
@@ -124,29 +125,37 @@ export async function PATCH(
     const current = snap.data()!;
     const unsent = isUnsentCampaign(current);
     const d = parsed.data;
-    const contentTouched =
-      d.nombre != null ||
-      d.asunto != null ||
-      d.cuerpo != null ||
-      d.canal != null ||
+    const fullContentTouched =
+      d.nombre != null || d.asunto != null || d.cuerpo != null || d.canal != null;
+    const templateTouched =
       d.waTemplateName != null ||
       d.waTemplateLang != null ||
       d.waTemplateVariables != null ||
       d.waUrlButton != null;
-    if (contentTouched && !unsent) {
+    if (fullContentTouched && !unsent) {
       return NextResponse.json({ error: UNSENT_EDIT_ERROR }, { status: 409 });
+    }
+    if (templateTouched && !canEditWhatsAppTemplate(current)) {
+      return NextResponse.json({ error: WA_TEMPLATE_EDIT_ERROR }, { status: 409 });
     }
 
     const patch: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
-    if (contentTouched && unsent && String(current.estado) === 'cancelada') patch.estado = 'borrador';
+    if (fullContentTouched && unsent && String(current.estado) === 'cancelada') patch.estado = 'borrador';
     if (d.nombre != null) patch.nombre = d.nombre.trim();
     if (d.asunto != null) patch.asunto = d.asunto.trim();
     if (d.cuerpo != null) patch.cuerpo = d.cuerpo.trim();
     if (d.canal != null) patch.canal = d.canal as CanalCampaign;
-    if (d.waTemplateName != null) patch.waTemplateName = d.waTemplateName.trim();
-    if (d.waTemplateLang != null) patch.waTemplateLang = d.waTemplateLang.trim() || 'es_AR';
-    if (d.waTemplateVariables != null) patch.waTemplateVariables = d.waTemplateVariables.filter(Boolean);
-    if (d.waUrlButton != null) patch.waUrlButton = d.waUrlButton === true;
+    if (templateTouched) {
+      Object.assign(
+        patch,
+        whatsappTemplateCampaignPatch({
+          waTemplateName: d.waTemplateName ?? String(current.waTemplateName || ''),
+          waTemplateLang: d.waTemplateLang ?? String(current.waTemplateLang || 'es_AR'),
+          waTemplateVariables: d.waTemplateVariables ?? (Array.isArray(current.waTemplateVariables) ? current.waTemplateVariables : []),
+          waUrlButton: d.waUrlButton ?? current.waUrlButton === true,
+        })
+      );
+    }
     if (d.tandaSize != null) patch.tandaSize = d.tandaSize;
 
     await ref.update(patch);

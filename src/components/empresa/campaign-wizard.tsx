@@ -68,6 +68,8 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { CsvInspectResult } from "@/lib/parse-campaign-csv";
 import { isUnsentCampaign, toDatetimeLocalValue, UNSENT_EDIT_ERROR } from "@/lib/campaign-edit";
+import { WA_TEMPLATE_DEFAULT_VARS, usesNotificasDefaultTemplate } from "@/lib/wa-template-fields";
+import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 
 function cleanRecipientForUpload(r: RecipientEntry): RecipientEntry {
   const clean: RecipientEntry = { nombre: r.nombre || "", email: r.email || "" };
@@ -133,7 +135,7 @@ export function CampaignWizard({
   const [canal, setCanal] = useState<CanalCampaign>("email");
   const [waTemplateName, setWaTemplateName] = useState("");
   const [waTemplateLang, setWaTemplateLang] = useState("es_AR");
-  const [waTemplateVariables, setWaTemplateVariables] = useState<string[]>(["nombre", "dni", "legajo"]);
+  const [waTemplateVariables, setWaTemplateVariables] = useState<string[]>([...WA_TEMPLATE_DEFAULT_VARS]);
   const [waUrlButton, setWaUrlButton] = useState(false);
   const [campaniaNombre, setCampaniaNombre] = useState("");
   const [asunto, setAsunto] = useState("");
@@ -535,10 +537,6 @@ export function CampaignWizard({
       toast({ title: "Completá nombre interno, asunto y cuerpo", variant: "destructive" });
       return;
     }
-    if ((canal === "whatsapp" || canal === "ambos") && sendNow && !simulated && !waTemplateName.trim()) {
-      toast({ title: "Completá el template de WhatsApp", description: "Meta requiere un template aprobado para enviar.", variant: "destructive" });
-      return;
-    }
     const file = csvFileRef.current;
     const hasRecipients =
       Boolean(file) ||
@@ -686,10 +684,6 @@ export function CampaignWizard({
       toast({ title: "Completá nombre interno, asunto y cuerpo", variant: "destructive" });
       return;
     }
-    if ((canal === "whatsapp" || canal === "ambos") && sendNow && !waTemplateName.trim()) {
-      toast({ title: "Completá el template de WhatsApp", description: "Meta requiere un template aprobado para enviar.", variant: "destructive" });
-      return;
-    }
     if (recipients.length === 0 && existingRecipientCount === 0) {
       toast({ title: "Agregá destinatarios", variant: "destructive" });
       return;
@@ -777,15 +771,30 @@ export function CampaignWizard({
       const cleanRecipients = recipients.map(cleanRecipientForUpload);
       const replaceRecipients = cleanRecipients.length > 0;
 
+      const customWa = canal !== "email" && !usesNotificasDefaultTemplate(waTemplateName);
+      const waFields = canal === "email"
+        ? {}
+        : customWa
+          ? {
+              waTemplateName: waTemplateName.trim(),
+              waTemplateLang: waTemplateLang.trim() || "es_AR",
+              waTemplateVariables: waTemplateVariables.filter(Boolean),
+              waUrlButton: waUrlButton === true,
+            }
+          : {
+              waTemplateLang: waTemplateLang.trim() || "es_AR",
+              waUrlButton: false,
+            };
       const content = {
         canal,
         tandaSize,
-        ...(canal !== "email" && waTemplateName.trim() ? {
-          waTemplateName: waTemplateName.trim(),
-          waTemplateLang: waTemplateLang.trim() || "es_AR",
-          waTemplateVariables: waTemplateVariables.filter(Boolean),
-          ...(waUrlButton ? { waUrlButton: true } : {}),
-        } : {}),
+        ...waFields,
+        nombre: campaniaNombre.trim(),
+        asunto: asunto.trim(),
+        cuerpo: cuerpo.trim(),
+        adjuntos: adjuntosGlobales,
+        recipientListId: listId || null,
+      };
         nombre: campaniaNombre.trim(),
         asunto: asunto.trim(),
         cuerpo: cuerpo.trim(),
@@ -806,6 +815,9 @@ export function CampaignWizard({
         }
         await updateDoc(refDoc, {
           ...content,
+          ...(canal !== "email" && !customWa
+            ? { waTemplateName: deleteField(), waTemplateVariables: deleteField() }
+            : {}),
           ...(adjuntosPorDestinatario
             ? { adjuntosPorDestinatario }
             : existingPaired
@@ -906,7 +918,6 @@ export function CampaignWizard({
   }
 
   const STEPS = ["Canal", "Destinatarios", "Mensaje", "Confirmación"];
-  const waTemplateMissing = !simulated && (canal === "whatsapp" || canal === "ambos") && !waTemplateName.trim();
 
   if (loadingCampaign) {
     return (
@@ -1394,100 +1405,26 @@ export function CampaignWizard({
                     Template de WhatsApp
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Meta solo permite mensajes con templates aprobados. Completá el nombre del
-                    template aprobado en Meta antes de enviar.
+                    Si lo dejás vacío se usa notificaciones_notificas: el sistema pone el nombre,
+                    el remitente y el mismo link del lector que el correo. Solo completá otro
+                    nombre si el template de Meta es distinto.
                   </p>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Nombre del template (aprobado en Meta)</Label>
-                    <Input
-                      placeholder="Nombre del template en Meta (obligatorio para enviar)"
-                      value={waTemplateName}
-                      onChange={(e) => setWaTemplateName(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Idioma</Label>
-                    <Select value={waTemplateLang} onValueChange={setWaTemplateLang}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="es_AR">Español (Argentina)</SelectItem>
-                        <SelectItem value="es">Español</SelectItem>
-                        <SelectItem value="es_MX">Español (México)</SelectItem>
-                        <SelectItem value="en_US">English (US)</SelectItem>
-                        <SelectItem value="pt_BR">Português (Brasil)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs">
-                    Variables del template — ¿qué campo va en cada <code>{"{{N}}"}</code>?
-                  </Label>
-                  <div className="space-y-2">
-                    {waTemplateVariables.map((v, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground w-10 shrink-0 font-mono">{`{{${i + 1}}}`}</span>
-                        <Select
-                          value={v}
-                          onValueChange={(val) => setWaTemplateVariables((prev) => prev.map((x, j) => j === i ? val : x))}
-                        >
-                          <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="nombre">nombre</SelectItem>
-                            <SelectItem value="dni">dni</SelectItem>
-                            <SelectItem value="legajo">legajo</SelectItem>
-                            <SelectItem value="email">email</SelectItem>
-                            <SelectItem value="telefono">telefono</SelectItem>
-                            <SelectItem value="dias">días de atraso</SelectItem>
-                            <SelectItem value="url_lectura">url de lectura (en el texto)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          type="button" variant="ghost" size="sm"
-                          className="text-destructive h-8 px-2"
-                          onClick={() => setWaTemplateVariables((prev) => prev.filter((_, j) => j !== i))}
-                          disabled={waTemplateVariables.length <= 1}
-                        >✕</Button>
-                      </div>
-                    ))}
-                    {waTemplateVariables.length < 8 && (
-                      <Button
-                        type="button" variant="outline" size="sm"
-                        onClick={() => setWaTemplateVariables((prev) => [...prev, "nombre"])}
-                      >
-                        + Agregar variable
-                      </Button>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    El orden debe coincidir exactamente con las variables del cuerpo en Meta. Para esta plantilla de mora suele ser {"{{1}}"} nombre y {"{{2}}"} días de atraso.
-                  </p>
-                  <div className="flex items-start gap-3 rounded-md border p-3">
-                    <Checkbox
-                      id="wa-url-button"
-                      checked={waUrlButton}
-                      onCheckedChange={(v) => setWaUrlButton(v === true)}
-                      className="mt-0.5"
-                    />
-                    <div className="space-y-1">
-                      <label htmlFor="wa-url-button" className="text-xs font-medium leading-none">
-                        El template tiene un botón de enlace
-                      </label>
-                      <p className="text-xs text-muted-foreground">
-                        Activalo solo si en Meta agregaste un botón URL. Notificas manda ahí el link del lector.
-                        En Meta el botón debe ser: dominio de Notificas + variable, por ejemplo
-                        {" "}<code>https://notificas.com.ar/{"{{1}}"}</code>.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                {waTemplateName.trim() && (
-                  <div className="rounded-md bg-muted/50 p-2 text-xs font-mono text-muted-foreground">
-                    Preview de llamada a Meta: template=<strong>{waTemplateName}</strong>, variables=[{waTemplateVariables.map((v, i) => `{{${i+1}}}→${v}`).join(", ")}]
-                  </div>
-                )}
+                <WaTemplateFields
+                  idPrefix="wizard-wa"
+                  value={{
+                    name: waTemplateName,
+                    lang: waTemplateLang,
+                    variables: waTemplateVariables,
+                    urlButton: waUrlButton,
+                  }}
+                  onChange={(next) => {
+                    setWaTemplateName(next.name);
+                    setWaTemplateLang(next.lang);
+                    setWaTemplateVariables(next.variables);
+                    setWaUrlButton(next.urlButton);
+                  }}
+                />
               </div>
             )}
 
@@ -1681,12 +1618,7 @@ export function CampaignWizard({
 
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setStep(3)}>Atrás</Button>
-              {waTemplateMissing && (
-                <p className="w-full text-sm text-destructive">
-                  Completá el nombre del template de WhatsApp (paso Mensaje) antes de enviar.
-                </p>
-              )}
-              <Button variant="secondary" disabled={submitting || waTemplateMissing} onClick={() => setConfirmOpen(true)}>
+              <Button variant="secondary" disabled={submitting} onClick={() => setConfirmOpen(true)}>
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 {simulated ? "Simular ahora" : "Enviar ahora"}
               </Button>
@@ -1728,7 +1660,7 @@ export function CampaignWizard({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <Button
-              disabled={submitting || waTemplateMissing}
+              disabled={submitting}
               onClick={async () => {
                 await runSubmit(true);
               }}

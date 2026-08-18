@@ -10,13 +10,6 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   AlertDialog,
   AlertDialogCancel,
   AlertDialogContent,
@@ -37,7 +30,9 @@ import {
 import type { CanalCampaign } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { CampaignDashboard } from "@/components/empresa/campaign-dashboard";
-import { isUnsentCampaign } from "@/lib/campaign-edit";
+import { canEditWhatsAppTemplate, isUnsentCampaign } from "@/lib/campaign-edit";
+import { WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-template-fields";
+import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 
 type CampaignPayload = {
   id: string;
@@ -53,6 +48,7 @@ type CampaignPayload = {
   waTemplateName: string;
   waTemplateLang: string;
   waTemplateVariables: string[];
+  waUrlButton?: boolean;
   stats: { total: number; enviados: number; leidos: number; pendientes: number; errores: number };
 };
 
@@ -93,6 +89,8 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
   const [generating, setGenerating] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [templateLang, setTemplateLang] = useState("es_AR");
+  const [templateVars, setTemplateVars] = useState<string[]>([...WA_TEMPLATE_DEFAULT_VARS]);
+  const [templateUrlButton, setTemplateUrlButton] = useState(false);
   const formReady = useRef(false);
 
   const load = useCallback(async () => {
@@ -104,6 +102,12 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
       const c = json.campaign as CampaignPayload;
       setTemplateName(c.waTemplateName || "");
       setTemplateLang(c.waTemplateLang || "es_AR");
+      setTemplateVars(
+        Array.isArray(c.waTemplateVariables) && c.waTemplateVariables.length
+          ? c.waTemplateVariables
+          : [...WA_TEMPLATE_DEFAULT_VARS]
+      );
+      setTemplateUrlButton(c.waUrlButton === true);
       if (typeof c.tandaSize === "number" && c.tandaSize > 0) setTandaSize(c.tandaSize);
       formReady.current = true;
     }
@@ -134,8 +138,13 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tandaSize,
-          ...(data && isUnsentCampaign(data.campaign)
-            ? { waTemplateName: templateName.trim(), waTemplateLang: templateLang }
+          ...(data && canEditWhatsAppTemplate(data.campaign)
+            ? {
+                waTemplateName: templateName.trim(),
+                waTemplateLang: templateLang,
+                waTemplateVariables: templateVars.filter(Boolean),
+                waUrlButton: templateUrlButton,
+              }
             : {}),
         }),
       });
@@ -276,6 +285,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
   const enviadoPct = stats.total > 0 ? Math.round((stats.enviados / stats.total) * 100) : 0;
   const canSend = c.recipientCount > 0 && c.estado !== "cancelada" && thisTanda > 0;
   const canEditContent = isUnsentCampaign(c);
+  const canEditTpl = canEditWhatsAppTemplate(c);
   const showEmail = c.canal === "email" || c.canal === "ambos";
   const showWa = c.canal === "whatsapp" || c.canal === "ambos";
 
@@ -384,6 +394,10 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
             Este envío mandaría <strong>{thisTanda.toLocaleString("es-AR")}</strong> nuevos
             {already > 0 ? ` (ya van ${already.toLocaleString("es-AR")})` : null}.
           </p>
+          <Button variant="secondary" disabled={saving} onClick={() => void saveTemplate()}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+            Guardar límite
+          </Button>
         </CardContent>
       </Card>
       )}
@@ -463,30 +477,32 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
               <MessageCircle className="h-4 w-4 text-emerald-500" />
               WhatsApp
             </p>
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="space-y-1 min-w-[220px] flex-1">
-                <Label className="text-xs">Nombre del template</Label>
-                <Input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Vacío = template por defecto de Notificas" disabled={!canEditContent} />
-                <p className="text-xs text-muted-foreground">Si lo dejás vacío, se usa el template registrado por defecto en el servidor.</p>
-              </div>
-              <div className="space-y-1 w-32">
-                <Label className="text-xs">Idioma</Label>
-                <Select value={templateLang} onValueChange={setTemplateLang} disabled={!canEditContent}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="es_AR">Español (Argentina)</SelectItem>
-                    <SelectItem value="es">Español</SelectItem>
-                    <SelectItem value="es_MX">Español (México)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button variant="secondary" disabled={saving || !canEditContent} onClick={() => void saveTemplate()}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                Guardar
-              </Button>
-            </div>
+            <WaTemplateFields
+              idPrefix="admin-wa"
+              disabled={!canEditTpl}
+              namePlaceholder="Vacío = template por defecto de Notificas"
+              value={{
+                name: templateName,
+                lang: templateLang,
+                variables: templateVars,
+                urlButton: templateUrlButton,
+              }}
+              onChange={(next) => {
+                setTemplateName(next.name);
+                setTemplateLang(next.lang);
+                setTemplateVars(next.variables);
+                setTemplateUrlButton(next.urlButton);
+              }}
+            />
+            <Button variant="secondary" disabled={saving || !canEditTpl} onClick={() => void saveTemplate()}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+              Guardar template
+            </Button>
+            {!canEditTpl && (
+              <p className="text-xs text-muted-foreground">
+                El template se puede editar solo si todavía no hubo envíos exitosos.
+              </p>
+            )}
           </div>
         )}
         {c.cuerpo ? (

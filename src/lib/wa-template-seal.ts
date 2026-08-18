@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { sha256Hex } from "@/lib/merkle";
+import { WA_DEFAULT_TEMPLATE_NAME, WA_TEMPLATE_DEFAULT_VARS, usesNotificasDefaultTemplate } from "@/lib/wa-template-fields";
 
 export type WhatsAppTemplateSeal = {
   hash: string;
@@ -44,7 +45,7 @@ export function recipientWhatsAppVars(
     telefono?: string;
   }
 ): Record<string, string> {
-  const keys = (variables && variables.length ? variables : ["nombre", "dni", "dias"]).filter(
+  const keys = (variables && variables.length ? variables : ["nombre", "remitente"]).filter(
     (k) => k !== "url_lectura" && k !== "boton_url"
   );
   const src: Record<string, string> = {
@@ -77,15 +78,23 @@ export async function sealCampaignWhatsAppTemplate(
   const c = snap.data()!;
   const existing = c.waTemplateSeal as WhatsAppTemplateSeal | undefined;
   if (existing?.hash) return existing;
+  if (String(c.canal || "email") === "email") return null;
 
-  const name = String(c.waTemplateName || "").trim();
-  if (!name) return null;
+  const customName = String(c.waTemplateName || "").trim();
+  const useDefault = usesNotificasDefaultTemplate(customName);
+  const name = useDefault ? WA_DEFAULT_TEMPLATE_NAME : customName;
+  const templateVariables = useDefault
+    ? [...WA_TEMPLATE_DEFAULT_VARS]
+    : Array.isArray(c.waTemplateVariables)
+      ? c.waTemplateVariables
+      : [];
+  const urlButton = useDefault ? false : c.waUrlButton === true;
 
   const payload = buildWhatsAppTemplateSealPayload({
     templateName: name,
     templateLang: String(c.waTemplateLang || "es_AR"),
-    templateVariables: Array.isArray(c.waTemplateVariables) ? c.waTemplateVariables : [],
-    urlButton: c.waUrlButton === true,
+    templateVariables,
+    urlButton,
   });
   const hash = await sha256Hex(payload);
   const record: WhatsAppTemplateSeal = {
@@ -93,8 +102,8 @@ export async function sealCampaignWhatsAppTemplate(
     payload,
     templateName: name,
     templateLang: String(c.waTemplateLang || "es_AR"),
-    templateVariables: Array.isArray(c.waTemplateVariables) ? c.waTemplateVariables : [],
-    urlButton: c.waUrlButton === true,
+    templateVariables,
+    urlButton,
     sealedAt: FieldValue.serverTimestamp(),
   };
 

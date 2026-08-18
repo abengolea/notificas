@@ -114,8 +114,8 @@ export async function POST(request: NextRequest) {
         ? {
             waTemplateName: parsed.data.waTemplateName.trim(),
             waTemplateLang: parsed.data.waTemplateLang?.trim() || 'es_AR',
-            waTemplateVariables: parsed.data.waTemplateVariables?.filter(Boolean) || ['nombre', 'dni', 'legajo'],
-            ...(parsed.data.waUrlButton === true ? { waUrlButton: true } : {}),
+            waTemplateVariables: parsed.data.waTemplateVariables?.filter(Boolean) || ['nombre'],
+            waUrlButton: parsed.data.waUrlButton === true,
           }
         : {}),
       senderUid: adminUserId,

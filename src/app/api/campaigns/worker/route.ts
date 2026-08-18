@@ -15,6 +15,7 @@ import { sealEvidenceSnapshot } from '@/lib/evidence-snapshot';
 import { hashWhatsAppBody } from '@/lib/whatsapp-evidence';
 import { certifyWhatsAppPayloadIfNeeded } from '@/lib/certification-polygon';
 import { recipientWhatsAppVars, sealCampaignWhatsAppTemplate } from '@/lib/wa-template-seal';
+import { usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
 import { maybeCompleteCampaign } from '@/lib/campaign-complete';
 import { completeSimulatedSend, isCampaignSimulated } from '@/lib/campaign-simulate';
 import type { CampaignAttachment, RecipientEntry } from '@/lib/types';
@@ -194,7 +195,7 @@ async function processMessage(
           campaignId,
           campaignMessageId: messageDocId,
           attachments: adjuntos.length ? adjuntos : undefined,
-          ...(campaign.waTemplateName ? {
+          ...(usesNotificasDefaultTemplate(campaign.waTemplateName) ? {} : campaign.waTemplateName ? {
             waTemplateName: campaign.waTemplateName,
             waTemplateLang: campaign.waTemplateLang || 'es_AR',
             waTemplateVariables: campaign.waTemplateVariables || null,
@@ -220,6 +221,26 @@ async function processMessage(
   }
 
   if (!mailId) throw new WorkerRetryError('mailId ausente');
+
+  // Reintento: el mail doc pudo crearse con un template viejo. Siempre copiar el de la campaña.
+  if (canal === 'whatsapp' || canal === 'ambos') {
+    const tplName = String(campaign.waTemplateName || '').trim();
+    const useDefault = usesNotificasDefaultTemplate(tplName);
+    const waSync: Record<string, unknown> = {
+      waTemplateLang: String(campaign.waTemplateLang || 'es_AR'),
+      waUrlButton: useDefault ? false : campaign.waUrlButton === true,
+    };
+    if (useDefault) {
+      waSync.waTemplateName = FieldValue.delete();
+      waSync.waTemplateVariables = FieldValue.delete();
+    } else {
+      waSync.waTemplateName = tplName;
+      waSync.waTemplateVariables = Array.isArray(campaign.waTemplateVariables)
+        ? campaign.waTemplateVariables
+        : FieldValue.delete();
+    }
+    await db.collection('mail').doc(mailId).update(waSync);
+  }
 
   if (isCampaignSimulated(campaign)) {
     const sim = await completeSimulatedSend({
