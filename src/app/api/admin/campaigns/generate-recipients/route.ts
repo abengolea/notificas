@@ -9,6 +9,7 @@ import {
   SIM_RECIPIENT_MIN,
 } from '@/lib/campaign-fake-recipients';
 import type { CanalCampaign } from '@/lib/types';
+import { isUnsentCampaign, UNSENT_EDIT_ERROR } from '@/lib/campaign-edit';
 
 const bodySchema = z.object({
   campaignId: z.string().min(1),
@@ -39,11 +40,14 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    if (campaign.estado !== 'borrador') {
+    if (!isUnsentCampaign(campaign)) {
       return NextResponse.json(
-        { error: 'Solo se pueden generar destinatarios en borrador' },
-        { status: 400 }
+        { error: UNSENT_EDIT_ERROR },
+        { status: 409 }
       );
+    }
+    if (String(campaign.estado) === 'cancelada') {
+      await campRef.update({ estado: 'borrador' });
     }
 
     const canal = (campaign.canal as CanalCampaign) || 'email';

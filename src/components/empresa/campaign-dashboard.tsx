@@ -30,6 +30,7 @@ import {
   Loader2,
   RefreshCw,
   Play,
+  Pencil,
   Mail,
   MessageCircle,
   ChevronDown,
@@ -39,6 +40,7 @@ import {
   Users,
   FileText,
 } from "lucide-react";
+import { isUnsentCampaign } from "@/lib/campaign-edit";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -496,6 +498,14 @@ export function CampaignDashboard({
             <Button variant="outline" onClick={reintentarErrores} disabled={busy} className="gap-2 border-destructive text-destructive hover:bg-destructive/10">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
               Reintentar {stats.errores.toLocaleString("es-AR")} errores
+            </Button>
+          )}
+          {isUnsentCampaign(campaign) && (
+            <Button variant="outline" asChild className="gap-2">
+              <Link href={isAdmin ? `/admin/campanas/${campaignId}/editar` : `/empresa/${orgId}/campanas/${campaignId}/editar`}>
+                <Pencil className="h-4 w-4" />
+                Editar
+              </Link>
             </Button>
           )}
           {campaign.estado === "borrador" && !isAdmin && (

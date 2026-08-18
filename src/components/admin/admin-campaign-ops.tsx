@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Loader2, Mail, MessageCircle, Play, RefreshCw, Save, Upload, XCircle, FlaskConical } from "lucide-react";
+import { Loader2, Mail, MessageCircle, Pencil, Play, RefreshCw, Save, Upload, XCircle, FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,7 @@ import {
 import type { CanalCampaign } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { CampaignDashboard } from "@/components/empresa/campaign-dashboard";
+import { isUnsentCampaign } from "@/lib/campaign-edit";
 
 type CampaignPayload = {
   id: string;
@@ -132,9 +133,10 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          waTemplateName: templateName.trim(),
-          waTemplateLang: templateLang,
           tandaSize,
+          ...(data && isUnsentCampaign(data.campaign)
+            ? { waTemplateName: templateName.trim(), waTemplateLang: templateLang }
+            : {}),
         }),
       });
       const json = await res.json();
@@ -273,6 +275,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
   const leidoPct = stats.enviados > 0 ? Math.round((stats.leidos / stats.enviados) * 100) : 0;
   const enviadoPct = stats.total > 0 ? Math.round((stats.enviados / stats.total) * 100) : 0;
   const canSend = c.recipientCount > 0 && c.estado !== "cancelada" && thisTanda > 0;
+  const canEditContent = isUnsentCampaign(c);
   const showEmail = c.canal === "email" || c.canal === "ambos";
   const showWa = c.canal === "whatsapp" || c.canal === "ambos";
 
@@ -298,6 +301,14 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          {isUnsentCampaign(c) && (
+            <Button variant="outline" asChild className="gap-2">
+              <Link href={`/admin/campanas/${campaignId}/editar`}>
+                <Pencil className="h-4 w-4" />
+                Editar
+              </Link>
+            </Button>
+          )}
           {c.estado !== "cancelada" && (
             <Button disabled={!canSend || sending} onClick={() => setConfirmSend(true)} className="gap-2">
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -377,7 +388,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
       </Card>
       )}
 
-      {c.estado === "borrador" && (
+      {canEditContent && (
         <Card>
           <CardHeader>
             <CardTitle>{c.simulated ? "Destinatarios de prueba" : "Destinatarios (CSV)"}</CardTitle>
@@ -455,12 +466,12 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
             <div className="flex flex-wrap items-end gap-3">
               <div className="space-y-1 min-w-[220px] flex-1">
                 <Label className="text-xs">Nombre del template</Label>
-                <Input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Vacío = template por defecto de Notificas" />
+                <Input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Vacío = template por defecto de Notificas" disabled={!canEditContent} />
                 <p className="text-xs text-muted-foreground">Si lo dejás vacío, se usa el template registrado por defecto en el servidor.</p>
               </div>
               <div className="space-y-1 w-32">
                 <Label className="text-xs">Idioma</Label>
-                <Select value={templateLang} onValueChange={setTemplateLang}>
+                <Select value={templateLang} onValueChange={setTemplateLang} disabled={!canEditContent}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -471,7 +482,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
                   </SelectContent>
                 </Select>
               </div>
-              <Button variant="secondary" disabled={saving} onClick={() => void saveTemplate()}>
+              <Button variant="secondary" disabled={saving || !canEditContent} onClick={() => void saveTemplate()}>
                 {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                 Guardar
               </Button>

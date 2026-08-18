@@ -9,6 +9,7 @@ import {
   saveRecipientChunk,
 } from '@/lib/campaign-recipients-storage';
 import type { RecipientEntry } from '@/lib/types';
+import { isUnsentCampaign, UNSENT_EDIT_ERROR } from '@/lib/campaign-edit';
 
 type UploadBody = {
   campaignId?: string;
@@ -39,6 +40,9 @@ export async function POST(request: NextRequest) {
     const campSnap = await db.collection('campaigns').doc(campaignId).get();
     if (!campSnap.exists || String(campSnap.data()!.orgId) !== orgId) {
       return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 });
+    }
+    if (!isUnsentCampaign(campSnap.data() || {})) {
+      return NextResponse.json({ error: UNSENT_EDIT_ERROR }, { status: 409 });
     }
 
     if (body.finalize === true) {

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { Campaign } from "@/lib/types";
+import { isUnsentCampaign } from "@/lib/campaign-edit";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -82,6 +83,7 @@ export default function CampanasListPage() {
               <div className="font-medium">{c.nombre}</div>
               <div className="text-sm text-muted-foreground">
                 {c.estado} · {c.recipientCount} dest.
+                {isUnsentCampaign(c) ? " · se puede editar" : ""}
               </div>
             </Link>
           </li>

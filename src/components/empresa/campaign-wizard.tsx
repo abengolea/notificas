@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   addDoc,
   collection,
+  deleteField,
   doc,
   getDoc,
   onSnapshot,
@@ -66,6 +67,7 @@ import {
 } from "@/lib/campaign-fake-recipients";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { CsvInspectResult } from "@/lib/parse-campaign-csv";
+import { isUnsentCampaign, toDatetimeLocalValue, UNSENT_EDIT_ERROR } from "@/lib/campaign-edit";
 
 function cleanRecipientForUpload(r: RecipientEntry): RecipientEntry {
   const clean: RecipientEntry = { nombre: r.nombre || "", email: r.email || "" };
@@ -108,12 +110,15 @@ export function CampaignWizard({
   orgId: orgIdProp,
   orgPlan: orgPlanProp = "starter",
   mode = "empresa",
+  campaignId: editCampaignId,
 }: {
   orgId?: string;
   orgPlan?: string;
   mode?: "empresa" | "admin";
+  campaignId?: string;
 }) {
   const isAdmin = mode === "admin";
+  const isEdit = Boolean(editCampaignId);
   const router = useRouter();
   const { toast } = useToast();
   const [step, setStep] = useState(1);
@@ -154,9 +159,18 @@ export function CampaignWizard({
   const [simRecipientCount, setSimRecipientCount] = useState(SIM_RECIPIENT_DEFAULT);
   const [adminBillingEmail, setAdminBillingEmail] = useState("");
   const [adminOrgPlan, setAdminOrgPlan] = useState("starter");
+  const [existingRecipientCount, setExistingRecipientCount] = useState(0);
+  const [existingAttachments, setExistingAttachments] = useState<CampaignAttachment[]>([]);
+  const [existingPaired, setExistingPaired] = useState<Record<string, CampaignAttachment[]> | null>(null);
+  const [loadingCampaign, setLoadingCampaign] = useState(Boolean(editCampaignId));
+  const [loadError, setLoadError] = useState<string | null>(null);
   const orgPlan = isAdmin ? adminOrgPlan : orgPlanProp;
   const maxR = isAdmin ? 1_000_000 : maxRecipientsForPlan(orgPlan);
-  const recipientTotal = csvInspect?.count || recipients.length || (isAdmin && simulated ? simRecipientCount : 0);
+  const recipientTotal =
+    csvInspect?.count ||
+    recipients.length ||
+    existingRecipientCount ||
+    (isAdmin && simulated ? simRecipientCount : 0);
 
   useEffect(() => {
     if (isAdmin) return;
@@ -217,6 +231,90 @@ export function CampaignWizard({
       })
       .catch(() => undefined);
   }, [isAdmin, orgId]);
+
+  useEffect(() => {
+    if (!editCampaignId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        if (isAdmin) {
+          const res = await fetch(`/api/admin/campaigns/${editCampaignId}`, { credentials: "include" });
+          const json = await res.json();
+          if (!res.ok) throw new Error(json.error || "No se pudo cargar la campaña");
+          const c = json.campaign as {
+            orgId?: string;
+            estado?: string;
+            stats?: { enviados?: number };
+            nombre?: string;
+            asunto?: string;
+            cuerpo?: string;
+            canal?: CanalCampaign;
+            recipientCount?: number;
+            tandaSize?: number;
+            simulated?: boolean;
+            waTemplateName?: string;
+            waTemplateLang?: string;
+            waTemplateVariables?: string[];
+            waUrlButton?: boolean;
+          };
+          if (!isUnsentCampaign(c)) throw new Error(UNSENT_EDIT_ERROR);
+          if (cancelled) return;
+          if (c.orgId) setAdminOrgId(c.orgId);
+          setCampaniaNombre(String(c.nombre || ""));
+          setAsunto(String(c.asunto || ""));
+          setCuerpo(String(c.cuerpo || ""));
+          setCanal((c.canal as CanalCampaign) || "email");
+          setExistingRecipientCount(typeof c.recipientCount === "number" ? c.recipientCount : 0);
+          if (typeof c.tandaSize === "number") setTandaSize(c.tandaSize);
+          setSimulated(c.simulated === true);
+          if (c.simulated === true && typeof c.recipientCount === "number" && c.recipientCount > 0) {
+            setSimRecipientCount(c.recipientCount);
+          }
+          setWaTemplateName(String(c.waTemplateName || ""));
+          setWaTemplateLang(String(c.waTemplateLang || "es_AR"));
+          if (Array.isArray(c.waTemplateVariables) && c.waTemplateVariables.length) {
+            setWaTemplateVariables(c.waTemplateVariables);
+          }
+          setWaUrlButton(c.waUrlButton === true);
+        } else {
+          const snap = await getDoc(doc(db, "campaigns", editCampaignId));
+          if (!snap.exists()) throw new Error("Campaña no encontrada");
+          const x = snap.data();
+          if (orgIdProp && String(x.orgId) !== orgIdProp) throw new Error("Campaña no encontrada");
+          if (!isUnsentCampaign(x)) throw new Error(UNSENT_EDIT_ERROR);
+          if (cancelled) return;
+          setCampaniaNombre(String(x.nombre || ""));
+          setAsunto(String(x.asunto || ""));
+          setCuerpo(String(x.cuerpo || ""));
+          setCanal((x.canal as CanalCampaign) || "email");
+          const inline = Array.isArray(x.recipientData) ? (x.recipientData as RecipientEntry[]) : [];
+          if (inline.length > 0) setRecipients(inline);
+          setExistingRecipientCount(typeof x.recipientCount === "number" ? x.recipientCount : inline.length);
+          if (typeof x.tandaSize === "number") setTandaSize(x.tandaSize);
+          setWaTemplateName(String(x.waTemplateName || ""));
+          setWaTemplateLang(String(x.waTemplateLang || "es_AR"));
+          if (Array.isArray(x.waTemplateVariables) && x.waTemplateVariables.length) {
+            setWaTemplateVariables(x.waTemplateVariables);
+          }
+          setWaUrlButton(x.waUrlButton === true);
+          setExistingAttachments(Array.isArray(x.adjuntos) ? x.adjuntos : []);
+          const paired = x.adjuntosPorDestinatario;
+          if (paired && typeof paired === "object" && !Array.isArray(paired)) {
+            setExistingPaired(paired as Record<string, CampaignAttachment[]>);
+            setPairByRecipient(true);
+          }
+          setScheduleIso(toDatetimeLocalValue(x.scheduledAt));
+        }
+      } catch (e) {
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : "No se pudo cargar la campaña");
+      } finally {
+        if (!cancelled) setLoadingCampaign(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editCampaignId, isAdmin, orgIdProp]);
 
   async function resolveListRecipients(id: string) {
     if (!id) {
@@ -442,7 +540,12 @@ export function CampaignWizard({
       return;
     }
     const file = csvFileRef.current;
-    if (!file && recipients.length === 0 && !(simulated && simRecipientCount >= SIM_RECIPIENT_MIN)) {
+    const hasRecipients =
+      Boolean(file) ||
+      recipients.length > 0 ||
+      existingRecipientCount > 0 ||
+      (simulated && simRecipientCount >= SIM_RECIPIENT_MIN);
+    if (!hasRecipients) {
       toast({ title: "Agregá destinatarios", variant: "destructive" });
       return;
     }
@@ -455,29 +558,59 @@ export function CampaignWizard({
     setSubmitting(true);
     setUploadProgress(null);
     try {
-      const createRes = await fetch("/api/admin/campaigns", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orgId,
-          nombre: campaniaNombre.trim(),
-          asunto: asunto.trim(),
-          cuerpo: cuerpo.trim(),
-          canal,
-          waTemplateName: waTemplateName.trim() || undefined,
-          waTemplateLang,
-          waTemplateVariables: waTemplateVariables.filter(Boolean),
-          waUrlButton,
-          tandaSize: sendNow ? (simulated ? 0 : tandaSize) : 0,
-          simulated,
-        }),
-      });
-      const created = await createRes.json();
-      if (!createRes.ok) throw new Error(created.error || "No se pudo crear la campaña");
-      const campaignId = String(created.id);
+      let campaignId = editCampaignId || "";
+      if (isEdit && editCampaignId) {
+        const patchRes = await fetch(`/api/admin/campaigns/${editCampaignId}`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nombre: campaniaNombre.trim(),
+            asunto: asunto.trim(),
+            cuerpo: cuerpo.trim(),
+            canal,
+            waTemplateName: waTemplateName.trim() || "",
+            waTemplateLang,
+            waTemplateVariables: waTemplateVariables.filter(Boolean),
+            waUrlButton,
+            tandaSize: simulated ? 0 : tandaSize,
+          }),
+        });
+        const patched = await patchRes.json();
+        if (!patchRes.ok) throw new Error(patched.error || "No se pudo guardar la campaña");
+      } else {
+        const createRes = await fetch("/api/admin/campaigns", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orgId,
+            nombre: campaniaNombre.trim(),
+            asunto: asunto.trim(),
+            cuerpo: cuerpo.trim(),
+            canal,
+            waTemplateName: waTemplateName.trim() || undefined,
+            waTemplateLang,
+            waTemplateVariables: waTemplateVariables.filter(Boolean),
+            waUrlButton,
+            tandaSize: sendNow ? (simulated ? 0 : tandaSize) : 0,
+            simulated,
+          }),
+        });
+        const created = await createRes.json();
+        if (!createRes.ok) throw new Error(created.error || "No se pudo crear la campaña");
+        campaignId = String(created.id);
+      }
 
-      if (file) {
+      const shouldUploadFile = Boolean(file);
+      const shouldUploadList = !file && recipients.length > 0;
+      const shouldGenerate =
+        simulated &&
+        !shouldUploadFile &&
+        !shouldUploadList &&
+        (existingRecipientCount === 0 || simRecipientCount !== existingRecipientCount);
+
+      if (shouldUploadFile && file) {
         await uploadCampaignCsvInChunks({
           campaignId,
           orgId,
@@ -487,7 +620,7 @@ export function CampaignWizard({
           onProgress: (p) =>
             setUploadProgress({ uploadedChunks: p.uploadedChunks, chunkCount: p.chunkCount }),
         });
-      } else if (simulated) {
+      } else if (shouldGenerate) {
         const genRes = await fetch("/api/admin/campaigns/generate-recipients", {
           method: "POST",
           credentials: "include",
@@ -499,7 +632,7 @@ export function CampaignWizard({
         });
         const genData = await genRes.json();
         if (!genRes.ok) throw new Error(genData.error || "No se pudieron generar destinatarios");
-      } else {
+      } else if (shouldUploadList) {
         const cleanRecipients = recipients.map(cleanRecipientForUpload);
         await uploadCampaignRecipients({
           campaignId,
@@ -526,14 +659,14 @@ export function CampaignWizard({
             : `${(sendData.pendingThisTanda ?? sendData.pending ?? 0).toLocaleString("es-AR")} mensajes encolados`,
         });
       } else {
-        toast({ title: "Borrador guardado" });
+        toast({ title: isEdit ? "Campaña actualizada" : "Borrador guardado" });
       }
 
       router.push(`/admin/campanas/${campaignId}`);
     } catch (e: unknown) {
       toast({
         title: "Error",
-        description: e instanceof Error ? e.message : "No se pudo crear la campaña",
+        description: e instanceof Error ? e.message : isEdit ? "No se pudo guardar la campaña" : "No se pudo crear la campaña",
         variant: "destructive",
       });
     } finally {
@@ -557,11 +690,12 @@ export function CampaignWizard({
       toast({ title: "Completá el template de WhatsApp", description: "Meta requiere un template aprobado para enviar.", variant: "destructive" });
       return;
     }
-    if (recipients.length === 0) {
+    if (recipients.length === 0 && existingRecipientCount === 0) {
       toast({ title: "Agregá destinatarios", variant: "destructive" });
       return;
     }
-    if (recipients.length > maxR) {
+    const recipientSaveCount = recipients.length || existingRecipientCount;
+    if (recipientSaveCount > maxR) {
       toast({
         title: "Límite de plan",
         description: `Máximo ${maxR} destinatarios`,
@@ -571,12 +705,20 @@ export function CampaignWizard({
     }
 
     const scheduleFutureEarly = Boolean(scheduleIso && new Date(scheduleIso) > new Date());
-    if (sendNow && !scheduleFutureEarly && creditos < recipients.length) {
+    if (sendNow && !scheduleFutureEarly && creditos < recipientSaveCount) {
       toast({ title: "Envíos insuficientes", variant: "destructive" });
       return;
     }
 
     const pairingActive = pairByRecipient && files.length > 0;
+    if (pairingActive && recipients.length === 0) {
+      toast({
+        title: "No se pueden reasignar adjuntos",
+        description: "Para un adjunto distinto por destinatario, volvé a cargar la lista en Destinatarios.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (pairingActive && sendNow) {
       const incomplete = recipients.some((r) => {
         const k = r.email.trim().toLowerCase();
@@ -597,44 +739,45 @@ export function CampaignWizard({
     setSubmitting(true);
     setUploadProgress(null);
     try {
-      const draftKey = `draft_${Date.now()}`;
-      const uploaded: CampaignAttachment[] = [];
+      const draftKey = `${isEdit ? editCampaignId : "draft"}_${Date.now()}`;
+      const uploadedNew: CampaignAttachment[] = [];
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
         const up = await uploadPDF(f.file, `${draftKey}`, user.uid);
-        uploaded.push({
+        uploadedNew.push({
           nombre: up.name,
           url: up.url,
           hash: up.hash || "",
           size: up.size,
         });
       }
+      const uploaded = [...existingAttachments, ...uploadedNew];
 
-      const pairingActiveSubmit = pairByRecipient && uploaded.length > 0;
-      const adjuntosGlobales = pairingActiveSubmit ? [] : uploaded;
+      const pairingActiveSubmit = pairByRecipient && uploadedNew.length > 0;
+      const keepExistingPairing = Boolean(existingPaired) && files.length === 0 && pairByRecipient;
+      const adjuntosGlobales = pairingActiveSubmit || keepExistingPairing ? [] : uploaded;
       let adjuntosPorDestinatario: Record<string, CampaignAttachment[]> | undefined;
       if (pairingActiveSubmit) {
         adjuntosPorDestinatario = {};
         recipients.forEach((r) => {
           const k = r.email.trim().toLowerCase();
           const idx = pairingSelections[k];
-          const one = typeof idx === "number" ? uploaded[idx] : undefined;
+          const one = typeof idx === "number" ? uploadedNew[idx] : undefined;
           adjuntosPorDestinatario![k] = one
             ? [{ nombre: one.nombre, url: one.url, hash: one.hash || "", size: one.size }]
             : [];
         });
+      } else if (keepExistingPairing && existingPaired) {
+        adjuntosPorDestinatario = existingPaired;
       }
 
       const scheduleFuture = Boolean(scheduleIso && new Date(scheduleIso) > new Date());
 
       // Firestore rechaza campos undefined — limpiar antes de guardar.
       const cleanRecipients = recipients.map(cleanRecipientForUpload);
+      const replaceRecipients = cleanRecipients.length > 0;
 
-      // Base del doc: NO incluimos recipientData/recipientEmails para no superar 1MB.
-      // Los destinatarios se suben a Storage y se referencia por path.
-      const base = {
-        orgId,
-        createdBy: user.uid,
+      const content = {
         canal,
         tandaSize,
         ...(canal !== "email" && waTemplateName.trim() ? {
@@ -647,40 +790,82 @@ export function CampaignWizard({
         asunto: asunto.trim(),
         cuerpo: cuerpo.trim(),
         adjuntos: adjuntosGlobales,
-        ...(adjuntosPorDestinatario ? { adjuntosPorDestinatario } : {}),
         recipientListId: listId || null,
-        recipientCount: recipients.length,
-        stats: {
-          total: recipients.length,
-          enviados: 0,
-          leidos: 0,
-          pendientes: recipients.length,
-          errores: 0,
-        },
-        createdAt: serverTimestamp(),
       };
 
-      // Crear campaña siempre en borrador primero; activar después de subir destinatarios.
-      const refDoc = await addDoc(collection(db, "campaigns"), {
-        ...base,
-        estado: "borrador",
-        ...(scheduleFuture && scheduleIso ? { scheduledAt: new Date(scheduleIso) } : {}),
-        startedAt: null,
-      });
-
-      // Subir destinatarios de a 500 (un POST con 150k rompe el navegador / el servidor).
       const token = await user.getIdToken();
-      try {
-        await uploadCampaignRecipients({
-          campaignId: refDoc.id,
-          orgId,
-          recipients: cleanRecipients,
-          token,
-          onProgress: setUploadProgress,
+      let campaignId = editCampaignId || "";
+
+      if (isEdit && editCampaignId) {
+        const refDoc = doc(db, "campaigns", editCampaignId);
+        const current = await getDoc(refDoc);
+        if (!current.exists()) throw new Error("Campaña no encontrada");
+        if (!isUnsentCampaign(current.data() || {})) throw new Error(UNSENT_EDIT_ERROR);
+        if (String(current.data()?.estado) === "cancelada") {
+          await updateDoc(refDoc, { estado: "borrador", updatedAt: serverTimestamp() });
+        }
+        await updateDoc(refDoc, {
+          ...content,
+          ...(adjuntosPorDestinatario
+            ? { adjuntosPorDestinatario }
+            : existingPaired
+              ? { adjuntosPorDestinatario: deleteField() }
+              : {}),
+          estado: "borrador",
+          updatedAt: serverTimestamp(),
+          ...(scheduleFuture && scheduleIso
+            ? { scheduledAt: new Date(scheduleIso) }
+            : { scheduledAt: deleteField() }),
         });
-      } catch (uploadErr) {
-        await updateDoc(refDoc, { estado: "borrador" });
-        throw uploadErr;
+        campaignId = editCampaignId;
+        if (replaceRecipients) {
+          await uploadCampaignRecipients({
+            campaignId,
+            orgId,
+            recipients: cleanRecipients,
+            token,
+            onProgress: setUploadProgress,
+          });
+          await updateDoc(refDoc, {
+            "stats.total": cleanRecipients.length,
+            "stats.pendientes": cleanRecipients.length,
+            "stats.enviados": 0,
+            "stats.leidos": 0,
+            "stats.errores": 0,
+          });
+        }
+      } else {
+        const refDoc = await addDoc(collection(db, "campaigns"), {
+          ...content,
+          orgId,
+          createdBy: user.uid,
+          ...(adjuntosPorDestinatario ? { adjuntosPorDestinatario } : {}),
+          recipientCount: recipients.length,
+          stats: {
+            total: recipients.length,
+            enviados: 0,
+            leidos: 0,
+            pendientes: recipients.length,
+            errores: 0,
+          },
+          createdAt: serverTimestamp(),
+          estado: "borrador",
+          ...(scheduleFuture && scheduleIso ? { scheduledAt: new Date(scheduleIso) } : {}),
+          startedAt: null,
+        });
+        campaignId = refDoc.id;
+        try {
+          await uploadCampaignRecipients({
+            campaignId,
+            orgId,
+            recipients: cleanRecipients,
+            token,
+            onProgress: setUploadProgress,
+          });
+        } catch (uploadErr) {
+          await updateDoc(refDoc, { estado: "borrador" });
+          throw uploadErr;
+        }
       }
 
       if (scheduleFuture && scheduleIso) {
@@ -688,7 +873,7 @@ export function CampaignWizard({
           title: "Campaña programada (borrador)",
           description: "Desde el detalle podrás iniciar el envío cuando corresponda.",
         });
-        router.push(`/empresa/${orgId}/campanas/${refDoc.id}`);
+        router.push(`/empresa/${orgId}/campanas/${campaignId}`);
         return;
       }
 
@@ -696,7 +881,7 @@ export function CampaignWizard({
         const sendRes = await fetch("/api/campaigns/send", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ campaignId: refDoc.id, orgId }),
+          body: JSON.stringify({ campaignId, orgId }),
         });
         const sendData = await sendRes.json();
         if (!sendRes.ok) {
@@ -704,14 +889,14 @@ export function CampaignWizard({
         }
         toast({ title: "Envío iniciado", description: `${sendData.pending ?? sendData.total ?? 0} mensajes encolados` });
       } else {
-        toast({ title: "Borrador guardado" });
+        toast({ title: isEdit ? "Campaña actualizada" : "Borrador guardado" });
       }
 
-      router.push(`/empresa/${orgId}/campanas/${refDoc.id}`);
+      router.push(`/empresa/${orgId}/campanas/${campaignId}`);
     } catch (e: unknown) {
       toast({
         title: "Error",
-        description: e instanceof Error ? e.message : "No se pudo crear la campaña",
+        description: e instanceof Error ? e.message : isEdit ? "No se pudo guardar la campaña" : "No se pudo crear la campaña",
         variant: "destructive",
       });
     } finally {
@@ -723,8 +908,33 @@ export function CampaignWizard({
   const STEPS = ["Canal", "Destinatarios", "Mensaje", "Confirmación"];
   const waTemplateMissing = !simulated && (canal === "whatsapp" || canal === "ambos") && !waTemplateName.trim();
 
+  if (loadingCampaign) {
+    return (
+      <div className="max-w-3xl flex justify-center py-16">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="max-w-3xl rounded-lg border p-6 space-y-2">
+        <p className="font-medium">No se puede editar</p>
+        <p className="text-sm text-muted-foreground">{loadError}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-3xl space-y-8">
+      {isEdit && (
+        <div>
+          <h1 className="text-2xl font-bold">Editar campaña</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Los cambios se guardan sobre este borrador. Si la campaña ya se envió, no se puede modificar.
+          </p>
+        </div>
+      )}
       {isAdmin && (
         <Card>
           <CardHeader>
@@ -735,7 +945,7 @@ export function CampaignWizard({
           </CardHeader>
           <CardContent className="space-y-2">
             <Label>Organización</Label>
-            <Select value={adminOrgId} onValueChange={setAdminOrgId}>
+            <Select value={adminOrgId} onValueChange={setAdminOrgId} disabled={isEdit}>
               <SelectTrigger>
                 <SelectValue placeholder="Elegí la empresa" />
               </SelectTrigger>
@@ -770,6 +980,7 @@ export function CampaignWizard({
             <RadioGroup
               value={simulated ? "simulated" : "real"}
               onValueChange={(v) => {
+                if (isEdit) return;
                 const next = v === "simulated";
                 setSimulated(next);
                 setTandaSize(next ? 0 : DEFAULT_TANDA_SIZE);
@@ -777,7 +988,7 @@ export function CampaignWizard({
                   setCampaniaNombre(`[SIM] Prueba ${new Date().toLocaleString("es-AR")}`);
                 }
               }}
-              className="grid gap-3 sm:grid-cols-2"
+              className={`grid gap-3 sm:grid-cols-2${isEdit ? " opacity-70 pointer-events-none" : ""}`}
             >
               <label
                 className={`flex cursor-pointer items-start gap-3 rounded-md border p-4 ${
@@ -978,6 +1189,12 @@ export function CampaignWizard({
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
+            {isEdit && existingRecipientCount > 0 && recipients.length === 0 && !csvFileName && (
+              <div className="rounded-md border bg-muted/40 p-3 text-sm">
+                Esta campaña ya tiene <strong>{existingRecipientCount.toLocaleString("es-AR")}</strong> destinatarios.
+                Dejalos así o cargá una lista nueva para reemplazarlos.
+              </div>
+            )}
             {isAdmin && simulated && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-4 space-y-3">
                 <p className="font-medium inline-flex items-center gap-2">
@@ -1302,6 +1519,27 @@ export function CampaignWizard({
                 </div>
               </div>
             </div>
+            {existingAttachments.length > 0 && (
+              <div className="space-y-2">
+                <Label>Adjuntos ya guardados</Label>
+                <ul className="space-y-1.5">
+                  {existingAttachments.map((a) => (
+                    <li key={a.url} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+                      <span className="truncate">{a.nombre}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive h-8 px-2 shrink-0"
+                        onClick={() => setExistingAttachments((prev) => prev.filter((x) => x.url !== a.url))}
+                      >
+                        Quitar
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <PDFUpload
               onFileSelect={(fs) => setFiles(fs)}
               maxFiles={pairByRecipient ? pairingUploadCap : 12}
@@ -1452,7 +1690,9 @@ export function CampaignWizard({
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 {simulated ? "Simular ahora" : "Enviar ahora"}
               </Button>
-              <Button variant="outline" disabled={submitting} onClick={() => runSubmit(false)}>Guardar borrador</Button>
+              <Button variant="outline" disabled={submitting} onClick={() => runSubmit(false)}>
+                {isEdit ? "Guardar cambios" : "Guardar borrador"}
+              </Button>
             </div>
             {submitting && uploadProgress && (
               <p className="text-sm text-muted-foreground">
@@ -1475,7 +1715,7 @@ export function CampaignWizard({
                 </>
               ) : (
                 <>
-              Estás por enviar {isAdmin ? (tandaSize > 0 ? Math.min(tandaSize, recipientTotal) : recipientTotal).toLocaleString("es-AR") : recipients.length} notificaciones certificadas. Esta acción no se puede deshacer.
+              Estás por enviar {isAdmin ? (tandaSize > 0 ? Math.min(tandaSize, recipientTotal) : recipientTotal).toLocaleString("es-AR") : recipientTotal.toLocaleString("es-AR")} notificaciones certificadas. Esta acción no se puede deshacer.
                 </>
               )}
               {submitting && uploadProgress ? (
