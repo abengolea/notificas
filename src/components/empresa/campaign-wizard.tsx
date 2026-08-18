@@ -70,8 +70,47 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { CsvInspectResult } from "@/lib/parse-campaign-csv";
 import { isUnsentCampaign, toDatetimeLocalValue, UNSENT_EDIT_ERROR } from "@/lib/campaign-edit";
-import { WA_TEMPLATE_DEFAULT_VARS, usesNotificasDefaultTemplate } from "@/lib/wa-template-fields";
+import {
+  WA_DEFAULT_TEMPLATE_NAME,
+  WA_TEMPLATE_DEFAULT_VARS,
+  usesNotificasDefaultTemplate,
+} from "@/lib/wa-template-fields";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
+
+type WizardStepId = "canal" | "destinatarios" | "mensaje" | "whatsapp" | "confirmacion";
+
+const WIZARD_STEP_LABELS: Record<WizardStepId, string> = {
+  canal: "Canal",
+  destinatarios: "Destinatarios",
+  mensaje: "Mensaje",
+  whatsapp: "WhatsApp",
+  confirmacion: "Confirmación",
+};
+
+function wizardStepIds(canal: CanalCampaign, simulated: boolean): WizardStepId[] {
+  const ids: WizardStepId[] = ["canal", "destinatarios"];
+  if (canal === "email" || canal === "ambos") ids.push("mensaje");
+  if ((canal === "whatsapp" || canal === "ambos") && !simulated) ids.push("whatsapp");
+  ids.push("confirmacion");
+  return ids;
+}
+
+function campaignCopyFields(
+  canal: CanalCampaign,
+  nombre: string,
+  asunto: string,
+  cuerpo: string
+) {
+  const n = nombre.trim();
+  if (canal === "whatsapp") {
+    return {
+      nombre: n,
+      asunto: asunto.trim() || n,
+      cuerpo: cuerpo.trim() || `Notificación por WhatsApp: ${n}`,
+    };
+  }
+  return { nombre: n, asunto: asunto.trim(), cuerpo: cuerpo.trim() };
+}
 
 function cleanRecipientForUpload(r: RecipientEntry): RecipientEntry {
   const clean: RecipientEntry = { nombre: r.nombre || "", email: r.email || "" };
@@ -179,6 +218,15 @@ export function CampaignWizard({
   const usesDailyTanda = !simulated && (canal === "whatsapp" || canal === "ambos");
   const creditNeed =
     usesDailyTanda && tandaSize > 0 ? Math.min(tandaSize, recipientTotal) : recipientTotal;
+  const needsMensajeStep = canal === "email" || canal === "ambos";
+  const needsWaTemplateStep = (canal === "whatsapp" || canal === "ambos") && !simulated;
+  const stepIds = useMemo(() => wizardStepIds(canal, simulated), [canal, simulated]);
+  const STEPS = stepIds.map((id) => WIZARD_STEP_LABELS[id]);
+  const currentStepId = stepIds[Math.max(0, Math.min(step, stepIds.length) - 1)] ?? "canal";
+
+  useEffect(() => {
+    setStep((s) => Math.min(s, stepIds.length));
+  }, [stepIds.length]);
 
   useEffect(() => {
     if (isAdmin) return;
@@ -386,7 +434,12 @@ export function CampaignWizard({
   }, [pairByRecipient]);
 
   useEffect(() => {
-    if (step !== 3 || !pairByRecipient || files.length === 0 || recipients.length === 0) {
+    if (
+      (currentStepId !== "mensaje" && currentStepId !== "whatsapp") ||
+      !pairByRecipient ||
+      files.length === 0 ||
+      recipients.length === 0
+    ) {
       return;
     }
     const sig = `${recvSig}|${fileNamesSig}`;
@@ -397,7 +450,7 @@ export function CampaignWizard({
       recipients
     );
     setPairingSelections(emailToFileIndex);
-  }, [step, pairByRecipient, fileNamesSig, recvSig, files, recipients]);
+  }, [currentStepId, pairByRecipient, fileNamesSig, recvSig, files, recipients]);
 
   const suggestPairingAgain = useCallback(() => {
     if (!files.length || !recipients.length || !pairByRecipient) return;
@@ -512,8 +565,12 @@ export function CampaignWizard({
       toast({ title: "Elegí la empresa", variant: "destructive" });
       return;
     }
-    if (!campaniaNombre.trim() || !asunto.trim() || !cuerpo.trim()) {
-      toast({ title: "Completá nombre interno, asunto y cuerpo", variant: "destructive" });
+    const copy = campaignCopyFields(canal, campaniaNombre, asunto, cuerpo);
+    if (!copy.nombre || (needsMensajeStep && (!copy.asunto || !copy.cuerpo))) {
+      toast({
+        title: needsMensajeStep ? "Completá nombre interno, asunto y cuerpo" : "Completá el nombre interno de la campaña",
+        variant: "destructive",
+      });
       return;
     }
     const file = csvFileRef.current;
@@ -542,9 +599,9 @@ export function CampaignWizard({
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            nombre: campaniaNombre.trim(),
-            asunto: asunto.trim(),
-            cuerpo: cuerpo.trim(),
+            nombre: copy.nombre,
+            asunto: copy.asunto,
+            cuerpo: copy.cuerpo,
             canal,
             waTemplateName: waTemplateName.trim() || "",
             waTemplateLang,
@@ -562,9 +619,9 @@ export function CampaignWizard({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             orgId,
-            nombre: campaniaNombre.trim(),
-            asunto: asunto.trim(),
-            cuerpo: cuerpo.trim(),
+            nombre: copy.nombre,
+            asunto: copy.asunto,
+            cuerpo: copy.cuerpo,
             canal,
             waTemplateName: waTemplateName.trim() || undefined,
             waTemplateLang,
@@ -659,8 +716,12 @@ export function CampaignWizard({
     }
     const user = auth.currentUser;
     if (!user) return;
-    if (!campaniaNombre.trim() || !asunto.trim() || !cuerpo.trim()) {
-      toast({ title: "Completá nombre interno, asunto y cuerpo", variant: "destructive" });
+    const copy = campaignCopyFields(canal, campaniaNombre, asunto, cuerpo);
+    if (!copy.nombre || (needsMensajeStep && (!copy.asunto || !copy.cuerpo))) {
+      toast({
+        title: needsMensajeStep ? "Completá nombre interno, asunto y cuerpo" : "Completá el nombre interno de la campaña",
+        variant: "destructive",
+      });
       return;
     }
     const file = csvFileRef.current;
@@ -775,9 +836,9 @@ export function CampaignWizard({
         canal,
         tandaSize,
         ...waFields,
-        nombre: campaniaNombre.trim(),
-        asunto: asunto.trim(),
-        cuerpo: cuerpo.trim(),
+        nombre: copy.nombre,
+        asunto: copy.asunto,
+        cuerpo: copy.cuerpo,
         adjuntos: adjuntosGlobales,
         recipientListId: listId || null,
       };
@@ -922,8 +983,6 @@ export function CampaignWizard({
       setConfirmOpen(false);
     }
   }
-
-  const STEPS = ["Canal", "Destinatarios", "Mensaje", "Confirmación"];
 
   if (loadingCampaign) {
     return (
@@ -1384,14 +1443,14 @@ export function CampaignWizard({
             )}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep(1)}>Atrás</Button>
-              <Button onClick={() => setStep(3)} disabled={!recipientTotal}>Siguiente</Button>
+              <Button onClick={() => setStep((s) => s + 1)} disabled={!recipientTotal}>Siguiente</Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* PASO 3: Mensaje */}
-      {step === 3 && (
+      {/* Mensaje (solo email / ambos) */}
+      {currentStepId === "mensaje" && (
         <Card>
           <CardHeader>
             <CardTitle>Mensaje</CardTitle>
@@ -1405,43 +1464,19 @@ export function CampaignWizard({
               <Input value={campaniaNombre} onChange={(e) => setCampaniaNombre(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>{canal === "whatsapp" ? "Asunto (referencia interna)" : "Asunto"}</Label>
+              <Label>Asunto</Label>
               <Input value={asunto} onChange={(e) => setAsunto(e.target.value)} />
             </div>
 
-            {/* Configuración de template WhatsApp */}
-            {(canal === "whatsapp" || canal === "ambos") && !simulated && (
-              <div className="rounded-md border p-4 space-y-4">
-                <div>
-                  <p className="text-sm font-medium flex items-center gap-2">
-                    <MessageCircle className="h-4 w-4" />
-                    Template de WhatsApp
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Si lo dejás vacío se usa notificaciones_notificas (3 variables). Si ponés otro
-                    nombre aprobado en Meta, mapeá cada {"{{N}}"} — podés agregar las que haga falta.
-                  </p>
-                </div>
-                <WaTemplateFields
-                  idPrefix="wizard-wa"
-                  value={{
-                    name: waTemplateName,
-                    lang: waTemplateLang,
-                    variables: waTemplateVariables,
-                    urlButton: waUrlButton,
-                  }}
-                  onChange={(next) => {
-                    setWaTemplateName(next.name);
-                    setWaTemplateLang(next.lang);
-                    setWaTemplateVariables(next.variables);
-                    setWaUrlButton(next.urlButton);
-                  }}
-                />
-              </div>
+            {canal === "ambos" && needsWaTemplateStep && (
+              <p className="text-xs text-muted-foreground rounded-md border bg-muted/40 px-3 py-2">
+                El texto de WhatsApp no se escribe acá: en el paso siguiente elegís el template de Meta y qué campo
+                del CSV va en cada {"{{N}}"}. Este cuerpo es el del correo y la vista de lectura.
+              </p>
             )}
 
             <div className="space-y-2">
-              <Label>Cuerpo{canal !== "email" ? " (referencia interna / vista previa email)" : ""}</Label>
+              <Label>Cuerpo{canal === "ambos" ? " (correo / vista de lectura)" : ""}</Label>
               <Textarea value={cuerpo} onChange={(e) => setCuerpo(e.target.value)} rows={10} />
             </div>
             {!isAdmin && (
@@ -1499,8 +1534,11 @@ export function CampaignWizard({
               </>
             )}
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(2)}>Atrás</Button>
-              <Button onClick={() => setStep(4)} disabled={!asunto.trim() || !cuerpo.trim() || !campaniaNombre.trim()}>
+              <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
+              <Button
+                onClick={() => setStep((s) => s + 1)}
+                disabled={!asunto.trim() || !cuerpo.trim() || !campaniaNombre.trim()}
+              >
                 Siguiente
               </Button>
             </div>
@@ -1508,8 +1546,119 @@ export function CampaignWizard({
         </Card>
       )}
 
-      {/* PASO 4: Revisión + Confirmación */}
-      {step === 4 && (
+      {/* PASO WhatsApp: template Meta + variables */}
+      {currentStepId === "whatsapp" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Template de WhatsApp</CardTitle>
+            <CardDescription>
+              Meta no deja texto libre: hay que usar un template aprobado. Mapeá cada {"{{N}}"} del cuerpo a un
+              campo del CSV (nombre, dni, días, etc.), en el mismo orden que en Business Manager.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {canal === "whatsapp" && (
+              <div className="space-y-2">
+                <Label>Nombre interno de la campaña</Label>
+                <Input value={campaniaNombre} onChange={(e) => setCampaniaNombre(e.target.value)} />
+              </div>
+            )}
+            <WaTemplateFields
+              idPrefix="wizard-wa"
+              value={{
+                name: waTemplateName,
+                lang: waTemplateLang,
+                variables: waTemplateVariables,
+                urlButton: waUrlButton,
+              }}
+              onChange={(next) => {
+                setWaTemplateName(next.name);
+                setWaTemplateLang(next.lang);
+                setWaTemplateVariables(next.variables);
+                setWaUrlButton(next.urlButton);
+              }}
+            />
+            {!usesNotificasDefaultTemplate(waTemplateName) &&
+              waTemplateVariables.some((v) => !String(v || "").trim()) && (
+                <p className="text-sm text-destructive">
+                  Hay un {"{{N}}"} sin campo. Un valor vacío hace fallar el envío (error 131008).
+                </p>
+              )}
+            {canal === "whatsapp" && !isAdmin && (
+              <>
+                <div className="rounded-md border p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="adj-por-destinatario-wa"
+                      checked={pairByRecipient}
+                      disabled={!csvListInline}
+                      onCheckedChange={(v) => setPairByRecipient(v === true)}
+                      className="mt-1"
+                    />
+                    <div className="space-y-1">
+                      <label
+                        htmlFor="adj-por-destinatario-wa"
+                        className="text-sm font-medium cursor-pointer leading-none"
+                      >
+                        Adjunto distinto por destinatario
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        Subí un archivo por persona. El nombre del archivo debe contener su nombre o correo (como en el
+                        CSV). En el paso «Revisión» podés corregir el emparejamiento.
+                        {!csvListInline ? " No aplica con CSV de más de 500 filas." : ""}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                {existingAttachments.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Adjuntos ya guardados</Label>
+                    <ul className="space-y-1.5">
+                      {existingAttachments.map((a) => (
+                        <li key={a.url} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+                          <span className="truncate">{a.nombre}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive h-8 px-2 shrink-0"
+                            onClick={() => setExistingAttachments((prev) => prev.filter((x) => x.url !== a.url))}
+                          >
+                            Quitar
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <PDFUpload
+                  onFileSelect={(fs) => setFiles(fs)}
+                  maxFiles={pairByRecipient ? pairingUploadCap : 12}
+                  maxSizeMB={10}
+                />
+              </>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setStep((s) => s - 1)}>
+                Atrás
+              </Button>
+              <Button
+                onClick={() => setStep((s) => s + 1)}
+                disabled={
+                  (canal === "whatsapp" && !campaniaNombre.trim()) ||
+                  (!usesNotificasDefaultTemplate(waTemplateName) &&
+                    waTemplateVariables.some((v) => !String(v || "").trim()))
+                }
+              >
+                Siguiente
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Revisión + Confirmación */}
+      {currentStepId === "confirmacion" && (
         <Card>
           <CardHeader>
             <CardTitle>Revisión y confirmación</CardTitle>
@@ -1520,8 +1669,28 @@ export function CampaignWizard({
               <div className="flex gap-4 flex-wrap">
                 <span><strong>Canal:</strong> {canal === "email" ? "Email" : canal === "whatsapp" ? "WhatsApp" : "Email + WhatsApp"}</span>
                 <span><strong>Destinatarios:</strong> {recipientTotal.toLocaleString("es-AR")}</span>
-                <span><strong>Asunto:</strong> {asunto}</span>
+                {needsMensajeStep ? (
+                  <span><strong>Asunto:</strong> {asunto}</span>
+                ) : (
+                  <span><strong>Campaña:</strong> {campaniaNombre}</span>
+                )}
               </div>
+              {needsWaTemplateStep && (
+                <p>
+                  <strong>Template WA:</strong>{" "}
+                  {usesNotificasDefaultTemplate(waTemplateName)
+                    ? `${WA_DEFAULT_TEMPLATE_NAME} (por defecto)`
+                    : waTemplateName.trim()}{" "}
+                  · {waTemplateLang} ·{" "}
+                  {(usesNotificasDefaultTemplate(waTemplateName)
+                    ? WA_TEMPLATE_DEFAULT_VARS
+                    : waTemplateVariables
+                  )
+                    .map((v, i) => `{{${i + 1}}}→${v}`)
+                    .join(", ")}
+                  {waUrlButton && !usesNotificasDefaultTemplate(waTemplateName) ? " · botón URL" : ""}
+                </p>
+              )}
             </div>
 
             {/* Emparejamiento de adjuntos */}
@@ -1637,7 +1806,7 @@ export function CampaignWizard({
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => setStep(3)}>Atrás</Button>
+              <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
               <Button variant="secondary" disabled={submitting} onClick={() => setConfirmOpen(true)}>
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 {simulated ? "Simular ahora" : "Enviar ahora"}
