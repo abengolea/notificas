@@ -38,7 +38,7 @@ type VerifyResult = {
   recipientNombre?: string;
   recipientEmail?: string;
   recipientTelefono?: string;
-  content: { currentHash: string; storedHash: string | null; match: boolean };
+  content: { currentHash: string; storedHash: string | null; match: boolean | null };
   send: {
     batchId: string | null;
     txHash: string | null;
@@ -662,7 +662,7 @@ export function CampaignIntegrityPanel({
 
                   <div className="space-y-1.5">
                     <p className="text-xs font-medium text-muted-foreground">Comprobaciones</p>
-                    <YesNo ok={result.content.match} label="El texto actual coincide con la huella guardada" />
+                    <YesNo ok={result.content.match} label="El texto del snapshot coincide con la huella guardada" />
                     <YesNo ok={result.send.merkleValid} label="La foja entra en el árbol de su tanda" />
                     <YesNo ok={result.send.onChainMatch} label="La raíz coincide con la transacción en Polygon" />
                     {result.template?.name && (

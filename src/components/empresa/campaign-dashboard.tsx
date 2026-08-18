@@ -497,12 +497,6 @@ export function CampaignDashboard({
       setBusy(false);
     }
   }
-    } catch (e: unknown) {
-      toast({ title: "Error", description: e instanceof Error ? e.message : "Falló", variant: "destructive" });
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function guardarTemplateWa() {
     if (!campaign) return;

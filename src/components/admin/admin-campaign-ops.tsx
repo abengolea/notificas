@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { CampaignDashboard } from "@/components/empresa/campaign-dashboard";
 import { canEditWhatsAppTemplate, isUnsentCampaign } from "@/lib/campaign-edit";
 import { WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-template-fields";
+import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 import { DailyQuotaField } from "@/components/empresa/daily-quota-field";
 
 type CampaignPayload = {

@@ -312,7 +312,7 @@ export function overlayMailWithSnapshot(
       contentText: snapshot.contentText,
       text: snapshot.contentText,
     },
-    attachments: snapshot.attachments.map((a) => {
+    attachments: (snapshot.attachments || []).map((a) => {
       const live = liveAtt.find((x) => String(x.fileName || x.nombre || "") === a.fileName) || {};
       return { ...live, fileName: a.fileName, hash: a.hash, fileSize: a.fileSize };
     }),
