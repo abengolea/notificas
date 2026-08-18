@@ -180,10 +180,11 @@ export async function enqueueCampaignWorker(
   campaignId: string,
   messageDocIds: string[]
 ): Promise<void> {
+  const ts = Date.now();
   await enqueueTask(
     '/api/campaigns/worker',
     { campaignId, messageDocIds },
-    `send-${campaignId}-${messageDocIds[0]}`
+    `send-${campaignId}-${messageDocIds[0]}-${ts}`
   );
 }
 

@@ -129,6 +129,7 @@ export async function buildPublicEvidence(mailId: string) {
       toIso(mail.tracking?.sentAt) ||
       toIso(mail.createdAt),
     smtpMessageId: snapshot?.smtp.messageId || mail.smtpMessageId || mail.delivery?.info || null,
+    emailBounce: mail.emailBounce || null,
     wamid: snapshot?.whatsapp.wamid || mail.whatsappMessageId || mail.tracking?.whatsappMessageId || null,
     waBodyHash: {
       current: currentWaHash || null,

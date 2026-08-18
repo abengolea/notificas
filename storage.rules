@@ -1,0 +1,33 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Adjuntos del envío 1:1: el dueño crea una vez. No se pisan ni se borran desde el cliente.
+    match /pdfs/{userId}/{messageId}/{fileName} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size < 25 * 1024 * 1024;
+      allow update, delete: if false;
+    }
+
+    match /test/{userId}/{fileName} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size < 1024 * 1024;
+    }
+
+    // Certificado PDF y CSV de campañas: solo Admin SDK (estas reglas no aplican al admin).
+    match /certificates/{messageId}/{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    match /campaign-recipients/{orgId}/{campaignId}/{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

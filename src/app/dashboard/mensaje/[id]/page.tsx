@@ -17,6 +17,7 @@ import MailTraceability from '@/components/dashboard/mail-traceability';
 import { buildSenderViewHtml } from '@/lib/message-views';
 import PolygonCertifications from '@/components/dashboard/polygon-certifications';
 import { DownloadCertificate } from '@/components/dashboard/download-certificate';
+import { emailDeliveryLabel } from '@/lib/email-delivery-label';
 
 /** Misma lógica que /api/track-app-open: destinatarios del documento mail. */
 function isAuthenticatedUserMailRecipient(mailData: Record<string, unknown>, userEmail: string | undefined) {
@@ -57,12 +58,7 @@ function MailMessageView({ data }: { data: any }) {
   const subject = data?.message?.subject || 'Sin asunto';
   const from = data?.from || data?.senderName || 'contacto@notificas.com';
   const to = Array.isArray(data?.to) ? data.to.join(', ') : data?.to || data?.recipientEmail || '';
-  let state = data?.delivery?.state || 'PENDIENTE';
-
-  // Traducir estados al español
-  if (state === 'DELIVERED' || state === 'SUCCESS') state = 'Aceptado por el servidor de correo';
-  if (state === 'ERROR') state = 'Error';
-  if (state === 'PENDING') state = 'Pendiente';
+  const state = emailDeliveryLabel(data?.delivery?.state, data?.emailBounce);
 
   // Remitente y destinatario: mismo bloque (solo cuerpo, detalles y adjuntos), sin plantilla de email.
   const bodyHtml = buildSenderViewHtml(data);

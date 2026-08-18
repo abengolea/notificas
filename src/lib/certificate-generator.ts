@@ -86,6 +86,7 @@ interface CertificateData {
 
 const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   email_sent: 'Correo enviado',
+  email_bounced: 'Correo rebotó (no llegó al buzón)',
   email_opened: 'Correo abierto (pixel)',
   reader_magic_open: 'Acceso fehaciente al reader digital',
   app_opened: 'Apertura en app web',

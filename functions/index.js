@@ -8,6 +8,11 @@ const crypto = require('crypto');
 const cheerio = require('cheerio');
 const { generateEmailWithTracking } = require('./email-template');
 const { injectTrackingIntoHtml: injectTrackingIntoHtmlImpl } = require('./tracking-html');
+const {
+  looksLikeBouncePayload,
+  applyEmailBounce,
+  applyEmailBounceFromPayload,
+} = require('./email-bounce');
 
 initializeApp();
 
@@ -839,7 +844,8 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
         html: htmlWithTracking,
         replyTo: emailData.replyTo,
         cc: emailData.cc,
-        bcc: emailData.bcc
+        bcc: emailData.bcc,
+        headers: { 'X-Notificas-Mail-Id': docId },
       };
 
       let result = { messageId: emailData.smtpMessageId || emailData.delivery?.info || '' };
@@ -912,6 +918,18 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
       });
 
       console.log('Email enviado:', result.messageId);
+
+      const rejected = Array.isArray(result.rejected) ? result.rejected.filter(Boolean) : [];
+      if (rejected.length) {
+        await applyEmailBounce(getFirestore(), {
+          mailId: docId,
+          smtpMessageId: result.messageId,
+          type: 'smtp_rejected',
+          reason: `SMTP rechazó el destinatario: ${rejected.join(', ')}`,
+          recipient: String(rejected[0] || emailData.recipientEmail || ''),
+          raw: { rejected, accepted: result.accepted || null, response: result.response || null },
+        });
+      }
 
       // Campañas: la hoja Merkle se registra en el worker (evita 1 TX por destinatario).
       if (!emailData.campaignId) {
@@ -1749,6 +1767,17 @@ function parseCertifySubject(subject) {
 exports.processIncomingEmail = onRequest({ region: REGION, secrets: [smtpPass] }, async (req, res) => {
   try {
     console.log('📧 Procesando correo entrante:', req.body);
+
+    const incoming = req.body && typeof req.body === 'object' ? req.body : {};
+    if (looksLikeBouncePayload(incoming)) {
+      const applied = await applyEmailBounceFromPayload(getFirestore(), incoming);
+      return res.status(200).json({
+        success: true,
+        bounce: true,
+        matched: Boolean(applied),
+        mailId: applied?.mailId || null,
+      });
+    }
     
     const { from, to, subject, text, html, attachments } = req.body;
     
@@ -1903,7 +1932,8 @@ Este mensaje fue destinado a ${recipientNorm}. Si no reconoce esta notificacion,
       subject: parsed.actualSubject,
       text: textVersion,
       html: htmlWithTracking,
-      replyTo: user.email
+      replyTo: user.email,
+      headers: { 'X-Notificas-Mail-Id': docId },
     };
     
     console.log('📧 Enviando correo certificado a:', recipientNorm);

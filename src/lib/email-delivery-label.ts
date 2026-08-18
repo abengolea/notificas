@@ -1,5 +1,9 @@
 /** SMTP aceptó el mensaje. No es entrega en la casilla. */
-export function emailDeliveryLabel(state: string | undefined): string {
+export function emailDeliveryLabel(
+  state: string | undefined,
+  bounce?: unknown
+): string {
+  if (bounce) return "Rebotó (no llegó al buzón)";
   switch (String(state || "").toUpperCase()) {
     case "DELIVERED":
     case "SUCCESS":

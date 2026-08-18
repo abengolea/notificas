@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Contacto } from "@/lib/types"
-import { useToast } from "@/hooks/use-toast"
+import { emailDeliveryLabel } from "@/lib/email-delivery-label"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore"
@@ -44,6 +44,7 @@ interface MensajeHistorial {
     state: string
     time: Date
   }
+  emailBounce?: unknown
   tracking: {
     opened: boolean
     readConfirmed: boolean
@@ -90,6 +91,7 @@ export function ContactoHistorial({ contacto, isOpen, onClose, userEmail }: Cont
             state: data.delivery?.state || 'PENDING',
             time: data.delivery?.time?.toDate() || new Date()
           },
+          emailBounce: data.emailBounce || null,
           tracking: {
             opened: data.tracking?.opened || false,
             readConfirmed: data.tracking?.readConfirmed || false,
@@ -116,8 +118,9 @@ export function ContactoHistorial({ contacto, isOpen, onClose, userEmail }: Cont
     return () => unsubscribe()
   }, [isOpen, userEmail, contacto.email])
 
-  const getEstadoColor = (estado: string) => {
-    switch (estado) {
+  const getEstadoColor = (mensaje: MensajeHistorial) => {
+    if (mensaje.emailBounce) return 'bg-red-100 text-red-600'
+    switch (mensaje.delivery.state) {
       case 'DELIVERED':
         return 'bg-green-100 text-green-600'
       case 'PENDING':
@@ -129,17 +132,8 @@ export function ContactoHistorial({ contacto, isOpen, onClose, userEmail }: Cont
     }
   }
 
-  const getEstadoTexto = (estado: string) => {
-    switch (estado) {
-      case 'DELIVERED':
-        return 'Aceptado por el servidor de correo'
-      case 'PENDING':
-        return 'Pendiente'
-      case 'ERROR':
-        return 'Error'
-      default:
-        return estado
-    }
+  const getEstadoTexto = (mensaje: MensajeHistorial) => {
+    return emailDeliveryLabel(mensaje.delivery.state, mensaje.emailBounce)
   }
 
   const getIniciales = (email: string, nombre?: string) => {
@@ -208,8 +202,8 @@ export function ContactoHistorial({ contacto, isOpen, onClose, userEmail }: Cont
                         <h3 className="text-lg font-medium text-gray-900 truncate">
                           {mensaje.subject}
                         </h3>
-                        <Badge className={getEstadoColor(mensaje.delivery.state)}>
-                          {getEstadoTexto(mensaje.delivery.state)}
+                        <Badge className={getEstadoColor(mensaje)}>
+                          {getEstadoTexto(mensaje)}
                         </Badge>
                       </div>
                       

@@ -1,7 +1,9 @@
 import { RECIPIENT_CHUNK_SIZE } from '@/lib/campaign-recipients';
 import {
+  detectCsvSeparatorError,
   parseCsvDataLine,
   parseCsvHeaderLine,
+  phoneDigits,
 } from '@/lib/parse-campaign-csv';
 import type { CanalCampaign, RecipientEntry } from '@/lib/types';
 
@@ -144,11 +146,15 @@ export async function uploadCampaignCsvInChunks(opts: {
   const text = await file.text();
   const lines = text.split(/\r?\n/);
   const headerLine = lines.find((l) => l.trim()) || '';
+  const sepErr = detectCsvSeparatorError(headerLine);
+  if (sepErr) throw new Error(sepErr);
   const cols = parseCsvHeaderLine(headerLine, canal);
   if (!cols) {
     throw new Error('CSV inválido: faltan columnas (nombre, dni y telefono o email según el canal)');
   }
 
+  const needPhone = canal === 'whatsapp' || canal === 'ambos';
+  const seenPhones = new Set<string>();
   let buffer: RecipientEntry[] = [];
   let chunkIndex = 0;
   let parsed = 0;
@@ -175,6 +181,14 @@ export async function uploadCampaignCsvInChunks(opts: {
     if (!row) {
       skipped += 1;
       continue;
+    }
+    if (needPhone) {
+      const key = phoneDigits(row.telefono);
+      if (key && seenPhones.has(key)) {
+        skipped += 1;
+        continue;
+      }
+      if (key) seenPhones.add(key);
     }
     buffer.push(row);
     parsed += 1;

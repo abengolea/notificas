@@ -96,7 +96,8 @@ service cloud.firestore {
         && r.get('smtpMessageId', '') == n.get('smtpMessageId', '')
         && r.get('whatsappMessageId', '') == n.get('whatsappMessageId', '')
         && r.get('evidenceSnapshotHash', '') == n.get('evidenceSnapshotHash', '')
-        && r.get('waRequestSnapshot', null) == n.get('waRequestSnapshot', null);
+        && r.get('waRequestSnapshot', null) == n.get('waRequestSnapshot', null)
+        && r.get('emailBounce', null) == n.get('emailBounce', null);
     }
 
     function mailSealed() {

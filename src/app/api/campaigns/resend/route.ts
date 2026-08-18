@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { FieldValue } from 'firebase-admin/firestore';
 import { resolveCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { z } from 'zod';
@@ -36,8 +37,8 @@ export async function POST(request: NextRequest) {
       const st = d.estado as string;
       if (st !== 'error') continue;
       await ref.update({
-        estado: 'error',
-        errorMsg: 'Reenvío manual',
+        estado: 'pendiente',
+        errorMsg: FieldValue.delete(),
         creditApplied: false,
       });
     }

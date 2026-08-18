@@ -122,6 +122,15 @@
       ]
     },
     {
+      "collectionGroup": "campaign_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "campaignId", "order": "ASCENDING" },
+        { "fieldPath": "waWmidMissing", "order": "ASCENDING" },
+        { "fieldPath": "recipientNombre", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "reclamos",
       "queryScope": "COLLECTION",
       "fields": [

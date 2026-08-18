@@ -162,6 +162,8 @@ function docsToSortedDisplayMessages(
         lastStatus = "Leído";
       } else if (emailOpenedCount > 0 || appOpenedCount > 0) {
         lastStatus = "Abierto";
+      } else if (data?.emailBounce) {
+        lastStatus = "Rebotó";
       } else if (emailSentCount > 0) {
         lastStatus = "Aceptado por SMTP";
       } else {
@@ -555,7 +557,7 @@ export default function DashboardClient() {
                     ? 'secondary'
                     : message.lastStatus === 'Aceptado por SMTP'
                       ? 'outline'
-                      : message.lastStatus === 'Error'
+                      : message.lastStatus === 'Rebotó' || message.lastStatus === 'Error'
                         ? 'destructive'
                         : 'secondary';
               return (
@@ -640,7 +642,7 @@ export default function DashboardClient() {
                             message.lastStatus === 'Leído' ? 'default' : 
                             message.lastStatus === 'Abierto' ? 'secondary' :
                             message.lastStatus === 'Aceptado por SMTP' ? 'outline' :
-                            message.lastStatus === 'Error' ? 'destructive' : 'secondary'
+                            message.lastStatus === 'Rebotó' || message.lastStatus === 'Error' ? 'destructive' : 'secondary'
                           }
                         >
                           {message.lastStatus}
