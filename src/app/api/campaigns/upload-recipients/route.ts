@@ -56,6 +56,13 @@ export async function POST(request: NextRequest) {
       }
       try {
         await finalizeRecipientUpload(orgId, campaignId, chunkCount, recipientCount);
+        await db.collection('campaigns').doc(campaignId).update({
+          'stats.total': recipientCount,
+          'stats.pendientes': recipientCount,
+          'stats.enviados': 0,
+          'stats.leidos': 0,
+          'stats.errores': 0,
+        });
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Error al finalizar subida';
         return NextResponse.json({ error: msg }, { status: 400 });

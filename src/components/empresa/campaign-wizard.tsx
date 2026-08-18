@@ -58,7 +58,8 @@ import {
 import { maxRecipientsForPlan } from "@/lib/org-limits-client";
 import { assignFilesToRecipientsGreedy, scoreFileForRecipient } from "@/lib/campaign-attachment-match";
 import { uploadCampaignCsvInChunks, uploadCampaignRecipients } from "@/lib/upload-campaign-recipients";
-import { csvCamposRequeridos, csvPlaceholder, detectCsvSeparatorError, inspectCampaignCsv, parseCsvQuickResult, phoneDigits } from "@/lib/parse-campaign-csv";
+import { csvCamposRequeridos, csvPlaceholder, inspectCampaignCsv, parseCsvQuickResult, phoneDigits } from "@/lib/parse-campaign-csv";
+import { WIZARD_INLINE_LIST_MAX } from "@/lib/campaign-recipients";
 import { DEFAULT_TANDA_SIZE } from "@/lib/campaign-tanda";
 import { DailyQuotaField } from "@/components/empresa/daily-quota-field";
 import {
@@ -174,6 +175,10 @@ export function CampaignWizard({
     recipients.length ||
     existingRecipientCount ||
     (isAdmin && simulated ? simRecipientCount : 0);
+  const csvListInline = !csvInspect || csvInspect.count <= WIZARD_INLINE_LIST_MAX;
+  const usesDailyTanda = !simulated && (canal === "whatsapp" || canal === "ambos");
+  const creditNeed =
+    usesDailyTanda && tandaSize > 0 ? Math.min(tandaSize, recipientTotal) : recipientTotal;
 
   useEffect(() => {
     if (isAdmin) return;
@@ -342,22 +347,22 @@ export function CampaignWizard({
 
   const firstHtml = useMemo(() => {
     const r0 = recipients[0];
-    if (!r0) return "";
+    const nombre = r0?.nombre || csvInspect?.sample?.[0] || "Destinatario";
     const body = campaignBodyToHtmlFragment(
       personalizeCampaignText(cuerpo, {
-        nombre: r0.nombre,
-        dni: r0.dni,
-        legajo: r0.legajo,
+        nombre,
+        dni: r0?.dni,
+        legajo: r0?.legajo,
       })
     );
     return buildCampaignMailHtml({
-      recipientEmail: r0.email,
-      recipientName: r0.nombre,
+      recipientEmail: r0?.email || "destinatario@ejemplo.com",
+      recipientName: nombre,
       sender: auth.currentUser?.email || "remitente",
       bodyHtml: body,
       attachments: [],
     });
-  }, [recipients, cuerpo]);
+  }, [recipients, cuerpo, csvInspect]);
 
   const recvSig = useMemo(
     () =>
@@ -406,20 +411,6 @@ export function CampaignWizard({
     toast({ title: 'Sugerencias de adjuntos actualizadas' });
   }, [files, recipients, pairByRecipient, recvSig, fileNamesSig, toast]);
 
-  function validateCsvHeaders(text: string): string | null {
-    const firstLine = text.split(/\r?\n/)[0] || "";
-    const sepErr = detectCsvSeparatorError(firstLine);
-    if (sepErr) return sepErr;
-    const headers = firstLine.split(",").map((h) => h.trim().toLowerCase());
-    const needEmail = canal === "email" || canal === "ambos";
-    const needPhone = canal === "whatsapp" || canal === "ambos";
-    if (!headers.includes("nombre")) return "Falta la columna obligatoria: nombre";
-    if (needEmail && !headers.includes("email")) return "Falta la columna obligatoria: email";
-    if (needPhone && !headers.includes("telefono")) return "Falta la columna obligatoria: telefono";
-    if (!headers.includes("dni")) return "Falta la columna obligatoria: dni";
-    return null;
-  }
-
   function handleCsvFile(file: File) {
     if (!file.name.toLowerCase().endsWith(".csv")) {
       setCsvFileError("El archivo debe ser .csv");
@@ -429,7 +420,7 @@ export function CampaignWizard({
       return;
     }
 
-    const applyInspect = (inspected: CsvInspectResult, fromFile: File) => {
+    void inspectCampaignCsv(file, canal).then((inspected) => {
       if (inspected.error) {
         setCsvFileError(inspected.error);
         setCsvFileName(null);
@@ -437,67 +428,38 @@ export function CampaignWizard({
         setCsvInspect(null);
         return;
       }
-      setCsvFileError(null);
-      setCsvFileName(fromFile.name);
-      csvFileRef.current = fromFile;
-      setCsvInspect(inspected);
-      if (!isAdmin) {
-        void fromFile.text().then((text) => {
-          const parsed = parseCsvQuickResult(text, canal);
-          if (parsed.error || parsed.rows.length === 0) return;
-          setRecipients(mergeRecipientList(recipients, parsed.rows, canal));
-        });
-      } else {
+      if (inspected.count > maxR) {
+        setCsvFileError(`Máximo ${maxR.toLocaleString("es-AR")} destinatarios en este plan`);
+        setCsvFileName(null);
+        csvFileRef.current = null;
+        setCsvInspect(null);
         setRecipients([]);
-      }
-      toast({
-        title: `${inspected.count.toLocaleString("es-AR")} destinatarios`,
-        description: `Desde ${fromFile.name}${inspected.skipped ? ` · ${inspected.skipped} filas salteadas` : ""}`,
-      });
-    };
-
-    if (isAdmin) {
-      void inspectCampaignCsv(file, canal).then((inspected) => applyInspect(inspected, file));
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = (e.target?.result as string) || "";
-      const headerErr = validateCsvHeaders(text);
-      if (headerErr) {
-        setCsvFileError(`${headerErr}. Campos requeridos: ${csvCamposRequeridos(canal)}`);
-        setCsvFileName(null);
-        return;
-      }
-      const parsed = parseCsvQuickResult(text, canal);
-      if (parsed.error) {
-        setCsvFileError(`${parsed.error}. Campos requeridos: ${csvCamposRequeridos(canal)}`);
-        setCsvFileName(null);
-        return;
-      }
-      if (parsed.rows.length === 0) {
-        setCsvFileError("El archivo no contiene filas válidas. Revisá el formato y que los campos obligatorios tengan datos.");
-        setCsvFileName(null);
         return;
       }
       setCsvFileError(null);
       setCsvFileName(file.name);
       csvFileRef.current = file;
-      setCsvInspect({ error: null, count: parsed.rows.length, skipped: parsed.phoneDuplicates, sample: parsed.rows.slice(0, 3).map((r) => r.nombre) });
-      setRecipients(mergeRecipientList(recipients, parsed.rows, canal));
+      setCsvInspect(inspected);
+      if (isAdmin || inspected.count > WIZARD_INLINE_LIST_MAX) {
+        setRecipients([]);
+        if (pairByRecipient) setPairByRecipient(false);
+      } else {
+        void file.text().then((text) => {
+          const parsed = parseCsvQuickResult(text, canal);
+          if (parsed.error || parsed.rows.length === 0) {
+            setRecipients([]);
+            return;
+          }
+          setRecipients(parsed.rows);
+        });
+      }
       toast({
-        title: `${parsed.rows.length} destinatarios importados`,
-        description: parsed.phoneDuplicates
-          ? `Desde ${file.name} · ${parsed.phoneDuplicates} teléfonos duplicados omitidos`
-          : `Desde ${file.name}`,
+        title: `${inspected.count.toLocaleString("es-AR")} destinatarios`,
+        description: `Desde ${file.name}${inspected.skipped ? ` · ${inspected.skipped} filas salteadas` : ""}${
+          inspected.count > WIZARD_INLINE_LIST_MAX ? " · no se lista fila por fila" : ""
+        }`,
       });
-    };
-    reader.onerror = () => {
-      setCsvFileError("No se pudo leer el archivo. Intentá con otro.");
-      setCsvFileName(null);
-    };
-    reader.readAsText(file, "UTF-8");
+    });
   }
 
   function mergeRecipientsFromInputs(mode: "paste" | "csv") {
@@ -509,6 +471,14 @@ export function CampaignWizard({
       }
       if (parsed.rows.length === 0) {
         toast({ title: "No se encontraron destinatarios válidos", description: `El CSV debe tener columnas: ${csvCamposRequeridos(canal)}`, variant: "destructive" });
+        return;
+      }
+      if (parsed.rows.length > WIZARD_INLINE_LIST_MAX) {
+        toast({
+          title: "Pegá un CSV chico o subí el archivo",
+          description: `Hasta ${WIZARD_INLINE_LIST_MAX} filas en pantalla. Para listas más grandes, arrastrá el .csv.`,
+          variant: "destructive",
+        });
         return;
       }
       setRecipients(mergeRecipientList(recipients, parsed.rows, canal));
@@ -523,6 +493,14 @@ export function CampaignWizard({
     const next = parseEmailsBlock(pasteEmails);
     if (next.length === 0) {
       toast({ title: "No se encontraron destinatarios válidos", description: `El CSV debe tener columnas: ${csvCamposRequeridos(canal)}`, variant: "destructive" });
+      return;
+    }
+    if (next.length > WIZARD_INLINE_LIST_MAX) {
+      toast({
+        title: "Demasiados emails pegados",
+        description: `Hasta ${WIZARD_INLINE_LIST_MAX} en pantalla. Para más, subí un archivo CSV.`,
+        variant: "destructive",
+      });
       return;
     }
     setRecipients(mergeRecipientList(recipients, next, canal));
@@ -685,11 +663,12 @@ export function CampaignWizard({
       toast({ title: "Completá nombre interno, asunto y cuerpo", variant: "destructive" });
       return;
     }
-    if (recipients.length === 0 && existingRecipientCount === 0) {
+    const file = csvFileRef.current;
+    if (!file && recipients.length === 0 && existingRecipientCount === 0) {
       toast({ title: "Agregá destinatarios", variant: "destructive" });
       return;
     }
-    const recipientSaveCount = recipients.length || existingRecipientCount;
+    const recipientSaveCount = csvInspect?.count || recipients.length || existingRecipientCount;
     if (recipientSaveCount > maxR) {
       toast({
         title: "Límite de plan",
@@ -700,8 +679,14 @@ export function CampaignWizard({
     }
 
     const scheduleFutureEarly = Boolean(scheduleIso && new Date(scheduleIso) > new Date());
-    if (sendNow && !scheduleFutureEarly && creditos < recipientSaveCount) {
-      toast({ title: "Envíos insuficientes", variant: "destructive" });
+    if (sendNow && !scheduleFutureEarly && creditos < creditNeed) {
+      toast({
+        title: "Envíos insuficientes",
+        description: usesDailyTanda
+          ? `El lote de hoy necesita ${creditNeed.toLocaleString("es-AR")}`
+          : undefined,
+        variant: "destructive",
+      });
       return;
     }
 
@@ -770,7 +755,7 @@ export function CampaignWizard({
 
       // Firestore rechaza campos undefined — limpiar antes de guardar.
       const cleanRecipients = recipients.map(cleanRecipientForUpload);
-      const replaceRecipients = cleanRecipients.length > 0;
+      const replaceRecipients = Boolean(file) || cleanRecipients.length > 0;
 
       const customWa = canal !== "email" && !usesNotificasDefaultTemplate(waTemplateName);
       const waFields = canal === "email"
@@ -826,20 +811,33 @@ export function CampaignWizard({
         });
         campaignId = editCampaignId;
         if (replaceRecipients) {
-          await uploadCampaignRecipients({
-            campaignId,
-            orgId,
-            recipients: cleanRecipients,
-            token,
-            onProgress: setUploadProgress,
-          });
-          await updateDoc(refDoc, {
-            "stats.total": cleanRecipients.length,
-            "stats.pendientes": cleanRecipients.length,
-            "stats.enviados": 0,
-            "stats.leidos": 0,
-            "stats.errores": 0,
-          });
+          if (file) {
+            await uploadCampaignCsvInChunks({
+              campaignId,
+              orgId,
+              file,
+              canal,
+              token,
+              endpoint: "/api/campaigns/upload-recipients",
+              onProgress: (p) =>
+                setUploadProgress({ uploadedChunks: p.uploadedChunks, chunkCount: p.chunkCount }),
+            });
+          } else {
+            await uploadCampaignRecipients({
+              campaignId,
+              orgId,
+              recipients: cleanRecipients,
+              token,
+              onProgress: setUploadProgress,
+            });
+            await updateDoc(refDoc, {
+              "stats.total": cleanRecipients.length,
+              "stats.pendientes": cleanRecipients.length,
+              "stats.enviados": 0,
+              "stats.leidos": 0,
+              "stats.errores": 0,
+            });
+          }
         }
       } else {
         const refDoc = await addDoc(collection(db, "campaigns"), {
@@ -847,12 +845,12 @@ export function CampaignWizard({
           orgId,
           createdBy: user.uid,
           ...(adjuntosPorDestinatario ? { adjuntosPorDestinatario } : {}),
-          recipientCount: recipients.length,
+          recipientCount: recipientSaveCount,
           stats: {
-            total: recipients.length,
+            total: recipientSaveCount,
             enviados: 0,
             leidos: 0,
-            pendientes: recipients.length,
+            pendientes: recipientSaveCount,
             errores: 0,
           },
           createdAt: serverTimestamp(),
@@ -862,13 +860,26 @@ export function CampaignWizard({
         });
         campaignId = refDoc.id;
         try {
-          await uploadCampaignRecipients({
-            campaignId,
-            orgId,
-            recipients: cleanRecipients,
-            token,
-            onProgress: setUploadProgress,
-          });
+          if (file) {
+            await uploadCampaignCsvInChunks({
+              campaignId,
+              orgId,
+              file,
+              canal,
+              token,
+              endpoint: "/api/campaigns/upload-recipients",
+              onProgress: (p) =>
+                setUploadProgress({ uploadedChunks: p.uploadedChunks, chunkCount: p.chunkCount }),
+            });
+          } else {
+            await uploadCampaignRecipients({
+              campaignId,
+              orgId,
+              recipients: cleanRecipients,
+              token,
+              onProgress: setUploadProgress,
+            });
+          }
         } catch (uploadErr) {
           await updateDoc(refDoc, { estado: "borrador" });
           throw uploadErr;
@@ -1311,6 +1322,7 @@ export function CampaignWizard({
                           setCsvFileError(null);
                           csvFileRef.current = null;
                           setCsvInspect(null);
+                          setRecipients([]);
                         }}
                         aria-label="Quitar archivo"
                       >
@@ -1361,9 +1373,15 @@ export function CampaignWizard({
               </TabsContent>
             </Tabs>
             <div className="text-sm text-muted-foreground">
-              Total cargados: <strong>{preview.n}</strong>
+              Total cargados: <strong>{preview.n.toLocaleString("es-AR")}</strong>
               {preview.sample.length > 0 && <> — {preview.sample.join(", ")}{preview.n > 3 ? "…" : ""}</>}
             </div>
+            {!csvListInline && csvInspect && (
+              <p className="text-sm text-muted-foreground rounded-md border bg-muted/40 p-3">
+                Lista grande: no se muestra fila por fila. Al guardar se sube de a {WIZARD_INLINE_LIST_MAX}.
+                El adjunto distinto por destinatario no está disponible.
+              </p>
+            )}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep(1)}>Atrás</Button>
               <Button onClick={() => setStep(3)} disabled={!recipientTotal}>Siguiente</Button>
@@ -1433,6 +1451,7 @@ export function CampaignWizard({
                 <Checkbox
                   id="adj-por-destinatario"
                   checked={pairByRecipient}
+                  disabled={!csvListInline}
                   onCheckedChange={(v) => setPairByRecipient(v === true)}
                   className="mt-1"
                 />
@@ -1446,6 +1465,7 @@ export function CampaignWizard({
                   <p className="text-xs text-muted-foreground">
                     Subí un archivo por persona. El nombre del archivo debe contener su nombre o correo (como en el
                     CSV). En el paso «Revisión» podés corregir el emparejamiento.
+                    {!csvListInline ? " No aplica con CSV de más de 500 filas." : ""}
                   </p>
                 </div>
               </div>
@@ -1505,7 +1525,7 @@ export function CampaignWizard({
             </div>
 
             {/* Emparejamiento de adjuntos */}
-            {pairByRecipient && files.length > 0 && !isAdmin && (
+            {pairByRecipient && files.length > 0 && !isAdmin && csvListInline && (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm font-medium">Emparejamiento de adjuntos</p>
@@ -1591,7 +1611,7 @@ export function CampaignWizard({
                     onChange={setTandaSize}
                     hint="Tope de destinatarios nuevos por día, según el cupo de WhatsApp. Cuando Meta lo suba, cambialo acá. El lote de hoy no se mueve; rige mañana a las 9:00."
                   />
-                  {creditos < (tandaSize > 0 ? Math.min(tandaSize, recipients.length || existingRecipientCount) : recipients.length) && (
+                  {creditos < creditNeed && (
                     <p className="text-destructive">Saldo insuficiente para el lote de hoy.</p>
                   )}
                   <div className="space-y-1 pt-1">
@@ -1602,8 +1622,10 @@ export function CampaignWizard({
                 </>
               ) : !isAdmin ? (
                 <>
-              {creditos < recipients.length && (
-                <p className="text-destructive">Saldo insuficiente — necesitás {recipients.length - creditos} envíos más.</p>
+              {creditos < creditNeed && (
+                <p className="text-destructive">
+                  Saldo insuficiente — necesitás {(creditNeed - creditos).toLocaleString("es-AR")} envíos más.
+                </p>
               )}
               <div className="space-y-1 pt-1">
                 <Label className="text-xs">Programar envío (opcional)</Label>
@@ -1645,7 +1667,7 @@ export function CampaignWizard({
                 </>
               ) : (
                 <>
-              Estás por enviar {isAdmin ? (tandaSize > 0 ? Math.min(tandaSize, recipientTotal) : recipientTotal).toLocaleString("es-AR") : recipientTotal.toLocaleString("es-AR")} notificaciones certificadas{isAdmin ? " (lote de hoy)" : ""}. Esta acción no se puede deshacer.
+              Estás por enviar {creditNeed.toLocaleString("es-AR")} notificaciones certificadas{usesDailyTanda ? " (lote de hoy)" : ""}. Esta acción no se puede deshacer.
                 </>
               )}
               {submitting && uploadProgress ? (
