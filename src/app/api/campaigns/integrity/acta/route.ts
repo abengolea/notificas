@@ -3,8 +3,10 @@ import { requireCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { verifyCampaignMessage } from '@/lib/campaign-integrity';
 import { buildActaDestinatarioPdf, buildActaTandaPdf, type ActaLeafRow } from '@/lib/campaign-integrity-pdf';
+import { personalizeCampaignText } from '@/lib/campaign-email-html';
 import { recordIssuedDocument, sha256Hex } from '@/lib/issued-documents';
 import { campaignVerifyRef } from '@/lib/verify-hints';
+import type { CampaignAttachment } from '@/lib/types';
 
 function formatSealedAt(v: unknown): string | undefined {
   if (!v) return undefined;
@@ -24,6 +26,44 @@ function formatSealedAt(v: unknown): string | undefined {
     if (Number.isFinite(secs)) return new Date(secs * 1000).toLocaleString('es-AR');
   }
   return undefined;
+}
+
+function toIso(v: unknown): string | undefined {
+  if (!v) return undefined;
+  if (typeof v === 'string') {
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? v : d.toISOString();
+  }
+  if (typeof v === 'object' && v && 'toDate' in v && typeof (v as { toDate: () => Date }).toDate === 'function') {
+    try {
+      return (v as { toDate: () => Date }).toDate().toISOString();
+    } catch {
+      return undefined;
+    }
+  }
+  if (typeof v === 'object' && v && ('_seconds' in v || 'seconds' in v)) {
+    const secs = Number((v as { _seconds?: number; seconds?: number })._seconds ?? (v as { seconds?: number }).seconds);
+    if (Number.isFinite(secs)) return new Date(secs * 1000).toISOString();
+  }
+  return undefined;
+}
+
+function attachmentsFor(
+  campaign: FirebaseFirestore.DocumentData,
+  emailKey: string
+): Array<{ nombre: string; hash?: string }> {
+  const glob = Array.isArray(campaign.adjuntos) ? (campaign.adjuntos as CampaignAttachment[]) : [];
+  const por = campaign.adjuntosPorDestinatario as Record<string, unknown> | undefined;
+  const key = emailKey.trim().toLowerCase();
+  let extra: CampaignAttachment[] = [];
+  if (por && typeof por === 'object' && !Array.isArray(por)) {
+    const row = por[key];
+    if (Array.isArray(row)) extra = row as CampaignAttachment[];
+  }
+  return [...glob, ...extra].map((a) => ({
+    nombre: String(a.nombre || 'Adjunto'),
+    hash: typeof a.hash === 'string' ? a.hash : undefined,
+  }));
 }
 
 export async function GET(request: NextRequest) {
@@ -52,6 +92,12 @@ export async function GET(request: NextRequest) {
     }
     const msg = msgSnap.data()!;
     const verified = await verifyCampaignMessage(campaignId, messageId);
+    const row = {
+      nombre: String(verified.recipientNombre || msg.recipientNombre || ''),
+      dni: typeof msg.recipientDni === 'string' ? msg.recipientDni : undefined,
+      legajo: typeof msg.recipientLegajo === 'string' ? msg.recipientLegajo : undefined,
+    };
+    const evByType = Object.fromEntries(verified.events.map((ev) => [ev.type, ev]));
     const pdf = await buildActaDestinatarioPdf({
       orgNombre: String(org.nombre || ''),
       orgCuit: typeof org.cuit === 'string' ? org.cuit : undefined,
@@ -59,11 +105,23 @@ export async function GET(request: NextRequest) {
       campaignNombre: String(campaign.nombre || ''),
       campaignAsunto: typeof campaign.asunto === 'string' ? campaign.asunto : undefined,
       generatedAt: new Date().toLocaleString('es-AR'),
+      messageId,
+      canal: typeof campaign.canal === 'string' ? campaign.canal : undefined,
       recipientNombre: String(verified.recipientNombre || msg.recipientNombre || ''),
       recipientEmail: String(verified.recipientEmail || msg.recipientEmail || ''),
       recipientTelefono: String(verified.recipientTelefono || msg.recipientTelefono || ''),
       recipientDni: typeof msg.recipientDni === 'string' ? msg.recipientDni : undefined,
       recipientLegajo: typeof msg.recipientLegajo === 'string' ? msg.recipientLegajo : undefined,
+      asuntoPersonalizado: personalizeCampaignText(String(campaign.asunto || ''), row),
+      cuerpoPersonalizado: personalizeCampaignText(String(campaign.cuerpo || ''), row),
+      attachments: attachmentsFor(campaign, String(msg.recipientEmail || '')),
+      chronology: {
+        emailEnviadoAt: toIso(msg.emailEnviadoAt || msg.enviadoAt),
+        emailLeidoAt: toIso(msg.emailLeidoAt || msg.leidoAt) || evByType.email_read?.occurredAt,
+        waEnviadoAt: toIso(msg.waEnviadoAt),
+        waEntregadoAt: toIso(msg.waEntregadoAt) || evByType.wa_delivered?.occurredAt,
+        waLeidoAt: toIso(msg.waLeidoAt) || evByType.wa_read?.occurredAt,
+      },
       intact: verified.intact,
       summary: verified.summary,
       contentHash: verified.content.currentHash,

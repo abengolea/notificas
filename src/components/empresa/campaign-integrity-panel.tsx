@@ -643,7 +643,7 @@ export function CampaignIntegrityPanel({
                         className="gap-1.5"
                       >
                         {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
-                        Imprimir acta
+                        Imprimir constancia
                       </Button>
                       {result.send.txHash && (
                         <Button size="sm" variant="outline" asChild>
