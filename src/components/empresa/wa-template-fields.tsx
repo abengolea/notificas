@@ -17,9 +17,13 @@ import {
   WA_TEMPLATE_DEFAULT_VARS,
   WA_TEMPLATE_HINT,
   WA_TEMPLATE_LANGS,
+  WA_TEMPLATE_MAX_VARS,
   WA_TEMPLATE_VARIABLE_OPTIONS,
   usesNotificasDefaultTemplate,
 } from "@/lib/wa-template-fields";
+
+const KNOWN_FIELDS = new Set(WA_TEMPLATE_VARIABLE_OPTIONS.map((o) => o.value));
+const CUSTOM_FIELD = "__custom__";
 
 export type WaTemplateFieldsValue = {
   name: string;
@@ -88,13 +92,19 @@ export function WaTemplateFields({
           Variables del template — ¿qué campo va en cada <code>{"{{N}}"}</code>?
         </Label>
         <div className="space-y-2">
-          {value.variables.map((v, i) => (
+          {value.variables.map((v, i) => {
+            const known = KNOWN_FIELDS.has(v);
+            return (
             <div key={i} className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground w-10 shrink-0 font-mono">{`{{${i + 1}}}`}</span>
               <Select
-                value={v}
+                value={known ? v : CUSTOM_FIELD}
                 onValueChange={(val) =>
-                  set({ variables: value.variables.map((x, j) => (j === i ? val : x)) })
+                  set({
+                    variables: value.variables.map((x, j) =>
+                      j === i ? (val === CUSTOM_FIELD ? "" : val) : x
+                    ),
+                  })
                 }
                 disabled={disabled}
               >
@@ -107,8 +117,22 @@ export function WaTemplateFields({
                       {opt.label}
                     </SelectItem>
                   ))}
+                  <SelectItem value={CUSTOM_FIELD}>otro (escribir)</SelectItem>
                 </SelectContent>
               </Select>
+              {!known && (
+                <Input
+                  className="h-8"
+                  placeholder="nombre del campo"
+                  value={v}
+                  onChange={(e) =>
+                    set({
+                      variables: value.variables.map((x, j) => (j === i ? e.target.value : x)),
+                    })
+                  }
+                  disabled={disabled}
+                />
+              )}
               <Button
                 type="button"
                 variant="ghost"
@@ -120,8 +144,9 @@ export function WaTemplateFields({
                 ✕
               </Button>
             </div>
-          ))}
-          {value.variables.length < 8 && (
+            );
+          })}
+          {value.variables.length < WA_TEMPLATE_MAX_VARS && (
             <Button
               type="button"
               variant="outline"
@@ -129,7 +154,7 @@ export function WaTemplateFields({
               disabled={disabled}
               onClick={() => set({ variables: [...value.variables, "nombre"] })}
             >
-              + Agregar variable
+              + Agregar {`{{${value.variables.length + 1}}}`}
             </Button>
           )}
         </div>

@@ -14,7 +14,7 @@ const createSchema = z.object({
   canal: z.enum(['email', 'whatsapp', 'ambos']),
   waTemplateName: z.string().max(128).optional(),
   waTemplateLang: z.string().max(16).optional(),
-  waTemplateVariables: z.array(z.string().max(40)).max(8).optional(),
+  waTemplateVariables: z.array(z.string().max(40)).max(10).optional(),
   waUrlButton: z.boolean().optional(),
   tandaSize: z.number().int().min(0).optional(),
   simulated: z.boolean().optional(),

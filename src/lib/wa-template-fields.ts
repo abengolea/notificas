@@ -13,9 +13,12 @@ export const WA_TEMPLATE_VARIABLE_OPTIONS = [
   { value: "email", label: "email" },
   { value: "telefono", label: "telefono" },
   { value: "dias", label: "días de atraso" },
+  { value: "area", label: "área" },
   { value: "remitente", label: "remitente (empresa)" },
   { value: "url_lectura", label: "link del lector (mismo que el correo)" },
 ] as const;
+
+export const WA_TEMPLATE_MAX_VARS = 10;
 
 /** Template aprobado de Notificas: {{1}} nombre, {{2}} remitente, {{3}} link de lectura. */
 export const WA_DEFAULT_TEMPLATE_NAME = "notificaciones_notificas";
@@ -27,7 +30,7 @@ export function usesNotificasDefaultTemplate(name: string | undefined | null): b
 }
 
 export const WA_TEMPLATE_HINT =
-  "La cantidad y el orden de {{N}} tienen que ser exactamente los del cuerpo en Meta. Un campo vacío (por ejemplo sin legajo) hace fallar el envío con error 131008.";
+  "Agregá una fila por cada {{N}} del cuerpo en Meta, en el mismo orden. Un template de 5 variables necesita 5 filas. Un campo vacío hace fallar el envío con error 131008.";
 
 export const WA_DEFAULT_TEMPLATE_HINT =
   "Si no elegís otro template, se usa notificaciones_notificas. El sistema completa {{1}} nombre, {{2}} remitente y {{3}} el mismo lector de la notificación que el correo.";

@@ -10,7 +10,7 @@ const bodySchema = z.object({
   orgId: z.string().min(1),
   waTemplateName: z.string().max(128),
   waTemplateLang: z.string().max(16),
-  waTemplateVariables: z.array(z.string().max(40)).max(8),
+  waTemplateVariables: z.array(z.string().max(40)).max(10),
   waUrlButton: z.boolean(),
 });
 
