@@ -27,9 +27,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 });
     }
 
-    const estado = campSnap.data()!.estado;
+    const estado = String(campSnap.data()!.estado || '');
     if (estado === 'cancelada') {
       return NextResponse.json({ ok: true, already: true });
+    }
+    if (estado === 'completada') {
+      return NextResponse.json({ error: 'No se puede cancelar una campaña completada' }, { status: 400 });
+    }
+    if (estado !== 'enviando' && estado !== 'pausada') {
+      return NextResponse.json({ error: 'Solo se puede cancelar una campaña en envío o pausada' }, { status: 400 });
     }
 
     await campRef.update({

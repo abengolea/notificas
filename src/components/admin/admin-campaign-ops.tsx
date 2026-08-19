@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Loader2, Mail, MessageCircle, Pause, Pencil, Play, RefreshCw, Save, Upload, XCircle, FlaskConical } from "lucide-react";
+import { AlertTriangle, Loader2, Mail, MessageCircle, Pause, Pencil, Play, RefreshCw, Save, Upload, XCircle, FlaskConical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -415,10 +415,21 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
               </Link>
             </Button>
           )}
-          {c.estado !== "cancelada" && c.estado !== "pausada" && (
+          {c.estado !== "cancelada" && c.estado !== "pausada" && c.estado !== "completada" && (
             <Button disabled={!canSend || sending} onClick={() => setConfirmSend(true)} className="gap-2">
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               {c.estado === "borrador" ? (c.simulated ? "Iniciar simulación" : "Iniciar envío de hoy") : "Enviar lote de hoy"}
+            </Button>
+          )}
+          {c.estado === "completada" && hasErrors && (
+            <Button
+              variant="outline"
+              disabled={sending}
+              onClick={() => setConfirmSend(true)}
+              className="gap-2 border-destructive text-destructive hover:bg-destructive/10"
+            >
+              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+              Reintentar {stats.errores.toLocaleString("es-AR")} errores
             </Button>
           )}
           {c.estado === "enviando" && (
@@ -433,7 +444,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
               Reanudar
             </Button>
           )}
-          {c.estado !== "cancelada" && (
+          {(c.estado === "enviando" || c.estado === "pausada") && (
             <Button variant="destructive" onClick={() => void cancelCampaign()} className="gap-2">
               <XCircle className="h-4 w-4" />
               Cancelar campaña
