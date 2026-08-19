@@ -1,12 +1,11 @@
 import { createHash } from 'crypto';
 import jsPDF from 'jspdf';
-import fs from 'fs';
-import path from 'path';
 import QRCode from 'qrcode';
 import { computeContentHash } from './certification';
 import { POLYGON_CERT_DISPLAY_ORDER, polygonCertLabel } from './polygon-cert-labels';
 import { emailDeliveryLabel } from './email-delivery-label';
 import { formatEvidenceTimestamp, PDF_SCHEMA } from './pdf-evidence-format';
+import { loadNotificasLogoJpeg, PDF_BRAND } from './pdf-brand';
 
 interface MailMessageContent {
   html?: string;
@@ -113,18 +112,7 @@ const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   certificate_downloaded: 'Certificado PDF descargado y anclado en Polygon',
 };
 
-// Colores alineados con la marca Notificas (globals.css: primary HSL 186 78% 37%)
-// Bordes y grises ligeramente más oscuros para legibilidad en impresión en blanco y negro
-const COLORS = {
-  primary: [19, 159, 167] as [number, number, number], // Teal Notificas - hsl(186 78% 37%)
-  primaryDark: [14, 110, 115] as [number, number, number], // Teal oscuro para títulos
-  border: [165, 178, 182] as [number, number, number],
-  bgSoft: [232, 240, 242] as [number, number, number],
-  textMain: [17, 24, 39] as [number, number, number], // #111827 - texto principal
-  textMuted: [72, 82, 90] as [number, number, number],
-  success: [34, 197, 94] as [number, number, number], // #22c55e - verde éxito
-  successBg: [220, 252, 231] as [number, number, number] // #dcfce7 - fondo verde claro
-};
+const COLORS = PDF_BRAND;
 
 function getMovementLabel(type?: string) {
   if (!type) return 'Movimiento registrado';
@@ -455,16 +443,11 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     const headerY = margin;
     
     // Logo Notificas (si existe en public/)
-    try {
-      const logoPath = path.join(process.cwd(), 'public', 'notificasLogo.jpg');
-      if (fs.existsSync(logoPath)) {
-        const logoBase64 = fs.readFileSync(logoPath, { encoding: 'base64' });
-        const logoW = 36;
-        const logoH = 36;
-        doc.addImage(logoBase64, 'JPEG', pageWidth / 2 - logoW / 2, headerY, logoW, logoH);
-      }
-    } catch {
-      // Logo opcional; si falla, continuar sin él
+    const logoBase64 = loadNotificasLogoJpeg();
+    if (logoBase64) {
+      const logoW = 36;
+      const logoH = 36;
+      doc.addImage(logoBase64, 'JPEG', pageWidth / 2 - logoW / 2, headerY, logoW, logoH);
     }
     
     doc.setFont('helvetica', 'bold');
