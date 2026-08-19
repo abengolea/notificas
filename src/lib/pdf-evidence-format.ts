@@ -3,7 +3,7 @@ export const PDF_SCHEMA = {
   constanciaEnvio: 'constancia-envio/v2',
   certificadoLectura: 'certificado-lectura/v2',
   actaTanda: 'acta-tanda/v3',
-  actaIndividual: 'acta-individual/v4',
+  actaIndividual: 'acta-individual/v5',
 } as const;
 
 const ART_TZ = 'America/Argentina/Buenos_Aires';

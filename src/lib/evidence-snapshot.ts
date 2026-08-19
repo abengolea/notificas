@@ -4,7 +4,7 @@ import { persistConstanciaEnvio } from "@/lib/constancia-envio-pdf";
 import { computeContentHash } from "@/lib/certification";
 import { sha256Hex } from "@/lib/merkle";
 import { recordProviderEvent } from "@/lib/provider-events";
-import { hashWhatsAppBody } from "@/lib/whatsapp-evidence";
+import { hashWhatsAppBody, sealedWhatsAppRenderedBody } from "@/lib/whatsapp-evidence";
 import { metaAccountIdsFromSources } from "@/lib/pdf-evidence-format";
 import { isRealSmtpMessageId } from "@/lib/email-delivery-label";
 
@@ -145,7 +145,11 @@ export async function sealEvidenceSnapshot(mailId: string): Promise<EvidenceSnap
     }
   }
 
-  const contentText = str(mail.message?.contentText || mail.message?.text || "");
+  const renderedWa = sealedWhatsAppRenderedBody(mail.waRequestSnapshot);
+  const contentText =
+    mail.waOnly && renderedWa
+      ? renderedWa
+      : str(mail.message?.contentText || mail.message?.text || "");
   const contentHash = await computeContentHash(contentText);
   const attachments = attachmentList(mail);
   const attachmentHashes = attachments.map((a) => a.hash).filter(Boolean);

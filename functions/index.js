@@ -314,6 +314,8 @@ Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@noti
       bodyParameters: parameters,
       buttonParameters,
       requestIncludedUrlButton: urlButton === true,
+      templateName,
+      templateLang,
     });
     if (templateEvidence.templateBodyMissing) {
       console.warn(
@@ -362,8 +364,10 @@ Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@noti
           renderedBody: templateEvidence.renderedBody || null,
           renderedHeader: templateEvidence.renderedHeader || null,
           renderedFooter: templateEvidence.renderedFooter || null,
+          templateBody: templateEvidence.templateBody || null,
           templateBodyMissing: templateEvidence.templateBodyMissing === true,
           templateId: templateEvidence.templateId || null,
+          templateHash: templateEvidence.templateHash || null,
           sentButtons: templateEvidence.sentButtons || [],
         },
         graphResponse: {

@@ -28,6 +28,8 @@ const bodyParams = [
 test('TEST 1 — template sin botón: globo completo y sentButtons vacío', () => {
   const ev = buildWhatsAppTemplateEvidence({
     metaTemplate: deudaTemplate,
+    templateName: 'notificacion_deuda_180_dias',
+    templateLang: 'es_AR',
     bodyParameters: bodyParams,
     buttonParameters: null,
     requestIncludedUrlButton: false,
@@ -37,6 +39,7 @@ test('TEST 1 — template sin botón: globo completo y sentButtons vacío', () =
     'Hola Adrian Bengolea, DNI 25715970. Registramos una deuda vencida desde 14/02/26 por $130000 con 180 días de mora.'
   );
   assert.equal(ev.templateBodyMissing, false);
+  assert.ok(ev.templateHash && ev.templateHash.length === 64);
   assert.deepEqual(ev.sentButtons, []);
 });
 

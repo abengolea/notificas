@@ -13,11 +13,37 @@ function paramTexts(raw: unknown): string[] {
 }
 
 /**
- * Texto canónico de lo que se pidió a Meta: template, variables del cuerpo y, si hay, el botón URL.
+ * Texto canónico de lo que se pidió a Meta.
+ * v2: envíos con mensaje lacrado (renderedBody). v1: snapshots históricos sin ese campo.
  */
 export function canonicalWhatsAppBody(snapshot: unknown): string {
   if (!snapshot || typeof snapshot !== "object") return "";
   const rec = snapshot as Record<string, unknown>;
+  const rendered = typeof rec.renderedBody === "string" ? rec.renderedBody.trim() : "";
+  if (rendered) {
+    const buttons = Array.isArray(rec.sentButtons)
+      ? rec.sentButtons.map((raw) => {
+          const b = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+          return [String(b.text || ""), String(b.url || ""), String(b.urlParameter || "")].join("^");
+        })
+      : paramTexts(rec.buttons);
+    return [
+      "WA_BODY",
+      "v2",
+      String(rec.type || "template"),
+      String(rec.to || ""),
+      String(rec.templateName || ""),
+      String(rec.templateLang || ""),
+      String(rec.templateId || ""),
+      String(rec.templateHash || ""),
+      String(rec.renderedHeader || "").trim(),
+      rendered,
+      String(rec.renderedFooter || "").trim(),
+      ...paramTexts(rec.parameters),
+      ...(buttons.length ? ["btn", ...buttons] : []),
+    ].join("|");
+  }
+
   if (typeof rec.bodyText === "string" && rec.bodyText.trim()) {
     return [
       "WA_BODY",
@@ -43,6 +69,12 @@ export function canonicalWhatsAppBody(snapshot: unknown): string {
     ...(buttons.length ? ["btn", ...buttons] : []),
     String(rec.readerUrl || ""),
   ].join("|");
+}
+
+export function sealedWhatsAppRenderedBody(snapshot: unknown): string {
+  if (!snapshot || typeof snapshot !== "object") return "";
+  const body = (snapshot as Record<string, unknown>).renderedBody;
+  return typeof body === "string" ? body.trim() : "";
 }
 
 export async function hashWhatsAppBody(snapshot: unknown): Promise<string> {
@@ -87,6 +119,8 @@ export type WhatsAppSentButton = {
 export type WhatsAppSentContent = {
   templateName: string;
   templateLang: string;
+  templateHash: string | null;
+  templateId: string | null;
   /** Texto del globo si quedó lacrado en el snapshot; si no, null. */
   renderedBody: string | null;
   renderedHeader: string | null;
@@ -162,6 +196,8 @@ export function describeWhatsAppSentContent(
   return {
     templateName: templateName || "—",
     templateLang: String(rec.templateLang || "es_AR"),
+    templateHash: asTrimmedString(rec.templateHash),
+    templateId: asTrimmedString(rec.templateId),
     renderedBody,
     renderedHeader: asTrimmedString(rec.renderedHeader),
     renderedFooter: asTrimmedString(rec.renderedFooter),

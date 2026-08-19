@@ -2,6 +2,11 @@
  * Arma el texto/botones a lacrar en waRequestSnapshot.
  * No toca Merkle ni Polygon: solo campos extra del snapshot de envío.
  */
+const crypto = require('crypto');
+
+function sha256Utf8(value) {
+  return crypto.createHash('sha256').update(String(value), 'utf8').digest('hex');
+}
 
 function paramTexts(raw) {
   if (!Array.isArray(raw)) return [];
@@ -91,7 +96,8 @@ function buttonsFromMeta(components, urlParameter) {
  * @param {string|null} [input.fallbackBody] BODY local de confianza (solo template default Notificas)
  * @param {unknown} input.bodyParameters
  * @param {unknown} input.buttonParameters  Parámetros del componente button del POST, o null
- * @param {boolean} input.requestIncludedUrlButton
+ * @param {string} [input.templateName]
+ * @param {string} [input.templateLang]
  */
 function buildWhatsAppTemplateEvidence(input) {
   const bodyValues = paramTexts(input.bodyParameters);
@@ -99,19 +105,24 @@ function buildWhatsAppTemplateEvidence(input) {
   const urlParameter = buttonValues[0] || null;
   const meta = input.metaTemplate && typeof input.metaTemplate === 'object' ? input.metaTemplate : null;
   const components = meta && Array.isArray(meta.components) ? meta.components : null;
+  const templateName = String(input.templateName || meta?.name || '').trim();
+  const templateLang = String(input.templateLang || meta?.language || 'es_AR').trim() || 'es_AR';
 
+  let templateBody = null;
   let renderedBody = null;
   let templateBodyMissing = true;
   if (components) {
     const bodyComp = findComponent(components, 'BODY');
     const bodyTpl = bodyComp && String(bodyComp.text || '').trim();
     if (bodyTpl) {
+      templateBody = bodyTpl;
       renderedBody = fillPlaceholders(bodyTpl, bodyValues);
       templateBodyMissing = false;
     }
   }
   if (templateBodyMissing && input.fallbackBody && String(input.fallbackBody).trim()) {
-    renderedBody = fillPlaceholders(String(input.fallbackBody).trim(), bodyValues);
+    templateBody = String(input.fallbackBody).trim();
+    renderedBody = fillPlaceholders(templateBody, bodyValues);
     templateBodyMissing = false;
   }
 
@@ -134,12 +145,18 @@ function buildWhatsAppTemplateEvidence(input) {
     ];
   }
 
+  const templateHash = templateBody
+    ? sha256Utf8(['WA_TPL_BODY', 'v1', templateName, templateLang, templateBody].join('|'))
+    : null;
+
   return {
     renderedBody,
     renderedHeader: renderedHeader || null,
     renderedFooter: renderedFooter || null,
+    templateBody,
     templateBodyMissing,
     templateId: meta && meta.id ? String(meta.id) : null,
+    templateHash,
     sentButtons,
   };
 }

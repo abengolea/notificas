@@ -12,7 +12,7 @@ import { invokeSendEmail } from '@/lib/send-mail-via-cf';
 import { computeContentHash } from '@/lib/certification';
 import { recordEventLeaf, recordSendError, recordSendLeaf, sendBatchId } from '@/lib/campaign-integrity';
 import { sealEvidenceSnapshot } from '@/lib/evidence-snapshot';
-import { hashWhatsAppBody } from '@/lib/whatsapp-evidence';
+import { hashWhatsAppBody, sealedWhatsAppRenderedBody } from '@/lib/whatsapp-evidence';
 import { certifyWhatsAppPayloadIfNeeded } from '@/lib/certification-polygon';
 import { recipientWhatsAppVars, sealCampaignWhatsAppTemplate } from '@/lib/wa-template-seal';
 import { usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
@@ -64,6 +64,9 @@ async function recordSendIntegrity(params: {
     const smtpMessageId = String(mail.smtpMessageId || mail.delivery?.info || mail.tracking?.messageId || '');
     const wamid = String(mail.whatsappMessageId || mail.tracking?.whatsappMessageId || '');
     const waBodyHash = await hashWhatsAppBody(mail.waRequestSnapshot);
+    const renderedWa = sealedWhatsAppRenderedBody(mail.waRequestSnapshot);
+    const contentHash =
+      mail.waOnly && renderedWa ? await computeContentHash(renderedWa) : params.contentHash;
     const campSnap = await db.collection('campaigns').doc(params.campaignId).get();
     const camp = campSnap.data() || {};
     let templateSealHash = String(camp.waTemplateSeal?.hash || '');
@@ -92,7 +95,7 @@ async function recordSendIntegrity(params: {
       batchId: params.batchId,
       email: params.email,
       phone: params.phone,
-      contentHash: params.contentHash,
+      contentHash,
       attachmentHashes: params.attachmentHashes,
       smtpMessageId,
       wamid,
@@ -102,7 +105,7 @@ async function recordSendIntegrity(params: {
     });
 
     await db.collection('mail').doc(params.mailId).update({
-      'polygonCertifications.contentHash': params.contentHash,
+      'polygonCertifications.contentHash': contentHash,
       ...(waBodyHash ? { 'polygonCertifications.waBodyHash': waBodyHash } : {}),
       'polygonCertifications.updatedAt': new Date(),
     }).catch(() => undefined);

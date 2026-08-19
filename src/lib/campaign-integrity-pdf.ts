@@ -303,6 +303,8 @@ export type ActaDestinatarioInput = {
   whatsappSent?: {
     templateName: string;
     templateLang: string;
+    templateHash?: string | null;
+    templateId?: string | null;
     renderedBody: string | null;
     renderedHeader?: string | null;
     renderedFooter?: string | null;
@@ -613,12 +615,12 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(15, 23, 42);
-    doc.text('Contenido enviado por WhatsApp', 14, y);
-    y += 5;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(71, 85, 105);
     if (!waSent) {
+      doc.text('Contenido enviado por WhatsApp', 14, y);
+      y += 5;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
       y = writeWrapped(
         doc,
         'No hay pedido a Meta en el snapshot. No se reconstruye el globo desde datos vivos.',
@@ -630,20 +632,24 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
       y += 8;
       return;
     }
-    y = writeWrapped(
-      doc,
-      `Template Meta: ${waSent.templateName} (${waSent.templateLang}). ` +
-        (waSent.renderedBody
-          ? 'Mensaje personalizado lacrado al enviar, según el template aprobado por Meta y las variables de este destinatario.'
-          : waSent.templateBodyMissing
-            ? 'No se pudo lacrar el texto fijo de Meta en este envío. Se certifican el nombre del template, el idioma y las variables (piezas del mensaje). El WhatsApp sí se envió.'
-            : 'No se almacena el texto fijo del template de Meta. Se transcriben las variables enviadas (ya sustituidas).'),
-      14,
-      y,
-      182,
-      3.6
-    );
-    y += 3;
+    doc.text(waSent.renderedBody ? 'Contenido exacto enviado' : 'Contenido enviado por WhatsApp', 14, y);
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    if (!waSent.renderedBody) {
+      y = writeWrapped(
+        doc,
+        waSent.templateBodyMissing
+          ? 'No se pudo lacrar el texto fijo de Meta en este envío. Se certifican el nombre del template, el idioma y las variables (piezas del mensaje). El WhatsApp sí se envió.'
+          : 'No se almacena el texto fijo del template de Meta. Se transcriben las variables enviadas (ya sustituidas).',
+        14,
+        y,
+        182,
+        3.6
+      );
+      y += 3;
+    }
     if (waSent.renderedHeader) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
@@ -665,6 +671,20 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
       y = writeWrapped(doc, waSent.renderedFooter, 14, y, 182, 3.6);
       y += 3;
     }
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    y = writeWrapped(
+      doc,
+      `Template: ${waSent.templateName} · ${waSent.templateLang}` +
+        (waSent.templateHash ? ` · Template Hash: ${waSent.templateHash}` : '') +
+        (waSent.templateId ? ` · ID ${waSent.templateId}` : ''),
+      14,
+      y,
+      182,
+      3.4
+    );
+    y += 3;
     if (waSent.variables.length > 0) {
       y = ensureY(doc, y, 16);
       autoTable(doc, {

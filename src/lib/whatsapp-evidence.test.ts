@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { describeWhatsAppSentContent } from "./whatsapp-evidence";
+import { canonicalWhatsAppBody, describeWhatsAppSentContent } from "./whatsapp-evidence";
 
 const readerUrl =
   "https://notificas--notificas-f9953.us-central1.hosted.app/linkRedirect?msg=abc&k=secret&src=whatsapp";
@@ -76,4 +76,36 @@ test("TEST 4 — readerUrl interno no enviado no aparece", () => {
   });
   assert.equal(d!.buttons.length, 0);
   assert.equal(JSON.stringify(d).includes("linkRedirect"), false);
+});
+
+test("hash v1 histórico no incluye renderedBody y sí readerUrl", () => {
+  const s = canonicalWhatsAppBody({
+    type: "template",
+    to: "54911",
+    templateName: "notificacion_deuda_180_dias",
+    templateLang: "es_AR",
+    parameters: [{ text: "Ana" }],
+    readerUrl,
+  });
+  assert.match(s, /^WA_BODY\|v1\|/);
+  assert.match(s, /linkRedirect/);
+  assert.equal(s.includes("Hola Ana"), false);
+});
+
+test("hash v2 lacrado incluye el globo y no el readerUrl interno", () => {
+  const globo = "Hola Ana, DNI 1. Mora 180 días.";
+  const s = canonicalWhatsAppBody({
+    type: "template",
+    to: "54911",
+    templateName: "notificacion_deuda_180_dias",
+    templateLang: "es_AR",
+    templateHash: "abc",
+    parameters: [{ text: "Ana" }],
+    renderedBody: globo,
+    readerUrl,
+    sentButtons: [],
+  });
+  assert.match(s, /^WA_BODY\|v2\|/);
+  assert.equal(s.includes(globo), true);
+  assert.equal(s.includes("linkRedirect"), false);
 });
