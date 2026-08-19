@@ -1,6 +1,8 @@
 import { RECIPIENT_CHUNK_SIZE } from '@/lib/campaign-recipients';
 import {
+  csvCamposRequeridos,
   detectCsvSeparatorError,
+  missingCsvTemplateColumns,
   parseCsvDataLine,
   parseCsvHeaderLine,
   phoneDigits,
@@ -129,6 +131,7 @@ export async function uploadCampaignCsvInChunks(opts: {
   orgId: string;
   file: File;
   canal: CanalCampaign;
+  extraColumns?: string[];
   token?: string;
   endpoint?: string;
   onProgress?: (p: UploadRecipientsProgress) => void;
@@ -138,6 +141,7 @@ export async function uploadCampaignCsvInChunks(opts: {
     orgId,
     file,
     canal,
+    extraColumns = [],
     token,
     endpoint = '/api/admin/campaigns/upload-recipients',
     onProgress,
@@ -150,7 +154,13 @@ export async function uploadCampaignCsvInChunks(opts: {
   if (sepErr) throw new Error(sepErr);
   const cols = parseCsvHeaderLine(headerLine, canal);
   if (!cols) {
-    throw new Error('CSV inválido: faltan columnas (nombre, dni y telefono o email según el canal)');
+    throw new Error(`CSV inválido. Campos requeridos: ${csvCamposRequeridos(canal, extraColumns)}`);
+  }
+  const missingExtras = missingCsvTemplateColumns(headerLine, extraColumns);
+  if (missingExtras.length) {
+    throw new Error(
+      `Al CSV le faltan columnas del template: ${missingExtras.join(', ')}. Encabezado esperado: ${csvCamposRequeridos(canal, extraColumns)}`
+    );
   }
 
   const needPhone = canal === 'whatsapp' || canal === 'ambos';

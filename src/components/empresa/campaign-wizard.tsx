@@ -674,6 +674,7 @@ export function CampaignWizard({
           orgId,
           file,
           canal,
+          extraColumns: waCsvExtraColumns,
           endpoint: "/api/admin/campaigns/upload-recipients",
           onProgress: (p) =>
             setUploadProgress({ uploadedChunks: p.uploadedChunks, chunkCount: p.chunkCount }),
@@ -902,6 +903,7 @@ export function CampaignWizard({
               orgId,
               file,
               canal,
+              extraColumns: waCsvExtraColumns,
               token,
               endpoint: "/api/campaigns/upload-recipients",
               onProgress: (p) =>
@@ -951,6 +953,7 @@ export function CampaignWizard({
               orgId,
               file,
               canal,
+              extraColumns: waCsvExtraColumns,
               token,
               endpoint: "/api/campaigns/upload-recipients",
               onProgress: (p) =>
@@ -1188,7 +1191,7 @@ export function CampaignWizard({
                 </p>
               )}
             </div>
-            <Button onClick={() => setStep(2)} disabled={isAdmin && !orgId}>Siguiente</Button>
+            <Button onClick={() => setStep((s) => s + 1)} disabled={isAdmin && !orgId}>Siguiente</Button>
           </CardContent>
         </Card>
       )}

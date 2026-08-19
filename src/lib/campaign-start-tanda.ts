@@ -69,6 +69,7 @@ export async function requeuePendingCampaignMessages(campaignId: string): Promis
 export async function startCampaignTanda(params: {
   campaignId: string;
   retryErrors?: boolean;
+  exceedDailyQuota?: boolean;
   upcomingQuota?: number;
   actorUid?: string;
   actorEmail?: string;
@@ -86,9 +87,6 @@ export async function startCampaignTanda(params: {
   const estado = String(campaign.estado || 'borrador');
   if (estado === 'cancelada') {
     return idle('cancelada', campaign, 0, 0);
-  }
-  if (estado === 'completada') {
-    return idle('completada', campaign, 0, 0);
   }
   if (estado === 'pausada') {
     return idle('pausada', campaign, 0, 0);
@@ -125,6 +123,7 @@ export async function startCampaignTanda(params: {
     alreadySent,
     totalRecipients: total,
     retryErrors: params.retryErrors,
+    exceedDailyQuota: params.exceedDailyQuota,
   });
 
   if (plan.thisRun === 0) {
@@ -165,7 +164,7 @@ export async function startCampaignTanda(params: {
   const billedTo = senderEmail || String(org.adminUserEmail || org.nombre || campaign.orgId);
   const previousEstado = estado;
   const startedAt = campaign.startedAt ? {} : { startedAt: FieldValue.serverTimestamp() };
-  const startOffset = params.retryErrors
+  const startOffset = params.retryErrors || alreadySent === 0
     ? 0
     : (typeof campaign.fanoutResumeOffset === 'number' ? campaign.fanoutResumeOffset : 0);
   const userRef = senderUid ? db.collection('users').doc(senderUid) : null;

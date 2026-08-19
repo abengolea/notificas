@@ -104,6 +104,8 @@ export function planDailySend(params: {
   alreadySent: number;
   totalRecipients: number;
   retryErrors?: boolean;
+  /** Si true, hoy se encola lo que falte aunque pase el cupo diario. */
+  exceedDailyQuota?: boolean;
   now?: Date;
 }): DailySendPlan {
   const now = params.now ?? new Date();
@@ -122,7 +124,8 @@ export function planDailySend(params: {
       : params.alreadySent;
   const sentToday = Math.max(0, params.alreadySent - sentStart);
   const remainingToday = lockedQuota > 0 ? Math.max(0, lockedQuota - sentToday) : remainingTotal;
-  const thisRun = params.retryErrors
+  const ignoreCap = params.retryErrors === true || params.exceedDailyQuota === true;
+  const thisRun = ignoreCap
     ? remainingTotal
     : lockedQuota > 0
       ? Math.min(remainingToday, remainingTotal)

@@ -9,6 +9,7 @@ const bodySchema = z.object({
   campaignId: z.string().min(1),
   orgId: z.string().min(1),
   retryErrors: z.boolean().optional(),
+  exceedDailyQuota: z.boolean().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -43,6 +44,7 @@ export async function POST(request: NextRequest) {
     const result = await startCampaignTanda({
       campaignId: parsed.data.campaignId,
       retryErrors: parsed.data.retryErrors,
+      exceedDailyQuota: parsed.data.exceedDailyQuota,
       actorUid: uid,
       actorEmail: decoded!.email || '',
       requireStorage: Boolean(campaign.recipientStoragePath),

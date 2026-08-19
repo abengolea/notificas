@@ -173,11 +173,15 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
     setUploading(true);
     setUploadPct({ parsed: 0, skipped: 0, chunks: 0 });
     try {
+      const extraColumns = usesNotificasDefaultTemplate(templateName)
+        ? []
+        : csvColumnsFromWaVariables(templateVars);
       const result = await uploadCampaignCsvInChunks({
         campaignId,
         orgId: data.campaign.orgId,
         file,
         canal: data.campaign.canal,
+        extraColumns,
         endpoint: "/api/admin/campaigns/upload-recipients",
         onProgress: (p) =>
           setUploadPct({
@@ -231,13 +235,33 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
   }
 
   async function sendTanda() {
+    if (!data) return;
+    const camp = data.campaign;
+    const already = data.alreadySent ?? camp.stats.enviados;
+    const left = Math.max(0, camp.recipientCount - already);
+    const p = planDailySend({
+      campaign: {
+        tandaSize: camp.simulated ? 0 : tandaSize,
+        tandaDayKey: camp.tandaDayKey,
+        tandaDayQuota: camp.tandaDayQuota,
+        tandaDaySentStart: camp.tandaDaySentStart,
+      },
+      alreadySent: already,
+      totalRecipients: camp.recipientCount,
+    });
+    const exceedDailyQuota = !camp.simulated && p.dailyQuota > 0 && left > p.remainingToday;
     setSending(true);
     try {
       const res = await fetch("/api/admin/campaigns/send", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campaignId, tandaSize: data?.campaign.simulated ? 0 : tandaSize }),
+        body: JSON.stringify({
+          campaignId,
+          tandaSize: camp.simulated ? 0 : tandaSize,
+          retryErrors: (camp.stats.errores || 0) > 0,
+          exceedDailyQuota,
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "No se pudo enviar");
@@ -344,14 +368,22 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
   const stats = c.stats;
   const leidoPct = stats.enviados > 0 ? Math.round((stats.leidos / stats.enviados) * 100) : 0;
   const enviadoPct = stats.total > 0 ? Math.round((stats.enviados / stats.total) * 100) : 0;
-  const canSend = c.recipientCount > 0 && c.estado !== "cancelada" && c.estado !== "pausada" && thisTanda > 0;
+  const wouldExceedQuota =
+    !c.simulated && plan.dailyQuota > 0 && remaining > plan.remainingToday;
+  const hasErrors = (stats.errores || 0) > 0;
+  const canSend =
+    c.recipientCount > 0 &&
+    c.estado !== "cancelada" &&
+    c.estado !== "pausada" &&
+    (thisTanda > 0 || remaining > 0 || hasErrors);
   const canReplaceCsv = canEditWhatsAppTemplate(c);
   const canEditTpl = canEditWhatsAppTemplate(c);
-  const csvExtra = usesNotificasDefaultTemplate(c.waTemplateName)
-    ? []
-    : csvColumnsFromWaVariables(c.waTemplateVariables);
   const showEmail = c.canal === "email" || c.canal === "ambos";
   const showWa = c.canal === "whatsapp" || c.canal === "ambos";
+  const csvExtra =
+    showWa && !c.simulated && !usesNotificasDefaultTemplate(templateName)
+      ? csvColumnsFromWaVariables(templateVars)
+      : [];
 
   return (
     <div className="max-w-6xl space-y-6">
@@ -501,6 +533,66 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
       </Card>
       )}
 
+      {showWa && !c.simulated && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MessageCircle className="h-4 w-4 text-emerald-500" />
+              Template de WhatsApp
+            </CardTitle>
+            <CardDescription>
+              Mapeá cada {"{{N}}"} acá (o aplicá un template guardado de esta empresa). Después subí el CSV
+              con esas columnas. <code>telefono</code> es el destino, no una variable del texto.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <WaSavedTemplates
+              orgId={c.orgId}
+              mode="admin"
+              disabled={!canEditTpl}
+              current={{
+                name: templateName,
+                lang: templateLang,
+                variables: templateVars,
+                urlButton: templateUrlButton,
+              }}
+              onApply={(next) => {
+                setTemplateName(next.name);
+                setTemplateLang(next.lang);
+                setTemplateVars(next.variables);
+                setTemplateUrlButton(next.urlButton);
+              }}
+            />
+            <WaTemplateFields
+              idPrefix="admin-wa"
+              disabled={!canEditTpl}
+              namePlaceholder="Vacío = template por defecto de Notificas"
+              value={{
+                name: templateName,
+                lang: templateLang,
+                variables: templateVars,
+                urlButton: templateUrlButton,
+              }}
+              onChange={(next) => {
+                setTemplateName(next.name);
+                setTemplateLang(next.lang);
+                setTemplateVars(next.variables);
+                setTemplateUrlButton(next.urlButton);
+              }}
+            />
+            <Button variant="secondary" disabled={saving || !canEditTpl} onClick={() => void saveTemplate()}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+              Guardar template
+            </Button>
+            {!canEditTpl && (
+              <p className="text-xs text-muted-foreground">
+                El template se puede editar solo si todavía no hubo envíos exitosos.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {canReplaceCsv && (
         <Card>
           <CardHeader>
@@ -560,80 +652,27 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
             </p>
             {csvExtra.length > 0 && (
               <p className="text-xs text-amber-700 dark:text-amber-400">
-                Subí el CSV de nuevo y después reintentá los errores.
+                Guardá el template, subí un CSV con esas columnas y después reintentá los errores.
               </p>
             )}
           </CardContent>
         </Card>
       )}
 
-      <div className="rounded-md border p-4 bg-muted/30 space-y-2 text-sm">
-        {showEmail && (
-          <div className="space-y-1">
-            <p className="font-medium flex items-center gap-2">
-              <Mail className="h-4 w-4" />
-              Correo
-            </p>
-            <p className="text-muted-foreground">
-              Asunto: <span className="font-medium text-foreground">{c.asunto || "—"}</span>
-            </p>
-          </div>
-        )}
-        {showWa && !c.simulated && (
-          <div className="space-y-3">
-            <p className="font-medium flex items-center gap-2">
-              <MessageCircle className="h-4 w-4 text-emerald-500" />
-              WhatsApp
-            </p>
-            <WaSavedTemplates
-              orgId={c.orgId}
-              mode="admin"
-              disabled={!canEditTpl}
-              current={{
-                name: templateName,
-                lang: templateLang,
-                variables: templateVars,
-                urlButton: templateUrlButton,
-              }}
-              onApply={(next) => {
-                setTemplateName(next.name);
-                setTemplateLang(next.lang);
-                setTemplateVars(next.variables);
-                setTemplateUrlButton(next.urlButton);
-              }}
-            />
-            <WaTemplateFields
-              idPrefix="admin-wa"
-              disabled={!canEditTpl}
-              namePlaceholder="Vacío = template por defecto de Notificas"
-              value={{
-                name: templateName,
-                lang: templateLang,
-                variables: templateVars,
-                urlButton: templateUrlButton,
-              }}
-              onChange={(next) => {
-                setTemplateName(next.name);
-                setTemplateLang(next.lang);
-                setTemplateVars(next.variables);
-                setTemplateUrlButton(next.urlButton);
-              }}
-            />
-            <Button variant="secondary" disabled={saving || !canEditTpl} onClick={() => void saveTemplate()}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-              Guardar template
-            </Button>
-            {!canEditTpl && (
-              <p className="text-xs text-muted-foreground">
-                El template se puede editar solo si todavía no hubo envíos exitosos.
-              </p>
-            )}
-          </div>
-        )}
-        {c.cuerpo ? (
-          <p className="text-muted-foreground whitespace-pre-wrap border-t pt-2">{c.cuerpo}</p>
-        ) : null}
-      </div>
+      {showEmail && (
+        <div className="rounded-md border p-4 bg-muted/30 space-y-2 text-sm">
+          <p className="font-medium flex items-center gap-2">
+            <Mail className="h-4 w-4" />
+            Correo
+          </p>
+          <p className="text-muted-foreground">
+            Asunto: <span className="font-medium text-foreground">{c.asunto || "—"}</span>
+          </p>
+          {c.cuerpo ? (
+            <p className="text-muted-foreground whitespace-pre-wrap border-t pt-2">{c.cuerpo}</p>
+          ) : null}
+        </div>
+      )}
 
       <CampaignDashboard
         mode="admin"
@@ -646,7 +685,13 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
       <AlertDialog open={confirmSend} onOpenChange={setConfirmSend}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{c.simulated ? "¿Confirmar simulación?" : "¿Confirmar envío masivo?"}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {c.simulated
+                ? "¿Confirmar simulación?"
+                : wouldExceedQuota
+                  ? "Vas a superar el lote de hoy"
+                  : "¿Confirmar envío masivo?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {c.simulated ? (
                 <>
@@ -654,10 +699,21 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
                   No sale nada a Mailgun ni a WhatsApp; el dashboard muestra entregas y aperturas al azar.
                   Cada 500 envíos (y cada 500 hechos) se publica una tanda Merkle en Polygon.
                 </>
+              ) : wouldExceedQuota ? (
+                <>
+                  El cupo de hoy es {plan.dailyQuota.toLocaleString("es-AR")} y ya van{" "}
+                  {plan.sentToday.toLocaleString("es-AR")}. Quedan {remaining.toLocaleString("es-AR")} por enviar
+                  {hasErrors ? ` (incluye ${stats.errores.toLocaleString("es-AR")} en error)` : ""}.
+                  Si seguís, este disparo supera el lote definido. Meta puede limitar el número. ¿Continuás igual?
+                </>
               ) : (
                 <>
-              Estás por encolar hasta {thisTanda.toLocaleString("es-AR")} notificaciones para {data.org.nombre} (lote de hoy).
-              El cupo de los próximos días es {tandaSize.toLocaleString("es-AR")}; si lo cambiás, rige mañana.
+                  Estás por encolar hasta {(wouldExceedQuota ? remaining : thisTanda).toLocaleString("es-AR")}{" "}
+                  notificaciones para {data.org.nombre} (lote de hoy).
+                  El cupo de los próximos días es {tandaSize.toLocaleString("es-AR")}; si lo cambiás, rige mañana.
+                  {hasErrors
+                    ? " Hay envíos en error: al confirmar se reintentan."
+                    : ""}
                 </>
               )}
             </AlertDialogDescription>
@@ -665,7 +721,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <Button disabled={sending} onClick={() => void sendTanda()}>
-              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : c.simulated ? "Simular" : "Confirmar"}
+              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : wouldExceedQuota ? "Enviar igual" : c.simulated ? "Simular" : "Confirmar"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

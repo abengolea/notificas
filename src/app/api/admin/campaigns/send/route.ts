@@ -7,6 +7,7 @@ const bodySchema = z.object({
   campaignId: z.string().min(1),
   tandaSize: z.number().int().min(0).optional(),
   retryErrors: z.boolean().optional(),
+  exceedDailyQuota: z.boolean().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -23,6 +24,7 @@ export async function POST(request: NextRequest) {
       campaignId: parsed.data.campaignId,
       upcomingQuota: parsed.data.tandaSize,
       retryErrors: parsed.data.retryErrors,
+      exceedDailyQuota: parsed.data.exceedDailyQuota,
       requireStorage: true,
       chargeCredits: false,
     });
