@@ -417,9 +417,9 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   doc.setFontSize(14);
   doc.text('CONSTANCIA INDIVIDUAL DE COMUNICACIÓN DIGITAL', 14, 12);
   doc.setFontSize(8);
-  doc.text('Parte I — Hechos técnicos  ·  Notificas.com', 14, 19);
+  doc.text('Parte I — Relato de la comunicación  ·  Notificas.com', 14, 19);
   doc.setFontSize(7);
-  doc.text('El anexo técnico para perito consta al final de este documento.', 14, 24);
+  doc.text('Destinado a jueces, abogados y funcionarios. El anexo técnico para perito consta al final.', 14, 24);
   doc.setTextColor(15, 23, 42);
 
   if (explorerUrl) {
@@ -464,7 +464,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     doc.setFontSize(8);
     y = writeWrapped(
       doc,
-      'No hay evidence_snapshot sellado. No se transcribe identidad ni texto desde registros operativos. El anexo técnico solo muestra hashes y Merkle si existen.',
+      'No hay copia inalterable del envío. Esta constancia no transcribe identidad ni texto desde registros que se pueden modificar. El anexo técnico, si existe, muestra huellas y Merkle.',
       16,
       y,
       178,
@@ -477,15 +477,15 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   doc.setTextColor(15, 23, 42);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text('Declaración técnica', 14, y);
+  doc.text('Objeto de esta constancia', 14, y);
   doc.setFont('helvetica', 'normal');
   y += 6;
   doc.setFontSize(9);
   const declaracion = input.evidenceSealed
-    ? `Notificas.com reproduce información lacrada al momento del envío (evidence_snapshot) y hechos posteriores de proveedores externos. ` +
-      `${remitente}${input.orgCuit ? ` (CUIT ${input.orgCuit})` : ''} figura como remitente de la comunicación a ${destinatario} en la campaña «${input.campaignNombre}». ` +
-      `El texto transcrito es el del snapshot, no un recálculo posterior. Este documento certifica hechos técnicos; no califica valor legal ni equivale a carta documento.`
-    : `No se reproduce el contenido ni la identidad desde documentos mutables. Consulte el anexo técnico y, si existe, la constancia de envío WORM. Este documento no califica valor legal.`;
+    ? `Notificas.com deja constancia de una comunicación digital enviada por ${remitente}${input.orgCuit ? ` (CUIT ${input.orgCuit})` : ''} a ${destinatario}, en la campaña «${input.campaignNombre}». ` +
+      `En el instante del envío el sistema guarda una copia inalterable de quién envió, a quién se dirigió y qué se envió. Esa copia no se vuelve a armar después con datos actuales de la campaña: lo transcrito en las páginas siguientes es exactamente lo que quedó registrado entonces. ` +
+      `Los hechos posteriores (aceptación del correo por el proveedor, o entrega y lectura que informe WhatsApp) se anotan aparte, según lo que esos terceros comunicaron después. No sustituyen ni modifican el texto original. El modo técnico de conservar y verificar esa copia consta en el anexo para perito.`
+    : `No se transcribe el contenido ni la identidad desde registros que se pueden modificar. Consulte el anexo técnico y, si existe, la constancia de envío inalterable.`;
   y = writeWrapped(doc, declaracion, 14, y, 182, 4.2);
   y += 6;
 
@@ -519,7 +519,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
       ...(input.wamid ? [['WAMID (Meta)', input.wamid]] : []),
       ...(input.phoneNumberId ? [['Phone Number ID (Meta)', input.phoneNumberId]] : []),
       ...(input.wabaId ? [['WABA ID (Meta)', input.wabaId]] : []),
-      ['Fuente de identidad y texto', input.evidenceSealed ? 'evidence_snapshot (inmutable)' : 'Sin snapshot sellado'],
+      ['Origen del texto y de las partes', input.evidenceSealed ? 'Copia inalterable tomada al enviar' : 'Sin copia inalterable del envío'],
       ['Fecha de emisión', input.generatedAt],
     ],
   });
@@ -737,9 +737,9 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   const statements = [
-    'Este PDF reproduce hechos técnicos registrados por Notificas y, cuando corresponde, por Meta o el proveedor SMTP. No constituye por sí mismo prueba fehaciente ni calificación jurídica; esa valoración corresponde a la autoridad competente.',
-    'La integridad del contenido es verificable con la huella SHA-256 y, si hay tanda anclada, con la transacción de Polygon citada en el anexo. Alterar el texto hace que la huella deje de coincidir.',
-    'Aceptación SMTP no significa que el mensaje haya llegado a la casilla del destinatario. Entrega y lectura de WhatsApp se informan solo si Meta las confirmó.',
+    'Esta Parte I relata quién envió, a quién se dirigió, qué se envió y qué hechos posteriores registraron los proveedores. La valoración de esos hechos corresponde a quien resuelve el expediente.',
+    'La integridad del texto se puede comprobar con la huella SHA-256 y, si la tanda está anclada, con la transacción de Polygon citada en el anexo. Alterar el texto hace que la huella deje de coincidir.',
+    'Que el servidor de correo haya aceptado el mensaje no significa que haya llegado a la casilla. Entrega y lectura de WhatsApp se informan solo si Meta las confirmó.',
     `Emisión: ${input.generatedAt}.`,
   ];
   for (const statement of statements) {
@@ -761,6 +761,28 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   doc.text('Parte II — Comprobaciones criptográficas, Merkle y transacción en Polygon', 14, 17);
   doc.setTextColor(15, 23, 42);
   y = 30;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Snapshot (evidence_snapshot) y recálculo', 14, y);
+  y += 6;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(51, 65, 85);
+  y = writeWrapped(
+    doc,
+    'El evidence_snapshot es un registro de escritura única (WORM): se sella al enviar y no se modifica. Conserva identidad de las partes, texto o pedido a Meta, hashes de adjuntos, WAMID y Message-ID SMTP si existen. ' +
+      'Esta acta no reconstruye el mensaje desde la campaña viva (plantilla, asunto o variables actuales): transcribe el snapshot. ' +
+      'El recálculo del perito es una operación distinta: SHA-256(UTF-8(trim(texto_plano))) del texto de la Parte I debe coincidir con contentHash del snapshot y, si hay tanda, con la hoja Merkle anclada en Polygon. ' +
+      'El recálculo no sustituye al snapshot: lo confronta. Si el PDF o el texto se alteran, el hash deja de coincidir.',
+    14,
+    y,
+    182,
+    3.6
+  );
+  y += 8;
+  doc.setTextColor(15, 23, 42);
 
   if (!input.send.txHash) {
     doc.setFillColor(254, 243, 199);
@@ -899,7 +921,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     doc.setPage(page);
     const part =
       page < techStartPage
-        ? 'Parte I — Hechos técnicos'
+        ? 'Parte I — Relato de la comunicación'
         : 'Parte II — Anexo técnico';
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
