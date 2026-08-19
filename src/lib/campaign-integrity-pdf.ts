@@ -2,6 +2,16 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
 import { formatEvidenceTimestamp, PDF_SCHEMA } from '@/lib/pdf-evidence-format';
+import {
+  PDF_BRAND,
+  PDF_MM,
+  PDF_TABLE_HEAD,
+  PDF_TABLE_MARGIN,
+  drawPdfLetterheadMm,
+  drawSoftPanelMm,
+  drawWarnPanelMm,
+  stampPdfChromeMm,
+} from '@/lib/pdf-brand';
 
 export type ActaLeafRow = {
   leafIndex?: number;
@@ -56,46 +66,56 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
   const kindLabel = input.kind === 'send' ? 'ENVÍO' : 'HECHOS (recepción / lectura)';
   const explorerUrl = input.txHash ? `https://polygonscan.com/tx/${input.txHash}` : '';
   const anchored = input.status === 'anchored' && Boolean(input.merkleRoot && input.txHash);
+  const docTitle = 'Acta de integridad de tanda';
 
-  doc.setFillColor(13, 148, 136);
-  doc.rect(0, 0, 210, 28, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(16);
-  doc.text('ACTA DE INTEGRIDAD DE TANDA', 14, 13);
-  doc.setFontSize(9);
-  doc.text('Notificas — Comunicaciones certificadas en Polygon', 14, 20);
-  doc.setTextColor(15, 23, 42);
+  doc.setProperties({
+    title: `${docTitle} — ${input.batchId}`,
+    subject: 'Constancia técnica de tanda de campaña anclada en Polygon',
+    creator: 'Notificas.com',
+    author: 'Notificas.com',
+  });
 
+  let y = drawPdfLetterheadMm(doc, {
+    mode: 'first',
+    documentTitle: docTitle,
+    lines: [
+      input.kind === 'send' ? 'Tanda de envío' : 'Tanda de hechos (recepción / lectura)',
+      'La inmutabilidad la aporta la transacción citada, no este PDF.',
+    ],
+  });
+
+  const blockStart = y;
   if (explorerUrl) {
     try {
       const qr = await QRCode.toDataURL(explorerUrl, { margin: 0, width: 160 });
-      doc.addImage(qr, 'PNG', 176, 32, 20, 20);
+      doc.addImage(qr, 'PNG', 176, y, 18, 18);
       doc.setFontSize(6);
-      doc.setTextColor(100, 116, 139);
-      doc.text('Ver TX', 181, 55);
-      doc.setTextColor(15, 23, 42);
+      doc.setTextColor(...PDF_BRAND.textMuted);
+      doc.text('Ver TX', 181, y + 20);
+      doc.setTextColor(...PDF_BRAND.textMain);
     } catch {
       /* QR opcional */
     }
   }
 
-  let y = 36;
+  const metaWidth = explorerUrl ? 155 : PDF_MM.contentWidth;
   doc.setFontSize(10);
+  doc.setTextColor(...PDF_BRAND.textMain);
   doc.text(`Organización: ${input.orgNombre}${input.orgCuit ? `  ·  CUIT ${input.orgCuit}` : ''}`, 14, y);
   y += 6;
   doc.text(`Campaña: ${input.campaignNombre}`, 14, y);
   y += 5;
   doc.setFontSize(8);
-  doc.setTextColor(71, 85, 105);
+  doc.setTextColor(...PDF_BRAND.textMuted);
   doc.text(`ID campaña: ${input.campaignId}`, 14, y);
   if (input.campaignAsunto) {
     y += 5;
-    const asunto = doc.splitTextToSize(`Asunto: ${input.campaignAsunto}`, 155);
+    const asunto = doc.splitTextToSize(`Asunto: ${input.campaignAsunto}`, metaWidth);
     doc.text(asunto, 14, y);
     y += asunto.length * 4;
   }
   y += 6;
-  doc.setTextColor(15, 23, 42);
+  doc.setTextColor(...PDF_BRAND.textMain);
   doc.setFontSize(10);
   doc.text(`Tanda: ${input.batchId}   ·   Tipo: ${kindLabel}`, 14, y);
   y += 5;
@@ -106,14 +126,14 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
   );
   y += 5;
   doc.setFontSize(8);
-  doc.setTextColor(71, 85, 105);
+  doc.setTextColor(...PDF_BRAND.textMuted);
   doc.text(`Acta generada: ${input.generatedAt}`, 14, y);
   y += 8;
+  if (explorerUrl) y = Math.max(y, blockStart + 24);
 
   if (!anchored) {
-    doc.setFillColor(254, 243, 199);
-    doc.rect(14, y - 4, 182, 10, 'F');
-    doc.setTextColor(146, 64, 14);
+    drawWarnPanelMm(doc, 14, y - 4, 182, 10);
+    doc.setTextColor(...PDF_BRAND.warnText);
     doc.setFontSize(8);
     doc.text(
       'Esta tanda todavía no está anclada en blockchain. El listado es informativo; no constituye prueba on-chain.',
@@ -121,13 +141,13 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
       y + 2
     );
     y += 12;
-    doc.setTextColor(15, 23, 42);
+    doc.setTextColor(...PDF_BRAND.textMain);
   }
 
-  doc.setFillColor(248, 250, 252);
-  doc.rect(14, y, 182, input.kind === 'send' ? 42 : 38, 'F');
+  const hashBoxH = input.kind === 'send' ? 42 : 38;
+  drawSoftPanelMm(doc, 14, y, 182, hashBoxH);
   doc.setFontSize(8);
-  doc.setTextColor(15, 23, 42);
+  doc.setTextColor(...PDF_BRAND.textMain);
   doc.text('Raíz Merkle (SHA-256)', 16, y + 5);
   doc.setFont('courier', 'normal');
   doc.setFontSize(7);
@@ -142,11 +162,11 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
   doc.text(txLines, 16, y + 23);
   if (explorerUrl) {
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(13, 148, 136);
+    doc.setTextColor(...PDF_BRAND.primary);
     doc.setFontSize(7);
     doc.text(explorerUrl, 16, y + 30);
   }
-  y += input.kind === 'send' ? 46 : 42;
+  y += hashBoxH + 4;
 
   if (input.payload) {
     doc.setTextColor(71, 85, 105);
@@ -221,39 +241,25 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
     startY: Math.min(y + 4, 250),
     head: [tableHead],
     body: tableBody,
+    margin: PDF_TABLE_MARGIN,
     styles: { fontSize: 6, font: 'courier', cellPadding: 1.2, overflow: 'ellipsize' },
-    headStyles: { fillColor: [13, 148, 136], font: 'helvetica', fontSize: 7, textColor: 255 },
+    headStyles: { ...PDF_TABLE_HEAD, font: 'helvetica', fontSize: 7 },
     columnStyles:
       input.kind === 'send'
         ? { 0: { cellWidth: 10 }, 4: { cellWidth: 42 }, 5: { cellWidth: 42 } }
         : { 0: { cellWidth: 10 }, 5: { cellWidth: 48 } },
-    didDrawPage: (data) => {
-      doc.setFontSize(7);
-      doc.setTextColor(100, 116, 139);
-      doc.text(
-        `Acta ${input.batchId}  ·  Formato: ${PDF_SCHEMA.actaTanda}  ·  pág. ${data.pageNumber}`,
-        14,
-        287
-      );
-      if (input.verifyRef) {
-        doc.text(`verify-ref: ${input.verifyRef}`, 14, 291);
-      }
-      if (input.txHash) {
-        doc.text(input.txHash.slice(0, 18) + '…', 150, 287);
-      }
-    },
   });
 
   const finalY =
     (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y;
   let footY = finalY + 8;
-  if (footY > 270) {
+  if (footY > PDF_MM.contentBottom) {
     doc.addPage();
-    footY = 20;
+    footY = PDF_MM.continueTop;
   }
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
-  doc.setTextColor(71, 85, 105);
+  doc.setTextColor(...PDF_BRAND.textMuted);
   const disclaimer = doc.splitTextToSize(
       'Este documento es una constancia técnica: deja asentado el contenido (o el hecho) incluido en la tanda y el ancla pública en Polygon Mainnet. ' +
       'La inmutabilidad la aporta la transacción citada, no este PDF. ' +
@@ -262,6 +268,17 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
     182
   );
   doc.text(disclaimer, 14, footY);
+
+  stampPdfChromeMm(doc, {
+    pagesWithFirstHeader: [1],
+    continueTitle: () => docTitle,
+    footerLine1: (page, pageCount) =>
+      `Notificas.com · ${PDF_SCHEMA.actaTanda} · tanda ${input.batchId} · pág. ${page} de ${pageCount}`,
+    footerLine2: () =>
+      [input.verifyRef && `verify-ref: ${input.verifyRef}`, input.txHash?.slice(0, 18) && `${input.txHash.slice(0, 18)}…`]
+        .filter(Boolean)
+        .join('  ·  ') || undefined,
+  });
 
   return doc.output('arraybuffer') as ArrayBuffer;
 }
@@ -287,8 +304,11 @@ export type ActaDestinatarioInput = {
     templateName: string;
     templateLang: string;
     renderedBody: string | null;
+    renderedHeader?: string | null;
+    renderedFooter?: string | null;
+    templateBodyMissing?: boolean;
     variables: Array<{ n: number; field?: string; value: string }>;
-    buttonUrl: string | null;
+    buttons: Array<{ text: string | null; url: string | null; urlParameter: string | null }>;
   } | null;
   attachments?: Array<{ nombre: string; hash?: string }>;
   /** True si identidad y texto salen de evidence_snapshots (WORM). */
@@ -373,9 +393,9 @@ function lastAutoY(doc: jsPDF, fallback: number): number {
 }
 
 function ensureY(doc: jsPDF, y: number, needed: number): number {
-  if (y + needed > 272) {
+  if (y + needed > PDF_MM.contentBottom) {
     doc.addPage();
-    return 20;
+    return PDF_MM.continueTop;
   }
   return y;
 }
@@ -411,31 +431,40 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   const destinatario = input.recipientNombre || email || (input.evidenceSealed === false ? 'Destinatario no transcrito' : 'el destinatario');
   const remitente = input.orgNombre || 'la organización remitente';
 
-  doc.setFillColor(13, 148, 136);
-  doc.rect(0, 0, 210, 28, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(14);
-  doc.text('CONSTANCIA INDIVIDUAL DE COMUNICACIÓN DIGITAL', 14, 12);
-  doc.setFontSize(8);
-  doc.text('Parte I — Relato de la comunicación  ·  Notificas.com', 14, 19);
-  doc.setFontSize(7);
-  doc.text('Destinado a jueces, abogados y funcionarios. El anexo técnico para perito consta al final.', 14, 24);
-  doc.setTextColor(15, 23, 42);
+  const docTitle = 'Constancia individual de comunicación digital';
+
+  doc.setProperties({
+    title: `${docTitle} — ${input.messageId}`,
+    subject: 'Constancia técnica de un destinatario de campaña',
+    creator: 'Notificas.com',
+    author: 'Notificas.com',
+  });
+
+  let y = drawPdfLetterheadMm(doc, {
+    mode: 'first',
+    documentTitle: docTitle,
+    lines: [
+      'Parte I — Relato de la comunicación',
+      'Destinado a jueces, abogados y funcionarios. El anexo técnico para perito consta al final.',
+    ],
+  });
+  doc.setTextColor(...PDF_BRAND.textMain);
 
   if (explorerUrl) {
     try {
       const qr = await QRCode.toDataURL(explorerUrl, { margin: 0, width: 160 });
-      doc.addImage(qr, 'PNG', 176, 32, 20, 20);
+      doc.addImage(qr, 'PNG', 176, y, 18, 18);
       doc.setFontSize(6);
-      doc.setTextColor(100, 116, 139);
-      doc.text('Ver TX', 181, 55);
-      doc.setTextColor(15, 23, 42);
+      doc.setTextColor(...PDF_BRAND.textMuted);
+      doc.text('Ver TX', 181, y + 20);
+      doc.setTextColor(...PDF_BRAND.textMain);
     } catch {
       /* QR opcional */
     }
   }
 
-  let y = 36;
+  const idWidth = explorerUrl ? 155 : PDF_MM.contentWidth;
+  const idStart = y;
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.text(destinatario, 14, y);
@@ -451,16 +480,21 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   ]
     .filter(Boolean)
     .join('  ·  ');
-  doc.text(idLine || '—', 14, y);
-  y += 5;
-  doc.text(`Campaña: ${input.campaignNombre}  ·  ${canalLabel(input.canal)}`, 14, y);
-  y += 8;
+  const idWrapped = doc.splitTextToSize(idLine || '—', idWidth);
+  doc.text(idWrapped, 14, y);
+  y += idWrapped.length * 4 + 1;
+  const campLine = doc.splitTextToSize(
+    `Campaña: ${input.campaignNombre}  ·  ${canalLabel(input.canal)}`,
+    idWidth
+  );
+  doc.text(campLine, 14, y);
+  y += campLine.length * 4 + 4;
+  if (explorerUrl) y = Math.max(y, idStart + 24);
 
   if (input.evidenceSealed === false) {
     y = ensureY(doc, y, 16);
-    doc.setFillColor(254, 243, 199);
-    doc.rect(14, y - 4, 182, 14, 'F');
-    doc.setTextColor(146, 64, 14);
+    drawWarnPanelMm(doc, 14, y - 4, 182, 14);
+    doc.setTextColor(...PDF_BRAND.warnText);
     doc.setFontSize(8);
     y = writeWrapped(
       doc,
@@ -498,7 +532,8 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   autoTable(doc, {
     startY: y,
     theme: 'plain',
-    styles: { fontSize: 8, cellPadding: 1.5, textColor: [15, 23, 42] },
+    margin: PDF_TABLE_MARGIN,
+    styles: { fontSize: 8, cellPadding: 1.5, textColor: PDF_BRAND.textMain },
     columnStyles: { 0: { cellWidth: 52, fontStyle: 'bold' }, 1: { cellWidth: 130 } },
     body: [
       ['Remitente', `${remitente}${input.orgCuit ? `  ·  CUIT ${input.orgCuit}` : ''}`],
@@ -599,20 +634,36 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
       doc,
       `Template Meta: ${waSent.templateName} (${waSent.templateLang}). ` +
         (waSent.renderedBody
-          ? 'Texto con variables ya sustituidas, según el pedido sellado a Meta.'
-          : 'No se almacena el texto fijo del template de Meta. Se transcriben las variables enviadas (ya sustituidas).'),
+          ? 'Mensaje personalizado lacrado al enviar, según el template aprobado por Meta y las variables de este destinatario.'
+          : waSent.templateBodyMissing
+            ? 'No se pudo lacrar el texto fijo de Meta en este envío. Se certifican el nombre del template, el idioma y las variables (piezas del mensaje). El WhatsApp sí se envió.'
+            : 'No se almacena el texto fijo del template de Meta. Se transcriben las variables enviadas (ya sustituidas).'),
       14,
       y,
       182,
       3.6
     );
     y += 3;
+    if (waSent.renderedHeader) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      y = writeWrapped(doc, `Encabezado: ${waSent.renderedHeader}`, 14, y, 182, 3.6);
+      y += 2;
+    }
     if (waSent.renderedBody) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.setTextColor(15, 23, 42);
       y = writeWrapped(doc, waSent.renderedBody, 14, y, 182, 4.2);
       y += 4;
+    }
+    if (waSent.renderedFooter) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
+      y = writeWrapped(doc, waSent.renderedFooter, 14, y, 182, 3.6);
+      y += 3;
     }
     if (waSent.variables.length > 0) {
       y = ensureY(doc, y, 16);
@@ -625,16 +676,26 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
           v.value || '—',
         ]),
         styles: { fontSize: 8, cellPadding: 1.4, overflow: 'ellipsize' },
-        headStyles: { fillColor: [13, 148, 136], fontSize: 8, textColor: 255 },
+        margin: PDF_TABLE_MARGIN,
+        headStyles: { ...PDF_TABLE_HEAD, fontSize: 8 },
         columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 36 } },
       });
       y = lastAutoY(doc, y) + 4;
     }
-    if (waSent.buttonUrl) {
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      y = writeWrapped(doc, `Botón / enlace: ${waSent.buttonUrl}`, 14, y, 182, 3.6);
-      y += 2;
+    if (waSent.buttons.length > 0) {
+      for (const btn of waSent.buttons) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(15, 23, 42);
+        const label = btn.text ? `Botón: ${btn.text}` : 'Botón URL';
+        const dest = btn.url
+          ? `Destino: ${btn.url}`
+          : btn.urlParameter
+            ? `Parámetro enviado a Meta: ${btn.urlParameter}`
+            : null;
+        y = writeWrapped(doc, dest ? `${label}. ${dest}` : label, 14, y, 182, 3.6);
+        y += 2;
+      }
     }
     y += 6;
   };
@@ -672,7 +733,8 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
       head: [['#', 'Nombre del archivo', 'Hash SHA-256']],
       body: input.attachments.map((att, i) => [String(i + 1), att.nombre || 'Adjunto', att.hash || '—']),
       styles: { fontSize: 7, cellPadding: 1.4, overflow: 'ellipsize' },
-      headStyles: { fillColor: [13, 148, 136], fontSize: 7, textColor: 255 },
+      margin: PDF_TABLE_MARGIN,
+      headStyles: { ...PDF_TABLE_HEAD, fontSize: 7 },
       columnStyles: { 0: { cellWidth: 10 }, 2: { cellWidth: 72, font: 'courier', fontSize: 6 } },
     });
     y = lastAutoY(doc, y) + 8;
@@ -723,7 +785,8 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     head: [['Hecho', 'Fecha y hora', 'Estado']],
     body: chronoRows,
     styles: { fontSize: 8, cellPadding: 1.6 },
-    headStyles: { fillColor: [13, 148, 136], fontSize: 8, textColor: 255 },
+    margin: PDF_TABLE_MARGIN,
+    headStyles: { ...PDF_TABLE_HEAD, fontSize: 8 },
     columnStyles: { 0: { cellWidth: 62 }, 1: { cellWidth: 52 }, 2: { cellWidth: 68 } },
   });
   y = lastAutoY(doc, y) + 10;
@@ -749,18 +812,15 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     y += 2;
   }
 
+  const anexoTitle = 'Anexo técnico — para perito informático';
   doc.addPage();
   const techStartPage = doc.getNumberOfPages();
-  y = 20;
-  doc.setFillColor(15, 23, 42);
-  doc.rect(0, 0, 210, 22, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(13);
-  doc.text('ANEXO TÉCNICO — PARA PERITO INFORMÁTICO', 14, 10);
-  doc.setFontSize(8);
-  doc.text('Parte II — Comprobaciones criptográficas, Merkle y transacción en Polygon', 14, 17);
-  doc.setTextColor(15, 23, 42);
-  y = 30;
+  y = drawPdfLetterheadMm(doc, {
+    mode: 'first',
+    documentTitle: anexoTitle,
+    lines: ['Parte II — Comprobaciones criptográficas, Merkle y transacción en Polygon'],
+  });
+  doc.setTextColor(...PDF_BRAND.textMain);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
@@ -785,9 +845,8 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   doc.setTextColor(15, 23, 42);
 
   if (!input.send.txHash) {
-    doc.setFillColor(254, 243, 199);
-    doc.rect(14, y - 4, 182, 10, 'F');
-    doc.setTextColor(146, 64, 14);
+    drawWarnPanelMm(doc, 14, y - 4, 182, 10);
+    doc.setTextColor(...PDF_BRAND.warnText);
     doc.setFontSize(8);
     doc.text(
       'Esta persona todavía no está en una tanda cerrada. El anexo es informativo; no constituye prueba on-chain.',
@@ -798,7 +857,9 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     doc.setTextColor(15, 23, 42);
   } else {
     doc.setFontSize(8);
-    doc.setTextColor(input.intact ? 4 : 146, input.intact ? 120 : 64, input.intact ? 87 : 14);
+    doc.setTextColor(
+      ...(input.intact ? PDF_BRAND.ok : PDF_BRAND.warnText)
+    );
     doc.text(
       input.intact
         ? 'Estado: íntegro — el texto y la foja coinciden con el lacre en Polygon.'
@@ -817,7 +878,8 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   autoTable(doc, {
     startY: y,
     theme: 'plain',
-    styles: { fontSize: 8, cellPadding: 1.4, textColor: [15, 23, 42] },
+    margin: PDF_TABLE_MARGIN,
+    styles: { fontSize: 8, cellPadding: 1.4, textColor: PDF_BRAND.textMain },
     columnStyles: { 0: { cellWidth: 130 }, 1: { cellWidth: 50, fontStyle: 'bold' } },
     body: [
       ['El texto del snapshot coincide con la huella guardada', checkLabel(input.contentMatch)],
@@ -828,11 +890,10 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   y = lastAutoY(doc, y) + 8;
 
   y = ensureY(doc, y, 48);
-  doc.setFillColor(248, 250, 252);
-  doc.rect(14, y, 182, 42, 'F');
+  drawSoftPanelMm(doc, 14, y, 182, 42);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  doc.setTextColor(15, 23, 42);
+  doc.setTextColor(...PDF_BRAND.textMain);
   doc.text('Huella de contenido (SHA-256)', 16, y + 5);
   doc.setFont('courier', 'normal');
   doc.setFontSize(7);
@@ -846,7 +907,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   doc.text(doc.splitTextToSize(input.send.txHash || '—', 178), 16, y + 28);
   if (explorerUrl) {
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(13, 148, 136);
+    doc.setTextColor(...PDF_BRAND.primary);
     doc.setFontSize(7);
     doc.text(explorerUrl, 16, y + 35);
   }
@@ -871,7 +932,8 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
       head: [['Hecho', 'Fecha', 'En el árbol', 'TX']],
       body: eventRows,
       styles: { fontSize: 7, font: 'helvetica', cellPadding: 1.4, overflow: 'ellipsize' },
-      headStyles: { fillColor: [13, 148, 136], fontSize: 7, textColor: 255 },
+      margin: PDF_TABLE_MARGIN,
+      headStyles: { ...PDF_TABLE_HEAD, fontSize: 7 },
       columnStyles: { 3: { cellWidth: 52, font: 'courier', fontSize: 6 } },
     });
     y = lastAutoY(doc, y) + 8;
@@ -916,21 +978,19 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     doc.text(`verify-ref: ${input.verifyRef}`, 14, y);
   }
 
-  const pageCount = doc.getNumberOfPages();
-  for (let page = 1; page <= pageCount; page++) {
-    doc.setPage(page);
-    const part =
-      page < techStartPage
-        ? 'Parte I — Relato de la comunicación'
-        : 'Parte II — Anexo técnico';
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(100, 116, 139);
-    doc.text(`${part}  ·  Formato: ${PDF_SCHEMA.actaIndividual}  ·  pág. ${page} de ${pageCount}`, 14, 287);
-    if (input.messageId) {
-      doc.text(input.messageId, 14, 291);
-    }
-  }
+  stampPdfChromeMm(doc, {
+    pagesWithFirstHeader: [1, techStartPage],
+    continueTitle: (page) =>
+      page < techStartPage ? docTitle : anexoTitle,
+    footerLine1: (page, pageCount) => {
+      const part =
+        page < techStartPage
+          ? 'Parte I — Relato de la comunicación'
+          : 'Parte II — Anexo técnico';
+      return `Notificas.com · ${part} · ${PDF_SCHEMA.actaIndividual} · pág. ${page} de ${pageCount}`;
+    },
+    footerLine2: () => input.messageId,
+  });
 
   return doc.output('arraybuffer') as ArrayBuffer;
 }

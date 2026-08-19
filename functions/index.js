@@ -11,6 +11,10 @@ const cheerio = require('cheerio');
 const { generateEmailWithTracking } = require('./email-template');
 const { injectTrackingIntoHtml: injectTrackingIntoHtmlImpl } = require('./tracking-html');
 const {
+  buildWhatsAppTemplateEvidence,
+  pickApprovedTemplate,
+} = require('./wa-template-snapshot');
+const {
   looksLikeBouncePayload,
   applyEmailBounce,
   applyEmailBounceFromPayload,
@@ -168,6 +172,35 @@ function readerUrlButtonSuffix(readerUrl) {
   }
 }
 
+const WA_DEFAULT_TEMPLATE_BODY =
+  'Estimado/a {{1}},\n\nLe informamos que {{2}} le ha enviado una notificación digital certificada a través de Notificas.com.\n\nAcceda al contenido aquí:\n{{3}}\n\nSi no reconoce este envío, ignore este mensaje. Consultas: contacto@notificas.com\n\n— Notificas.com';
+
+async function fetchApprovedWhatsAppTemplate(accessToken, wabaId, templateName, templateLang) {
+  const waba = String(wabaId || '').trim();
+  const name = String(templateName || '').trim();
+  if (!accessToken || !waba || !name) return null;
+  const qs = new URLSearchParams({
+    name,
+    fields: 'id,name,language,status,components',
+    limit: '50',
+  });
+  const url = `https://graph.facebook.com/v18.0/${waba}/message_templates?${qs.toString()}`;
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.warn('⚠️ GET message_templates:', res.status, JSON.stringify(data?.error || data));
+      return null;
+    }
+    return pickApprovedTemplate(data?.data, templateLang);
+  } catch (err) {
+    console.warn('⚠️ GET message_templates falló:', err.message);
+    return null;
+  }
+}
+
 async function sendWhatsAppNotification({ accessToken, phoneNumberId, templateName, templateLang, toPhone, readerUrl, senderName, recipientName, templateVariables, recipientData, urlButton }) {
   if (!accessToken || !phoneNumberId) {
     console.warn('⚠️ WhatsApp: secrets no configurados en Secret Manager');
@@ -259,6 +292,36 @@ Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@noti
     };
   }
 
+  let templateEvidence = {
+    renderedBody: payload.text?.body || null,
+    renderedHeader: null,
+    renderedFooter: null,
+    templateBodyMissing: !payload.text?.body,
+    templateId: null,
+    sentButtons: [],
+  };
+  if (templateName) {
+    const wabaIdNow = (whatsappWabaId.value() || '').trim() || null;
+    const metaTpl = await fetchApprovedWhatsAppTemplate(
+      accessToken,
+      wabaIdNow,
+      templateName,
+      templateLang
+    );
+    templateEvidence = buildWhatsAppTemplateEvidence({
+      metaTemplate: metaTpl,
+      fallbackBody: usesNotificasDefaultTemplate(templateName) ? WA_DEFAULT_TEMPLATE_BODY : null,
+      bodyParameters: parameters,
+      buttonParameters,
+      requestIncludedUrlButton: urlButton === true,
+    });
+    if (templateEvidence.templateBodyMissing) {
+      console.warn(
+        '⚠️ No se lacró el BODY de Meta; el WhatsApp se envía igual. El PDF certificará nombre, idioma y variables.'
+      );
+    }
+  }
+
   const MAX_ATTEMPTS = 4;
   const BASE_DELAY_MS = 1000;
 
@@ -296,6 +359,12 @@ Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@noti
           readerUrl,
           phoneNumberId,
           wabaId: (whatsappWabaId.value() || '').trim() || null,
+          renderedBody: templateEvidence.renderedBody || null,
+          renderedHeader: templateEvidence.renderedHeader || null,
+          renderedFooter: templateEvidence.renderedFooter || null,
+          templateBodyMissing: templateEvidence.templateBodyMissing === true,
+          templateId: templateEvidence.templateId || null,
+          sentButtons: templateEvidence.sentButtons || [],
         },
         graphResponse: {
           messaging_product: data.messaging_product || 'whatsapp',

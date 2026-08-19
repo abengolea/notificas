@@ -78,13 +78,23 @@ export function extractWhatsAppHashFromPayload(payload: string | null): string |
   return hash && /^[a-f0-9]{64}$/i.test(hash) ? hash.toLowerCase() : null;
 }
 
+export type WhatsAppSentButton = {
+  text: string | null;
+  url: string | null;
+  urlParameter: string | null;
+};
+
 export type WhatsAppSentContent = {
   templateName: string;
   templateLang: string;
-  /** Texto del globo si se puede reconstruir; si no, null y se listan variables. */
+  /** Texto del globo si quedó lacrado en el snapshot; si no, null. */
   renderedBody: string | null;
+  renderedHeader: string | null;
+  renderedFooter: string | null;
+  /** True si el envío nuevo no pudo congelar el BODY de Meta. */
+  templateBodyMissing: boolean;
   variables: Array<{ n: number; field?: string; value: string }>;
-  buttonUrl: string | null;
+  buttons: WhatsAppSentButton[];
 };
 
 function fillTemplatePlaceholders(template: string, values: string[]): string {
@@ -94,7 +104,32 @@ function fillTemplatePlaceholders(template: string, values: string[]): string {
   });
 }
 
-/** Reconstruye lo enviado a Meta a partir del requestSnapshot sellado. */
+function asTrimmedString(v: unknown): string | null {
+  const s = typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();
+  return s || null;
+}
+
+function buttonsFromSnapshot(rec: Record<string, unknown>): WhatsAppSentButton[] {
+  if (Array.isArray(rec.sentButtons) && rec.sentButtons.length > 0) {
+    return rec.sentButtons.map((raw) => {
+      const b = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+      return {
+        text: asTrimmedString(b.text),
+        url: asTrimmedString(b.url),
+        urlParameter: asTrimmedString(b.urlParameter),
+      };
+    });
+  }
+  const requestButtonParams = paramTexts(rec.buttons).map((t) => t.trim()).filter(Boolean);
+  if (requestButtonParams.length === 0) return [];
+  return requestButtonParams.map((urlParameter) => ({
+    text: null,
+    url: null,
+    urlParameter,
+  }));
+}
+
+/** Lee el pedido sellado a Meta. No usa readerUrl interno como botón. */
 export function describeWhatsAppSentContent(
   requestSnapshot: unknown,
   templateVariables?: string[] | null
@@ -104,12 +139,11 @@ export function describeWhatsAppSentContent(
   const templateName = String(rec.templateName || "").trim();
   const bodyText = typeof rec.bodyText === "string" ? rec.bodyText.trim() : "";
   const values = paramTexts(rec.parameters);
-  const buttons = paramTexts(rec.buttons);
   const fields = (templateVariables || [])
     .map((v) => String(v || "").trim())
     .filter((v) => v && v !== "url_lectura" && v !== "boton_url");
 
-  if (!templateName && !bodyText && values.length === 0) return null;
+  if (!templateName && !bodyText && values.length === 0 && !asTrimmedString(rec.renderedBody)) return null;
 
   const variables = values.map((value, i) => ({
     n: i + 1,
@@ -117,10 +151,11 @@ export function describeWhatsAppSentContent(
     value,
   }));
 
-  let renderedBody: string | null = null;
-  if (bodyText) {
+  const sealedRendered = asTrimmedString(rec.renderedBody);
+  let renderedBody: string | null = sealedRendered;
+  if (!renderedBody && bodyText) {
     renderedBody = bodyText;
-  } else if (usesNotificasDefaultTemplate(templateName) && values.length >= 1) {
+  } else if (!renderedBody && usesNotificasDefaultTemplate(templateName) && values.length >= 1) {
     renderedBody = fillTemplatePlaceholders(WA_DEFAULT_TEMPLATE_BODY, values);
   }
 
@@ -128,8 +163,11 @@ export function describeWhatsAppSentContent(
     templateName: templateName || "—",
     templateLang: String(rec.templateLang || "es_AR"),
     renderedBody,
+    renderedHeader: asTrimmedString(rec.renderedHeader),
+    renderedFooter: asTrimmedString(rec.renderedFooter),
+    templateBodyMissing: rec.templateBodyMissing === true && !sealedRendered,
     variables,
-    buttonUrl: buttons[0] || (typeof rec.readerUrl === "string" ? rec.readerUrl : null),
+    buttons: buttonsFromSnapshot(rec),
   };
 }
 
