@@ -87,7 +87,7 @@ export function usesNotificasDefaultTemplate(name: string | undefined | null): b
 }
 
 export const WA_TEMPLATE_HINT =
-  "Agregá una fila por cada {{N}} del cuerpo en Meta, en el mismo orden. En el paso Destinatarios el CSV tiene que traer esas columnas. Si un dato es igual para todos, usá «texto fijo» y no hace falta la columna.";}
+  "Agregá una fila por cada {{N}} del cuerpo en Meta, en el mismo orden. En el paso Destinatarios el CSV tiene que traer esas columnas. Si un dato es igual para todos, usá «texto fijo» y no hace falta la columna.";
 
 export const WA_DEFAULT_TEMPLATE_HINT =
   "Si no elegís otro template, se usa notificaciones_notificas. El sistema completa {{1}} nombre, {{2}} remitente y {{3}} el mismo lector de la notificación que el correo.";
