@@ -25,6 +25,19 @@ export function recipientValueText(v: unknown): string {
 
 const CSV_IDENTITY_HEADERS = new Set(['nombre', 'email', 'telefono', 'dni', 'legajo']);
 
+/** Campos de template que sí se persisten si vienen en el CSV. El resto de columnas se ignora. */
+const CSV_TEMPLATE_FIELDS = new Set(['dias', 'fecha', 'monto', 'cuotas', 'area']);
+
+function persistCsvFieldKeys(extraColumns: string[] = []): Set<string> {
+  const keys = new Set(CSV_TEMPLATE_FIELDS);
+  for (const raw of extraColumns) {
+    const c = String(raw || '').trim().toLowerCase();
+    if (!c || CSV_IDENTITY_HEADERS.has(c)) continue;
+    keys.add(c === 'dias_atraso' ? 'dias' : c);
+  }
+  return keys;
+}
+
 function csvCellText(raw: string | undefined): string | undefined {
   const t = recipientValueText(raw);
   return t === '' ? undefined : t;
@@ -182,7 +195,8 @@ export function parseCsvDataLine(
   line: string,
   cols: CsvColumnIndex,
   canal: CanalCampaign,
-  rowNumber: number
+  rowNumber: number,
+  extraColumns: string[] = []
 ): RecipientEntry | null {
   const cells = line.split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
   const nombre = cells[cols.iNombre] || '';
@@ -203,31 +217,16 @@ export function parseCsvDataLine(
     dni,
     legajo,
   };
+  const persist = persistCsvFieldKeys(extraColumns);
   const headers = Array.isArray(cols.headers) ? cols.headers : [];
   for (let i = 0; i < headers.length; i++) {
     const rawHeader = headers[i];
     if (!rawHeader) continue;
     const key = rawHeader === 'dias_atraso' ? 'dias' : rawHeader;
-    if (CSV_IDENTITY_HEADERS.has(key)) continue;
+    if (!persist.has(key)) continue;
     const v = csvCellText(cells[i]);
     if (v === undefined) continue;
     (row as RecipientEntry & Record<string, string>)[key] = v;
-  }
-  if (!presentRecipientValue(row.dias)) {
-    const dias = csvCellText(cols.iDias >= 0 ? cells[cols.iDias] : undefined);
-    if (dias) row.dias = dias;
-  }
-  if (!presentRecipientValue(row.fecha)) {
-    const fecha = csvCellText(cols.iFecha >= 0 ? cells[cols.iFecha] : undefined);
-    if (fecha) row.fecha = fecha;
-  }
-  if (!presentRecipientValue(row.monto)) {
-    const monto = csvCellText(cols.iMonto >= 0 ? cells[cols.iMonto] : undefined);
-    if (monto) row.monto = monto;
-  }
-  if (!presentRecipientValue(row.cuotas)) {
-    const cuotas = csvCellText(typeof cols.iCuotas === 'number' && cols.iCuotas >= 0 ? cells[cols.iCuotas] : undefined);
-    if (cuotas) row.cuotas = cuotas;
   }
   return row;
 }
@@ -298,7 +297,7 @@ export async function inspectCampaignCsv(
   for (let r = 1; r < lines.length; r++) {
     const line = lines[r];
     if (!line || !line.trim()) continue;
-    const row = parseCsvDataLine(line, cols, canal, r);
+    const row = parseCsvDataLine(line, cols, canal, r, extraColumns);
     if (!row) {
       skipped += 1;
       continue;
@@ -352,7 +351,7 @@ export function parseCsvQuickResult(
   if (extrasErr) return { rows: [], phoneDuplicates: 0, error: extrasErr };
   const out: RecipientEntry[] = [];
   for (let r = 1; r < lines.length; r++) {
-    const row = parseCsvDataLine(lines[r], cols, canal, r);
+    const row = parseCsvDataLine(lines[r], cols, canal, r, extraColumns);
     if (row) out.push(row);
   }
   const deduped = dedupeRecipientsForCanal(out, canal);

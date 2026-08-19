@@ -19,6 +19,15 @@ test('CSV GOcuotas: cuotas=1 queda en el destinatario', () => {
   assert.equal(parsed.rows[0].nombre, 'Adrian Bengolea');
 });
 
+test('no persiste columnas ajenas al mapeo ni a los campos de template', () => {
+  const csv = `telefono,nombre,dni,cuotas,notas_internas
++5493364645357,Adrian Bengolea,25715970,1,secreto
+`;
+  const parsed = parseCsvQuickResult(csv, 'whatsapp', ['cuotas']);
+  assert.equal(parsed.rows[0].cuotas, '1');
+  assert.equal((parsed.rows[0] as Record<string, unknown>).notas_internas, undefined);
+});
+
 test('cuotas 0 se conserva (no es vacío)', () => {
   const csv = `telefono,nombre,dni,cuotas
 +5493364645357,Adrian Bengolea,25715970,0

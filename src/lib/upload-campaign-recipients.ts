@@ -187,7 +187,7 @@ export async function uploadCampaignCsvInChunks(opts: {
   for (let r = 1; r < lines.length; r++) {
     const line = lines[r];
     if (!line || !line.trim()) continue;
-    const row = parseCsvDataLine(line, cols, canal, r);
+    const row = parseCsvDataLine(line, cols, canal, r, extraColumns);
     if (!row) {
       skipped += 1;
       continue;
