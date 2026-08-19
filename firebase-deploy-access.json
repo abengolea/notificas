@@ -1,0 +1,13 @@
+{
+  "projectOwnerEmail": "abengolea1@gmail.com",
+  "deployAdminEmails": [
+    "adrianbengolea@notificas.com"
+  ],
+  "projects": [
+    "notificas-f9953"
+  ],
+  "roles": [
+    "roles/firebase.developAdmin",
+    "roles/datastore.indexAdmin"
+  ]
+}
