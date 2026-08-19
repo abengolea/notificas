@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
+import { formatEvidenceTimestamp, PDF_SCHEMA } from '@/lib/pdf-evidence-format';
 
 export type ActaLeafRow = {
   leafIndex?: number;
@@ -42,8 +43,8 @@ const EVENT_LABEL: Record<string, string> = {
 
 function formatTs(v?: string): string {
   if (!v) return '—';
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? v : d.toLocaleString('es-AR');
+  const formatted = formatEvidenceTimestamp(v);
+  return formatted === '—' ? v : formatted;
 }
 
 function isSyntheticEmail(email: string) {
@@ -230,7 +231,7 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
       doc.setFontSize(7);
       doc.setTextColor(100, 116, 139);
       doc.text(
-        `Acta ${input.batchId}  ·  ${input.campaignNombre}  ·  pág. ${data.pageNumber}`,
+        `Acta ${input.batchId}  ·  Formato: ${PDF_SCHEMA.actaTanda}  ·  pág. ${data.pageNumber}`,
         14,
         287
       );
@@ -254,7 +255,7 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
   doc.setFontSize(7);
   doc.setTextColor(71, 85, 105);
   const disclaimer = doc.splitTextToSize(
-    'Este documento es una constancia técnica oponible: deja asentado el contenido (o el hecho) incluido en la tanda y el ancla pública en Polygon Mainnet. ' +
+      'Este documento es una constancia técnica: deja asentado el contenido (o el hecho) incluido en la tanda y el ancla pública en Polygon Mainnet. ' +
       'La inmutabilidad la aporta la transacción citada, no este PDF. ' +
       'Si se altera una sola foja, la raíz Merkle deja de coincidir con la registrada on-chain. ' +
       'Los envíos individuales (fuera de campaña) se certifican con otra transacción por mensaje.',
@@ -282,11 +283,20 @@ export type ActaDestinatarioInput = {
   /** Texto intimado a esta persona (asunto y cuerpo ya personalizados). */
   asuntoPersonalizado?: string;
   cuerpoPersonalizado?: string;
+  whatsappSent?: {
+    templateName: string;
+    templateLang: string;
+    renderedBody: string | null;
+    variables: Array<{ n: number; field?: string; value: string }>;
+    buttonUrl: string | null;
+  } | null;
   attachments?: Array<{ nombre: string; hash?: string }>;
   /** True si identidad y texto salen de evidence_snapshots (WORM). */
   evidenceSealed?: boolean;
   smtpMessageId?: string;
   wamid?: string;
+  phoneNumberId?: string;
+  wabaId?: string;
   chronology: {
     emailEnviadoAt?: string;
     emailLeidoAt?: string;
@@ -344,6 +354,18 @@ function canalLabel(canal?: string): string {
   if (canal === 'whatsapp') return 'WhatsApp';
   if (canal === 'ambos') return 'Correo electrónico y WhatsApp';
   return 'Correo electrónico';
+}
+
+function isMixedCanal(canal?: string): boolean {
+  return canal === 'ambos';
+}
+
+function showsEmailContent(canal?: string): boolean {
+  return canal !== 'whatsapp';
+}
+
+function showsWhatsAppContent(canal?: string): boolean {
+  return canal === 'whatsapp' || canal === 'ambos';
 }
 
 function lastAutoY(doc: jsPDF, fallback: number): number {
@@ -486,54 +508,157 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
       ...(email ? [['Correo del destinatario', email]] : []),
       ...(input.recipientTelefono ? [['Teléfono', input.recipientTelefono]] : []),
       ['Campaña', input.campaignNombre],
-      ...(asunto ? [['Asunto', asunto]] : []),
+      ...(input.canal === 'whatsapp'
+        ? []
+        : asunto
+          ? [['Asunto (correo)', asunto]]
+          : []),
       ['Canal', canalLabel(input.canal)],
       ['Identificador de mensaje', input.messageId],
       ...(input.smtpMessageId ? [['SMTP Message-ID (aceptación)', input.smtpMessageId]] : []),
       ...(input.wamid ? [['WAMID (Meta)', input.wamid]] : []),
+      ...(input.phoneNumberId ? [['Phone Number ID (Meta)', input.phoneNumberId]] : []),
+      ...(input.wabaId ? [['WABA ID (Meta)', input.wabaId]] : []),
       ['Fuente de identidad y texto', input.evidenceSealed ? 'evidence_snapshot (inmutable)' : 'Sin snapshot sellado'],
       ['Fecha de emisión', input.generatedAt],
     ],
   });
   y = lastAutoY(doc, y) + 8;
 
-  y = ensureY(doc, y, 16);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(15, 23, 42);
-  doc.text('Contenido del mensaje remitido', 14, y);
-  y += 5;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(71, 85, 105);
-  y = writeWrapped(
-    doc,
-    input.evidenceSealed
-      ? 'Se transcribe el texto del snapshot sellado (variables ya sustituidas). Es el mismo contenido cuya huella SHA-256 se describe en el anexo técnico.'
-      : 'El texto no se transcribe: no hay snapshot sellado. Un recálculo desde el template vivo no sería prueba del envío original.',
-    14,
-    y,
-    182,
-    3.6
-  );
-  y += 3;
-  if (asunto) {
-    y = ensureY(doc, y, 8);
+  const waSent = input.whatsappSent || null;
+  const showEmailContent = showsEmailContent(input.canal);
+  const showWaContent = showsWhatsAppContent(input.canal) || Boolean(waSent);
+
+  const renderEmailBlock = () => {
+    y = ensureY(doc, y, 16);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
+    doc.setFontSize(10);
     doc.setTextColor(15, 23, 42);
-    y = writeWrapped(doc, `Asunto: ${asunto}`, 14, y, 182, 3.8);
-    y += 2;
-  }
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(15, 23, 42);
-  if (cuerpo) {
-    y = writeWrapped(doc, cuerpo, 14, y, 182, 4.2);
+    doc.text(
+      showWaContent ? 'Contenido enviado por correo (lector)' : 'Contenido del mensaje remitido',
+      14,
+      y
+    );
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    y = writeWrapped(
+      doc,
+      input.evidenceSealed
+        ? 'Texto del correo y del lector, con variables ya sustituidas. Huella SHA-256 en el anexo técnico.'
+        : 'El texto no se transcribe: no hay snapshot sellado.',
+      14,
+      y,
+      182,
+      3.6
+    );
+    y += 3;
+    if (asunto) {
+      y = ensureY(doc, y, 8);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      y = writeWrapped(doc, `Asunto: ${asunto}`, 14, y, 182, 3.8);
+      y += 2;
+    }
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    if (cuerpo) {
+      y = writeWrapped(doc, cuerpo, 14, y, 182, 4.2);
+    } else {
+      y = writeWrapped(doc, 'Sin texto de correo en snapshot sellado.', 14, y, 182, 4.2);
+    }
+    y += 8;
+  };
+
+  const renderWhatsAppBlock = () => {
+    y = ensureY(doc, y, 16);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text('Contenido enviado por WhatsApp', 14, y);
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    if (!waSent) {
+      y = writeWrapped(
+        doc,
+        'No hay pedido a Meta en el snapshot. No se reconstruye el globo desde datos vivos.',
+        14,
+        y,
+        182,
+        3.6
+      );
+      y += 8;
+      return;
+    }
+    y = writeWrapped(
+      doc,
+      `Template Meta: ${waSent.templateName} (${waSent.templateLang}). ` +
+        (waSent.renderedBody
+          ? 'Texto con variables ya sustituidas, según el pedido sellado a Meta.'
+          : 'No se almacena el texto fijo del template de Meta. Se transcriben las variables enviadas (ya sustituidas).'),
+      14,
+      y,
+      182,
+      3.6
+    );
+    y += 3;
+    if (waSent.renderedBody) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(15, 23, 42);
+      y = writeWrapped(doc, waSent.renderedBody, 14, y, 182, 4.2);
+      y += 4;
+    }
+    if (waSent.variables.length > 0) {
+      y = ensureY(doc, y, 16);
+      autoTable(doc, {
+        startY: y,
+        head: [['{{n}}', 'Campo', 'Valor enviado a Meta']],
+        body: waSent.variables.map((v) => [
+          `{{${v.n}}}`,
+          v.field || '—',
+          v.value || '—',
+        ]),
+        styles: { fontSize: 8, cellPadding: 1.4, overflow: 'ellipsize' },
+        headStyles: { fillColor: [13, 148, 136], fontSize: 8, textColor: 255 },
+        columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 36 } },
+      });
+      y = lastAutoY(doc, y) + 4;
+    }
+    if (waSent.buttonUrl) {
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      y = writeWrapped(doc, `Botón / enlace: ${waSent.buttonUrl}`, 14, y, 182, 3.6);
+      y += 2;
+    }
+    y += 6;
+  };
+
+  if (isMixedCanal(input.canal)) {
+    renderEmailBlock();
+    renderWhatsAppBlock();
+  } else if (showWaContent && !showEmailContent) {
+    renderWhatsAppBlock();
+  } else if (showEmailContent) {
+    renderEmailBlock();
   } else {
-    y = writeWrapped(doc, 'Sin texto en snapshot sellado. No se reconstruye desde la campaña.', 14, y, 182, 4.2);
+    y = ensureY(doc, y, 16);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text('Contenido del mensaje remitido', 14, y);
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    y = writeWrapped(doc, 'No hay texto de WhatsApp ni de correo en el snapshot sellado.', 14, y, 182, 3.6);
+    y += 8;
   }
-  y += 8;
 
   if (input.attachments && input.attachments.length > 0) {
     y = ensureY(doc, y, 20);
@@ -564,7 +689,9 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   doc.setTextColor(71, 85, 105);
   y = writeWrapped(
     doc,
-    'Correo: la aceptación SMTP no es entrega en la casilla. WhatsApp: enviado / entregado al dispositivo / leído se consignan por separado cuando Meta lo confirma. Un hecho pendiente no niega el envío.',
+    input.canal === 'whatsapp'
+      ? 'WhatsApp: enviado / entregado al dispositivo / leído se consignan cuando Meta lo confirma. Un hecho pendiente no niega el envío.'
+      : 'Correo: la aceptación SMTP no es entrega en la casilla. WhatsApp: enviado / entregado al dispositivo / leído se consignan por separado cuando Meta lo confirma. Un hecho pendiente no niega el envío.',
     14,
     y,
     182,
@@ -572,8 +699,10 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   );
   y += 3;
 
-  const showEmail = input.canal !== 'whatsapp' || Boolean(input.chronology.emailEnviadoAt);
-  const showWa = input.canal !== 'email' || Boolean(input.chronology.waEnviadoAt);
+  const showEmail =
+    input.canal !== 'whatsapp' &&
+    (input.canal !== 'ambos' || Boolean(input.smtpMessageId || input.chronology.emailEnviadoAt));
+  const showWa = showsWhatsAppContent(input.canal);
   const chronoRows: string[][] = [];
   if (showEmail) {
     const [envFecha, envObs] = hechoFecha(input.chronology.emailEnviadoAt);
@@ -775,7 +904,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(100, 116, 139);
-    doc.text(`${part}  ·  ${input.campaignNombre}  ·  pág. ${page} de ${pageCount}`, 14, 287);
+    doc.text(`${part}  ·  Formato: ${PDF_SCHEMA.actaIndividual}  ·  pág. ${page} de ${pageCount}`, 14, 287);
     if (input.messageId) {
       doc.text(input.messageId, 14, 291);
     }

@@ -386,6 +386,7 @@ export function CampaignDashboard({
       const url = `/api/campaigns/export?${p}`;
       const res = await campaignRequest(mode, url);
       if (!res.ok) { toast({ title: "No se pudo generar el CSV", variant: "destructive" }); return; }
+      const hash = res.headers.get("X-Notificas-SHA256");
       const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -393,6 +394,12 @@ export function CampaignDashboard({
       a.download = `evidencia-${tag}-${campaignId.slice(0, 8)}.csv`;
       a.click();
       URL.revokeObjectURL(a.href);
+      toast({
+        title: "CSV descargado",
+        description: hash
+          ? `Huella SHA-256 registrada: ${hash.slice(0, 12)}…${hash.slice(-8)}`
+          : "Archivo listo.",
+      });
     } finally {
       setBusy(false);
     }

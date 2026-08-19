@@ -24,6 +24,10 @@ export const WA_TEMPLATE_MAX_VARS = 10;
 export const WA_DEFAULT_TEMPLATE_NAME = "notificaciones_notificas";
 export const WA_TEMPLATE_DEFAULT_VARS = ["nombre", "remitente", "url_lectura"];
 
+/** Cuerpo alineado con el template aprobado notificaciones_notificas ({{1}} nombre, {{2}} remitente, {{3}} URL). */
+export const WA_DEFAULT_TEMPLATE_BODY =
+  "Estimado/a {{1}},\n\nLe informamos que {{2}} le ha enviado una notificación digital certificada a través de Notificas.com.\n\nAcceda al contenido aquí:\n{{3}}\n\nSi no reconoce este envío, ignore este mensaje. Consultas: contacto@notificas.com\n\n— Notificas.com";
+
 export function usesNotificasDefaultTemplate(name: string | undefined | null): boolean {
   const n = String(name || "").trim().toLowerCase();
   return !n || n === WA_DEFAULT_TEMPLATE_NAME;

@@ -1,4 +1,8 @@
 import { sha256Hex } from "@/lib/merkle";
+import {
+  usesNotificasDefaultTemplate,
+  WA_DEFAULT_TEMPLATE_BODY,
+} from "@/lib/wa-template-fields";
 
 function paramTexts(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
@@ -72,6 +76,61 @@ export function extractWhatsAppHashFromPayload(payload: string | null): string |
   if (parts[0] !== "WA" || parts[1] !== "v1") return null;
   const hash = parts[4];
   return hash && /^[a-f0-9]{64}$/i.test(hash) ? hash.toLowerCase() : null;
+}
+
+export type WhatsAppSentContent = {
+  templateName: string;
+  templateLang: string;
+  /** Texto del globo si se puede reconstruir; si no, null y se listan variables. */
+  renderedBody: string | null;
+  variables: Array<{ n: number; field?: string; value: string }>;
+  buttonUrl: string | null;
+};
+
+function fillTemplatePlaceholders(template: string, values: string[]): string {
+  return template.replace(/\{\{(\d+)\}\}/g, (_, raw: string) => {
+    const i = Number(raw) - 1;
+    return values[i] != null && values[i] !== "" ? values[i] : `{{${raw}}}`;
+  });
+}
+
+/** Reconstruye lo enviado a Meta a partir del requestSnapshot sellado. */
+export function describeWhatsAppSentContent(
+  requestSnapshot: unknown,
+  templateVariables?: string[] | null
+): WhatsAppSentContent | null {
+  if (!requestSnapshot || typeof requestSnapshot !== "object") return null;
+  const rec = requestSnapshot as Record<string, unknown>;
+  const templateName = String(rec.templateName || "").trim();
+  const bodyText = typeof rec.bodyText === "string" ? rec.bodyText.trim() : "";
+  const values = paramTexts(rec.parameters);
+  const buttons = paramTexts(rec.buttons);
+  const fields = (templateVariables || [])
+    .map((v) => String(v || "").trim())
+    .filter((v) => v && v !== "url_lectura" && v !== "boton_url");
+
+  if (!templateName && !bodyText && values.length === 0) return null;
+
+  const variables = values.map((value, i) => ({
+    n: i + 1,
+    field: fields[i] || undefined,
+    value,
+  }));
+
+  let renderedBody: string | null = null;
+  if (bodyText) {
+    renderedBody = bodyText;
+  } else if (usesNotificasDefaultTemplate(templateName) && values.length >= 1) {
+    renderedBody = fillTemplatePlaceholders(WA_DEFAULT_TEMPLATE_BODY, values);
+  }
+
+  return {
+    templateName: templateName || "—",
+    templateLang: String(rec.templateLang || "es_AR"),
+    renderedBody,
+    variables,
+    buttonUrl: buttons[0] || (typeof rec.readerUrl === "string" ? rec.readerUrl : null),
+  };
 }
 
 export const WHATSAPP_CHANNEL_DISCLAIMER =

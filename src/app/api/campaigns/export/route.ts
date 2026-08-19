@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
+import { recordIssuedDocument, sha256Hex } from '@/lib/issued-documents';
 
 function formatTs(v: unknown): string {
   if (!v) return '';
@@ -194,49 +195,52 @@ export async function GET(request: NextRequest) {
         exportedAt: new Date().toISOString(),
         filter: { estado, flag },
         rows: jsonRows,
+        sha256: sha256Hex(Buffer.from(JSON.stringify(jsonRows), 'utf8')),
       });
     }
 
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          controller.enqueue(encoder.encode('\uFEFF' + csvRow(HEADER) + '\r\n'));
-          let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
-          let rowNum = 0;
-          for (;;) {
-            let q = messagesQuery(db, campaignId, estado, flag).orderBy('recipientNombre').limit(PAGE);
-            if (lastDoc) q = q.startAfter(lastDoc);
-            const pageSnap = await q.get();
-            if (pageSnap.empty) break;
-            const mailIds = pageSnap.docs
-              .map((d) => d.data().mailId as string | undefined)
-              .filter((id): id is string => !!id);
-            const mailDocs = await fetchMailDocs(db, mailIds);
-            const chunk: string[] = [];
-            for (const d of pageSnap.docs) {
-              rowNum += 1;
-              const m = d.data();
-              const mail = m.mailId ? (mailDocs.get(m.mailId) ?? {}) : {};
-              chunk.push(csvRow(rowFields(rowNum, m, mail, d.id, m.mailId)));
-            }
-            controller.enqueue(encoder.encode(chunk.join('\r\n') + '\r\n'));
-            lastDoc = pageSnap.docs[pageSnap.docs.length - 1];
-            if (pageSnap.size < PAGE) break;
-          }
-          controller.close();
-        } catch (err) {
-          console.error('GET /api/campaigns/export stream', err);
-          controller.error(err);
-        }
-      },
+    const lines: string[] = [];
+    let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+    let rowNum = 0;
+    for (;;) {
+      let q = messagesQuery(db, campaignId, estado, flag).orderBy('recipientNombre').limit(PAGE);
+      if (lastDoc) q = q.startAfter(lastDoc);
+      const pageSnap = await q.get();
+      if (pageSnap.empty) break;
+      const mailIds = pageSnap.docs
+        .map((d) => d.data().mailId as string | undefined)
+        .filter((id): id is string => !!id);
+      const mailDocs = await fetchMailDocs(db, mailIds);
+      for (const d of pageSnap.docs) {
+        rowNum += 1;
+        const m = d.data();
+        const mail = m.mailId ? (mailDocs.get(m.mailId) ?? {}) : {};
+        lines.push(csvRow(rowFields(rowNum, m, mail, d.id, m.mailId)));
+      }
+      lastDoc = pageSnap.docs[pageSnap.docs.length - 1];
+      if (pageSnap.size < PAGE) break;
+    }
+
+    const csv = '\uFEFF' + csvRow(HEADER) + '\r\n' + (lines.length ? lines.join('\r\n') + '\r\n' : '');
+    const buffer = Buffer.from(csv, 'utf8');
+    const hash = sha256Hex(buffer);
+    await recordIssuedDocument(db, {
+      hash,
+      kind: 'campaign_export',
+      campaignId,
+      orgId,
+      orgNombre: typeof campaign.orgNombre === 'string' ? campaign.orgNombre : undefined,
+      campaignNombre: String(campaign.nombre || ''),
+      fileName: filename,
     });
 
-    return new NextResponse(stream, {
+    return new NextResponse(buffer, {
       status: 200,
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename="${filename}"`,
+        'X-Notificas-SHA256': hash,
+        'X-Notificas-Export-Kind': 'campaign_export',
       },
     });
   } catch (e) {

@@ -9,6 +9,7 @@ import {
   hashWhatsAppBody,
   WHATSAPP_CHANNEL_DISCLAIMER,
 } from "@/lib/whatsapp-evidence";
+import { isRealSmtpMessageId } from "@/lib/email-delivery-label";
 
 function extractContentHashFromSendPayload(payload: string | null): string | null {
   if (!payload) return null;
@@ -128,7 +129,9 @@ export async function buildPublicEvidence(mailId: string) {
       toIso(mail.delivery?.time) ||
       toIso(mail.tracking?.sentAt) ||
       toIso(mail.createdAt),
-    smtpMessageId: snapshot?.smtp.messageId || mail.smtpMessageId || mail.delivery?.info || null,
+    smtpMessageId:
+      [snapshot?.smtp.messageId, mail.smtpMessageId, mail.delivery?.info].find(isRealSmtpMessageId) ||
+      null,
     emailBounce: mail.emailBounce || null,
     wamid: snapshot?.whatsapp.wamid || mail.whatsappMessageId || mail.tracking?.whatsappMessageId || null,
     waBodyHash: {

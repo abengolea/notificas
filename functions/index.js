@@ -42,6 +42,7 @@ const whatsappAppSecret = defineSecret('WHATSAPP_APP_SECRET');
 // Template aprobado en Meta (requerido para contactar usuarios fuera de ventana 24h)
 const whatsappTemplateName = defineString('WHATSAPP_TEMPLATE_NAME', { default: 'notificaciones_notificas' });
 const whatsappTemplateLanguage = defineString('WHATSAPP_TEMPLATE_LANGUAGE', { default: 'es_AR' });
+const whatsappWabaId = defineString('WHATSAPP_BUSINESS_ACCOUNT_ID', { default: '' });
 
 function usesNotificasDefaultTemplate(name) {
   const n = String(name || '').trim().toLowerCase();
@@ -278,6 +279,8 @@ Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@noti
           buttons: typeof buttonParameters !== 'undefined' ? buttonParameters : null,
           bodyText: payload.text?.body || null,
           readerUrl,
+          phoneNumberId,
+          wabaId: (whatsappWabaId.value() || '').trim() || null,
         },
         graphResponse: {
           messaging_product: data.messaging_product || 'whatsapp',
@@ -655,6 +658,8 @@ exports.sendEmail = onRequest(
         },
         readerUrl: readerUrlWa,
         whatsappMessageId: waOnlyId,
+        whatsappPhoneNumberId: phoneId,
+        whatsappWabaId: (whatsappWabaId.value() || '').trim() || null,
         waRequestSnapshot: waId.requestSnapshot || null,
         waGraphResponse: waId.graphResponse || null,
         source: 'whatsapp_campaign',
@@ -1040,6 +1045,8 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
                   await docRef.update({
                     waRequestSnapshot: resultWA.requestSnapshot,
                     waGraphResponse: resultWA.graphResponse || null,
+                    whatsappPhoneNumberId: phoneId,
+                    whatsappWabaId: (whatsappWabaId.value() || '').trim() || null,
                   });
                 } catch (e) {
                   console.warn('⚠️ Error guardando waRequestSnapshot:', e.message);

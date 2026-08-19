@@ -16,3 +16,12 @@ export function emailDeliveryLabel(
       return state || "Pendiente";
   }
 }
+
+/** Distingue un Message-ID SMTP real de marcas internas (p. ej. whatsapp-only). */
+export function isRealSmtpMessageId(value: unknown): boolean {
+  const s = String(value || "").trim();
+  if (!s) return false;
+  if (/^whatsapp/i.test(s)) return false;
+  if (/^(DELIVERED|SUCCESS|PENDING|ERROR)$/i.test(s)) return false;
+  return s.includes("@") || s.startsWith("<");
+}

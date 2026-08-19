@@ -5,6 +5,8 @@ import { computeContentHash } from "@/lib/certification";
 import { sha256Hex } from "@/lib/merkle";
 import { recordProviderEvent } from "@/lib/provider-events";
 import { hashWhatsAppBody } from "@/lib/whatsapp-evidence";
+import { metaAccountIdsFromSources } from "@/lib/pdf-evidence-format";
+import { isRealSmtpMessageId } from "@/lib/email-delivery-label";
 
 export type EvidenceSnapshot = {
   mailId: string;
@@ -37,6 +39,8 @@ export type EvidenceSnapshot = {
     requestSnapshot: unknown;
     bodyHash: string | null;
     wamid: string | null;
+    phoneNumberId: string | null;
+    wabaId: string | null;
   };
   smtp: {
     messageId: string | null;
@@ -146,7 +150,8 @@ export async function sealEvidenceSnapshot(mailId: string): Promise<EvidenceSnap
   const attachments = attachmentList(mail);
   const attachmentHashes = attachments.map((a) => a.hash).filter(Boolean);
   const waBodyHash = await hashWhatsAppBody(mail.waRequestSnapshot);
-  const smtpMessageId = str(mail.smtpMessageId || mail.delivery?.info || mail.tracking?.messageId);
+  const smtpCandidates = [mail.smtpMessageId, mail.delivery?.info, mail.tracking?.messageId];
+  const smtpMessageId = smtpCandidates.map(str).find(isRealSmtpMessageId) || "";
   const wamid = str(mail.whatsappMessageId || mail.tracking?.whatsappMessageId);
   const senderEmail = str(mail.senderName || mail.replyTo || mail.from);
   const senderUid = str(mail.createdBy);
@@ -172,6 +177,11 @@ export async function sealEvidenceSnapshot(mailId: string): Promise<EvidenceSnap
   });
   const snapshotHash = await sha256Hex(canonical);
 
+  const metaIds = metaAccountIdsFromSources({
+    mail,
+    requestSnapshot: mail.waRequestSnapshot,
+    envFallback: true,
+  });
   const record: Omit<EvidenceSnapshot, "sealedAt"> & { sealedAt: FirebaseFirestore.FieldValue; canonical: string } = {
     mailId,
     sealedAt: FieldValue.serverTimestamp(),
@@ -203,6 +213,8 @@ export async function sealEvidenceSnapshot(mailId: string): Promise<EvidenceSnap
       requestSnapshot: mail.waRequestSnapshot || null,
       bodyHash: waBodyHash || null,
       wamid: wamid || null,
+      phoneNumberId: metaIds.phoneNumberId,
+      wabaId: metaIds.wabaId,
     },
     smtp: {
       messageId: smtpMessageId || null,
@@ -304,7 +316,8 @@ export function overlayMailWithSnapshot(
     orgCuit: snapshot.sender.orgCuit || mail.orgCuit,
     evidenceSnapshotHash: snapshot.snapshotHash,
     whatsappMessageId: snapshot.whatsapp.wamid || mail.whatsappMessageId,
-    smtpMessageId: snapshot.smtp.messageId || mail.smtpMessageId,
+    smtpMessageId:
+      [snapshot.smtp.messageId, mail.smtpMessageId].find(isRealSmtpMessageId) || null,
     smtpAccepted: snapshot.smtp.accepted ?? mail.smtpAccepted,
     message: {
       ...liveMessage,
@@ -322,6 +335,8 @@ export function overlayMailWithSnapshot(
       waBodyHash: snapshot.whatsapp.bodyHash || liveCert.waBodyHash,
     },
     waRequestSnapshot: snapshot.whatsapp.requestSnapshot ?? mail.waRequestSnapshot,
+    whatsappPhoneNumberId: snapshot.whatsapp.phoneNumberId || mail.whatsappPhoneNumberId,
+    whatsappWabaId: snapshot.whatsapp.wabaId || mail.whatsappWabaId,
   };
 }
 

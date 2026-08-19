@@ -6,6 +6,7 @@ import QRCode from 'qrcode';
 import { computeContentHash } from './certification';
 import { POLYGON_CERT_DISPLAY_ORDER, polygonCertLabel } from './polygon-cert-labels';
 import { emailDeliveryLabel } from './email-delivery-label';
+import { formatEvidenceTimestamp, PDF_SCHEMA } from './pdf-evidence-format';
 
 interface MailMessageContent {
   html?: string;
@@ -53,6 +54,8 @@ interface MailData {
   smtpAccepted?: unknown;
   emailBounce?: unknown;
   evidenceSnapshotHash?: string;
+  whatsappPhoneNumberId?: string;
+  whatsappWabaId?: string;
   orgNombre?: string;
   orgCuit?: string;
   readerUrl?: string;
@@ -158,7 +161,7 @@ function attachmentStableId(att: MailAttachment & Record<string, unknown>, index
 }
 
 function utcStamp(d: Date): string {
-  return d.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
+  return formatEvidenceTimestamp(d);
 }
 
 export async function generateCertificatePDF(data: CertificateData): Promise<Blob> {
@@ -199,20 +202,9 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       .slice(0, 32)
   );
 
-  const toDate = (value?: any): Date | null => {
-    if (!value) return null;
-    if (value instanceof Date) return value;
-    if (typeof value === 'string') return new Date(value);
-    if (typeof value === 'number') return new Date(value);
-    if (typeof value === 'object' && typeof value.seconds === 'number') {
-      return new Date(value.seconds * 1000);
-    }
-    return null;
-  };
-
-  const formatDate = (value?: any) => {
-    const date = toDate(value);
-    return date ? utcStamp(date) : 'No disponible';
+  const formatDate = (value?: unknown) => {
+    const formatted = formatEvidenceTimestamp(value);
+    return formatted === '—' ? 'No disponible' : formatted;
   };
 
   const sanitizeHtml = (html?: string) => {
@@ -536,7 +528,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     doc.setFontSize(8.5);
     setTextColor(COLORS.textMuted);
 
-    const line1 = `Notificas.com · constancia técnica · este certificado de lectura se emite una sola vez`;
+    const line1 = `Notificas.com · constancia técnica · Formato: ${PDF_SCHEMA.certificadoLectura} · se emite una sola vez`;
     const line2 = `ID de certificado: ${messageId} · Página ${pageNumber} de ${pageCount}`;
     const maxW = contentWidth - 16;
     const lines1 = doc.splitTextToSize(line1, maxW);
@@ -750,6 +742,12 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     const wamid = mailData.whatsappMessageId || (mailData as { tracking?: { whatsappMessageId?: string } }).tracking?.whatsappMessageId;
     if (wamid) {
       techData.push({ label: 'WhatsApp Message ID (wamid)', value: String(wamid), monospace: true });
+      if (mailData.whatsappPhoneNumberId) {
+        techData.push({ label: 'Phone Number ID (Meta)', value: String(mailData.whatsappPhoneNumberId), monospace: true });
+      }
+      if (mailData.whatsappWabaId) {
+        techData.push({ label: 'WABA ID (Meta)', value: String(mailData.whatsappWabaId), monospace: true });
+      }
       techData.push({
         label: 'Alcance de WhatsApp',
         value: 'WhatsApp transportó un aviso (template de Meta) con enlace al lector. El texto intimado es el del correo y del lector, no el globo del chat.',

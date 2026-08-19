@@ -53,19 +53,43 @@ export default function CertificatesSection({
 
   const handleGenerateCertificate = async () => {
     setIsGenerating(true);
-    // Simular llamada al flujo de IA generateCertificatePdf
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // En una aplicación real, esta sería la URL de la respuesta del flujo
-    const fakePdfUrl = `/certs/certificado-${messageId}.pdf`;
-    setGeneratedPdfUrl(fakePdfUrl);
-    setIsGenerating(false);
-
-    toast({
-      title: "Certificado Generado",
-      description: "El certificado legal ha sido creado y certificado exitosamente.",
-      variant: 'default',
-    });
+    try {
+      const { auth } = await import('@/lib/firebase');
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch('/api/download-certificate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ messageId }),
+      });
+      if (!response.ok) {
+        throw new Error((await response.text()) || 'No se pudo emitir el certificado');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `certificado-lectura-${messageId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setGeneratedPdfUrl(url);
+      toast({
+        title: 'Certificado emitido',
+        description: 'Constancia técnica descargada. No se vuelve a generar con hechos posteriores.',
+      });
+    } catch (e: unknown) {
+      toast({
+        title: 'Error al emitir certificado',
+        description: e instanceof Error ? e.message : 'Falló la descarga',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleGenerateConstancia = async () => {

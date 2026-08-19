@@ -10,6 +10,9 @@ import {
 } from '@/lib/provider-events';
 import { recordIssuedDocument, sha256Hex } from '@/lib/issued-documents';
 import { campaignVerifyRef } from '@/lib/verify-hints';
+import { formatEvidenceTimestamp } from '@/lib/pdf-evidence-format';
+import { describeWhatsAppSentContent } from '@/lib/whatsapp-evidence';
+import { isRealSmtpMessageId } from '@/lib/email-delivery-label';
 
 function formatSealedAt(v: unknown): string | undefined {
   if (!v) return undefined;
@@ -117,9 +120,15 @@ export async function GET(request: NextRequest) {
       providerEvents.push(ev as Record<string, unknown>);
     }
 
+    const smtpId = isRealSmtpMessageId(snapshot?.smtp?.messageId) ? String(snapshot!.smtp.messageId) : '';
     const smtpAcceptedAt =
-      firstEventTime(providerEvents, (e) => e.provider === 'smtp' && e.eventType === 'accepted') ||
-      toIso(snapshot?.sealedAt);
+      firstEventTime(
+        providerEvents,
+        (e) =>
+          e.provider === 'smtp' &&
+          e.eventType === 'accepted' &&
+          isRealSmtpMessageId(e.providerMessageId)
+      ) || (smtpId ? toIso(snapshot?.sealedAt) : undefined);
     const emailOpenedAt =
       firstEventTime(providerEvents, (e) => e.eventType === 'email_read' || e.eventType === 'opened') ||
       toIso(evByType.email_read?.occurredAt);
@@ -139,9 +148,12 @@ export async function GET(request: NextRequest) {
       campaignId,
       campaignNombre: String(campaign.nombre || ''),
       campaignAsunto: snapshot?.subject || (typeof campaign.asunto === 'string' ? campaign.asunto : undefined),
-      generatedAt: new Date().toLocaleString('es-AR'),
+      generatedAt: formatEvidenceTimestamp(new Date()),
       messageId,
-      canal: snapshot?.channel || (typeof campaign.canal === 'string' ? campaign.canal : undefined),
+      canal:
+        (typeof campaign.canal === 'string' && campaign.canal) ||
+        snapshot?.channel ||
+        undefined,
       recipientNombre: snapshot?.recipient.nombre || '',
       recipientEmail: snapshot?.recipient.email || '',
       recipientTelefono: snapshot?.recipient.phone || '',
@@ -149,10 +161,16 @@ export async function GET(request: NextRequest) {
       recipientLegajo: snapshot?.recipient.legajo || undefined,
       asuntoPersonalizado: snapshot?.subject || '',
       cuerpoPersonalizado: snapshot?.contentText || '',
+      whatsappSent: describeWhatsAppSentContent(
+        snapshot?.whatsapp.requestSnapshot,
+        snapshot?.whatsapp.templateVariables
+      ),
       attachments: (snapshot?.attachments || []).map((a) => ({ nombre: a.fileName, hash: a.hash })),
       evidenceSealed: Boolean(snapshot),
-      smtpMessageId: snapshot?.smtp.messageId || verified.send.smtpMessageId || undefined,
+      smtpMessageId: smtpId || undefined,
       wamid: snapshot?.whatsapp.wamid || verified.send.wamid || undefined,
+      phoneNumberId: snapshot?.whatsapp.phoneNumberId || undefined,
+      wabaId: snapshot?.whatsapp.wabaId || undefined,
       chronology: {
         emailEnviadoAt: smtpAcceptedAt,
         emailLeidoAt: emailOpenedAt,
@@ -265,7 +283,7 @@ export async function GET(request: NextRequest) {
       txHash: typeof batch.txHash === 'string' ? batch.txHash : undefined,
       payload: typeof batch.payload === 'string' ? batch.payload : undefined,
       sealedAt: formatSealedAt(batch.sealedAt),
-      generatedAt: new Date().toLocaleString('es-AR'),
+      generatedAt: formatEvidenceTimestamp(new Date()),
       leaves,
       verifyRef: campaignVerifyRef('campaign_acta', campaignId, batchId),
     });

@@ -2,7 +2,8 @@ export type IssuedDocKind =
   | 'campaign_report'
   | 'campaign_acta'
   | 'campaign_acta_recipient'
-  | 'mail_certificate';
+  | 'mail_certificate'
+  | 'campaign_export';
 
 export type VerifyHints = {
   kind?: IssuedDocKind;
@@ -29,7 +30,8 @@ function asKind(raw: string): IssuedDocKind | undefined {
     raw === 'campaign_report' ||
     raw === 'campaign_acta' ||
     raw === 'campaign_acta_recipient' ||
-    raw === 'mail_certificate'
+    raw === 'mail_certificate' ||
+    raw === 'campaign_export'
   ) {
     return raw;
   }

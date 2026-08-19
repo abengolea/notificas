@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import jsPDF from "jspdf";
 import { getAdminBucket, sealEvidenceCopy } from "@/lib/firebase-admin";
+import { PDF_SCHEMA } from "@/lib/pdf-evidence-format";
 
 export type ConstanciaEnvioInput = {
   mailId: string;
@@ -28,6 +29,8 @@ export type ConstanciaEnvioInput = {
     bodyHash: string | null;
     wamid: string | null;
     templateName: string | null;
+    phoneNumberId?: string | null;
+    wabaId?: string | null;
   };
   attachments: Array<{ fileName: string; hash: string }>;
 };
@@ -119,6 +122,10 @@ export async function generateConstanciaEnvioPdf(data: ConstanciaEnvioInput): Pr
     ["WhatsApp template", data.whatsapp.templateName || "—"],
     ["Hash del pedido a Meta", data.whatsapp.bodyHash || "—"],
     ["WAMID", data.whatsapp.wamid || "—"],
+    ...(data.whatsapp.phoneNumberId
+      ? ([["Phone Number ID (Meta)", data.whatsapp.phoneNumberId]] as [string, string][])
+      : []),
+    ...(data.whatsapp.wabaId ? ([["WABA ID (Meta)", data.whatsapp.wabaId]] as [string, string][]) : []),
   ];
 
   doc.setFontSize(9);
@@ -193,7 +200,7 @@ export async function generateConstanciaEnvioPdf(data: ConstanciaEnvioInput): Pr
     doc.setFontSize(8);
     setMuted();
     doc.text(
-      `Notificas.com · constancia de envío · ${data.mailId} · pág. ${p}/${pages}`,
+      `Notificas.com · constancia de envío · Formato: ${PDF_SCHEMA.constanciaEnvio} · ${data.mailId} · pág. ${p}/${pages}`,
       pageWidth / 2,
       pageHeight - 28,
       { align: "center" }
