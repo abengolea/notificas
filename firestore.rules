@@ -225,6 +225,25 @@ service cloud.firestore {
         && isOrgMemberById(resource.data.orgId);
     }
 
+    match /wa_templates/{tplId} {
+      allow read: if signedIn() && isOrgMemberById(resource.data.orgId);
+
+      allow create: if signedIn()
+        && request.resource.data.orgId is string
+        && request.resource.data.templateName is string
+        && request.resource.data.templateVariables is list
+        && isOrgMemberById(request.resource.data.orgId);
+
+      allow update: if signedIn()
+        && resource.data.orgId is string
+        && isOrgMemberById(resource.data.orgId)
+        && request.resource.data.orgId == resource.data.orgId;
+
+      allow delete: if signedIn()
+        && resource.data.orgId is string
+        && isOrgMemberById(resource.data.orgId);
+    }
+
     function campaignContentUnchanged() {
       let r = resource.data;
       let n = request.resource.data;

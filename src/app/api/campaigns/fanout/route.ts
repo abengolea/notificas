@@ -282,12 +282,25 @@ async function processFanoutPage(
     if (existing?.estado === 'enviado' || existing?.estado === 'leido') continue;
 
     if (existing) {
+      const extraFields = {
+        recipientNombre: row.nombre || null,
+        recipientDni: row.dni || null,
+        recipientLegajo: row.legajo || null,
+        recipientDias: row.dias || null,
+        recipientFecha: row.fecha || null,
+        recipientMonto: row.monto || null,
+        recipientTelefono: row.telefono || null,
+      };
       if (existing.estado === 'error' && !resetErrorIds.has(existing.id)) {
         resetErrorIds.add(existing.id);
         batchOps.update(db.collection('campaign_messages').doc(existing.id), {
+          ...extraFields,
           estado: 'pendiente',
           errorMsg: FieldValue.delete(),
         });
+        writeCount += 1;
+      } else if (existing.estado === 'pendiente') {
+        batchOps.update(db.collection('campaign_messages').doc(existing.id), extraFields);
         writeCount += 1;
       }
       toProcess.push(existing.id);

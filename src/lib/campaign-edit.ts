@@ -29,6 +29,17 @@ export function canEditWhatsAppTemplate(data: {
 export const WA_TEMPLATE_EDIT_ERROR =
   "Solo se puede editar el template de WhatsApp si todavía no hubo envíos exitosos.";
 
+/** Mismos criterios: se puede cambiar el CSV si no hubo envíos OK (aunque haya errores). */
+export function canReplaceCampaignRecipients(data: {
+  estado?: unknown;
+  stats?: { enviados?: unknown } | null;
+}): boolean {
+  return canEditWhatsAppTemplate(data);
+}
+
+export const CSV_REPLACE_ERROR =
+  "Solo se puede cambiar el CSV si todavía no hubo envíos exitosos. Si esta campaña ya falló, reemplazá el CSV acá o copiá la campaña y subí el archivo de nuevo.";
+
 export function toDatetimeLocalValue(ts: unknown): string {
   let d: Date | null = null;
   if (!ts) return "";

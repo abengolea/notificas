@@ -58,7 +58,7 @@ import {
 import { maxRecipientsForPlan } from "@/lib/org-limits-client";
 import { assignFilesToRecipientsGreedy, scoreFileForRecipient } from "@/lib/campaign-attachment-match";
 import { uploadCampaignCsvInChunks, uploadCampaignRecipients } from "@/lib/upload-campaign-recipients";
-import { csvCamposRequeridos, csvPlaceholder, inspectCampaignCsv, parseCsvQuickResult, phoneDigits } from "@/lib/parse-campaign-csv";
+import { csvCamposRequeridos, csvContactColumns, csvPlaceholder, inspectCampaignCsv, parseCsvQuickResult, phoneDigits } from "@/lib/parse-campaign-csv";
 import { WIZARD_INLINE_LIST_MAX } from "@/lib/campaign-recipients";
 import { DEFAULT_TANDA_SIZE } from "@/lib/campaign-tanda";
 import { DailyQuotaField } from "@/components/empresa/daily-quota-field";
@@ -73,10 +73,12 @@ import { isUnsentCampaign, toDatetimeLocalValue, UNSENT_EDIT_ERROR } from "@/lib
 import {
   WA_DEFAULT_TEMPLATE_NAME,
   WA_TEMPLATE_DEFAULT_VARS,
+  csvColumnsFromWaVariables,
   isWaTemplateVarEmpty,
   usesNotificasDefaultTemplate,
 } from "@/lib/wa-template-fields";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
+import { WaSavedTemplates } from "@/components/empresa/wa-saved-templates";
 
 type WizardStepId = "canal" | "destinatarios" | "mensaje" | "whatsapp" | "confirmacion";
 
@@ -89,12 +91,21 @@ const WIZARD_STEP_LABELS: Record<WizardStepId, string> = {
 };
 
 function wizardStepIds(canal: CanalCampaign, simulated: boolean): WizardStepId[] {
-  const ids: WizardStepId[] = ["canal", "destinatarios"];
+  const ids: WizardStepId[] = ["canal"];
   if (canal === "email" || canal === "ambos") ids.push("mensaje");
   if ((canal === "whatsapp" || canal === "ambos") && !simulated) ids.push("whatsapp");
+  ids.push("destinatarios");
   ids.push("confirmacion");
   return ids;
 }
+
+const CSV_EXTRA_HELP: Record<string, { ej: string; nota: string }> = {
+  legajo: { ej: "GCL-00001", nota: "Número de expediente o cuenta" },
+  dias: { ej: "180", nota: "Días de atraso (también dias_atraso)" },
+  fecha: { ej: "14/02/26", nota: "Fecha del template de WhatsApp" },
+  monto: { ej: "130000", nota: "Monto del template de WhatsApp" },
+  area: { ej: "Legales", nota: "Área" },
+};
 
 function campaignCopyFields(
   canal: CanalCampaign,
@@ -223,6 +234,13 @@ export function CampaignWizard({
     usesDailyTanda && tandaSize > 0 ? Math.min(tandaSize, recipientTotal) : recipientTotal;
   const needsMensajeStep = canal === "email" || canal === "ambos";
   const needsWaTemplateStep = (canal === "whatsapp" || canal === "ambos") && !simulated;
+  const waCsvExtraColumns = useMemo(() => {
+    if (!needsWaTemplateStep || usesNotificasDefaultTemplate(waTemplateName)) return [];
+    return csvColumnsFromWaVariables(waTemplateVariables);
+  }, [needsWaTemplateStep, waTemplateName, waTemplateVariables]);
+  const csvExample = csvPlaceholder(canal, waCsvExtraColumns);
+  const csvRequiredLabel = csvCamposRequeridos(canal, waCsvExtraColumns);
+  const csvContactLabel = csvContactColumns(canal).join(", ");
   const stepIds = useMemo(() => wizardStepIds(canal, simulated), [canal, simulated]);
   const STEPS = stepIds.map((id) => WIZARD_STEP_LABELS[id]);
   const currentStepId = stepIds[Math.max(0, Math.min(step, stepIds.length) - 1)] ?? "canal";
@@ -438,7 +456,10 @@ export function CampaignWizard({
 
   useEffect(() => {
     if (
-      (currentStepId !== "mensaje" && currentStepId !== "whatsapp") ||
+      (currentStepId !== "mensaje" &&
+        currentStepId !== "whatsapp" &&
+        currentStepId !== "destinatarios" &&
+        currentStepId !== "confirmacion") ||
       !pairByRecipient ||
       files.length === 0 ||
       recipients.length === 0
@@ -476,7 +497,7 @@ export function CampaignWizard({
       return;
     }
 
-    void inspectCampaignCsv(file, canal).then((inspected) => {
+    void inspectCampaignCsv(file, canal, waCsvExtraColumns).then((inspected) => {
       if (inspected.error) {
         setCsvFileError(inspected.error);
         setCsvFileName(null);
@@ -501,7 +522,7 @@ export function CampaignWizard({
         if (pairByRecipient) setPairByRecipient(false);
       } else {
         void file.text().then((text) => {
-          const parsed = parseCsvQuickResult(text, canal);
+          const parsed = parseCsvQuickResult(text, canal, waCsvExtraColumns);
           if (parsed.error || parsed.rows.length === 0) {
             setRecipients([]);
             return;
@@ -520,13 +541,13 @@ export function CampaignWizard({
 
   function mergeRecipientsFromInputs(mode: "paste" | "csv") {
     if (mode === "csv") {
-      const parsed = parseCsvQuickResult(csvChunk, canal);
+      const parsed = parseCsvQuickResult(csvChunk, canal, waCsvExtraColumns);
       if (parsed.error) {
         toast({ title: "CSV inválido", description: parsed.error, variant: "destructive" });
         return;
       }
       if (parsed.rows.length === 0) {
-        toast({ title: "No se encontraron destinatarios válidos", description: `El CSV debe tener columnas: ${csvCamposRequeridos(canal)}`, variant: "destructive" });
+        toast({ title: "No se encontraron destinatarios válidos", description: `El CSV debe tener columnas: ${csvRequiredLabel}`, variant: "destructive" });
         return;
       }
       if (parsed.rows.length > WIZARD_INLINE_LIST_MAX) {
@@ -548,7 +569,7 @@ export function CampaignWizard({
     }
     const next = parseEmailsBlock(pasteEmails);
     if (next.length === 0) {
-      toast({ title: "No se encontraron destinatarios válidos", description: `El CSV debe tener columnas: ${csvCamposRequeridos(canal)}`, variant: "destructive" });
+        toast({ title: "No se encontraron emails válidos", description: "Pegá direcciones separadas por coma o salto de línea.", variant: "destructive" });
       return;
     }
     if (next.length > WIZARD_INLINE_LIST_MAX) {
@@ -1115,7 +1136,11 @@ export function CampaignWizard({
         <Card>
           <CardHeader>
             <CardTitle>¿Por qué canal enviás?</CardTitle>
-            <CardDescription>El canal determina qué campos son obligatorios en el CSV de destinatarios.</CardDescription>
+            <CardDescription>
+              {needsWaTemplateStep
+                ? "Después armás el template de WhatsApp y, al final, el CSV con las columnas que ese template pide."
+                : "El canal determina qué campos son obligatorios en el CSV de destinatarios."}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-3 gap-3">
@@ -1150,11 +1175,16 @@ export function CampaignWizard({
               ))}
             </div>
             <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
-              <p className="font-medium">Campos requeridos en el CSV:</p>
-              <p className="text-muted-foreground font-mono text-xs">{csvCamposRequeridos(canal)}<span className="not-italic text-muted-foreground/70"> + legajo (opcional)</span></p>
+              <p className="font-medium">CSV de destinatarios</p>
+              <p className="text-muted-foreground text-xs">
+                Destino (no es una variable del texto): <code className="font-mono">{csvContactLabel}</code>
+                {needsWaTemplateStep
+                  ? ". Las columnas del mensaje (fecha, monto, días…) se definen en el paso del template."
+                  : " · legajo opcional."}
+              </p>
               {(canal === "whatsapp" || canal === "ambos") && !simulated && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                  WhatsApp requiere un template aprobado por Meta. El campo <strong>telefono</strong> debe incluir código de país (+54…).
+                  <strong>telefono</strong> es a quién le llega el WhatsApp. No va en el template de Meta. Incluí código de país (+54…).
                 </p>
               )}
             </div>
@@ -1163,16 +1193,25 @@ export function CampaignWizard({
         </Card>
       )}
 
-      {/* PASO 2: Destinatarios */}
-      {step === 2 && (
+      {/* Destinatarios (después del template, para armar el CSV con las columnas correctas) */}
+      {currentStepId === "destinatarios" && (
         <Card>
           <CardHeader>
             <div className="flex items-start justify-between gap-2">
               <div>
                 <CardTitle>Destinatarios</CardTitle>
-                <CardDescription className="mt-1">
-                  Canal: <strong>{canal === "email" ? "Email" : canal === "whatsapp" ? "WhatsApp" : "Email + WhatsApp"}</strong>
-                  {" · "}Campos requeridos: <code className="text-xs">{csvCamposRequeridos(canal)}</code>
+                <CardDescription className="mt-1 space-y-1">
+                  <span className="block">
+                    Canal: <strong>{canal === "email" ? "Email" : canal === "whatsapp" ? "WhatsApp" : "Email + WhatsApp"}</strong>
+                  </span>
+                  {(canal === "whatsapp" || canal === "ambos") && (
+                    <span className="block text-xs">
+                      Destino del WhatsApp: columna <code>telefono</code> (no es un {"{{N}}"} del mensaje).
+                    </span>
+                  )}
+                  <span className="block">
+                    Encabezado: <code className="text-xs">{csvRequiredLabel}</code>
+                  </span>
                 </CardDescription>
               </div>
               <Popover>
@@ -1191,9 +1230,11 @@ export function CampaignWizard({
                       </p>
                     </div>
 
-                    {/* Columnas requeridas */}
+                    {/* Destino / identidad */}
                     <div>
-                      <p className="font-medium text-xs uppercase tracking-wide text-muted-foreground mb-1">Columnas requeridas</p>
+                      <p className="font-medium text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                        A quién se envía (no son variables del texto)
+                      </p>
                       <table className="w-full text-xs border-collapse">
                         <thead>
                           <tr className="bg-muted/50">
@@ -1203,31 +1244,58 @@ export function CampaignWizard({
                           </tr>
                         </thead>
                         <tbody>
-                          <tr className="border-t"><td className="p-1.5 font-mono">nombre</td><td className="p-1.5">Juan García</td><td className="p-1.5 text-muted-foreground">Nombre completo</td></tr>
-                          {(canal === "email" || canal === "ambos") && (
-                            <tr className="border-t"><td className="p-1.5 font-mono">email</td><td className="p-1.5">juan@ejemplo.com</td><td className="p-1.5 text-muted-foreground">Email válido</td></tr>
-                          )}
                           {(canal === "whatsapp" || canal === "ambos") && (
-                            <tr className="border-t bg-amber-50 dark:bg-amber-950/20">
+                            <tr className="border-t bg-sky-50 dark:bg-sky-950/20">
                               <td className="p-1.5 font-mono">telefono</td>
                               <td className="p-1.5">+5491112345678</td>
-                              <td className="p-1.5 text-muted-foreground">Con código de país</td>
+                              <td className="p-1.5 text-muted-foreground">Número de WhatsApp. Destino del envío, no va en el cuerpo de Meta.</td>
                             </tr>
                           )}
-                          <tr className="border-t"><td className="p-1.5 font-mono">dni</td><td className="p-1.5">30123456</td><td className="p-1.5 text-muted-foreground">Siempre requerido</td></tr>
+                          <tr className="border-t"><td className="p-1.5 font-mono">nombre</td><td className="p-1.5">Juan García</td><td className="p-1.5 text-muted-foreground">Identidad; también puede mapearse a {"{{1}}"}</td></tr>
+                          {(canal === "email" || canal === "ambos") && (
+                            <tr className="border-t"><td className="p-1.5 font-mono">email</td><td className="p-1.5">juan@ejemplo.com</td><td className="p-1.5 text-muted-foreground">Destino del correo</td></tr>
+                          )}
+                          <tr className="border-t"><td className="p-1.5 font-mono">dni</td><td className="p-1.5">30123456</td><td className="p-1.5 text-muted-foreground">Identidad; suele ir en un {"{{N}}"}</td></tr>
                         </tbody>
                       </table>
                     </div>
+
+                    {waCsvExtraColumns.length > 0 && (
+                    <div>
+                      <p className="font-medium text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                        Variables del mensaje de WhatsApp
+                      </p>
+                      <table className="w-full text-xs border-collapse">
+                        <tbody>
+                          {waCsvExtraColumns.map((col) => {
+                            const help = CSV_EXTRA_HELP[col] || { ej: "valor", nota: "Va en un {{N}} del template" };
+                            return (
+                              <tr key={col} className="border-t bg-amber-50 dark:bg-amber-950/20">
+                                <td className="p-1.5 font-mono">{col}</td>
+                                <td className="p-1.5">{help.ej}</td>
+                                <td className="p-1.5 text-muted-foreground">{help.nota}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    )}
 
                     {/* Columnas opcionales */}
                     <div>
                       <p className="font-medium text-xs uppercase tracking-wide text-muted-foreground mb-1">Columna opcional</p>
                       <table className="w-full text-xs border-collapse">
                         <tbody>
-                          <tr className="border-t"><td className="p-1.5 font-mono">legajo</td><td className="p-1.5">GCL-00001</td><td className="p-1.5 text-muted-foreground">Disponible como {"{{"+"legajo"+"}}"}</td></tr>
-                          <tr className="border-t"><td className="p-1.5 font-mono">dias</td><td className="p-1.5">180</td><td className="p-1.5 text-muted-foreground">Días de atraso (también dias_atraso)</td></tr>
-                          <tr className="border-t"><td className="p-1.5 font-mono">fecha</td><td className="p-1.5">14/02/26</td><td className="p-1.5 text-muted-foreground">Variable de template WhatsApp</td></tr>
-                          <tr className="border-t"><td className="p-1.5 font-mono">monto</td><td className="p-1.5">130000</td><td className="p-1.5 text-muted-foreground">Variable de template WhatsApp</td></tr>
+                          {(["legajo", "dias", "fecha", "monto"] as const)
+                            .filter((col) => !waCsvExtraColumns.includes(col))
+                            .map((col) => (
+                              <tr key={col} className="border-t">
+                                <td className="p-1.5 font-mono">{col}</td>
+                                <td className="p-1.5">{CSV_EXTRA_HELP[col].ej}</td>
+                                <td className="p-1.5 text-muted-foreground">{CSV_EXTRA_HELP[col].nota}</td>
+                              </tr>
+                            ))}
                         </tbody>
                       </table>
                     </div>
@@ -1254,7 +1322,7 @@ export function CampaignWizard({
                           type="button"
                           className="flex items-center gap-1 text-xs text-primary hover:underline"
                           onClick={() => {
-                            navigator.clipboard.writeText(csvPlaceholder(canal));
+                            navigator.clipboard.writeText(csvExample);
                             setCsvCopied(true);
                             setTimeout(() => setCsvCopied(false), 2000);
                           }}
@@ -1263,7 +1331,7 @@ export function CampaignWizard({
                           {csvCopied ? "Copiado" : "Copiar"}
                         </button>
                       </div>
-                      <pre className="bg-muted rounded p-2 text-xs overflow-x-auto whitespace-pre">{csvPlaceholder(canal)}</pre>
+                      <pre className="bg-muted rounded p-2 text-xs overflow-x-auto whitespace-pre">{csvExample}</pre>
                     </div>
                   </div>
                 </PopoverContent>
@@ -1271,6 +1339,17 @@ export function CampaignWizard({
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
+            {waCsvExtraColumns.length > 0 && (
+              <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/20 p-3 text-sm space-y-1">
+                <p className="font-medium text-amber-900 dark:text-amber-200">
+                  Columnas del texto de WhatsApp (además del teléfono)
+                </p>
+                <p className="font-mono text-xs text-amber-800 dark:text-amber-300">{waCsvExtraColumns.join(", ")}</p>
+                <p className="text-xs text-amber-800/80 dark:text-amber-400">
+                  <code>telefono</code> va primero: es el destino. Encabezado: <code>{csvRequiredLabel}</code>
+                </p>
+              </div>
+            )}
             {isEdit && existingRecipientCount > 0 && recipients.length === 0 && !csvFileName && (
               <div className="rounded-md border bg-muted/40 p-3 text-sm">
                 Esta campaña ya tiene <strong>{existingRecipientCount.toLocaleString("es-AR")}</strong> destinatarios.
@@ -1399,7 +1478,11 @@ export function CampaignWizard({
                       <Upload className="h-8 w-8 text-muted-foreground" />
                       <div className="space-y-0.5">
                         <p className="text-sm font-medium">Arrastrá un CSV o hacé click para subir</p>
-                        <p className="text-xs text-muted-foreground">Columnas requeridas: <code>{csvCamposRequeridos(canal)}</code></p>
+                        <p className="text-xs text-muted-foreground">
+                          {(canal === "whatsapp" || canal === "ambos")
+                            ? `Destino: telefono${waCsvExtraColumns.length ? ` · mensaje: ${waCsvExtraColumns.join(", ")}` : ""}`
+                            : `Columnas: ${csvRequiredLabel}`}
+                        </p>
                       </div>
                     </>
                   )}
@@ -1425,7 +1508,7 @@ export function CampaignWizard({
                   </summary>
                   <div className="mt-2 space-y-2">
                     <Textarea
-                      placeholder={csvPlaceholder(canal)}
+                      placeholder={csvExample}
                       value={csvChunk}
                       onChange={(e) => setCsvChunk(e.target.value)}
                       rows={6}
@@ -1448,7 +1531,7 @@ export function CampaignWizard({
               </p>
             )}
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(1)}>Atrás</Button>
+              <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
               <Button onClick={() => setStep((s) => s + 1)} disabled={!recipientTotal}>Siguiente</Button>
             </div>
           </CardContent>
@@ -1476,8 +1559,8 @@ export function CampaignWizard({
 
             {canal === "ambos" && needsWaTemplateStep && (
               <p className="text-xs text-muted-foreground rounded-md border bg-muted/40 px-3 py-2">
-                El texto de WhatsApp no se escribe acá: en el paso siguiente elegís el template de Meta y qué campo
-                del CSV va en cada {"{{N}}"}. Este cuerpo es el del correo y la vista de lectura.
+                El texto de WhatsApp no se escribe acá: en el paso siguiente elegís el template de Meta. Recién después
+                se pide el CSV, ya con las columnas de cada {"{{N}}"}. Este cuerpo es el del correo y la vista de lectura.
               </p>
             )}
 
@@ -1558,8 +1641,8 @@ export function CampaignWizard({
           <CardHeader>
             <CardTitle>Template de WhatsApp</CardTitle>
             <CardDescription>
-              Meta no deja texto libre: hay que usar un template aprobado. Mapeá cada {"{{N}}"} del cuerpo a un
-              campo del CSV (nombre, dni, días, etc.), en el mismo orden que en Business Manager.
+              Meta no deja texto libre: hay que usar un template aprobado. Mapeá cada {"{{N}}"} ahora; en el paso
+              siguiente el CSV tiene que traer esas columnas (salvo las que pongas como texto fijo).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1569,6 +1652,23 @@ export function CampaignWizard({
                 <Input value={campaniaNombre} onChange={(e) => setCampaniaNombre(e.target.value)} />
               </div>
             )}
+            <WaSavedTemplates
+              orgId={orgId}
+              mode={isAdmin ? "admin" : "empresa"}
+              current={{
+                name: waTemplateName,
+                lang: waTemplateLang,
+                variables: waTemplateVariables,
+                urlButton: waUrlButton,
+              }}
+              autoApply={!isEdit}
+              onApply={(next) => {
+                setWaTemplateName(next.name);
+                setWaTemplateLang(next.lang);
+                setWaTemplateVariables(next.variables);
+                setWaUrlButton(next.urlButton);
+              }}
+            />
             <WaTemplateFields
               idPrefix="wizard-wa"
               value={{

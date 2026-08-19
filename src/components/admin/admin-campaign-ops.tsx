@@ -31,8 +31,9 @@ import type { CanalCampaign } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { CampaignDashboard } from "@/components/empresa/campaign-dashboard";
 import { canEditWhatsAppTemplate, isUnsentCampaign } from "@/lib/campaign-edit";
-import { WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-template-fields";
+import { WA_TEMPLATE_DEFAULT_VARS, csvColumnsFromWaVariables, usesNotificasDefaultTemplate } from "@/lib/wa-template-fields";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
+import { WaSavedTemplates } from "@/components/empresa/wa-saved-templates";
 import { DailyQuotaField } from "@/components/empresa/daily-quota-field";
 
 type CampaignPayload = {
@@ -344,8 +345,11 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
   const leidoPct = stats.enviados > 0 ? Math.round((stats.leidos / stats.enviados) * 100) : 0;
   const enviadoPct = stats.total > 0 ? Math.round((stats.enviados / stats.total) * 100) : 0;
   const canSend = c.recipientCount > 0 && c.estado !== "cancelada" && c.estado !== "pausada" && thisTanda > 0;
-  const canEditContent = isUnsentCampaign(c);
+  const canReplaceCsv = canEditWhatsAppTemplate(c);
   const canEditTpl = canEditWhatsAppTemplate(c);
+  const csvExtra = usesNotificasDefaultTemplate(c.waTemplateName)
+    ? []
+    : csvColumnsFromWaVariables(c.waTemplateVariables);
   const showEmail = c.canal === "email" || c.canal === "ambos";
   const showWa = c.canal === "whatsapp" || c.canal === "ambos";
 
@@ -497,14 +501,14 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
       </Card>
       )}
 
-      {canEditContent && (
+      {canReplaceCsv && (
         <Card>
           <CardHeader>
             <CardTitle>{c.simulated ? "Destinatarios de prueba" : "Destinatarios (CSV)"}</CardTitle>
             <CardDescription>
               {c.simulated
                 ? `Generá una lista ficticia o subí un CSV. Ahora hay ${c.recipientCount.toLocaleString("es-AR")}.`
-                : `Columnas: ${csvCamposRequeridos(c.canal)}. Se sube de a 500. Ahora hay ${c.recipientCount.toLocaleString("es-AR")}.`}
+                : `Columnas: ${csvCamposRequeridos(c.canal, csvExtra)}. Se sube de a 500. Ahora hay ${c.recipientCount.toLocaleString("es-AR")}.`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -549,7 +553,16 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
                 Procesados {uploadPct.parsed.toLocaleString("es-AR")} · archivos {uploadPct.chunks} · salteados {uploadPct.skipped}
               </p>
             )}
-            <p className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">{csvPlaceholder(c.canal)}</p>
+            <p className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">{csvPlaceholder(c.canal, csvExtra)}</p>
+            <p className="text-xs text-muted-foreground">
+              <code>telefono</code> es el destino del WhatsApp, no una variable del texto.
+              {csvExtra.length > 0 ? ` El mensaje usa: ${csvExtra.join(", ")}.` : ""}
+            </p>
+            {csvExtra.length > 0 && (
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                Subí el CSV de nuevo y después reintentá los errores.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
@@ -572,6 +585,23 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
               <MessageCircle className="h-4 w-4 text-emerald-500" />
               WhatsApp
             </p>
+            <WaSavedTemplates
+              orgId={c.orgId}
+              mode="admin"
+              disabled={!canEditTpl}
+              current={{
+                name: templateName,
+                lang: templateLang,
+                variables: templateVars,
+                urlButton: templateUrlButton,
+              }}
+              onApply={(next) => {
+                setTemplateName(next.name);
+                setTemplateLang(next.lang);
+                setTemplateVars(next.variables);
+                setTemplateUrlButton(next.urlButton);
+              }}
+            />
             <WaTemplateFields
               idPrefix="admin-wa"
               disabled={!canEditTpl}

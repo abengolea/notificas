@@ -47,6 +47,7 @@ import { DailyQuotaField } from "@/components/empresa/daily-quota-field";
 import { DEFAULT_TANDA_SIZE } from "@/lib/campaign-tanda";
 import { explainWhatsAppSendError, WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-template-fields";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
+import { WaSavedTemplates } from "@/components/empresa/wa-saved-templates";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1073,6 +1074,22 @@ export function CampaignDashboard({
               </p>
               {canEditTpl ? (
                 <>
+                  <WaSavedTemplates
+                    orgId={orgId}
+                    mode={mode}
+                    current={{
+                      name: tplName,
+                      lang: tplLang,
+                      variables: tplVars,
+                      urlButton: tplUrlButton,
+                    }}
+                    onApply={(next) => {
+                      setTplName(next.name);
+                      setTplLang(next.lang);
+                      setTplVars(next.variables);
+                      setTplUrlButton(next.urlButton);
+                    }}
+                  />
                   <WaTemplateFields
                     idPrefix="dash-wa"
                     value={{

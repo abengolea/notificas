@@ -53,16 +53,49 @@ export function detectCsvSeparatorError(headerLine: string): string | null {
   return null;
 }
 
-export function csvPlaceholder(canal: CanalCampaign): string {
-  if (canal === 'whatsapp') return 'nombre,telefono,dni,legajo\nJuan García,+5491112345678,30123456,GCL-00001';
-  if (canal === 'ambos') return 'nombre,email,telefono,dni,legajo\nJuan García,juan@ejemplo.com,+5491112345678,30123456,GCL-00001';
-  return 'nombre,email,dni,legajo\nJuan García,juan@ejemplo.com,30123456,GCL-00001';
+const CSV_SAMPLE_CELL: Record<string, string> = {
+  nombre: 'Juan García',
+  email: 'juan@ejemplo.com',
+  telefono: '+5491112345678',
+  dni: '30123456',
+  legajo: 'GCL-00001',
+  dias: '180',
+  fecha: '14/02/26',
+  monto: '130000',
+  area: 'Legales',
+};
+
+export function csvBaseColumns(canal: CanalCampaign): string[] {
+  if (canal === 'whatsapp') return ['telefono', 'nombre', 'dni'];
+  if (canal === 'ambos') return ['telefono', 'nombre', 'email', 'dni'];
+  return ['nombre', 'email', 'dni'];
 }
 
-export function csvCamposRequeridos(canal: CanalCampaign): string {
-  if (canal === 'whatsapp') return 'nombre, telefono, dni';
-  if (canal === 'ambos') return 'nombre, email, telefono, dni';
-  return 'nombre, email, dni';
+/** Columnas de destino/identidad. No son {{N}} del cuerpo de Meta (salvo que el mapeo las reuse). */
+export function csvContactColumns(canal: CanalCampaign): string[] {
+  return csvBaseColumns(canal);
+}
+
+export function csvHeaderColumns(canal: CanalCampaign, extraColumns: string[] = []): string[] {
+  const base = csvBaseColumns(canal);
+  const extras = extraColumns
+    .map((c) => String(c || '').trim().toLowerCase())
+    .filter((c) => c && !base.includes(c));
+  const unique: string[] = [];
+  for (const c of extras) {
+    if (!unique.includes(c)) unique.push(c);
+  }
+  return [...base, ...unique];
+}
+
+export function csvPlaceholder(canal: CanalCampaign, extraColumns: string[] = []): string {
+  const headers = csvHeaderColumns(canal, extraColumns);
+  const row = headers.map((h) => CSV_SAMPLE_CELL[h] || 'valor');
+  return `${headers.join(',')}\n${row.join(',')}`;
+}
+
+export function csvCamposRequeridos(canal: CanalCampaign, extraColumns: string[] = []): string {
+  return csvHeaderColumns(canal, extraColumns).join(', ');
 }
 
 export type CsvColumnIndex = {
@@ -76,8 +109,18 @@ export type CsvColumnIndex = {
   iMonto: number;
 };
 
+function csvHeaderCells(headerLine: string): string[] {
+  return headerLine.split(',').map((h) =>
+    h
+      .replace(/^\uFEFF/, '')
+      .trim()
+      .toLowerCase()
+      .replace(/^"|"$/g, '')
+  );
+}
+
 export function parseCsvHeaderLine(headerLine: string, canal: CanalCampaign): CsvColumnIndex | null {
-  const headers = headerLine.split(',').map((h) => h.trim().toLowerCase().replace(/^"|"$/g, ''));
+  const headers = csvHeaderCells(headerLine);
   const iNombre = headers.indexOf('nombre');
   const iEmail = headers.indexOf('email');
   const iTelefono = headers.indexOf('telefono');
@@ -95,6 +138,22 @@ export function parseCsvHeaderLine(headerLine: string, canal: CanalCampaign): Cs
   if (needPhone && iTelefono < 0) return null;
   if (iDni < 0) return null;
   return { iNombre, iEmail, iTelefono, iDni, iLegajo, iDias, iFecha, iMonto };
+}
+
+export function missingCsvTemplateColumns(headerLine: string, extraColumns: string[] = []): string[] {
+  const headers = csvHeaderCells(headerLine);
+  return extraColumns.filter((raw) => {
+    const c = String(raw || '').trim().toLowerCase();
+    if (!c) return false;
+    if (c === 'dias') return !headers.includes('dias') && !headers.includes('dias_atraso');
+    return !headers.includes(c);
+  });
+}
+
+function csvMissingExtrasError(headerLine: string, canal: CanalCampaign, extraColumns: string[]): string | null {
+  const missing = missingCsvTemplateColumns(headerLine, extraColumns);
+  if (!missing.length) return null;
+  return `Al CSV le faltan columnas del template: ${missing.join(', ')}. Encabezado esperado: ${csvCamposRequeridos(canal, extraColumns)}`;
 }
 
 export function parseCsvDataLine(
@@ -163,7 +222,11 @@ export type CsvInspectResult = {
 };
 
 /** Recorre el CSV y cuenta filas válidas sin armar el array completo. */
-export async function inspectCampaignCsv(file: File, canal: CanalCampaign): Promise<CsvInspectResult> {
+export async function inspectCampaignCsv(
+  file: File,
+  canal: CanalCampaign,
+  extraColumns: string[] = []
+): Promise<CsvInspectResult> {
   const text = await file.text();
   const lines = text.split(/\r?\n/);
   const headerLine = lines.find((l) => l.trim()) || '';
@@ -174,11 +237,15 @@ export async function inspectCampaignCsv(file: File, canal: CanalCampaign): Prom
   const cols = parseCsvHeaderLine(headerLine, canal);
   if (!cols) {
     return {
-      error: `CSV inválido. Campos requeridos: ${csvCamposRequeridos(canal)}`,
+      error: `CSV inválido. Campos requeridos: ${csvCamposRequeridos(canal, extraColumns)}`,
       count: 0,
       skipped: 0,
       sample: [],
     };
+  }
+  const extrasErr = csvMissingExtrasError(headerLine, canal, extraColumns);
+  if (extrasErr) {
+    return { error: extrasErr, count: 0, skipped: 0, sample: [] };
   }
   const needPhone = canal === 'whatsapp' || canal === 'ambos';
   const seenPhones = new Set<string>();
@@ -221,7 +288,11 @@ export type ParseCsvQuickResult = {
   error: string | null;
 };
 
-export function parseCsvQuickResult(text: string, canal: CanalCampaign): ParseCsvQuickResult {
+export function parseCsvQuickResult(
+  text: string,
+  canal: CanalCampaign,
+  extraColumns: string[] = []
+): ParseCsvQuickResult {
   const lines = text.split(/\r?\n/).filter(Boolean);
   if (!lines.length) return { rows: [], phoneDuplicates: 0, error: null };
   const sepErr = detectCsvSeparatorError(lines[0]);
@@ -231,9 +302,11 @@ export function parseCsvQuickResult(text: string, canal: CanalCampaign): ParseCs
     return {
       rows: [],
       phoneDuplicates: 0,
-      error: `CSV inválido. Campos requeridos: ${csvCamposRequeridos(canal)}`,
+      error: `CSV inválido. Campos requeridos: ${csvCamposRequeridos(canal, extraColumns)}`,
     };
   }
+  const extrasErr = csvMissingExtrasError(lines[0], canal, extraColumns);
+  if (extrasErr) return { rows: [], phoneDuplicates: 0, error: extrasErr };
   const out: RecipientEntry[] = [];
   for (let r = 1; r < lines.length; r++) {
     const row = parseCsvDataLine(lines[r], cols, canal, r);

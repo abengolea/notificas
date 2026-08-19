@@ -235,6 +235,12 @@ async function processMessage(
     const waSync: Record<string, unknown> = {
       waTemplateLang: String(campaign.waTemplateLang || 'es_AR'),
       waUrlButton: useDefault ? false : campaign.waUrlButton === true,
+      recipientDni: row.dni || FieldValue.delete(),
+      recipientLegajo: row.legajo || FieldValue.delete(),
+      recipientDias: row.dias || FieldValue.delete(),
+      recipientFecha: row.fecha || FieldValue.delete(),
+      recipientMonto: row.monto || FieldValue.delete(),
+      recipientPhone: row.telefono || FieldValue.delete(),
     };
     if (useDefault) {
       waSync.waTemplateName = FieldValue.delete();

@@ -44,6 +44,26 @@ export async function resolveCampaignOrgAccess(
   return { ok: true, viaAdmin: false, uid: decoded!.uid, email: decoded!.email ?? null };
 }
 
+/** Admin del panel o miembro de la org (sin exigir una campaña). */
+export async function resolveOrgMemberOrAdmin(
+  request: NextRequest,
+  orgId: string
+): Promise<CampaignAccess> {
+  if (!orgId) {
+    return { ok: false, response: NextResponse.json({ error: 'orgId requerido' }, { status: 400 }) };
+  }
+  if (hasAdminSession(request)) {
+    return { ok: true, viaAdmin: true, uid: null, email: null };
+  }
+  const { decoded, errorResponse } = await verifyAuthToken(request);
+  if (errorResponse) return { ok: false, response: errorResponse };
+  const orgGate = await getOrgIfMember(decoded!.uid, orgId, decoded!.email);
+  if (!orgGate) {
+    return { ok: false, response: NextResponse.json({ error: 'No autorizado' }, { status: 403 }) };
+  }
+  return { ok: true, viaAdmin: false, uid: decoded!.uid, email: decoded!.email ?? null };
+}
+
 /** `null` = autorizado. */
 export async function requireCampaignOrgAccess(
   request: NextRequest,

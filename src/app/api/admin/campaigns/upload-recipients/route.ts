@@ -7,7 +7,7 @@ import {
   saveRecipientChunk,
 } from '@/lib/campaign-recipients-storage';
 import type { RecipientEntry } from '@/lib/types';
-import { isUnsentCampaign, UNSENT_EDIT_ERROR } from '@/lib/campaign-edit';
+import { canReplaceCampaignRecipients, CSV_REPLACE_ERROR } from '@/lib/campaign-edit';
 
 type UploadBody = {
   campaignId?: string;
@@ -35,8 +35,8 @@ export async function POST(request: NextRequest) {
     if (!campSnap.exists || String(campSnap.data()!.orgId) !== orgId) {
       return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 });
     }
-    if (!isUnsentCampaign(campSnap.data() || {})) {
-      return NextResponse.json({ error: UNSENT_EDIT_ERROR }, { status: 409 });
+    if (!canReplaceCampaignRecipients(campSnap.data() || {})) {
+      return NextResponse.json({ error: CSV_REPLACE_ERROR }, { status: 409 });
     }
 
     if (body.finalize === true) {

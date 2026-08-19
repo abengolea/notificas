@@ -249,6 +249,17 @@ export interface Campaign {
   completedAt?: unknown;
 }
 
+/** Mapeo de template Meta reutilizable por organización. */
+export interface SavedWaTemplate {
+  id: string;
+  orgId: string;
+  label: string;
+  templateName: string;
+  templateLang: string;
+  templateVariables: string[];
+  urlButton: boolean;
+}
+
 export type CanalCampaign = 'email' | 'whatsapp' | 'ambos';
 
 export interface CampaignMessage {

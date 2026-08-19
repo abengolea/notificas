@@ -48,6 +48,29 @@ export function isWaTemplateVarEmpty(field: string | undefined | null): boolean 
   return false;
 }
 
+const WA_VARS_NOT_IN_CSV = new Set([
+  "nombre",
+  "dni",
+  "telefono",
+  "email",
+  "remitente",
+  "empresa",
+  "url_lectura",
+  "boton_url",
+]);
+
+/** Columnas extra del CSV que pide el mapeo {{N}} (ignora texto fijo y campos de contacto). */
+export function csvColumnsFromWaVariables(variables: string[] | undefined | null): string[] {
+  const out: string[] = [];
+  for (const raw of variables || []) {
+    const f = String(raw || "").trim();
+    if (!f || isWaLiteralVar(f) || WA_VARS_NOT_IN_CSV.has(f)) continue;
+    const col = f === "dias_atraso" ? "dias" : f;
+    if (!out.includes(col)) out.push(col);
+  }
+  return out;
+}
+
 export const WA_TEMPLATE_MAX_VARS = 10;
 
 /** Template aprobado de Notificas: {{1}} nombre, {{2}} remitente, {{3}} link de lectura. */
@@ -64,7 +87,7 @@ export function usesNotificasDefaultTemplate(name: string | undefined | null): b
 }
 
 export const WA_TEMPLATE_HINT =
-  "Agregá una fila por cada {{N}} del cuerpo en Meta, en el mismo orden. Un template de 5 variables necesita 5 filas. Un campo vacío hace fallar el envío con error 131008. Si el dato no está en el CSV, usá «texto fijo» (ej. una fecha igual para todos).";
+  "Agregá una fila por cada {{N}} del cuerpo en Meta, en el mismo orden. En el paso Destinatarios el CSV tiene que traer esas columnas. Si un dato es igual para todos, usá «texto fijo» y no hace falta la columna.";}
 
 export const WA_DEFAULT_TEMPLATE_HINT =
   "Si no elegís otro template, se usa notificaciones_notificas. El sistema completa {{1}} nombre, {{2}} remitente y {{3}} el mismo lector de la notificación que el correo.";
@@ -73,7 +96,7 @@ export function explainWhatsAppSendError(raw: string | undefined | null): string
   const t = String(raw || "");
   if (!t) return null;
   if (t.includes("131008") || /required parameter is missing/i.test(t)) {
-    return "Meta rechazó el template: falta un parámetro o llegó vacío. Suele ser (1) más o menos {{N}} que en Meta, (2) un dato vacío (legajo, DNI, días), o (3) el template tiene botón URL y no está activado acá. Ajustá el template en Mensaje y reintentá.";
+    return "Meta rechazó el template: falta un parámetro o llegó vacío. Suele ser (1) más o menos {{N}} que en Meta, (2) un dato vacío (legajo, DNI, días, fecha, monto), o (3) el template tiene botón URL y no está activado acá. Ajustá el template de WhatsApp y reintentá.";
   }
   return null;
 }
