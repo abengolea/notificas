@@ -156,10 +156,12 @@ export interface RecipientEntry {
   legajo?: string;
   telefono?: string;
   area?: string;
-  /** Días de atraso (variable de template WA, p. ej. GOcuotas). */
+  /** Días de atraso (variable de template WA). */
   dias?: string;
   fecha?: string;
   monto?: string;
+  /** Cantidad de cuotas (p. ej. template deuda GOcuotas {{5}}). */
+  cuotas?: string;
 }
 
 export interface RecipientList {
@@ -275,6 +277,7 @@ export interface CampaignMessage {
   recipientDias?: string;
   recipientFecha?: string;
   recipientMonto?: string;
+  recipientCuotas?: string;
   // Estado unificado (para campañas single-canal o compatibilidad legacy)
   estado: 'pendiente' | 'enviado' | 'leido' | 'error';
   enviadoAt?: unknown;

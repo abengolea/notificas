@@ -83,6 +83,7 @@ async function recordSendIntegrity(params: {
         dias: String(mail.recipientDias || ''),
         fecha: String(mail.recipientFecha || ''),
         monto: String(mail.recipientMonto || ''),
+        cuotas: String(mail.recipientCuotas || ''),
         email: params.email,
         telefono: params.phone,
       }
@@ -146,6 +147,7 @@ async function processMessage(
     dias: msg.recipientDias || undefined,
     fecha: msg.recipientFecha || undefined,
     monto: msg.recipientMonto || undefined,
+    cuotas: msg.recipientCuotas || undefined,
   };
 
   const senderEmail = String(campaign.senderEmail || campaign.createdBy || 'contacto@notificas.com');
@@ -200,6 +202,7 @@ async function processMessage(
           recipientDias: row.dias || undefined,
           recipientFecha: row.fecha || undefined,
           recipientMonto: row.monto || undefined,
+          recipientCuotas: row.cuotas || undefined,
           createdBy: uid,
           campaignId,
           campaignMessageId: messageDocId,
@@ -243,6 +246,7 @@ async function processMessage(
       recipientDias: row.dias || FieldValue.delete(),
       recipientFecha: row.fecha || FieldValue.delete(),
       recipientMonto: row.monto || FieldValue.delete(),
+      recipientCuotas: row.cuotas || FieldValue.delete(),
       recipientPhone: row.telefono || FieldValue.delete(),
     };
     if (useDefault) {

@@ -62,6 +62,7 @@ const CSV_SAMPLE_CELL: Record<string, string> = {
   dias: '180',
   fecha: '14/02/26',
   monto: '130000',
+  cuotas: '7',
   area: 'Legales',
 };
 
@@ -107,6 +108,7 @@ export type CsvColumnIndex = {
   iDias: number;
   iFecha: number;
   iMonto: number;
+  iCuotas: number;
 };
 
 function csvHeaderCells(headerLine: string): string[] {
@@ -131,13 +133,14 @@ export function parseCsvHeaderLine(headerLine: string, canal: CanalCampaign): Cs
     : headers.indexOf('dias');
   const iFecha = headers.indexOf('fecha');
   const iMonto = headers.indexOf('monto');
+  const iCuotas = headers.indexOf('cuotas');
   const needEmail = canal === 'email' || canal === 'ambos';
   const needPhone = canal === 'whatsapp' || canal === 'ambos';
   if (iNombre < 0) return null;
   if (needEmail && iEmail < 0) return null;
   if (needPhone && iTelefono < 0) return null;
   if (iDni < 0) return null;
-  return { iNombre, iEmail, iTelefono, iDni, iLegajo, iDias, iFecha, iMonto };
+  return { iNombre, iEmail, iTelefono, iDni, iLegajo, iDias, iFecha, iMonto, iCuotas };
 }
 
 export function missingCsvTemplateColumns(headerLine: string, extraColumns: string[] = []): string[] {
@@ -172,6 +175,7 @@ export function parseCsvDataLine(
   const dias = cols.iDias >= 0 ? cells[cols.iDias] || undefined : undefined;
   const fecha = cols.iFecha >= 0 ? cells[cols.iFecha] || undefined : undefined;
   const monto = cols.iMonto >= 0 ? cells[cols.iMonto] || undefined : undefined;
+  const cuotas = cols.iCuotas >= 0 ? cells[cols.iCuotas] || undefined : undefined;
   const needEmail = canal === 'email' || canal === 'ambos';
   const needPhone = canal === 'whatsapp' || canal === 'ambos';
   if (!nombre || !dni) return null;
@@ -186,6 +190,7 @@ export function parseCsvDataLine(
     ...(dias ? { dias } : {}),
     ...(fecha ? { fecha } : {}),
     ...(monto ? { monto } : {}),
+    ...(cuotas ? { cuotas } : {}),
   };
 }
 

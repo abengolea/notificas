@@ -43,6 +43,7 @@ export function recipientWhatsAppVars(
     dias?: string;
     fecha?: string;
     monto?: string;
+    cuotas?: string;
     email?: string;
     telefono?: string;
   }
@@ -57,6 +58,7 @@ export function recipientWhatsAppVars(
     dias: row.dias || "",
     fecha: row.fecha || "",
     monto: row.monto || "",
+    cuotas: row.cuotas || "",
     email: row.email || "",
     telefono: row.telefono || "",
   };

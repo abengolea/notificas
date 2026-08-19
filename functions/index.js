@@ -155,6 +155,7 @@ function resolveWhatsAppTemplateValue(field, rd, recipientName, toPhone, readerU
     case 'dias_atraso':  return rd.dias || rd.dias_atraso || '';
     case 'fecha':        return rd.fecha || '';
     case 'monto':        return rd.monto || '';
+    case 'cuotas':       return rd.cuotas || '';
     case 'remitente':
     case 'empresa':      return senderName || '';
     case 'url_lectura':
@@ -724,6 +725,7 @@ exports.sendEmail = onRequest(
           dias: emailData.recipientDias,
           fecha: emailData.recipientFecha,
           monto: emailData.recipientMonto,
+          cuotas: emailData.recipientCuotas,
         },
       });
       const waErr = whatsappErrorMessage(waId);
@@ -1127,6 +1129,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
                 dias: emailData.recipientDias || '',
                 fecha: emailData.recipientFecha || '',
                 monto: emailData.recipientMonto || '',
+                cuotas: emailData.recipientCuotas || '',
               },
             });
             const waResultId = whatsappResultId(resultWA);

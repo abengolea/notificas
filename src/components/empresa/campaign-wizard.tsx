@@ -104,6 +104,7 @@ const CSV_EXTRA_HELP: Record<string, { ej: string; nota: string }> = {
   dias: { ej: "180", nota: "Días de atraso (también dias_atraso)" },
   fecha: { ej: "14/02/26", nota: "Fecha del template de WhatsApp" },
   monto: { ej: "130000", nota: "Monto del template de WhatsApp" },
+  cuotas: { ej: "7", nota: "Cantidad de cuotas (no confundir con días de atraso)" },
   area: { ej: "Legales", nota: "Área" },
 };
 
@@ -132,6 +133,7 @@ function cleanRecipientForUpload(r: RecipientEntry): RecipientEntry {
   if (r.dias) clean.dias = r.dias;
   if (r.fecha) clean.fecha = r.fecha;
   if (r.monto) clean.monto = r.monto;
+  if (r.cuotas) clean.cuotas = r.cuotas;
   if (r.area) clean.area = r.area;
   return clean;
 }
@@ -1290,7 +1292,7 @@ export function CampaignWizard({
                       <p className="font-medium text-xs uppercase tracking-wide text-muted-foreground mb-1">Columna opcional</p>
                       <table className="w-full text-xs border-collapse">
                         <tbody>
-                          {(["legajo", "dias", "fecha", "monto"] as const)
+                          {(["legajo", "dias", "fecha", "monto", "cuotas"] as const)
                             .filter((col) => !waCsvExtraColumns.includes(col))
                             .map((col) => (
                               <tr key={col} className="border-t">

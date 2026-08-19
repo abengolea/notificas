@@ -29,6 +29,7 @@ export type CreateMailAdminParams = {
   recipientDias?: string;
   recipientFecha?: string;
   recipientMonto?: string;
+  recipientCuotas?: string;
   senderName?: string;
   createdBy: string;
   campaignId?: string;
@@ -64,6 +65,7 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
     recipientDias,
     recipientFecha,
     recipientMonto,
+    recipientCuotas,
     senderName,
     createdBy,
     campaignId,
@@ -117,6 +119,7 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
   if (recipientDias) payload.recipientDias = recipientDias;
   if (recipientFecha) payload.recipientFecha = recipientFecha;
   if (recipientMonto) payload.recipientMonto = recipientMonto;
+  if (recipientCuotas) payload.recipientCuotas = recipientCuotas;
   if (waTemplateName) payload.waTemplateName = waTemplateName;
   if (waTemplateLang) payload.waTemplateLang = waTemplateLang;
   if (waTemplateVariables) payload.waTemplateVariables = waTemplateVariables;

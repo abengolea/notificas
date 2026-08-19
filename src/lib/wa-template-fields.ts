@@ -15,6 +15,7 @@ export const WA_TEMPLATE_VARIABLE_OPTIONS = [
   { value: "dias", label: "días de atraso" },
   { value: "fecha", label: "fecha" },
   { value: "monto", label: "monto" },
+  { value: "cuotas", label: "cuotas" },
   { value: "area", label: "área" },
   { value: "remitente", label: "remitente (empresa)" },
   { value: "url_lectura", label: "link del lector (mismo que el correo)" },

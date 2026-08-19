@@ -289,6 +289,7 @@ async function processFanoutPage(
         recipientDias: row.dias || null,
         recipientFecha: row.fecha || null,
         recipientMonto: row.monto || null,
+        recipientCuotas: row.cuotas || null,
         recipientTelefono: row.telefono || null,
       };
       if (existing.estado === 'error' && !resetErrorIds.has(existing.id)) {
@@ -316,6 +317,7 @@ async function processFanoutPage(
         recipientDias: row.dias || null,
         recipientFecha: row.fecha || null,
         recipientMonto: row.monto || null,
+        recipientCuotas: row.cuotas || null,
         recipientTelefono: row.telefono || null,
         estado: 'pendiente',
         creditApplied: false,
