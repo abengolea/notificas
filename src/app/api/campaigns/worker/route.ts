@@ -18,6 +18,7 @@ import { recipientWhatsAppVars, sealCampaignWhatsAppTemplate } from '@/lib/wa-te
 import { usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
 import { maybeCompleteCampaign } from '@/lib/campaign-complete';
 import { completeSimulatedSend, isCampaignSimulated } from '@/lib/campaign-simulate';
+import { presentRecipientValue, recipientValueText } from '@/lib/parse-campaign-csv';
 import type { CampaignAttachment, RecipientEntry } from '@/lib/types';
 
 class WorkerRetryError extends Error {
@@ -83,7 +84,7 @@ async function recordSendIntegrity(params: {
         dias: String(mail.recipientDias || ''),
         fecha: String(mail.recipientFecha || ''),
         monto: String(mail.recipientMonto || ''),
-        cuotas: String(mail.recipientCuotas || ''),
+        cuotas: presentRecipientValue(mail.recipientCuotas) ? recipientValueText(mail.recipientCuotas) : '',
         email: params.email,
         telefono: params.phone,
       }
@@ -147,7 +148,7 @@ async function processMessage(
     dias: msg.recipientDias || undefined,
     fecha: msg.recipientFecha || undefined,
     monto: msg.recipientMonto || undefined,
-    cuotas: msg.recipientCuotas || undefined,
+    cuotas: presentRecipientValue(msg.recipientCuotas) ? recipientValueText(msg.recipientCuotas) : undefined,
   };
 
   const senderEmail = String(campaign.senderEmail || campaign.createdBy || 'contacto@notificas.com');
@@ -202,7 +203,7 @@ async function processMessage(
           recipientDias: row.dias || undefined,
           recipientFecha: row.fecha || undefined,
           recipientMonto: row.monto || undefined,
-          recipientCuotas: row.cuotas || undefined,
+          recipientCuotas: presentRecipientValue(row.cuotas) ? recipientValueText(row.cuotas) : undefined,
           createdBy: uid,
           campaignId,
           campaignMessageId: messageDocId,
@@ -246,7 +247,7 @@ async function processMessage(
       recipientDias: row.dias || FieldValue.delete(),
       recipientFecha: row.fecha || FieldValue.delete(),
       recipientMonto: row.monto || FieldValue.delete(),
-      recipientCuotas: row.cuotas || FieldValue.delete(),
+      recipientCuotas: presentRecipientValue(row.cuotas) ? recipientValueText(row.cuotas) : FieldValue.delete(),
       recipientPhone: row.telefono || FieldValue.delete(),
     };
     if (useDefault) {

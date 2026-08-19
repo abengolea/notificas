@@ -58,7 +58,7 @@ import {
 import { maxRecipientsForPlan } from "@/lib/org-limits-client";
 import { assignFilesToRecipientsGreedy, scoreFileForRecipient } from "@/lib/campaign-attachment-match";
 import { uploadCampaignCsvInChunks, uploadCampaignRecipients } from "@/lib/upload-campaign-recipients";
-import { csvCamposRequeridos, csvContactColumns, csvPlaceholder, inspectCampaignCsv, parseCsvQuickResult, phoneDigits } from "@/lib/parse-campaign-csv";
+import { csvCamposRequeridos, csvContactColumns, csvPlaceholder, inspectCampaignCsv, parseCsvQuickResult, phoneDigits, presentRecipientValue, recipientValueText } from "@/lib/parse-campaign-csv";
 import { WIZARD_INLINE_LIST_MAX } from "@/lib/campaign-recipients";
 import { DEFAULT_TANDA_SIZE } from "@/lib/campaign-tanda";
 import { DailyQuotaField } from "@/components/empresa/daily-quota-field";
@@ -133,7 +133,7 @@ function cleanRecipientForUpload(r: RecipientEntry): RecipientEntry {
   if (r.dias) clean.dias = r.dias;
   if (r.fecha) clean.fecha = r.fecha;
   if (r.monto) clean.monto = r.monto;
-  if (r.cuotas) clean.cuotas = r.cuotas;
+  if (presentRecipientValue(r.cuotas)) clean.cuotas = recipientValueText(r.cuotas);
   if (r.area) clean.area = r.area;
   return clean;
 }

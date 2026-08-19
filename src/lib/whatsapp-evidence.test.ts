@@ -109,3 +109,29 @@ test("hash v2 lacrado incluye el globo y no el readerUrl interno", () => {
   assert.equal(s.includes(globo), true);
   assert.equal(s.includes("linkRedirect"), false);
 });
+
+test("acta: {{5}} cuotas 1 y globo con 1 cuota(s)", () => {
+  const globo =
+    "correspondiente a 1 cuota(s) vencida(s) e impaga(s)";
+  const d = describeWhatsAppSentContent(
+    {
+      templateName: "notificacion_deuda_180_dias",
+      templateLang: "es_AR",
+      parameters: [
+        { text: "Adrian Bengolea" },
+        { text: "25715970" },
+        { text: "14/02/26" },
+        { text: "130000" },
+        { text: "1" },
+      ],
+      renderedBody: `Hola Adrian Bengolea. ${globo}`,
+      sentButtons: [],
+    },
+    ["nombre", "dni", "fecha", "monto", "cuotas"]
+  );
+  assert.ok(d);
+  assert.equal(d!.variables[4].n, 5);
+  assert.equal(d!.variables[4].field, "cuotas");
+  assert.equal(d!.variables[4].value, "1");
+  assert.match(d!.renderedBody || "", /correspondiente a 1 cuota\(s\) vencida\(s\) e impaga\(s\)/);
+});

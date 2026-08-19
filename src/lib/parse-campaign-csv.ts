@@ -12,6 +12,24 @@ export function phoneDigits(raw: string | undefined): string {
   return (raw || '').replace(/\D/g, '');
 }
 
+/** true si puede ir a Meta: incluye "0"; no incluye undefined, null ni "". */
+export function presentRecipientValue(v: unknown): boolean {
+  if (v === undefined || v === null) return false;
+  return String(v).trim() !== '';
+}
+
+export function recipientValueText(v: unknown): string {
+  if (!presentRecipientValue(v)) return '';
+  return String(v).trim();
+}
+
+const CSV_IDENTITY_HEADERS = new Set(['nombre', 'email', 'telefono', 'dni', 'legajo']);
+
+function csvCellText(raw: string | undefined): string | undefined {
+  const t = recipientValueText(raw);
+  return t === '' ? undefined : t;
+}
+
 /**
  * Normaliza un teléfono argentino a E.164 con `+` (ej. +5491112345678).
  *
@@ -100,6 +118,7 @@ export function csvCamposRequeridos(canal: CanalCampaign, extraColumns: string[]
 }
 
 export type CsvColumnIndex = {
+  headers: string[];
   iNombre: number;
   iEmail: number;
   iTelefono: number;
@@ -140,7 +159,7 @@ export function parseCsvHeaderLine(headerLine: string, canal: CanalCampaign): Cs
   if (needEmail && iEmail < 0) return null;
   if (needPhone && iTelefono < 0) return null;
   if (iDni < 0) return null;
-  return { iNombre, iEmail, iTelefono, iDni, iLegajo, iDias, iFecha, iMonto, iCuotas };
+  return { headers, iNombre, iEmail, iTelefono, iDni, iLegajo, iDias, iFecha, iMonto, iCuotas };
 }
 
 export function missingCsvTemplateColumns(headerLine: string, extraColumns: string[] = []): string[] {
@@ -170,28 +189,47 @@ export function parseCsvDataLine(
   const email = cols.iEmail >= 0 ? (cells[cols.iEmail] || '').toLowerCase() : `sin-email-${rowNumber}@wa.internal`;
   const rawPhone = cols.iTelefono >= 0 ? cells[cols.iTelefono] || undefined : undefined;
   const telefono = rawPhone ? toWhatsAppPhone(rawPhone) : undefined;
-  const dni = cols.iDni >= 0 ? cells[cols.iDni] || undefined : undefined;
-  const legajo = cols.iLegajo >= 0 ? cells[cols.iLegajo] || undefined : undefined;
-  const dias = cols.iDias >= 0 ? cells[cols.iDias] || undefined : undefined;
-  const fecha = cols.iFecha >= 0 ? cells[cols.iFecha] || undefined : undefined;
-  const monto = cols.iMonto >= 0 ? cells[cols.iMonto] || undefined : undefined;
-  const cuotas = cols.iCuotas >= 0 ? cells[cols.iCuotas] || undefined : undefined;
+  const dni = csvCellText(cols.iDni >= 0 ? cells[cols.iDni] : undefined);
+  const legajo = csvCellText(cols.iLegajo >= 0 ? cells[cols.iLegajo] : undefined);
   const needEmail = canal === 'email' || canal === 'ambos';
   const needPhone = canal === 'whatsapp' || canal === 'ambos';
   if (!nombre || !dni) return null;
   if (needEmail && !email.includes('@')) return null;
   if (needPhone && !telefono) return null;
-  return {
+  const row: RecipientEntry = {
     email,
     nombre,
     telefono,
     dni,
     legajo,
-    ...(dias ? { dias } : {}),
-    ...(fecha ? { fecha } : {}),
-    ...(monto ? { monto } : {}),
-    ...(cuotas ? { cuotas } : {}),
   };
+  const headers = Array.isArray(cols.headers) ? cols.headers : [];
+  for (let i = 0; i < headers.length; i++) {
+    const rawHeader = headers[i];
+    if (!rawHeader) continue;
+    const key = rawHeader === 'dias_atraso' ? 'dias' : rawHeader;
+    if (CSV_IDENTITY_HEADERS.has(key)) continue;
+    const v = csvCellText(cells[i]);
+    if (v === undefined) continue;
+    (row as RecipientEntry & Record<string, string>)[key] = v;
+  }
+  if (!presentRecipientValue(row.dias)) {
+    const dias = csvCellText(cols.iDias >= 0 ? cells[cols.iDias] : undefined);
+    if (dias) row.dias = dias;
+  }
+  if (!presentRecipientValue(row.fecha)) {
+    const fecha = csvCellText(cols.iFecha >= 0 ? cells[cols.iFecha] : undefined);
+    if (fecha) row.fecha = fecha;
+  }
+  if (!presentRecipientValue(row.monto)) {
+    const monto = csvCellText(cols.iMonto >= 0 ? cells[cols.iMonto] : undefined);
+    if (monto) row.monto = monto;
+  }
+  if (!presentRecipientValue(row.cuotas)) {
+    const cuotas = csvCellText(typeof cols.iCuotas === 'number' && cols.iCuotas >= 0 ? cells[cols.iCuotas] : undefined);
+    if (cuotas) row.cuotas = cuotas;
+  }
+  return row;
 }
 
 export function dedupeRecipientsForCanal(

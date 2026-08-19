@@ -1,6 +1,7 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb } from '@/lib/firebase-admin';
 import type { CampaignAttachment } from '@/lib/types';
+import { presentRecipientValue, recipientValueText } from '@/lib/parse-campaign-csv';
 
 function normalizeEmailList(value?: string | string[]) {
   const arr = Array.isArray(value) ? value : value ? [value] : [];
@@ -119,7 +120,7 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
   if (recipientDias) payload.recipientDias = recipientDias;
   if (recipientFecha) payload.recipientFecha = recipientFecha;
   if (recipientMonto) payload.recipientMonto = recipientMonto;
-  if (recipientCuotas) payload.recipientCuotas = recipientCuotas;
+  if (presentRecipientValue(recipientCuotas)) payload.recipientCuotas = recipientValueText(recipientCuotas);
   if (waTemplateName) payload.waTemplateName = waTemplateName;
   if (waTemplateLang) payload.waTemplateLang = waTemplateLang;
   if (waTemplateVariables) payload.waTemplateVariables = waTemplateVariables;

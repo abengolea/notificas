@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { sha256Hex } from "@/lib/merkle";
 import { WA_DEFAULT_TEMPLATE_NAME, WA_TEMPLATE_DEFAULT_VARS, isWaLiteralVar, usesNotificasDefaultTemplate, waLiteralText } from "@/lib/wa-template-fields";
+import { recipientValueText } from "@/lib/parse-campaign-csv";
 
 export type WhatsAppTemplateSeal = {
   hash: string;
@@ -58,7 +59,7 @@ export function recipientWhatsAppVars(
     dias: row.dias || "",
     fecha: row.fecha || "",
     monto: row.monto || "",
-    cuotas: row.cuotas || "",
+    cuotas: recipientValueText(row.cuotas),
     email: row.email || "",
     telefono: row.telefono || "",
   };

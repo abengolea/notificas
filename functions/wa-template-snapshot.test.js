@@ -140,3 +140,31 @@ test('fallback del template default Notificas si Graph no responde', () => {
 test('fillPlaceholders deja {{n}} si falta el valor', () => {
   assert.equal(fillPlaceholders('A {{1}} B {{2}}', ['x']), 'A x B {{2}}');
 });
+
+test('notificacion_deuda_180_dias: {{5}}=1 en el globo (cuotas, no días)', () => {
+  const body =
+    'Hola {{1}}, DNI {{2}}. Deuda desde {{3}} por ${{4}} correspondiente a {{5}} cuota(s) vencida(s) e impaga(s).';
+  const ev = buildWhatsAppTemplateEvidence({
+    metaTemplate: {
+      id: 'tpl_deuda',
+      name: 'notificacion_deuda_180_dias',
+      language: 'es_AR',
+      components: [{ type: 'BODY', text: body }],
+    },
+    templateName: 'notificacion_deuda_180_dias',
+    templateLang: 'es_AR',
+    bodyParameters: [
+      { type: 'text', text: 'Adrian Bengolea' },
+      { type: 'text', text: '25715970' },
+      { type: 'text', text: '14/02/26' },
+      { type: 'text', text: '130000' },
+      { type: 'text', text: '1' },
+    ],
+    buttonParameters: null,
+    requestIncludedUrlButton: false,
+  });
+  assert.equal(
+    ev.renderedBody,
+    'Hola Adrian Bengolea, DNI 25715970. Deuda desde 14/02/26 por $130000 correspondiente a 1 cuota(s) vencida(s) e impaga(s).'
+  );
+});

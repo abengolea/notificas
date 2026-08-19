@@ -14,6 +14,7 @@ const {
   buildWhatsAppTemplateEvidence,
   pickApprovedTemplate,
 } = require('./wa-template-snapshot');
+const { asWaText, buildWhatsAppBodyParameters } = require('./wa-template-vars');
 const {
   looksLikeBouncePayload,
   applyEmailBounce,
@@ -131,39 +132,6 @@ function formatWhatsAppSenderDisplay(senderName, fromEmail) {
  * @param {string[]|null} opts.templateVariables - campos del destinatario en orden: ['nombre','dni',...]
  * @param {object} opts.recipientData      - datos del destinatario para resolver variables
  */
-function isWaLiteralField(field) {
-  const f = String(field || '').trim();
-  if (!f) return false;
-  if (f.startsWith('=')) return true;
-  return !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(f);
-}
-
-function waLiteralText(field) {
-  const f = String(field || '');
-  return f.startsWith('=') ? f.slice(1) : f;
-}
-
-function resolveWhatsAppTemplateValue(field, rd, recipientName, toPhone, readerUrl, senderName) {
-  if (isWaLiteralField(field)) return waLiteralText(field);
-  switch (field) {
-    case 'nombre':       return rd.nombre || recipientName || '';
-    case 'dni':          return rd.dni || '';
-    case 'legajo':       return rd.legajo || '';
-    case 'email':        return rd.email || '';
-    case 'telefono':     return rd.telefono || toPhone || '';
-    case 'dias':
-    case 'dias_atraso':  return rd.dias || rd.dias_atraso || '';
-    case 'fecha':        return rd.fecha || '';
-    case 'monto':        return rd.monto || '';
-    case 'cuotas':       return rd.cuotas || '';
-    case 'remitente':
-    case 'empresa':      return senderName || '';
-    case 'url_lectura':
-    case 'boton_url':    return readerUrl;
-    default:             return rd[field] || '';
-  }
-}
-
 function readerUrlButtonSuffix(readerUrl) {
   try {
     const u = new URL(readerUrl);
@@ -220,36 +188,18 @@ async function sendWhatsAppNotification({ accessToken, phoneNumberId, templateNa
   if (templateName) {
     // Resolver variables del template según campaignTemplateVariables
     // Si hay templateVariables custom, usarlas; si no, fallback a [destinatario, remitente, url]
-    const rd = recipientData || {};
-    // Array (aunque vacío) = mapping explícito de la campaña. null/undefined = fallback legacy.
-    const hasCustomVars = Array.isArray(templateVariables);
-    const bodyFields = hasCustomVars
-      ? templateVariables.filter((field) => !(urlButton && (field === 'url_lectura' || field === 'boton_url')))
-      : null;
-    if (bodyFields) {
-      parameters = bodyFields.map((field) => ({
-        type: 'text',
-        text: String(resolveWhatsAppTemplateValue(field, rd, recipientName, toPhone, readerUrl, senderName)).substring(0, 1024),
-      }));
-    } else if (!urlButton) {
-      // Fallback legacy: {{1}} destinatario, {{2}} remitente, {{3}} url
-      parameters = [
-        { type: 'text', text: recipientName.substring(0, 50) },
-        { type: 'text', text: senderName.substring(0, 50) },
-        { type: 'text', text: readerUrl },
-      ];
-    } else {
-      parameters = [];
-    }
-    const emptyParam = parameters.findIndex((p) => !String(p.text || '').trim());
-    if (emptyParam >= 0) {
-      const fieldLabel = bodyFields ? bodyFields[emptyParam] : ['nombre', 'remitente', 'url'][emptyParam];
-      return {
-        error: {
-          code: 131008,
-          message: `(#131008) Variable {{${emptyParam + 1}}} (${fieldLabel || 'texto'}) está vacía. Meta no acepta parámetros vacíos. Quitá esa variable o completá el dato del destinatario.`,
-        },
-      };
+    const built = buildWhatsAppBodyParameters({
+      templateVariables,
+      urlButton,
+      recipientData,
+      recipientName,
+      toPhone,
+      readerUrl,
+      senderName,
+    });
+    parameters = built.parameters;
+    if (built.error) {
+      return { error: built.error };
     }
     const components = [];
     if (parameters.length > 0) {
@@ -725,7 +675,7 @@ exports.sendEmail = onRequest(
           dias: emailData.recipientDias,
           fecha: emailData.recipientFecha,
           monto: emailData.recipientMonto,
-          cuotas: emailData.recipientCuotas,
+          cuotas: asWaText(emailData.recipientCuotas),
         },
       });
       const waErr = whatsappErrorMessage(waId);
@@ -1129,7 +1079,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
                 dias: emailData.recipientDias || '',
                 fecha: emailData.recipientFecha || '',
                 monto: emailData.recipientMonto || '',
-                cuotas: emailData.recipientCuotas || '',
+                cuotas: asWaText(emailData.recipientCuotas),
               },
             });
             const waResultId = whatsappResultId(resultWA);

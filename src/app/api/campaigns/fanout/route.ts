@@ -6,7 +6,7 @@ import { scheduleNextDailySend, campaignIsStopped } from '@/lib/campaign-daily';
 import { ensureSendBatch, resolveOpenSendBatchId, tandaIndexFromOffset } from '@/lib/campaign-integrity';
 import { sealCampaignWhatsAppTemplate } from '@/lib/wa-template-seal';
 import { RECIPIENT_CHUNK_SIZE } from '@/lib/campaign-recipients';
-import { isSyntheticCampaignEmail, phoneDigits } from '@/lib/parse-campaign-csv';
+import { isSyntheticCampaignEmail, phoneDigits, presentRecipientValue, recipientValueText } from '@/lib/parse-campaign-csv';
 import type { RecipientEntry } from '@/lib/types';
 
 // Destinatarios que procesa cada invocación del fanout (un archivo de Storage).
@@ -289,7 +289,7 @@ async function processFanoutPage(
         recipientDias: row.dias || null,
         recipientFecha: row.fecha || null,
         recipientMonto: row.monto || null,
-        recipientCuotas: row.cuotas || null,
+        recipientCuotas: presentRecipientValue(row.cuotas) ? recipientValueText(row.cuotas) : null,
         recipientTelefono: row.telefono || null,
       };
       if (existing.estado === 'error' && !resetErrorIds.has(existing.id)) {
@@ -317,7 +317,7 @@ async function processFanoutPage(
         recipientDias: row.dias || null,
         recipientFecha: row.fecha || null,
         recipientMonto: row.monto || null,
-        recipientCuotas: row.cuotas || null,
+        recipientCuotas: presentRecipientValue(row.cuotas) ? recipientValueText(row.cuotas) : null,
         recipientTelefono: row.telefono || null,
         estado: 'pendiente',
         creditApplied: false,
