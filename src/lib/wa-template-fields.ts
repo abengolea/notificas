@@ -13,10 +13,40 @@ export const WA_TEMPLATE_VARIABLE_OPTIONS = [
   { value: "email", label: "email" },
   { value: "telefono", label: "telefono" },
   { value: "dias", label: "días de atraso" },
+  { value: "fecha", label: "fecha" },
+  { value: "monto", label: "monto" },
   { value: "area", label: "área" },
   { value: "remitente", label: "remitente (empresa)" },
   { value: "url_lectura", label: "link del lector (mismo que el correo)" },
 ] as const;
+
+/** Prefijo guardado en waTemplateVariables para un texto igual en todos los destinatarios. */
+export const WA_LITERAL_PREFIX = "=";
+
+const WA_FIELD_IDENT_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+export function isWaLiteralVar(field: string | undefined | null): boolean {
+  const f = String(field || "").trim();
+  if (!f) return false;
+  if (f.startsWith(WA_LITERAL_PREFIX)) return true;
+  return !WA_FIELD_IDENT_RE.test(f);
+}
+
+export function waLiteralText(field: string | undefined | null): string {
+  const f = String(field || "");
+  return f.startsWith(WA_LITERAL_PREFIX) ? f.slice(WA_LITERAL_PREFIX.length) : f;
+}
+
+export function encodeWaLiteral(text: string): string {
+  return `${WA_LITERAL_PREFIX}${text}`;
+}
+
+export function isWaTemplateVarEmpty(field: string | undefined | null): boolean {
+  const f = String(field || "").trim();
+  if (!f) return true;
+  if (isWaLiteralVar(f) && !waLiteralText(f).trim()) return true;
+  return false;
+}
 
 export const WA_TEMPLATE_MAX_VARS = 10;
 
@@ -34,7 +64,7 @@ export function usesNotificasDefaultTemplate(name: string | undefined | null): b
 }
 
 export const WA_TEMPLATE_HINT =
-  "Agregá una fila por cada {{N}} del cuerpo en Meta, en el mismo orden. Un template de 5 variables necesita 5 filas. Un campo vacío hace fallar el envío con error 131008.";
+  "Agregá una fila por cada {{N}} del cuerpo en Meta, en el mismo orden. Un template de 5 variables necesita 5 filas. Un campo vacío hace fallar el envío con error 131008. Si el dato no está en el CSV, usá «texto fijo» (ej. una fecha igual para todos).";
 
 export const WA_DEFAULT_TEMPLATE_HINT =
   "Si no elegís otro template, se usa notificaciones_notificas. El sistema completa {{1}} nombre, {{2}} remitente y {{3}} el mismo lector de la notificación que el correo.";

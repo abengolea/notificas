@@ -127,7 +127,20 @@ function formatWhatsAppSenderDisplay(senderName, fromEmail) {
  * @param {string[]|null} opts.templateVariables - campos del destinatario en orden: ['nombre','dni',...]
  * @param {object} opts.recipientData      - datos del destinatario para resolver variables
  */
+function isWaLiteralField(field) {
+  const f = String(field || '').trim();
+  if (!f) return false;
+  if (f.startsWith('=')) return true;
+  return !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(f);
+}
+
+function waLiteralText(field) {
+  const f = String(field || '');
+  return f.startsWith('=') ? f.slice(1) : f;
+}
+
 function resolveWhatsAppTemplateValue(field, rd, recipientName, toPhone, readerUrl, senderName) {
+  if (isWaLiteralField(field)) return waLiteralText(field);
   switch (field) {
     case 'nombre':       return rd.nombre || recipientName || '';
     case 'dni':          return rd.dni || '';
@@ -136,6 +149,8 @@ function resolveWhatsAppTemplateValue(field, rd, recipientName, toPhone, readerU
     case 'telefono':     return rd.telefono || toPhone || '';
     case 'dias':
     case 'dias_atraso':  return rd.dias || rd.dias_atraso || '';
+    case 'fecha':        return rd.fecha || '';
+    case 'monto':        return rd.monto || '';
     case 'remitente':
     case 'empresa':      return senderName || '';
     case 'url_lectura':
@@ -634,6 +649,8 @@ exports.sendEmail = onRequest(
           dni: emailData.recipientDni,
           legajo: emailData.recipientLegajo,
           dias: emailData.recipientDias,
+          fecha: emailData.recipientFecha,
+          monto: emailData.recipientMonto,
         },
       });
       const waErr = whatsappErrorMessage(waId);
@@ -1035,6 +1052,8 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
                 dni: emailData.recipientDni || '',
                 legajo: emailData.recipientLegajo || '',
                 dias: emailData.recipientDias || '',
+                fecha: emailData.recipientFecha || '',
+                monto: emailData.recipientMonto || '',
               },
             });
             const waResultId = whatsappResultId(resultWA);

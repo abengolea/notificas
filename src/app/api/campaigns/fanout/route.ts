@@ -301,6 +301,8 @@ async function processFanoutPage(
         recipientDni: row.dni || null,
         recipientLegajo: row.legajo || null,
         recipientDias: row.dias || null,
+        recipientFecha: row.fecha || null,
+        recipientMonto: row.monto || null,
         recipientTelefono: row.telefono || null,
         estado: 'pendiente',
         creditApplied: false,

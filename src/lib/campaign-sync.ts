@@ -60,6 +60,8 @@ function mapCampaignMessage(id: string, data: DocumentData): CampaignMessage {
     recipientDni: data.recipientDni,
     recipientLegajo: data.recipientLegajo,
     recipientDias: data.recipientDias,
+    recipientFecha: data.recipientFecha,
+    recipientMonto: data.recipientMonto,
     recipientTelefono: data.recipientTelefono,
     estado: data.estado as CampaignMessage['estado'],
     enviadoAt: data.enviadoAt,

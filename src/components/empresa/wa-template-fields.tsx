@@ -19,11 +19,21 @@ import {
   WA_TEMPLATE_LANGS,
   WA_TEMPLATE_MAX_VARS,
   WA_TEMPLATE_VARIABLE_OPTIONS,
+  encodeWaLiteral,
+  isWaLiteralVar,
   usesNotificasDefaultTemplate,
+  waLiteralText,
 } from "@/lib/wa-template-fields";
 
 const KNOWN_FIELDS: Set<string> = new Set(WA_TEMPLATE_VARIABLE_OPTIONS.map((o) => o.value));
 const CUSTOM_FIELD = "__custom__";
+const LITERAL_FIELD = "__literal__";
+
+function rowMode(v: string): "known" | "literal" | "custom" {
+  if (KNOWN_FIELDS.has(v)) return "known";
+  if (isWaLiteralVar(v)) return "literal";
+  return "custom";
+}
 
 export type WaTemplateFieldsValue = {
   name: string;
@@ -93,16 +103,22 @@ export function WaTemplateFields({
         </Label>
         <div className="space-y-2">
           {value.variables.map((v, i) => {
-            const known = KNOWN_FIELDS.has(v);
+            const mode = rowMode(v);
             return (
             <div key={i} className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground w-10 shrink-0 font-mono">{`{{${i + 1}}}`}</span>
               <Select
-                value={known ? v : CUSTOM_FIELD}
+                value={mode === "known" ? v : mode === "literal" ? LITERAL_FIELD : CUSTOM_FIELD}
                 onValueChange={(val) =>
                   set({
                     variables: value.variables.map((x, j) =>
-                      j === i ? (val === CUSTOM_FIELD ? "" : val) : x
+                      j === i
+                        ? val === CUSTOM_FIELD
+                          ? ""
+                          : val === LITERAL_FIELD
+                            ? encodeWaLiteral("")
+                            : val
+                        : x
                     ),
                   })
                 }
@@ -117,17 +133,33 @@ export function WaTemplateFields({
                       {opt.label}
                     </SelectItem>
                   ))}
-                  <SelectItem value={CUSTOM_FIELD}>otro (escribir)</SelectItem>
+                  <SelectItem value={CUSTOM_FIELD}>otro campo (columna CSV)</SelectItem>
+                  <SelectItem value={LITERAL_FIELD}>texto fijo (igual para todos)</SelectItem>
                 </SelectContent>
               </Select>
-              {!known && (
+              {mode === "custom" && (
                 <Input
                   className="h-8"
-                  placeholder="nombre del campo"
+                  placeholder="columna del CSV, ej. fecha"
                   value={v}
                   onChange={(e) =>
                     set({
                       variables: value.variables.map((x, j) => (j === i ? e.target.value : x)),
+                    })
+                  }
+                  disabled={disabled}
+                />
+              )}
+              {mode === "literal" && (
+                <Input
+                  className="h-8"
+                  placeholder="ej. 14/02/26"
+                  value={waLiteralText(v)}
+                  onChange={(e) =>
+                    set({
+                      variables: value.variables.map((x, j) =>
+                        j === i ? encodeWaLiteral(e.target.value) : x
+                      ),
                     })
                   }
                   disabled={disabled}
@@ -181,7 +213,7 @@ export function WaTemplateFields({
         {value.name.trim() && (
           <div className="rounded-md bg-muted/50 p-2 text-xs font-mono text-muted-foreground">
             Preview de llamada a Meta: template=<strong>{value.name}</strong>, variables=[
-            {value.variables.map((v, i) => `{{${i + 1}}}→${v}`).join(", ")}]
+            {value.variables.map((v, i) => `{{${i + 1}}}→${isWaLiteralVar(v) ? `texto «${waLiteralText(v)}»` : v}`).join(", ")}]
             {value.urlButton ? ", botón URL=sí" : ""}
           </div>
         )}

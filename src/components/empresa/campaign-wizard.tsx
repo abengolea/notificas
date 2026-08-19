@@ -73,6 +73,7 @@ import { isUnsentCampaign, toDatetimeLocalValue, UNSENT_EDIT_ERROR } from "@/lib
 import {
   WA_DEFAULT_TEMPLATE_NAME,
   WA_TEMPLATE_DEFAULT_VARS,
+  isWaTemplateVarEmpty,
   usesNotificasDefaultTemplate,
 } from "@/lib/wa-template-fields";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
@@ -118,6 +119,8 @@ function cleanRecipientForUpload(r: RecipientEntry): RecipientEntry {
   if (r.dni) clean.dni = r.dni;
   if (r.legajo) clean.legajo = r.legajo;
   if (r.dias) clean.dias = r.dias;
+  if (r.fecha) clean.fecha = r.fecha;
+  if (r.monto) clean.monto = r.monto;
   if (r.area) clean.area = r.area;
   return clean;
 }
@@ -1222,6 +1225,9 @@ export function CampaignWizard({
                       <table className="w-full text-xs border-collapse">
                         <tbody>
                           <tr className="border-t"><td className="p-1.5 font-mono">legajo</td><td className="p-1.5">GCL-00001</td><td className="p-1.5 text-muted-foreground">Disponible como {"{{"+"legajo"+"}}"}</td></tr>
+                          <tr className="border-t"><td className="p-1.5 font-mono">dias</td><td className="p-1.5">180</td><td className="p-1.5 text-muted-foreground">Días de atraso (también dias_atraso)</td></tr>
+                          <tr className="border-t"><td className="p-1.5 font-mono">fecha</td><td className="p-1.5">14/02/26</td><td className="p-1.5 text-muted-foreground">Variable de template WhatsApp</td></tr>
+                          <tr className="border-t"><td className="p-1.5 font-mono">monto</td><td className="p-1.5">130000</td><td className="p-1.5 text-muted-foreground">Variable de template WhatsApp</td></tr>
                         </tbody>
                       </table>
                     </div>
@@ -1579,7 +1585,7 @@ export function CampaignWizard({
               }}
             />
             {!usesNotificasDefaultTemplate(waTemplateName) &&
-              waTemplateVariables.some((v) => !String(v || "").trim()) && (
+              waTemplateVariables.some((v) => isWaTemplateVarEmpty(v)) && (
                 <p className="text-sm text-destructive">
                   Hay un {"{{N}}"} sin campo. Un valor vacío hace fallar el envío (error 131008).
                 </p>
@@ -1647,7 +1653,7 @@ export function CampaignWizard({
                 disabled={
                   (canal === "whatsapp" && !campaniaNombre.trim()) ||
                   (!usesNotificasDefaultTemplate(waTemplateName) &&
-                    waTemplateVariables.some((v) => !String(v || "").trim()))
+                    waTemplateVariables.some((v) => isWaTemplateVarEmpty(v)))
                 }
               >
                 Siguiente

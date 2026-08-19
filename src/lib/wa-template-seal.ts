@@ -1,7 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { sha256Hex } from "@/lib/merkle";
-import { WA_DEFAULT_TEMPLATE_NAME, WA_TEMPLATE_DEFAULT_VARS, usesNotificasDefaultTemplate } from "@/lib/wa-template-fields";
+import { WA_DEFAULT_TEMPLATE_NAME, WA_TEMPLATE_DEFAULT_VARS, isWaLiteralVar, usesNotificasDefaultTemplate, waLiteralText } from "@/lib/wa-template-fields";
 
 export type WhatsAppTemplateSeal = {
   hash: string;
@@ -41,6 +41,8 @@ export function recipientWhatsAppVars(
     dni?: string;
     legajo?: string;
     dias?: string;
+    fecha?: string;
+    monto?: string;
     email?: string;
     telefono?: string;
   }
@@ -53,11 +55,18 @@ export function recipientWhatsAppVars(
     dni: row.dni || "",
     legajo: row.legajo || "",
     dias: row.dias || "",
+    fecha: row.fecha || "",
+    monto: row.monto || "",
     email: row.email || "",
     telefono: row.telefono || "",
   };
   const out: Record<string, string> = {};
   for (const k of keys) {
+    if (isWaLiteralVar(k)) {
+      const lit = waLiteralText(k).trim();
+      if (lit) out[k] = lit;
+      continue;
+    }
     const v = (src[k] || "").trim();
     if (v) out[k] = v;
   }
