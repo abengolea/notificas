@@ -157,7 +157,7 @@ export async function buildCampaignReportPdf(input: CampaignReportInput): Promis
     doc.addImage(qr, 'PNG', 176, y, 18, 18);
     doc.setFontSize(6);
     doc.setTextColor(...PDF_BRAND.textMuted);
-    doc.text('Ver campaña', 177, y + 20);
+    doc.text('Validar', 179, y + 20);
     doc.setTextColor(...PDF_BRAND.textMain);
   } catch {
     /* QR opcional */

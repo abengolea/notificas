@@ -5,6 +5,7 @@ import { getAdminDb } from '@/lib/firebase-admin';
 import { campaignMessageMatchesSearch } from '@/lib/search-text';
 import { recordIssuedDocument, sha256Hex, findLatestIssuedByCampaign } from '@/lib/issued-documents';
 import { campaignVerifyRef } from '@/lib/verify-hints';
+import { publicAppBase, publicCertificateVerifyUrl } from '@/lib/public-verify-url';
 import { formatEvidenceTimestamp } from '@/lib/pdf-evidence-format';
 import { splitExportError } from '@/lib/campaign-export-csv';
 import { formatCsvBytes, getLatestFullExports } from '@/lib/campaign-csv-export';
@@ -211,7 +212,7 @@ export async function GET(request: NextRequest) {
       ? campaign.waTemplateVariables.map((v: string, i: number) => `{{${i + 1}}}=${v}`).join('  ')
       : '';
 
-    const appBase = (process.env.NEXT_PUBLIC_APP_URL || 'https://notificas.com.ar').replace(/\/$/, '');
+    const appBase = publicAppBase();
     const verifyRef = campaignVerifyRef('campaign_report', campaignId);
     const pdf = await buildCampaignReportPdf({
       orgNombre,
@@ -248,7 +249,10 @@ export async function GET(request: NextRequest) {
       csvExportByteSizeLabel,
       csvExportGeneratedAt,
       verifyRef,
-      verifyCampaignUrl: `${appBase}/verify?campaignId=${encodeURIComponent(campaignId)}`,
+      verifyCampaignUrl: publicCertificateVerifyUrl({
+        campaignId,
+        kind: 'campaign_report',
+      }),
       verifyAppBase: appBase,
       rows: truncated.map(({ searchEmail: _s, ...row }) => row),
       rowsShown: truncated.length,

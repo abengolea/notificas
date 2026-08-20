@@ -4,6 +4,7 @@ import { adminDb, getAdminDb } from "@/lib/firebase-admin";
 import { findIssuedDocument, type IssuedDocumentRecord } from "@/lib/issued-documents";
 import { buildPublicEvidence } from "@/lib/public-evidence";
 import { extractVerifyHints, type IssuedDocKind, type VerifyHints } from "@/lib/verify-hints";
+import { verifyQueryFromSearchParams } from "@/lib/public-verify-url";
 
 const PAGE_SIZE = 200;
 
@@ -123,7 +124,8 @@ async function resolveCampaignFromHints(hints: VerifyHints): Promise<IssuedDocum
     let txHash: string | null = null;
     if (hints.batchId) {
       const batch = await camp.ref.collection("integrity_batches").doc(hints.batchId).get();
-      if (batch.exists) txHash = typeof batch.data()?.txHash === "string" ? batch.data()!.txHash : null;
+      if (!batch.exists) return null;
+      txHash = typeof batch.data()?.txHash === "string" ? batch.data()!.txHash : null;
     }
     return {
       hash: "",
@@ -278,7 +280,7 @@ export async function POST(request: NextRequest) {
     if (typeof body?.campaignNombre === "string" && body.campaignNombre.trim()) {
       hints.campaignNombre = body.campaignNombre.trim();
     }
-    if (typeof body?.kind === "string" && !hints.kind) {
+    if (typeof body?.kind === "string" && body.kind.trim()) {
       hints.kind = body.kind as IssuedDocKind;
     }
     if (messageId && !hints.messageId) hints.messageId = messageId;
@@ -293,6 +295,7 @@ export async function POST(request: NextRequest) {
             ...evidence,
             isCertificate: true,
             integrityValid: evidence.intact,
+            issuedByNotificas: true,
           },
         });
       }
@@ -311,12 +314,32 @@ export async function POST(request: NextRequest) {
       if (fromId) {
         return NextResponse.json({
           success: true,
-          data: buildCampaignPayload(fromId, null),
+          data: {
+            ...buildCampaignPayload(fromId, null),
+            issuedByNotificas: true,
+          },
         });
       }
 
       return NextResponse.json(
         { error: "Documento no encontrado", messageId },
+        { status: 404 }
+      );
+    }
+
+    if (hints.campaignId || hints.batchId) {
+      const fromCampaign = await resolveCampaignFromHints(hints);
+      if (fromCampaign) {
+        return NextResponse.json({
+          success: true,
+          data: {
+            ...buildCampaignPayload(fromCampaign, null),
+            issuedByNotificas: true,
+          },
+        });
+      }
+      return NextResponse.json(
+        { error: "Documento no encontrado", campaignId: hints.campaignId, batchId: hints.batchId },
         { status: 404 }
       );
     }
@@ -340,7 +363,7 @@ export async function POST(request: NextRequest) {
     if (issued) {
       return NextResponse.json({
         success: true,
-        data: buildCampaignPayload(issued, hash),
+        data: { ...buildCampaignPayload(issued, hash), issuedByNotificas: true },
       });
     }
 
@@ -348,7 +371,7 @@ export async function POST(request: NextRequest) {
     if (fromHints) {
       return NextResponse.json({
         success: true,
-        data: buildCampaignPayload(fromHints, hash),
+        data: { ...buildCampaignPayload(fromHints, hash), issuedByNotificas: true },
       });
     }
 
@@ -385,20 +408,44 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const messageId =
-    request.nextUrl.searchParams.get("messageId") ||
-    request.nextUrl.searchParams.get("id");
-  if (!messageId) {
-    return NextResponse.json({ error: "messageId o id es requerido" }, { status: 400 });
+  const q = verifyQueryFromSearchParams(request.nextUrl.searchParams);
+  if (q.id) {
+    const evidence = await buildPublicEvidence(q.id);
+    if (evidence) {
+      return NextResponse.json({
+        success: true,
+        data: { ...evidence, isCertificate: true, integrityValid: evidence.intact, issuedByNotificas: true },
+      });
+    }
+    const fromId = await resolveCampaignFromHints({
+      messageId: q.id,
+      campaignId: q.campaignId,
+      batchId: q.batchId,
+      kind: q.kind || "campaign_acta_recipient",
+    });
+    if (fromId) {
+      return NextResponse.json({
+        success: true,
+        data: { ...buildCampaignPayload(fromId, null), issuedByNotificas: true },
+      });
+    }
+    return NextResponse.json({ error: "Documento no encontrado", messageId: q.id }, { status: 404 });
   }
-  const evidence = await buildPublicEvidence(messageId);
-  if (!evidence) {
-    return NextResponse.json({ error: "Documento no encontrado", messageId }, { status: 404 });
+  if (q.campaignId || q.batchId) {
+    const fromCampaign = await resolveCampaignFromHints({
+      campaignId: q.campaignId,
+      batchId: q.batchId,
+      kind: q.kind,
+    });
+    if (fromCampaign) {
+      return NextResponse.json({
+        success: true,
+        data: { ...buildCampaignPayload(fromCampaign, null), issuedByNotificas: true },
+      });
+    }
+    return NextResponse.json({ error: "Documento no encontrado" }, { status: 404 });
   }
-  return NextResponse.json({
-    success: true,
-    data: { ...evidence, isCertificate: true, integrityValid: evidence.intact },
-  });
+  return NextResponse.json({ error: "id, messageId o campaignId es requerido" }, { status: 400 });
 }
 
 

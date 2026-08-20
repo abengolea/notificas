@@ -12,6 +12,7 @@ import {
   drawWarnPanelMm,
   stampPdfChromeMm,
 } from '@/lib/pdf-brand';
+import { publicCertificateVerifyUrl } from '@/lib/public-verify-url';
 
 export type ActaLeafRow = {
   leafIndex?: number;
@@ -68,6 +69,11 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const kindLabel = input.kind === 'send' ? 'ENVÍO' : 'HECHOS (recepción / lectura)';
   const explorerUrl = input.txHash ? `https://polygonscan.com/tx/${input.txHash}` : '';
+  const verifyUrl = publicCertificateVerifyUrl({
+    campaignId: input.campaignId,
+    batchId: input.batchId,
+    kind: 'campaign_acta',
+  });
   const anchored = input.status === 'anchored' && Boolean(input.merkleRoot && input.txHash);
   const docTitle = 'Acta de integridad de tanda';
 
@@ -88,20 +94,18 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
   });
 
   const blockStart = y;
-  if (explorerUrl) {
-    try {
-      const qr = await QRCode.toDataURL(explorerUrl, { margin: 0, width: 160 });
-      doc.addImage(qr, 'PNG', 176, y, 18, 18);
-      doc.setFontSize(6);
-      doc.setTextColor(...PDF_BRAND.textMuted);
-      doc.text('Ver TX', 181, y + 20);
-      doc.setTextColor(...PDF_BRAND.textMain);
-    } catch {
-      /* QR opcional */
-    }
+  try {
+    const qr = await QRCode.toDataURL(verifyUrl, { margin: 0, width: 160 });
+    doc.addImage(qr, 'PNG', 176, y, 18, 18);
+    doc.setFontSize(6);
+    doc.setTextColor(...PDF_BRAND.textMuted);
+    doc.text('Validar', 179, y + 20);
+    doc.setTextColor(...PDF_BRAND.textMain);
+  } catch {
+    /* QR opcional */
   }
 
-  const metaWidth = explorerUrl ? 155 : PDF_MM.contentWidth;
+  const metaWidth = 155;
   doc.setFontSize(10);
   doc.setTextColor(...PDF_BRAND.textMain);
   doc.text(`Organización: ${input.orgNombre}${input.orgCuit ? `  ·  CUIT ${input.orgCuit}` : ''}`, 14, y);
@@ -132,7 +136,7 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
   doc.setTextColor(...PDF_BRAND.textMuted);
   doc.text(`Acta generada: ${input.generatedAt}`, 14, y);
   y += 8;
-  if (explorerUrl) y = Math.max(y, blockStart + 24);
+  y = Math.max(y, blockStart + 24);
 
   if (!anchored) {
     drawWarnPanelMm(doc, 14, y - 4, 182, 10);
@@ -442,6 +446,11 @@ function hechoFecha(iso?: string): [string, string] {
 export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Promise<ArrayBuffer> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const explorerUrl = input.send.txHash ? `https://polygonscan.com/tx/${input.send.txHash}` : '';
+  const verifyUrl = publicCertificateVerifyUrl({
+    id: input.messageId,
+    campaignId: input.campaignId,
+    kind: 'campaign_acta_recipient',
+  });
   const email = input.recipientEmail && !isSyntheticEmail(input.recipientEmail) ? input.recipientEmail : '';
   const cuerpo = stripHtml(input.cuerpoPersonalizado || '');
   const asunto = (input.asuntoPersonalizado || input.campaignAsunto || '').trim();
@@ -467,20 +476,18 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   });
   doc.setTextColor(...PDF_BRAND.textMain);
 
-  if (explorerUrl) {
-    try {
-      const qr = await QRCode.toDataURL(explorerUrl, { margin: 0, width: 160 });
-      doc.addImage(qr, 'PNG', 176, y, 18, 18);
-      doc.setFontSize(6);
-      doc.setTextColor(...PDF_BRAND.textMuted);
-      doc.text('Ver TX', 181, y + 20);
-      doc.setTextColor(...PDF_BRAND.textMain);
-    } catch {
-      /* QR opcional */
-    }
+  try {
+    const qr = await QRCode.toDataURL(verifyUrl, { margin: 0, width: 160 });
+    doc.addImage(qr, 'PNG', 176, y, 18, 18);
+    doc.setFontSize(6);
+    doc.setTextColor(...PDF_BRAND.textMuted);
+    doc.text('Validar', 179, y + 20);
+    doc.setTextColor(...PDF_BRAND.textMain);
+  } catch {
+    /* QR opcional */
   }
 
-  const idWidth = explorerUrl ? 155 : PDF_MM.contentWidth;
+  const idWidth = 155;
   const idStart = y;
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
@@ -506,7 +513,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   );
   doc.text(campLine, 14, y);
   y += campLine.length * 4 + 4;
-  if (explorerUrl) y = Math.max(y, idStart + 24);
+  if (explorerUrl || verifyUrl) y = Math.max(y, idStart + 24);
 
   if (input.evidenceSealed === false) {
     y = ensureY(doc, y, 16);

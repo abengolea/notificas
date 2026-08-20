@@ -6,6 +6,7 @@ import { POLYGON_CERT_DISPLAY_ORDER, polygonCertLabel } from './polygon-cert-lab
 import { emailDeliveryLabel } from './email-delivery-label';
 import { formatEvidenceTimestamp, PDF_SCHEMA } from './pdf-evidence-format';
 import { loadNotificasLogoJpeg, PDF_BRAND } from './pdf-brand';
+import { publicCertificateVerifyUrl } from './public-verify-url';
 
 interface MailMessageContent {
   html?: string;
@@ -748,10 +749,9 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     if (mailData.evidenceSnapshotHash) {
       techData.push({ label: 'Hash del snapshot inmutable', value: mailData.evidenceSnapshotHash, monospace: true });
     }
-    const verifyBase = (process.env.NEXT_PUBLIC_APP_URL || 'https://notificas.com.ar').replace(/\/$/, '');
     techData.push({
       label: 'Verificación pública',
-      value: `${verifyBase}/verify?id=${encodeURIComponent(messageId)}`,
+      value: publicCertificateVerifyUrl({ id: messageId, kind: 'mail_certificate' }),
       monospace: true,
     });
     if (mailData.readerUrl) {
@@ -810,15 +810,14 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   }
 
   try {
-    const verifyBase = (process.env.NEXT_PUBLIC_APP_URL || 'https://notificas.com.ar').replace(/\/$/, '');
-    const verifyUrl = `${verifyBase}/verify?id=${encodeURIComponent(messageId)}`;
+    const verifyUrl = publicCertificateVerifyUrl({ id: messageId, kind: 'mail_certificate' });
     const qr = await QRCode.toDataURL(verifyUrl, { margin: 0, width: 160 });
     ensureSpace(56);
     doc.addImage(qr, 'PNG', pageWidth - margin - 48, yPosition, 42, 42);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     setTextColor(COLORS.textMuted);
-    doc.text('Escanee para verificar este certificado en Notificas.', margin, yPosition + 18);
+    doc.text('Escanee para validar automáticamente si Notificas emitió este certificado.', margin, yPosition + 18);
     yPosition += 52;
   } catch {
     /* QR opcional */

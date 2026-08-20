@@ -12,6 +12,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 interface VerificationResult {
   isValid: boolean;
+  issuedByNotificas?: boolean;
   messageId?: string;
   senderName?: string;
   recipientEmail?: string;
@@ -38,6 +39,53 @@ interface VerificationResult {
   orgCuit?: string;
 }
 
+function mapVerifyApiData(
+  data: Record<string, unknown> | undefined,
+  extras?: Partial<VerificationResult>
+): VerificationResult {
+  const sentAtRaw = data?.sentAt;
+  return {
+    isValid: true,
+    issuedByNotificas:
+      data?.issuedByNotificas === true ||
+      data?.isCertificate === true ||
+      data?.isCampaignDocument === true,
+    messageId: (data?.messageId as string) || (data?.docId as string),
+    senderName: data?.senderName as string | undefined,
+    recipientEmail: data?.recipientEmail as string | undefined,
+    recipientDni: data?.recipientDni as string | undefined,
+    recipientCuit: data?.recipientCuit as string | undefined,
+    sentAt:
+      typeof sentAtRaw === "string"
+        ? new Date(sentAtRaw).toLocaleString("es-ES")
+        : undefined,
+    blockchainVerified: (data?.blockchainVerified as boolean | undefined) ?? true,
+    integrityValid: (data?.integrityValid as boolean | null | undefined) ?? (data?.intact as boolean | undefined),
+    snapshotHash: data?.snapshotHash as string | undefined,
+    wamid: data?.wamid as string | undefined,
+    waBodyHash:
+      ((data?.waBodyHash as { stored?: string; current?: string } | undefined)?.stored) ||
+      ((data?.waBodyHash as { stored?: string; current?: string } | undefined)?.current) ||
+      (typeof data?.waBodyHash === "string" ? data.waBodyHash : undefined),
+    waExplorerUrl: data?.waExplorerUrl as string | undefined,
+    whatsappRole: data?.whatsappRole as string | undefined,
+    contentHash:
+      ((data?.contentHash as { stored?: string; current?: string } | undefined)?.stored) ||
+      ((data?.contentHash as { stored?: string; current?: string } | undefined)?.current) ||
+      (typeof data?.contentHash === "string" ? data.contentHash : undefined),
+    explorerUrl: data?.explorerUrl as string | undefined,
+    summary: data?.summary as string | undefined,
+    orgNombre: data?.orgNombre as string | undefined,
+    orgCuit: data?.orgCuit as string | undefined,
+    isCampaignDocument: data?.isCampaignDocument === true,
+    kindLabel: data?.kindLabel as string | undefined,
+    campaignNombre: data?.campaignNombre as string | undefined,
+    fileName: data?.fileName as string | undefined,
+    attachmentUrl: data?.attachmentUrl as string | undefined,
+    ...extras,
+  };
+}
+
 export default function VerifyPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [messageIdInput, setMessageIdInput] = useState("");
@@ -51,41 +99,33 @@ export default function VerifyPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = (params.get("id") || params.get("messageId") || "").trim();
-    if (!id || autoVerifyDone.current) return;
+    const campaignId = (params.get("campaignId") || "").trim();
+    const batchId = (params.get("batchId") || "").trim();
+    const kind = (params.get("kind") || "").trim();
+    if ((!id && !campaignId && !batchId) || autoVerifyDone.current) return;
     autoVerifyDone.current = true;
-    setMessageIdInput(id);
+    setMessageIdInput(id || campaignId);
     void (async () => {
       setIsVerifying(true);
       try {
         const response = await fetch("/api/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messageId: id }),
+          body: JSON.stringify({
+            ...(id ? { messageId: id } : {}),
+            ...(campaignId ? { campaignId } : {}),
+            ...(batchId ? { batchId } : {}),
+            ...(kind ? { kind } : {}),
+          }),
         });
         if (response.ok) {
           const data = await response.json();
+          setResult(mapVerifyApiData(data?.data));
+        } else if (response.status === 404) {
           setResult({
-            isValid: true,
-            messageId: data?.data?.messageId || data?.data?.docId,
-            senderName: data?.data?.senderName,
-            recipientEmail: data?.data?.recipientEmail,
-            recipientDni: data?.data?.recipientDni,
-            recipientCuit: data?.data?.recipientCuit,
-            sentAt: data?.data?.sentAt
-              ? new Date(data.data.sentAt).toLocaleString("es-ES")
-              : undefined,
-            blockchainVerified: data?.data?.blockchainVerified ?? true,
-            integrityValid: data?.data?.integrityValid ?? data?.data?.intact,
-            snapshotHash: data?.data?.snapshotHash,
-            wamid: data?.data?.wamid,
-            waBodyHash: data?.data?.waBodyHash?.stored || data?.data?.waBodyHash?.current,
-            waExplorerUrl: data?.data?.waExplorerUrl,
-            whatsappRole: data?.data?.whatsappRole,
-            contentHash: data?.data?.contentHash?.stored || data?.data?.contentHash?.current,
-            explorerUrl: data?.data?.explorerUrl,
-            summary: data?.data?.summary,
-            orgNombre: data?.data?.orgNombre,
-            orgCuit: data?.data?.orgCuit,
+            isValid: false,
+            issuedByNotificas: false,
+            messageId: id || campaignId,
           });
         }
       } finally {
@@ -116,42 +156,20 @@ export default function VerifyPage() {
 
       if (response.ok) {
         const data = await response.json();
-        const verification: VerificationResult = {
-          isValid: true,
-          messageId: data?.data?.messageId || data?.data?.docId,
-          senderName: data?.data?.senderName,
-          recipientEmail: data?.data?.recipientEmail,
-          recipientDni: data?.data?.recipientDni,
-          recipientCuit: data?.data?.recipientCuit,
-          sentAt: data?.data?.sentAt
-            ? new Date(data.data.sentAt).toLocaleString("es-ES")
-            : undefined,
-          blockchainVerified: data?.data?.blockchainVerified ?? true,
-          integrityValid: data?.data?.integrityValid ?? data?.data?.intact,
-          snapshotHash: data?.data?.snapshotHash,
-          wamid: data?.data?.wamid,
-          waBodyHash: data?.data?.waBodyHash?.stored || data?.data?.waBodyHash?.current,
-          waExplorerUrl: data?.data?.waExplorerUrl,
-          whatsappRole: data?.data?.whatsappRole,
-          contentHash: data?.data?.contentHash?.stored || data?.data?.contentHash?.current,
-          explorerUrl: data?.data?.explorerUrl,
-          summary: data?.data?.summary,
-          orgNombre: data?.data?.orgNombre,
-          orgCuit: data?.data?.orgCuit,
-        };
-        setResult(verification);
+        setResult(mapVerifyApiData(data?.data));
         toast({
           title: "Certificado válido",
-          description: "El mensaje existe y fue certificado por Notificas.com.",
+          description: "Notificas emitió este certificado.",
         });
       } else if (response.status === 404) {
         setResult({
           isValid: false,
+          issuedByNotificas: false,
           messageId: messageId,
         });
         toast({
-          title: "No encontrado",
-          description: "No existe un certificado con ese ID de mensaje.",
+          title: "No emitido por Notificas",
+          description: "No hay un certificado emitido con esos datos.",
           variant: "destructive",
         });
       } else {
@@ -206,23 +224,10 @@ export default function VerifyPage() {
 
       if (response.ok) {
         const data = await response.json();
-        const verification: VerificationResult = {
-          isValid: true,
-          messageId: data?.data?.messageId || data?.data?.docId,
-          senderName: data?.data?.senderName,
-          recipientEmail: data?.data?.recipientEmail,
-          sentAt: data?.data?.sentAt
-            ? new Date(data.data.sentAt).toLocaleString("es-ES")
-            : undefined,
+        const verification = mapVerifyApiData(data?.data, {
           hash,
-          blockchainVerified: data?.data?.blockchainVerified ?? true,
-          fileName: data?.data?.fileName || selectedFile.name,
-          attachmentUrl: data?.data?.attachmentUrl,
-          isCampaignDocument: data?.data?.isCampaignDocument === true,
-          kindLabel: data?.data?.kindLabel,
-          campaignNombre: data?.data?.campaignNombre,
-          orgNombre: data?.data?.orgNombre,
-        };
+          fileName: (data?.data?.fileName as string | undefined) || selectedFile.name,
+        });
         setResult(verification);
         toast({
           title: "Documento válido",
@@ -242,21 +247,15 @@ export default function VerifyPage() {
           });
           if (idResponse.ok) {
             const data = await idResponse.json();
-            setResult({
-              isValid: true,
-              messageId: data?.data?.messageId || data?.data?.docId,
-              senderName: data?.data?.senderName,
-              recipientEmail: data?.data?.recipientEmail,
-              sentAt: data?.data?.sentAt
-                ? new Date(data.data.sentAt).toLocaleString("es-ES")
-                : undefined,
-              hash,
-              blockchainVerified: data?.data?.blockchainVerified ?? true,
-              fileName: selectedFile.name,
-            });
+            setResult(
+              mapVerifyApiData(data?.data, {
+                hash,
+                fileName: selectedFile.name,
+              })
+            );
             toast({
               title: "Certificado válido",
-              description: "El certificado fue emitido por Notificas.com.",
+              description: "Notificas emitió este certificado.",
             });
             return;
           }
@@ -361,9 +360,18 @@ export default function VerifyPage() {
             Verificar Autenticidad de Documentos
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Verifique que un PDF de constancia fue emitido oficialmente por Notificas.com
+            Al escanear el QR del certificado, esta página valida sola si Notificas lo emitió.
+            También puede subir el PDF o ingresar el identificador.
           </p>
         </div>
+
+        {isVerifying && !result && (
+          <Card className="mb-8">
+            <CardContent className="py-8 text-center text-muted-foreground">
+              Validando si Notificas emitió este certificado…
+            </CardContent>
+          </Card>
+        )}
 
         {/* Subida del PDF */}
         <Card className="mb-8">
@@ -498,17 +506,30 @@ export default function VerifyPage() {
             <CardContent>
               <div className="space-y-4">
                 {/* Estado de verificación */}
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={result.isValid ? "default" : "destructive"}>
-                    {result.isValid ? "DOCUMENTO VÁLIDO" : "DOCUMENTO INVÁLIDO"}
+                    {result.isValid && result.issuedByNotificas
+                      ? "NOTIFICAS EMITIÓ ESTE CERTIFICADO"
+                      : result.isValid
+                        ? "DOCUMENTO VÁLIDO"
+                        : "NOTIFICAS NO EMITIÓ ESTE DOCUMENTO"}
                   </Badge>
-                  {result.blockchainVerified && (
+                  {result.blockchainVerified && result.isValid && (
                     <Badge variant="outline" className="text-green-600 border-green-600">
                       <Shield className="mr-1 h-3 w-3" />
                       VERIFICADO EN BLOCKCHAIN
                     </Badge>
                   )}
                 </div>
+                {result.isValid ? (
+                  <p className="text-sm text-muted-foreground">
+                    El identificador del QR coincide con un registro emitido por Notificas.
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No hay constancia de emisión con esos datos. El QR puede ser inventado o el documento no es de Notificas.
+                  </p>
+                )}
 
                 {result.isValid ? (
                   <>
