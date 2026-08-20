@@ -1,4 +1,5 @@
 import { FieldValue } from "firebase-admin/firestore";
+import { createHash } from "node:crypto";
 import { getAdminDb } from "@/lib/firebase-admin";
 
 export type ProviderName = "meta" | "smtp";
@@ -13,9 +14,22 @@ export type ProviderEventInput = {
   recipient?: string | null;
   providerTimestamp?: string | null;
   raw: unknown;
+  signatureHeader?: string | null;
+  signatureValid?: boolean | null;
+  payloadHash?: string | null;
+  httpBody?: string | null;
 };
 
 const MAX_RAW_CHARS = 80_000;
+
+export function sha256Utf8(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function clipString(value: string): string | { _truncated: true; preview: string } {
+  if (value.length <= MAX_RAW_CHARS) return value;
+  return { _truncated: true, preview: value.slice(0, MAX_RAW_CHARS) };
+}
 
 function clipRaw(raw: unknown): unknown {
   try {
@@ -42,6 +56,10 @@ export async function recordProviderEvent(input: ProviderEventInput): Promise<st
     recipient: input.recipient || null,
     providerTimestamp: input.providerTimestamp || null,
     raw: clipRaw(input.raw),
+    signatureHeader: input.signatureHeader || null,
+    signatureValid: input.signatureValid ?? null,
+    payloadHash: input.payloadHash || null,
+    httpBody: input.httpBody ? clipString(input.httpBody) : null,
     receivedAt: FieldValue.serverTimestamp(),
   });
   return ref.id;

@@ -17,6 +17,7 @@ export type ActaLeafRow = {
   leafIndex?: number;
   messageId: string;
   leafHash: string;
+  kind?: string;
   contentHash?: string;
   eventType?: string;
   occurredAt?: string;
@@ -43,6 +44,8 @@ export type ActaTandaInput = {
   generatedAt: string;
   leaves: ActaLeafRow[];
   verifyRef?: string;
+  leavesDigest?: string;
+  digestMatch?: boolean | null;
 };
 
 const EVENT_LABEL: Record<string, string> = {
@@ -178,6 +181,16 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
     doc.text(payloadLines, 14, y);
     y += payloadLines.length * 3.4 + 4;
     doc.setFont('helvetica', 'normal');
+    if (input.digestMatch === true) {
+      doc.setTextColor(21, 128, 61);
+      doc.text('leavesDigest: las hojas de este acta coinciden con el digest del payload v2.', 14, y);
+      y += 5;
+    } else if (input.digestMatch === false) {
+      doc.setTextColor(185, 28, 28);
+      doc.text('leavesDigest: NO coincide con el payload. Las hojas publicadas no son las ancladas.', 14, y);
+      y += 5;
+    }
+    doc.setTextColor(71, 85, 105);
   }
 
   doc.setTextColor(15, 23, 42);
@@ -190,15 +203,16 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
     input.kind === 'send'
       ? [
           '1. Abrir la transacción en polygonscan.com y decodificar el campo Input Data (UTF-8).',
-          '2. El payload es CAMPAIGN_SEND|v1|{campaignId}|{batchId}|{merkleRoot}|{leafCount}|{timestamp}|{templateSealHash?}. Una TX por tanda de hasta 500, no por destinatario.',
+          '2. Payload v2: CAMPAIGN_SEND|v2|{campaignId}|{batchId}|{merkleRoot}|{leafCount}|{timestamp}|{leavesDigest}|{templateSealHash?}. Una TX por tanda de hasta 500. Las tandas v1 no tienen leavesDigest (en v1 la posición 7, si existe, es el sello del template).',
           '3. El templateSealHash es la huella del formulario WA de toda la campaña (nombre, idioma, variables). Es el mismo para los 150 mil.',
           '4. Recalcular SHA-256(UTF-8(trim(texto_plano_personalizado))) de un destinatario: debe coincidir con su contentHash.',
-          '5. La hoja es SHA-256(v1|send|campaignId|messageId|email|telefono|contentHash|adjuntos|smtp|wamid|waBodyHash|templateSealHash). Las variables efectivamente enviadas (waVars), el teléfono y el WAMID identifican el renglón.',
-          '6. Con la prueba Merkle (hermano a hermano: SHA-256(left|right)) se llega a la raíz. Si coincide con la TX, ese renglón no se modificó.',
+          '5. Hoja de envío v2: SHA-256(v2|send|campaignId|messageId|email|telefono|dni|nombre|monto|cuotas|rowHash|contentHash|adjuntos|smtp|wamid|waBodyHash|templateSealHash). Las tandas antiguas usan v1 (sin DNI/monto). Hoja de error: SHA-256(v2|error|…).',
+          '6. leavesDigest = SHA-256(JSON.stringify(leafHashes.sort())) del lote. Si no coincide con el de la TX, las hojas publicadas no son las ancladas.',
+          '7. Con la prueba Merkle (hermano a hermano: SHA-256(left|right)) se llega a la raíz. Si coincide con la TX, ese renglón no se modificó.',
         ]
       : [
           '1. Abrir la transacción en polygonscan.com y decodificar Input Data (UTF-8).',
-          '2. El payload es CAMPAIGN_EVENT|v1|{campaignId}|{batchId}|{merkleRoot}|{leafCount}|{timestamp}.',
+          '2. Payload v2: CAMPAIGN_EVENT|v2|{campaignId}|{batchId}|{merkleRoot}|{leafCount}|{timestamp}|{leavesDigest}. Las tandas v1 no incluyen leavesDigest.',
           '3. Cada hecho (mail abierto, WA entregado, WA leído) es una hoja atada al leafHash del envío.',
           '4. Verificar la prueba Merkle hasta la raíz de esta tanda. El sobre de envío no se reabre: este acta es el de los hechos posteriores.',
         ];
@@ -220,7 +234,7 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
     if (input.kind === 'send') {
       return [
         String(idx),
-        leaf.nombre || '—',
+        leaf.kind === 'error' ? `${leaf.nombre || '—'} (error)` : leaf.nombre || '—',
         contact,
         leaf.dni || '—',
         leaf.contentHash || '—',
@@ -261,10 +275,11 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
   doc.setFontSize(7);
   doc.setTextColor(...PDF_BRAND.textMuted);
   const disclaimer = doc.splitTextToSize(
-      'Este documento es una constancia técnica: deja asentado el contenido (o el hecho) incluido en la tanda y el ancla pública en Polygon Mainnet. ' +
+      'Este documento es una constancia técnica de lo pedido a WhatsApp/correo y de lo anclado en Polygon. ' +
+      'No prueba por sí solo la identidad civil del titular del teléfono, ni que haya leído o comprendido el contenido, ni que la deuda declarada por el cliente sea cierta. ' +
+      'DNI, monto y nombre se transcriben de la hoja Merkle (si es v2) o se omiten; no se toman de la base viva. ' +
       'La inmutabilidad la aporta la transacción citada, no este PDF. ' +
-      'Si se altera una sola foja, la raíz Merkle deja de coincidir con la registrada on-chain. ' +
-      'Los envíos individuales (fuera de campaña) se certifican con otra transacción por mensaje.',
+      'WhatsApp “entregado” significa que Meta informó entrega a un wa_id, no notificación fehaciente al deudor.',
     182
   );
   doc.text(disclaimer, 14, footY);
@@ -820,9 +835,9 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   const statements = [
-    'Esta Parte I relata quién envió, a quién se dirigió, qué se envió y qué hechos posteriores registraron los proveedores. La valoración de esos hechos corresponde a quien resuelve el expediente.',
-    'La integridad del texto se puede comprobar con la huella SHA-256 y, si la tanda está anclada, con la transacción de Polygon citada en el anexo. Alterar el texto hace que la huella deje de coincidir.',
-    'Que el servidor de correo haya aceptado el mensaje no significa que haya llegado a la casilla. Entrega y lectura de WhatsApp se informan solo si Meta las confirmó.',
+    'Esta Parte I relata qué se pidió enviar, a qué destino técnico y qué informaron después los proveedores. No califica valor legal ni prueba por sí sola la identidad civil del receptor.',
+    'La integridad del texto se puede comprobar con la huella SHA-256 y, si la tanda está anclada, con la transacción de Polygon. Alterar el texto hace que la huella deje de coincidir.',
+    'Que el servidor de correo haya aceptado el mensaje no significa que haya llegado a la casilla. “Entregado” o “leído” de WhatsApp se consignan solo si Meta los informó; no equivalen a que una persona determinada haya tomado conocimiento.',
     `Emisión: ${input.generatedAt}.`,
   ];
   for (const statement of statements) {
@@ -972,7 +987,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   doc.setTextColor(51, 65, 85);
   const steps = [
     '1. Abrir la transacción en polygonscan.com y decodificar Input Data (UTF-8).',
-    '2. El payload de envío es CAMPAIGN_SEND|v1|{campaignId}|{batchId}|{merkleRoot}|{leafCount}|{timestamp}|{templateSealHash?}. Una TX por tanda, no por persona.',
+    '2. Payload v2 de envío: CAMPAIGN_SEND|v2|{campaignId}|{batchId}|{merkleRoot}|{leafCount}|{timestamp}|{leavesDigest}|{templateSealHash?}. Una TX por tanda, no por persona. v1 no tiene leavesDigest.',
     '3. El template es el formulario de toda la campaña. Esta foja contiene los datos individualizados del destinatario, las variables efectivamente enviadas, el teléfono y el identificador WAMID correspondiente.',
     '4. Recalcular SHA-256(UTF-8(trim(texto_plano_personalizado))) del texto transcrito en la Parte I: debe coincidir con la huella de contenido.',
     '5. Si se altera esta foja, la raíz Merkle deja de coincidir con la registrada on-chain.',
@@ -985,7 +1000,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   doc.setTextColor(71, 85, 105);
   y = writeWrapped(
     doc,
-    'Este anexo es una constancia técnica oponible de un destinatario puntual. ' +
+    'Este anexo es una constancia técnica de un destinatario. No es notificación fehaciente ni prueba de la deuda. ' +
       'La inmutabilidad la aporta la transacción citada, no este PDF. ' +
       `Acta generada: ${input.generatedAt}.`,
     14,

@@ -38,6 +38,32 @@ async function postJson(
   }
 }
 
+async function postOriginalCsv(
+  endpoint: string,
+  campaignId: string,
+  orgId: string,
+  file: File,
+  token?: string
+): Promise<void> {
+  const originalEndpoint = endpoint.replace(/upload-recipients\/?$/, 'upload-csv-original');
+  const fd = new FormData();
+  fd.append('campaignId', campaignId);
+  fd.append('orgId', orgId);
+  fd.append('file', file);
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(originalEndpoint, {
+    method: 'POST',
+    headers,
+    credentials: token ? 'same-origin' : 'include',
+    body: fd,
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error || `Error al guardar el CSV original (${res.status})`);
+  }
+}
+
 async function withRetry(fn: () => Promise<void>): Promise<void> {
   let last: unknown;
   for (let attempt = 0; attempt < RETRIES; attempt++) {
@@ -147,6 +173,8 @@ export async function uploadCampaignCsvInChunks(opts: {
     endpoint = '/api/admin/campaigns/upload-recipients',
     onProgress,
   } = opts;
+
+  await withRetry(() => postOriginalCsv(endpoint, campaignId, orgId, file, token));
 
   const text = await file.text();
   const lines = text.split(/\r?\n/);

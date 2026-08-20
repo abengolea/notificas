@@ -2,12 +2,17 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { sendPolygonTransaction } from '@/lib/blockchain';
 import { buildMerkleTree, getMerkleProof, sha256Hex, verifyMerkleProof } from '@/lib/merkle';
+import { buildSendLeafPayload, parseSendLeafPayload } from '@/lib/campaign-leaf-payload';
 import { enqueueIntegrityClose } from '@/lib/cloud-tasks';
+
+export { buildSendLeafPayload, parseSendLeafPayload } from '@/lib/campaign-leaf-payload';
 
 export const SEND_TANDA_SIZE = 500;
 export const EVENT_TANDA_SIZE = 500;
-export const SEND_CLOSE_DELAY_SEC = 15 * 60;
-export const EVENT_CLOSE_DELAY_SEC = 60 * 60;
+export const SEND_CLOSE_DELAY_SEC = 5 * 60;
+export const EVENT_CLOSE_DELAY_SEC = 5 * 60;
+/** Versión del payload on-chain. v1 no tenía leavesDigest; v2 lo pone en posición 7. El prefijo sigue siendo CAMPAIGN_SEND / CAMPAIGN_EVENT. */
+export const ONCHAIN_PAYLOAD_VERSION = 'v2';
 
 export type IntegrityKind = 'send' | 'event';
 export type IntegrityEventType = 'email_read' | 'wa_delivered' | 'wa_read';
@@ -27,6 +32,7 @@ export type IntegrityBatch = {
   merkleRoot?: string;
   txHash?: string;
   payload?: string;
+  leavesDigest?: string;
   templateSealHash?: string;
   errorMsg?: string;
   createdAt?: unknown;
@@ -76,36 +82,6 @@ export async function resolveOpenEventBatchId(campaignId: string, at = new Date(
   return `events-${eventDayKey(at)}-${Date.now()}`;
 }
 
-/** Hojas nuevas: …|waBodyHash|templateSealHash. Las viejas se verifican con el leafPayload guardado. */
-export function buildSendLeafPayload(input: {
-  campaignId: string;
-  messageId: string;
-  email: string;
-  phone: string;
-  contentHash: string;
-  attachmentHashes: string[];
-  smtpMessageId: string;
-  wamid: string;
-  waBodyHash?: string;
-  templateSealHash?: string;
-}): string {
-  const att = [...input.attachmentHashes].filter(Boolean).sort().join(',');
-  return [
-    'v1',
-    'send',
-    input.campaignId,
-    input.messageId,
-    (input.email || '').trim().toLowerCase(),
-    (input.phone || '').replace(/\D/g, ''),
-    input.contentHash,
-    att,
-    input.smtpMessageId || '',
-    input.wamid || '',
-    input.waBodyHash || '',
-    input.templateSealHash || '',
-  ].join('|');
-}
-
 export function buildEventLeafPayload(input: {
   campaignId: string;
   messageId: string;
@@ -124,12 +100,35 @@ export function buildEventLeafPayload(input: {
   ].join('|');
 }
 
+function isCampaignOnChainPrefix(prefix: string | undefined): boolean {
+  return prefix === 'CAMPAIGN_SEND' || prefix === 'CAMPAIGN_EVENT';
+}
+
 export function extractMerkleRootFromPayload(payload: string | null): string | null {
   if (!payload) return null;
   const parts = payload.split('|');
-  if (parts[0] !== 'CAMPAIGN_SEND' && parts[0] !== 'CAMPAIGN_EVENT') return null;
+  if (!isCampaignOnChainPrefix(parts[0])) return null;
   const root = parts[4]?.trim();
   return root && root.length === 64 ? root : null;
+}
+
+/**
+ * Digest de hojas (SHA-256 del JSON de leafHashes ordenados).
+ * Solo existe en payloads v2. En v1 la posición 7 puede ser templateSealHash: no se lee como digest.
+ */
+export function extractLeavesDigestFromPayload(payload: string | null): string | null {
+  if (!payload) return null;
+  const parts = payload.split('|');
+  if (!isCampaignOnChainPrefix(parts[0])) return null;
+  if (parts[1] !== ONCHAIN_PAYLOAD_VERSION) return null;
+  const digest = parts[7]?.trim();
+  return digest && digest.length === 64 ? digest : null;
+}
+
+/** SHA-256(JSON.stringify(hashes.sort())) — determinista para un perito (JSON compacto, sort UTF-16). */
+export async function computeLeavesDigest(leafHashes: string[]): Promise<string> {
+  const sortedHashes = [...leafHashes].sort();
+  return sha256Hex(JSON.stringify(sortedHashes));
 }
 
 /** Crea o agranda la tanda de envío. Si la tanda ya se lacró, abre otra (no se reabre el sobre). */
@@ -199,6 +198,11 @@ export async function recordSendLeaf(params: {
   waBodyHash?: string;
   templateSealHash?: string;
   waVars?: Record<string, string>;
+  dni?: string;
+  nombre?: string;
+  monto?: string;
+  cuotas?: string;
+  rowHash?: string;
 }): Promise<{ leafHash: string; already: boolean }> {
   const db = getAdminDb();
   const msgRef = db.collection('campaign_messages').doc(params.messageId);
@@ -216,6 +220,11 @@ export async function recordSendLeaf(params: {
     wamid: params.wamid || '',
     waBodyHash: params.waBodyHash || '',
     templateSealHash: params.templateSealHash || '',
+    dni: params.dni || '',
+    nombre: params.nombre || '',
+    monto: params.monto || '',
+    cuotas: params.cuotas || '',
+    rowHash: params.rowHash || '',
   });
   const leafHash = await sha256Hex(leafPayload);
 
@@ -254,6 +263,11 @@ export async function recordSendLeaf(params: {
       waBodyHash: params.waBodyHash || null,
       templateSealHash: params.templateSealHash || null,
       waVars: params.waVars || null,
+      dni: params.dni || null,
+      nombre: params.nombre || null,
+      monto: params.monto || null,
+      cuotas: params.cuotas || null,
+      rowHash: params.rowHash || null,
       createdAt: FieldValue.serverTimestamp(),
     });
     t.update(msgRef, {
@@ -268,6 +282,11 @@ export async function recordSendLeaf(params: {
         waBodyHash: params.waBodyHash || null,
         templateSealHash: params.templateSealHash || null,
         waVars: params.waVars || null,
+        dni: params.dni || null,
+        nombre: params.nombre || null,
+        monto: params.monto || null,
+        cuotas: params.cuotas || null,
+        rowHash: params.rowHash || null,
       },
     });
     return { already: false as const };
@@ -280,15 +299,43 @@ export async function recordSendLeaf(params: {
   return { leafHash, already: result.already };
 }
 
-/** Destinatario que falló: cuenta para cerrar la tanda, sin hoja. */
-export async function recordSendError(params: {
+export function buildErrorLeafPayload(input: {
   campaignId: string;
   messageId: string;
+  email: string;
+  phone: string;
+  contentHash: string;
+  errorCode: string;
+  occurredAt: string;
+}): string {
+  return [
+    'v2',
+    'error',
+    input.campaignId,
+    input.messageId,
+    (input.email || '').trim().toLowerCase().replace(/\|/g, '_'),
+    (input.phone || '').replace(/\D/g, ''),
+    input.contentHash || '',
+    (input.errorCode || 'unknown').replace(/\|/g, '_'),
+    input.occurredAt,
+  ].join('|');
+}
+
+/** Destinatario que falló: crea hoja de error en el árbol para que todo destinatario procesado tenga prueba. */
+export async function recordSendError(params: {
+  campaignId: string;
+  orgId?: string;
+  messageId: string;
   batchId: string;
+  errorCode?: string;
+  email?: string;
+  phone?: string;
+  contentHash?: string;
 }): Promise<void> {
   const db = getAdminDb();
   const msgRef = db.collection('campaign_messages').doc(params.messageId);
   const batchRef = batchesCol(params.campaignId).doc(params.batchId);
+  const leafRef = batchRef.collection('leaves').doc(params.messageId);
 
   const added = await db.runTransaction(async (t) => {
     const msgSnap = await t.get(msgRef);
@@ -296,8 +343,51 @@ export async function recordSendError(params: {
     if (!msg || msg.integritySendSealed) return false;
     const batchSnap = await t.get(batchRef);
     if (!batchSnap.exists) return false;
-    t.update(msgRef, { integritySendSealed: true, integritySendBatchId: params.batchId });
-    t.update(batchRef, { sealedCount: FieldValue.increment(1) });
+
+    const email = (params.email ?? String(msg.recipientEmail || '')).trim().toLowerCase();
+    const phone = String(params.phone ?? msg.recipientTelefono ?? '').replace(/\D/g, '');
+    const contentHash = String(
+      params.contentHash || msg.integrity?.send?.contentHash || msg.contentHash || ''
+    );
+    const errorCode = (params.errorCode || 'unknown').slice(0, 64);
+    const occurredAt = new Date().toISOString();
+    const leafPayload = buildErrorLeafPayload({
+      campaignId: params.campaignId,
+      messageId: params.messageId,
+      email,
+      phone,
+      contentHash,
+      errorCode,
+      occurredAt,
+    });
+    const leafHash = await sha256Hex(leafPayload);
+
+    t.set(leafRef, {
+      kind: 'error',
+      messageId: params.messageId,
+      leafPayload,
+      leafHash,
+      errorCode,
+      occurredAt,
+      email,
+      phone,
+      contentHash: contentHash || null,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    t.update(msgRef, {
+      integritySendSealed: true,
+      integritySendBatchId: params.batchId,
+      'integrity.send': {
+        batchId: params.batchId,
+        leafHash,
+        errorCode,
+        contentHash: contentHash || null,
+      },
+    });
+    t.update(batchRef, {
+      sealedCount: FieldValue.increment(1),
+      leafCount: FieldValue.increment(1),
+    });
     return true;
   });
 
@@ -456,7 +546,14 @@ export async function closeIntegrityBatch(
   campaignId: string,
   batchId: string,
   opts: { force?: boolean } = {}
-): Promise<{ status: string; txHash?: string; merkleRoot?: string; leafCount?: number; error?: string }> {
+): Promise<{
+  status: string;
+  txHash?: string;
+  merkleRoot?: string;
+  leafCount?: number;
+  error?: string;
+  leavesDigest?: string;
+}> {
   const db = getAdminDb();
   const batchRef = batchesCol(campaignId).doc(batchId);
 
@@ -520,14 +617,20 @@ export async function closeIntegrityBatch(
     const campSnap = kind === 'send' ? await db.collection('campaigns').doc(campaignId).get() : null;
     const templateSealHash =
       kind === 'send' ? String(campSnap?.data()?.waTemplateSeal?.hash || '') : '';
+
+    // Digest de todas las hojas: SHA-256 del JSON de leafHashes ordenados alfabéticamente
+    // (independiente del orden del árbol). Payload v2: posición 7. v1 no tenía este campo.
+    const leavesDigest = await computeLeavesDigest(hashes);
+
     const payloadParts = [
       prefix,
-      'v1',
+      ONCHAIN_PAYLOAD_VERSION,
       campaignId,
       batchId,
       tree.root,
       String(leaves.length),
       new Date().toISOString(),
+      leavesDigest,
     ];
     if (templateSealHash) payloadParts.push(templateSealHash);
     const payload = payloadParts.join('|');
@@ -591,6 +694,7 @@ export async function closeIntegrityBatch(
       merkleRoot: tree.root,
       txHash,
       payload,
+      leavesDigest,
       leafCount: leaves.length,
       sealedAt: FieldValue.serverTimestamp(),
       accepting: false,
@@ -601,13 +705,119 @@ export async function closeIntegrityBatch(
     await flush();
     if (ops > 0) await current.commit();
 
-    return { status: 'anchored', txHash, merkleRoot: tree.root, leafCount: leaves.length };
+    return { status: 'anchored', txHash, merkleRoot: tree.root, leafCount: leaves.length, leavesDigest };
   } catch (e: unknown) {
     const errorMsg = e instanceof Error ? e.message : 'Error al anclar tanda';
     await batchRef.update({ status: 'failed', errorMsg, accepting: false });
     console.error('❌ closeIntegrityBatch', campaignId, batchId, errorMsg);
     return { status: 'failed', error: errorMsg, leafCount: leaves.length };
   }
+}
+
+export type IntegrityBatchVerify = {
+  batchId: string;
+  status: string;
+  leafCount: number;
+  payloadVersion: string | null;
+  merkleMatch: boolean | null;
+  storedRoot: string | null;
+  rebuiltRoot: string | null;
+  onChainRoot: string | null;
+  onChainRootMatch: boolean | null;
+  computedDigest: string | null;
+  payloadDigest: string | null;
+  digestMatch: boolean | null;
+  onChainDigest: string | null;
+  onChainDigestMatch: boolean | null;
+  payloadHashMismatches: number;
+  intact: boolean;
+};
+
+/** Verificación de tanda: reconstruye el árbol y el digest. No se usa en el chequeo por destinatario. */
+export async function verifyIntegrityBatch(
+  campaignId: string,
+  batchId: string
+): Promise<IntegrityBatchVerify> {
+  const batchRef = batchesCol(campaignId).doc(batchId);
+  const snap = await batchRef.get();
+  if (!snap.exists) throw new Error('Tanda no encontrada');
+  const d = snap.data()!;
+  const storedPayload = typeof d.payload === 'string' ? d.payload : null;
+  const storedRoot = typeof d.merkleRoot === 'string' ? d.merkleRoot : null;
+
+  const leavesSnap = await batchRef.collection('leaves').get();
+  const leaves = leavesSnap.docs
+    .map((doc) => ({
+      id: doc.id,
+      ...(doc.data() as { leafHash?: string; leafPayload?: string }),
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  let payloadHashMismatches = 0;
+  for (const leaf of leaves) {
+    if (!leaf.leafPayload || !leaf.leafHash) {
+      payloadHashMismatches += 1;
+      continue;
+    }
+    const hashed = await sha256Hex(leaf.leafPayload);
+    if (hashed !== leaf.leafHash) payloadHashMismatches += 1;
+  }
+
+  const hashes = leaves.map((l) => String(l.leafHash || ''));
+  const rebuiltRoot = hashes.length > 0 ? (await buildMerkleTree(hashes)).root : null;
+  const computedDigest = hashes.length > 0 ? await computeLeavesDigest(hashes) : null;
+  const payloadDigest = extractLeavesDigestFromPayload(storedPayload);
+  const payloadVersion = storedPayload ? storedPayload.split('|')[1] || null : null;
+
+  const merkleMatch = Boolean(rebuiltRoot && storedRoot && rebuiltRoot === storedRoot);
+  const digestMatch = payloadDigest && computedDigest ? payloadDigest === computedDigest : payloadDigest ? false : null;
+
+  let onChainRoot: string | null = null;
+  let onChainDigest: string | null = null;
+  let onChainRootMatch: boolean | null = null;
+  let onChainDigestMatch: boolean | null = null;
+  if (typeof d.txHash === 'string' && d.txHash) {
+    try {
+      const { getTransactionInfo } = await import('@/lib/blockchain');
+      const info = await getTransactionInfo(d.txHash);
+      const onChainPayload = info?.data ?? null;
+      onChainRoot = extractMerkleRootFromPayload(onChainPayload);
+      onChainDigest = extractLeavesDigestFromPayload(onChainPayload);
+      onChainRootMatch = Boolean(onChainRoot && storedRoot && onChainRoot === storedRoot);
+      if (onChainDigest && computedDigest) onChainDigestMatch = onChainDigest === computedDigest;
+      else if (onChainDigest) onChainDigestMatch = false;
+      else onChainDigestMatch = payloadVersion === ONCHAIN_PAYLOAD_VERSION ? false : null;
+    } catch {
+      onChainRootMatch = null;
+      onChainDigestMatch = null;
+    }
+  }
+
+  const intact =
+    payloadHashMismatches === 0 &&
+    merkleMatch &&
+    digestMatch !== false &&
+    onChainRootMatch !== false &&
+    onChainDigestMatch !== false;
+
+  return {
+    batchId,
+    status: String(d.status || ''),
+    leafCount: leaves.length,
+    payloadVersion,
+    merkleMatch: hashes.length > 0 ? merkleMatch : null,
+    storedRoot,
+    rebuiltRoot,
+    onChainRoot,
+    onChainRootMatch,
+    computedDigest,
+    payloadDigest,
+    digestMatch,
+    onChainDigest,
+    onChainDigestMatch,
+    payloadHashMismatches,
+    intact,
+  };
 }
 
 export async function listIntegrityBatches(campaignId: string): Promise<IntegrityBatch[]> {

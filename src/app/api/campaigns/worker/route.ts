@@ -13,6 +13,8 @@ import { computeContentHash } from '@/lib/certification';
 import { recordEventLeaf, recordSendError, recordSendLeaf, sendBatchId } from '@/lib/campaign-integrity';
 import { sealEvidenceSnapshot } from '@/lib/evidence-snapshot';
 import { hashWhatsAppBody, sealedWhatsAppRenderedBody } from '@/lib/whatsapp-evidence';
+import { sourceRowCanonical } from '@/lib/campaign-source-canonical';
+import { sha256Hex } from '@/lib/merkle';
 import { certifyWhatsAppPayloadIfNeeded } from '@/lib/certification-polygon';
 import { recipientWhatsAppVars, sealCampaignWhatsAppTemplate } from '@/lib/wa-template-seal';
 import { usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
@@ -89,6 +91,28 @@ async function recordSendIntegrity(params: {
         telefono: params.phone,
       }
     );
+    const msgSnap2 = await db.collection('campaign_messages').doc(params.messageDocId).get();
+    const msgNow = msgSnap2.data() || {};
+    const dni = String(mail.recipientDni || msgNow.recipientDni || '');
+    const nombre = String(mail.recipientName || msgNow.recipientNombre || '');
+    const monto = String(mail.recipientMonto || msgNow.recipientMonto || '');
+    const cuotas = presentRecipientValue(mail.recipientCuotas)
+      ? recipientValueText(mail.recipientCuotas)
+      : presentRecipientValue(msgNow.recipientCuotas)
+        ? recipientValueText(msgNow.recipientCuotas)
+        : '';
+    const rowHash =
+      String(msgNow.sourceRowHash || '') ||
+      (await sha256Hex(
+        sourceRowCanonical({
+          email: params.email,
+          nombre,
+          dni,
+          telefono: params.phone,
+          monto,
+          cuotas,
+        })
+      ));
 
     await recordSendLeaf({
       campaignId: params.campaignId,
@@ -104,6 +128,11 @@ async function recordSendIntegrity(params: {
       waBodyHash,
       templateSealHash,
       waVars,
+      dni,
+      nombre,
+      monto,
+      cuotas,
+      rowHash,
     });
 
     await db.collection('mail').doc(params.mailId).update({
@@ -273,7 +302,15 @@ async function processMessage(
       recipientPhone: String(row.telefono || ''),
     });
     if (sim.status === 'error') {
-      await recordSendError({ campaignId, messageId: messageDocId, batchId });
+      await recordSendError({
+        campaignId,
+        messageId: messageDocId,
+        batchId,
+        errorCode: 'sim_error',
+        email: emailRaw,
+        phone: String(row.telefono || ''),
+        contentHash,
+      });
       return 'error';
     }
     await recordSendIntegrity({
@@ -326,7 +363,15 @@ async function processMessage(
     if (canal === 'email' || canal === 'ambos') errUpdate.emailEstado = 'error';
     if (canal === 'whatsapp' || canal === 'ambos') errUpdate.waEstado = 'error';
     await msgRef.update(errUpdate);
-    await recordSendError({ campaignId, messageId: messageDocId, batchId });
+    await recordSendError({
+      campaignId,
+      messageId: messageDocId,
+      batchId,
+      errorCode: cfResult.error?.slice(0, 64) || 'cf_error',
+      email: emailRaw,
+      phone: String(row.telefono || ''),
+      contentHash,
+    });
     return 'error';
   }
 
@@ -347,7 +392,7 @@ async function processMessage(
     }
   }
 
-  void recordSendIntegrity({
+  await recordSendIntegrity({
     campaignId,
     orgId,
     messageDocId,
@@ -358,10 +403,10 @@ async function processMessage(
     attachmentHashes: adjuntos.map((a) => a.hash).filter(Boolean),
     mailId,
   });
-  void sealEvidenceSnapshot(mailId).catch((e) =>
+  await sealEvidenceSnapshot(mailId).catch((e) =>
     console.warn('⚠️ [worker] No se pudo sellar snapshot:', e instanceof Error ? e.message : e)
   );
-  void certifyWhatsAppPayloadIfNeeded(mailId).catch((e) =>
+  await certifyWhatsAppPayloadIfNeeded(mailId).catch((e) =>
     console.warn('⚠️ [worker] No se pudo persistir hash WA:', e instanceof Error ? e.message : e)
   );
 
@@ -538,6 +583,10 @@ export async function POST(request: NextRequest) {
             campaignId,
             messageId: messageDocId,
             batchId: String(failedData.integritySendBatchId),
+            errorCode: (message || 'worker_error').slice(0, 64),
+            email: String(failedData.recipientEmail || ''),
+            phone: String(failedData.recipientTelefono || ''),
+            contentHash: String(failedData.integrity?.send?.contentHash || failedData.contentHash || ''),
           });
         }
         errors++;

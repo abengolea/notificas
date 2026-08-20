@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb, getAdminBucket } from '@/lib/firebase-admin';
+import { sha256Hex } from '@/lib/merkle';
+import { sourceRowCanonical } from '@/lib/campaign-source-canonical';
 import { enqueueCampaignFanout, enqueueCampaignWorker } from '@/lib/cloud-tasks';
 import { scheduleNextDailySend, campaignIsStopped } from '@/lib/campaign-daily';
 import { ensureSendBatch, resolveOpenSendBatchId, tandaIndexFromOffset } from '@/lib/campaign-integrity';
@@ -272,8 +274,11 @@ async function processFanoutPage(
   const resetErrorIds = new Set<string>();
   const tandaIndex = tandaIndexFromOffset(offset);
   const integrityBatchId = await resolveOpenSendBatchId(campaignId, tandaIndex);
+  const rowHashes = await Promise.all(page.map((row) => sha256Hex(sourceRowCanonical(row))));
 
-  for (const row of page) {
+  for (let rowIndex = 0; rowIndex < page.length; rowIndex++) {
+    const row = page[rowIndex];
+    const sourceRowHash = rowHashes[rowIndex];
     const email = (row.email || '').trim().toLowerCase();
     const key = recipientKey(email, row.telefono || '');
     const phoneKey = phoneDigits(row.telefono) ? `wa:${phoneDigits(row.telefono)}` : '';
@@ -291,6 +296,7 @@ async function processFanoutPage(
         recipientMonto: row.monto || null,
         recipientCuotas: presentRecipientValue(row.cuotas) ? recipientValueText(row.cuotas) : null,
         recipientTelefono: row.telefono || null,
+        sourceRowHash,
       };
       if (existing.estado === 'error' && !resetErrorIds.has(existing.id)) {
         resetErrorIds.add(existing.id);
@@ -319,6 +325,7 @@ async function processFanoutPage(
         recipientMonto: row.monto || null,
         recipientCuotas: presentRecipientValue(row.cuotas) ? recipientValueText(row.cuotas) : null,
         recipientTelefono: row.telefono || null,
+        sourceRowHash,
         estado: 'pendiente',
         creditApplied: false,
         sendTandaIndex: tandaIndex,

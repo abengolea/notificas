@@ -118,7 +118,7 @@ export function OrgSelector() {
             Empresas
           </h1>
           <p className="text-muted-foreground mt-1">
-            Notificaciones masivas fehacientes por destinatario, certificadas en Polygon.
+            Campañas masivas por WhatsApp o correo, con constancia técnica y ancla en Polygon.
           </p>
         </div>
         <Button variant="outline" asChild>

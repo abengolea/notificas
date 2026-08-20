@@ -43,10 +43,10 @@ export function buildCampaignMailHtml(params: {
 
   const hasInlineBody = !!(bodyHtml?.trim());
   const leadSecondParagraph = hasInlineBody
-    ? `Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>${escapeHtmlText(sender)}</strong>.
-                Puede leer el texto en este mismo correo; para la <strong>constancia fehaciente de lectura</strong> en la plataforma, use el enlace siguiente.`
-    : `Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>${escapeHtmlText(sender)}</strong>.
-                <strong>Le recomendamos abrir el mensaje</strong> mediante el enlace para conocer el contenido y dejar constancia certificada de lectura.`;
+    ? `Recibió una comunicación digital de <strong>${escapeHtmlText(sender)}</strong>.
+                Puede leer el texto en este mismo correo. El enlace siguiente deja constancia técnica de apertura en la plataforma; no equivale por sí solo a notificación fehaciente.`
+    : `Recibió una comunicación digital de <strong>${escapeHtmlText(sender)}</strong>.
+                <strong>Le recomendamos abrir el mensaje</strong> mediante el enlace para ver el contenido. La apertura deja constancia técnica en la plataforma; no prueba por sí sola identidad civil ni conocimiento jurídico.`;
 
   const contentSection = bodyHtml?.trim()
     ? `

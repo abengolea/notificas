@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { verifyCampaignMessage } from '@/lib/campaign-integrity';
+import { verifyCampaignMessage, verifyIntegrityBatch, parseSendLeafPayload } from '@/lib/campaign-integrity';
 import { buildActaDestinatarioPdf, buildActaTandaPdf, type ActaLeafRow } from '@/lib/campaign-integrity-pdf';
 import { findEvidenceSnapshot } from '@/lib/evidence-snapshot';
 import {
@@ -232,10 +232,16 @@ export async function GET(request: NextRequest) {
     id: string;
     messageId?: string;
     leafHash?: string;
+    leafPayload?: string;
     leafIndex?: number;
     contentHash?: string;
     eventType?: string;
     occurredAt?: string;
+    kind?: string;
+    dni?: string;
+    nombre?: string;
+    monto?: string;
+    cuotas?: string;
   };
   const rawLeaves: LeafDoc[] = leavesSnap.docs
     .map((d) => ({ id: d.id, ...(d.data() as Omit<LeafDoc, 'id'>) }))
@@ -253,22 +259,28 @@ export async function GET(request: NextRequest) {
   }
 
   const leaves: ActaLeafRow[] = rawLeaves.map((leaf, i) => {
-    const msg = msgById.get(String(leaf.messageId || '')) || {};
+    const parsed = parseSendLeafPayload(typeof leaf.leafPayload === 'string' ? leaf.leafPayload : undefined);
+    const sealedSend = (msgById.get(String(leaf.messageId || ''))?.integrity?.send || {}) as Record<string, unknown>;
     return {
       leafIndex: typeof leaf.leafIndex === 'number' ? leaf.leafIndex : i,
       messageId: String(leaf.messageId || ''),
       leafHash: String(leaf.leafHash || ''),
-      contentHash: typeof leaf.contentHash === 'string' ? leaf.contentHash : undefined,
+      kind: typeof leaf.kind === 'string' ? leaf.kind : undefined,
+      contentHash: parsed?.contentHash || (typeof leaf.contentHash === 'string' ? leaf.contentHash : undefined),
       eventType: typeof leaf.eventType === 'string' ? leaf.eventType : undefined,
       occurredAt: typeof leaf.occurredAt === 'string' ? leaf.occurredAt : undefined,
-      nombre: String(msg.recipientNombre || ''),
-      email: String(msg.recipientEmail || ''),
-      telefono: String(msg.recipientTelefono || ''),
-      dni: String(msg.recipientDni || ''),
+      nombre: parsed?.nombre || String(leaf.nombre || sealedSend.nombre || ''),
+      email: parsed?.email || '',
+      telefono: parsed?.phone || '',
+      dni: parsed?.dni || String(leaf.dni || sealedSend.dni || ''),
     };
   });
 
   try {
+    const batchVerify =
+      String(batch.status || '') === 'anchored'
+        ? await verifyIntegrityBatch(campaignId, batchId).catch(() => null)
+        : null;
     const pdf = await buildActaTandaPdf({
       orgNombre: String(org.nombre || ''),
       orgCuit: typeof org.cuit === 'string' ? org.cuit : undefined,
@@ -286,6 +298,8 @@ export async function GET(request: NextRequest) {
       generatedAt: formatEvidenceTimestamp(new Date()),
       leaves,
       verifyRef: campaignVerifyRef('campaign_acta', campaignId, batchId),
+      leavesDigest: batchVerify?.computedDigest || undefined,
+      digestMatch: batchVerify?.digestMatch ?? null,
     });
 
     const hash = sha256Hex(pdf);

@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { recordEventLeaf } from "@/lib/campaign-integrity";
 import { certifyMailHitoIfNeeded } from "@/lib/certification-polygon";
-import { recordProviderEvent } from "@/lib/provider-events";
+import { recordProviderEvent, sha256Utf8 } from "@/lib/provider-events";
 import { verifyWhatsAppHubSignature } from "@/lib/whatsapp-webhook-auth";
 
 // Callback URL canónica en Meta Developer Portal (app 1022568949756440):
@@ -33,15 +33,17 @@ export async function POST(request: NextRequest) {
     console.error("WHATSAPP_APP_SECRET no configurado: se rechaza el webhook");
     return new NextResponse("Unauthorized", { status: 401 });
   }
+  const signatureHeader = request.headers.get("x-hub-signature-256");
   const ok = verifyWhatsAppHubSignature(
     raw,
-    request.headers.get("x-hub-signature-256"),
+    signatureHeader,
     appSecret
   );
   if (!ok) {
     console.warn("⚠️ WhatsApp webhook: firma X-Hub-Signature-256 inválida");
     return new NextResponse("Forbidden", { status: 403 });
   }
+  const payloadHash = sha256Utf8(raw);
 
   let body: Record<string, unknown> | null = null;
   try {
@@ -56,7 +58,12 @@ export async function POST(request: NextRequest) {
 
   // Procesar de forma síncrona antes de retornar — Cloud Run mata promesas en background
   // al enviar la respuesta HTTP. Meta tolera hasta ~20s; nuestras queries de Firestore son <5s.
-  await processWebhookBody(body).catch((e) =>
+  await processWebhookBody(body, {
+    httpBody: raw,
+    signatureHeader,
+    signatureValid: true,
+    payloadHash,
+  }).catch((e) =>
     console.error("❌ Error en whatsapp webhook:", e?.message)
   );
 
@@ -81,7 +88,15 @@ function alreadyHasWhatsAppStatus(data: Record<string, any> | undefined, statusT
   return (data.tracking?.movements ?? []).some((m: { type?: string }) => m?.type === type);
 }
 
-async function processWebhookBody(body: any) {
+async function processWebhookBody(
+  body: any,
+  inbound: {
+    httpBody: string;
+    signatureHeader: string | null;
+    signatureValid: boolean;
+    payloadHash: string;
+  }
+) {
   if (!body || body.object !== "whatsapp_business_account") return;
 
   for (const entry of body.entry ?? []) {
@@ -91,6 +106,7 @@ async function processWebhookBody(body: any) {
         await processStatus(status, {
           metadata: change.value?.metadata ?? null,
           entryId: entry.id ?? null,
+          inbound,
         }).catch((e) =>
           console.error("❌ Error procesando status WA:", e?.message, status?.id)
         );
@@ -99,7 +115,19 @@ async function processWebhookBody(body: any) {
   }
 }
 
-async function processStatus(status: any, extra?: { metadata?: unknown; entryId?: string | null }) {
+async function processStatus(
+  status: any,
+  extra?: {
+    metadata?: unknown;
+    entryId?: string | null;
+    inbound?: {
+      httpBody: string;
+      signatureHeader: string | null;
+      signatureValid: boolean;
+      payloadHash: string;
+    };
+  }
+) {
   const wamid: string = status.id;
   const statusType: string = status.status; // sent | delivered | read | failed
   const recipientPhone: string = status.recipient_id ?? "Unknown";
@@ -161,6 +189,10 @@ async function processStatus(status: any, extra?: { metadata?: unknown; entryId?
         recipient: recipientPhone,
         providerTimestamp: timestamp,
         raw: { status, metadata: extra?.metadata ?? null, entryId: extra?.entryId ?? null, pending: true },
+        signatureHeader: extra?.inbound?.signatureHeader ?? null,
+        signatureValid: extra?.inbound?.signatureValid ?? null,
+        payloadHash: extra?.inbound?.payloadHash ?? null,
+        httpBody: extra?.inbound?.httpBody ?? null,
       }).catch(() => undefined);
       console.log(`⏳ Webhook ${statusType} guardado en pending_wa_webhooks/${wamid} — se procesará cuando llegue whatsapp_ids`);
       return;
@@ -236,6 +268,10 @@ async function processStatus(status: any, extra?: { metadata?: unknown; entryId?
     recipient: recipientPhone,
     providerTimestamp: timestamp,
     raw: { status, metadata: extra?.metadata ?? null, entryId: extra?.entryId ?? null },
+    signatureHeader: extra?.inbound?.signatureHeader ?? null,
+    signatureValid: extra?.inbound?.signatureValid ?? null,
+    payloadHash: extra?.inbound?.payloadHash ?? null,
+    httpBody: extra?.inbound?.httpBody ?? null,
   }).catch((e) => console.warn("⚠️ No se pudo guardar raw WA:", e?.message));
 
   if (!recorded.campaignId && (statusType === "delivered" || statusType === "read")) {

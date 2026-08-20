@@ -269,9 +269,8 @@ Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@noti
       templateLang,
     });
     if (templateEvidence.templateBodyMissing) {
-      console.warn(
-        '⚠️ No se lacró el BODY de Meta; el WhatsApp se envía igual. El PDF certificará nombre, idioma y variables.'
-      );
+      console.error('❌ No se lacró el BODY de Meta; no se envía el WhatsApp.');
+      return { error: { message: 'No se pudo obtener el texto de la plantilla de Meta. No se envía.' } };
     }
   }
 
@@ -2094,7 +2093,7 @@ async function resolveMailDocIdFromWhatsAppMessageId(db, wamid) {
   return null;
 }
 
-async function processWhatsAppStatus(status) {
+async function processWhatsAppStatus(status, inbound) {
   const wamid = status.id;
   const statusType = status.status; // sent | delivered | read | failed
   const recipientPhone = status.recipient_id;
@@ -2174,6 +2173,9 @@ async function processWhatsAppStatus(status) {
         recipient: recipientPhone,
         providerTimestamp: timestamp,
         raw: status,
+        signatureHeader: inbound?.signatureHeader || null,
+        signatureValid: inbound?.signatureValid === true,
+        payloadHash: inbound?.payloadHash || null,
         receivedAt: FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -2306,6 +2308,14 @@ exports.whatsappWebhook = onRequest(
       return res.status(403).send('Forbidden');
     }
 
+    const rawStr = Buffer.isBuffer(raw) ? raw.toString('utf8') : String(raw);
+    const payloadHash = crypto.createHash('sha256').update(rawStr, 'utf8').digest('hex');
+    const inbound = {
+      signatureHeader: req.get('x-hub-signature-256') || null,
+      signatureValid: true,
+      payloadHash,
+    };
+
     try {
       const body = req.body;
       if (body?.object === 'whatsapp_business_account') {
@@ -2313,7 +2323,7 @@ exports.whatsappWebhook = onRequest(
           for (const change of (entry.changes || [])) {
             if (change.field !== 'messages') continue;
             for (const status of (change.value?.statuses || [])) {
-              await processWhatsAppStatus(status).catch(e =>
+              await processWhatsAppStatus(status, inbound).catch(e =>
                 console.error('❌ Error procesando status WA:', e.message, status)
               );
             }
