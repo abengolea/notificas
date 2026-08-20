@@ -29,7 +29,7 @@ import {
 } from "@/lib/campaign-fake-recipients";
 import type { CanalCampaign } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { CampaignDashboard } from "@/components/empresa/campaign-dashboard";
+import { CampaignDashboard, type CampaignDashboardHandle } from "@/components/empresa/campaign-dashboard";
 import { canEditWhatsAppTemplate, isUnsentCampaign } from "@/lib/campaign-edit";
 import { WA_TEMPLATE_DEFAULT_VARS, csvColumnsFromWaVariables, usesNotificasDefaultTemplate } from "@/lib/wa-template-fields";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
@@ -102,6 +102,8 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
   const [templateUrlButton, setTemplateUrlButton] = useState(false);
   const formReady = useRef(false);
   const [exportActionsHost, setExportActionsHost] = useState<HTMLDivElement | null>(null);
+  const dashboardRef = useRef<CampaignDashboardHandle>(null);
+  const [listView, setListView] = useState({ section: "destinatarios", filter: "all" });
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/admin/campaigns/${campaignId}`, { credentials: "include" });
@@ -139,24 +141,14 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
     return () => clearInterval(t);
   }, [data?.campaign.estado, load]);
 
-  async function saveTemplate() {
+  async function patchCampaign(body: Record<string, unknown>) {
     setSaving(true);
     try {
       const res = await fetch(`/api/admin/campaigns/${campaignId}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tandaSize,
-          ...(data && canEditWhatsAppTemplate(data.campaign)
-            ? {
-                waTemplateName: templateName.trim(),
-                waTemplateLang: templateLang,
-                waTemplateVariables: templateVars.filter(Boolean),
-                waUrlButton: templateUrlButton,
-              }
-            : {}),
-        }),
+        body: JSON.stringify(body),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "No se pudo guardar");
@@ -167,6 +159,20 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function saveQuota() {
+    await patchCampaign({ tandaSize });
+  }
+
+  async function saveTemplate() {
+    if (!data || !canEditWhatsAppTemplate(data.campaign)) return;
+    await patchCampaign({
+      waTemplateName: templateName.trim(),
+      waTemplateLang: templateLang,
+      waTemplateVariables: templateVars.filter(Boolean),
+      waUrlButton: templateUrlButton,
+    });
   }
 
   async function onFile(file: File) {
@@ -458,16 +464,25 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {(
           [
-            { label: "Enviados", value: stats.enviados, hint: `de ${c.recipientCount.toLocaleString("es-AR")} destinatarios` },
-            { label: "Leídos", value: stats.leidos, hint: `${leidoPct}% del envío` },
-            { label: "Pendientes", value: stats.pendientes, hint: "aún en cola" },
-            { label: "Errores", value: stats.errores, hint: stats.errores > 0 ? "revisá la tanda" : "sin errores" },
+            { key: "all", label: "Enviados", value: stats.enviados, hint: `de ${c.recipientCount.toLocaleString("es-AR")} destinatarios` },
+            { key: "leido", label: "Leídos", value: stats.leidos, hint: `${leidoPct}% del envío` },
+            { key: "pendiente", label: "Pendientes", value: stats.pendientes, hint: "aún en cola" },
+            { key: "error", label: "Errores", value: stats.errores, hint: stats.errores > 0 ? "tocá para verlos" : "sin errores" },
           ] as const
         ).map((s) => (
-          <div key={s.label} className={cn("rounded-lg border bg-card p-4", s.label === "Errores" && s.value > 0 && "border-destructive/40")}>
+          <button
+            key={s.key}
+            type="button"
+            onClick={() => dashboardRef.current?.openDestinatarios(s.key)}
+            className={cn(
+              "rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              listView.section === "destinatarios" && listView.filter === s.key && "ring-2 ring-primary",
+              s.key === "error" && s.value > 0 && "border-destructive/40"
+            )}
+          >
             <p className="text-sm font-medium text-muted-foreground">{s.label}</p>
             <p className="text-2xl font-bold tabular-nums mt-1">{s.value.toLocaleString("es-AR")}</p>
-            {s.label === "Leídos" ? (
+            {s.key === "leido" ? (
               <div className="mt-2 space-y-1">
                 <Progress value={leidoPct} className="h-2" />
                 <p className="text-xs text-muted-foreground">{s.hint}</p>
@@ -475,9 +490,22 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
             ) : (
               <p className="text-xs text-muted-foreground mt-1">{s.hint}</p>
             )}
-          </div>
+          </button>
         ))}
       </div>
+
+      {!c.simulated && (
+        <p className="text-sm text-muted-foreground">
+          Hoy: cupo <strong className="text-foreground">{plan.dailyQuota > 0 ? plan.dailyQuota.toLocaleString("es-AR") : "sin tope"}</strong>
+          {plan.dailyQuota > 0 ? (
+            <>
+              {" "}· ya van {plan.sentToday.toLocaleString("es-AR")} · quedan{" "}
+              {plan.remainingToday.toLocaleString("es-AR")}
+            </>
+          ) : null}
+          . Próximos días: <strong className="text-foreground">{tandaSize.toLocaleString("es-AR")}</strong>.
+        </p>
+      )}
 
       {c.estado === "pausada" ? (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
@@ -504,196 +532,215 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
         </div>
       ) : null}
 
-      {!c.simulated && (
-      <Card>
-        <CardHeader>
-          <CardTitle>Lote diario</CardTitle>
-          <CardDescription>
-            Cada día sale como máximo este número de destinatarios nuevos. El lote del día siguiente arranca solo a las 9:00 (Argentina). Si lo cambiás a mitad de campaña, el nuevo cupo rige mañana. Pausá para que no siga.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <DailyQuotaField
-            value={tandaSize}
-            onChange={setTandaSize}
-            hint="Cuando Meta suba el cupo Unique Users del número (1.000 → 10.000 → 100.000), cambiá este valor. El lote de hoy queda; rige mañana a las 9:00."
-          />
-          <p className="text-sm">
-            Hoy: cupo <strong>{plan.dailyQuota > 0 ? plan.dailyQuota.toLocaleString("es-AR") : "sin tope"}</strong>
-            {plan.dailyQuota > 0 ? (
-              <>
-                {" "}· ya van {plan.sentToday.toLocaleString("es-AR")} · quedan{" "}
-                {plan.remainingToday.toLocaleString("es-AR")}
-              </>
-            ) : null}
-            . Próximos días: <strong>{tandaSize.toLocaleString("es-AR")}</strong>.
-          </p>
-          {todayLocked && tandaSize !== (c.tandaDayQuota || 0) ? (
-            <p className="text-xs text-muted-foreground">
-              El cambio a {tandaSize.toLocaleString("es-AR")} no mueve el lote de hoy
-              {upcomingChanged ? "; guardalo y mañana se usa ese número." : "."}
-            </p>
-          ) : null}
-          <p className="text-sm">
-            Este disparo mandaría <strong>{thisTanda.toLocaleString("es-AR")}</strong> nuevos
-            {already > 0 ? ` (ya van ${already.toLocaleString("es-AR")} en total)` : null}.
-          </p>
-          <Button variant="secondary" disabled={saving} onClick={() => void saveTemplate()}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-            Guardar cupo de los próximos días
-          </Button>
-        </CardContent>
-      </Card>
-      )}
-
-      {showWa && !c.simulated && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MessageCircle className="h-4 w-4 text-emerald-500" />
-              Template de WhatsApp
-            </CardTitle>
-            <CardDescription>
-              Mapeá cada {"{{N}}"} acá (o aplicá un template guardado de esta empresa). Después subí el CSV
-              con esas columnas. <code>telefono</code> es el destino, no una variable del texto.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <WaSavedTemplates
-              orgId={c.orgId}
-              mode="admin"
-              disabled={!canEditTpl}
-              current={{
-                name: templateName,
-                lang: templateLang,
-                variables: templateVars,
-                urlButton: templateUrlButton,
-              }}
-              onApply={(next) => {
-                setTemplateName(next.name);
-                setTemplateLang(next.lang);
-                setTemplateVars(next.variables);
-                setTemplateUrlButton(next.urlButton);
-              }}
-            />
-            <WaTemplateFields
-              idPrefix="admin-wa"
-              disabled={!canEditTpl}
-              namePlaceholder="Vacío = template por defecto de Notificas"
-              value={{
-                name: templateName,
-                lang: templateLang,
-                variables: templateVars,
-                urlButton: templateUrlButton,
-              }}
-              onChange={(next) => {
-                setTemplateName(next.name);
-                setTemplateLang(next.lang);
-                setTemplateVars(next.variables);
-                setTemplateUrlButton(next.urlButton);
-              }}
-            />
-            <Button variant="secondary" disabled={saving || !canEditTpl} onClick={() => void saveTemplate()}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-              Guardar template
-            </Button>
-            {!canEditTpl && (
-              <p className="text-xs text-muted-foreground">
-                El template se puede editar solo si todavía no hubo envíos exitosos.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {canReplaceCsv && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{c.simulated ? "Destinatarios de prueba" : "Destinatarios (CSV)"}</CardTitle>
-            <CardDescription>
-              {c.simulated
-                ? `Generá una lista ficticia o subí un CSV. Ahora hay ${c.recipientCount.toLocaleString("es-AR")}.`
-                : `Columnas: ${csvCamposRequeridos(c.canal, csvExtra)}. Se sube de a 500. Ahora hay ${c.recipientCount.toLocaleString("es-AR")}.`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {c.simulated && (
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="space-y-1 max-w-[12rem]">
-                  <Label className="text-xs">Cantidad ficticia</Label>
-                  <Input
-                    type="number"
-                    min={SIM_RECIPIENT_MIN}
-                    max={SIM_RECIPIENT_MAX}
-                    value={simRecipientCount}
-                    onChange={(e) => {
-                      const n = Number(e.target.value);
-                      if (Number.isInteger(n)) setSimRecipientCount(n);
-                    }}
-                  />
-                </div>
-                <Button variant="secondary" disabled={generating} onClick={() => void generateFakeRecipients()}>
-                  {generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FlaskConical className="h-4 w-4 mr-2" />}
-                  Generar lista
-                </Button>
-              </div>
-            )}
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void onFile(f);
-                e.target.value = "";
-              }}
-            />
-            <Button variant="outline" disabled={uploading} onClick={() => inputRef.current?.click()}>
-              {uploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
-              {c.recipientCount > 0 ? "Reemplazar CSV" : "Subir CSV"}
-            </Button>
-            {uploading && uploadPct && (
-              <p className="text-sm text-muted-foreground">
-                Procesados {uploadPct.parsed.toLocaleString("es-AR")} · archivos {uploadPct.chunks} · salteados {uploadPct.skipped}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">{csvPlaceholder(c.canal, csvExtra)}</p>
-            <p className="text-xs text-muted-foreground">
-              <code>telefono</code> es el destino del WhatsApp, no una variable del texto.
-              {csvExtra.length > 0 ? ` El mensaje usa: ${csvExtra.join(", ")}.` : ""}
-            </p>
-            {csvExtra.length > 0 && (
-              <p className="text-xs text-amber-700 dark:text-amber-400">
-                Guardá el template, subí un CSV con esas columnas y después reintentá los errores.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {showEmail && (
-        <div className="rounded-md border p-4 bg-muted/30 space-y-2 text-sm">
-          <p className="font-medium flex items-center gap-2">
-            <Mail className="h-4 w-4" />
-            Correo
-          </p>
-          <p className="text-muted-foreground">
-            Asunto: <span className="font-medium text-foreground">{c.asunto || "—"}</span>
-          </p>
-          {c.cuerpo ? (
-            <p className="text-muted-foreground whitespace-pre-wrap border-t pt-2">{c.cuerpo}</p>
-          ) : null}
-        </div>
-      )}
-
       <CampaignDashboard
+        ref={dashboardRef}
         mode="admin"
         orgId={c.orgId}
         campaignId={campaignId}
         listHref="/admin/campanas"
         embedded
         exportActionsHost={exportActionsHost}
+        onViewChange={setListView}
+        quotaPanel={
+          !c.simulated ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Lote diario</CardTitle>
+                <CardDescription>
+                  Cada día sale como máximo este número de destinatarios nuevos. El lote del día siguiente arranca solo a las 9:00 (Argentina). Si lo cambiás a mitad de campaña, el nuevo cupo rige mañana. Pausá para que no siga.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <DailyQuotaField
+                  value={tandaSize}
+                  onChange={setTandaSize}
+                  hint="Cuando Meta suba el cupo Unique Users del número (1.000 → 10.000 → 100.000), cambiá este valor. El lote de hoy queda; rige mañana a las 9:00."
+                />
+                <p className="text-sm">
+                  Hoy: cupo <strong>{plan.dailyQuota > 0 ? plan.dailyQuota.toLocaleString("es-AR") : "sin tope"}</strong>
+                  {plan.dailyQuota > 0 ? (
+                    <>
+                      {" "}· ya van {plan.sentToday.toLocaleString("es-AR")} · quedan{" "}
+                      {plan.remainingToday.toLocaleString("es-AR")}
+                    </>
+                  ) : null}
+                  . Próximos días: <strong>{tandaSize.toLocaleString("es-AR")}</strong>.
+                </p>
+                {todayLocked && tandaSize !== (c.tandaDayQuota || 0) ? (
+                  <p className="text-xs text-muted-foreground">
+                    El cambio a {tandaSize.toLocaleString("es-AR")} no mueve el lote de hoy
+                    {upcomingChanged ? "; guardalo y mañana se usa ese número." : "."}
+                  </p>
+                ) : null}
+                <p className="text-sm">
+                  Este disparo mandaría <strong>{thisTanda.toLocaleString("es-AR")}</strong> nuevos
+                  {already > 0 ? ` (ya van ${already.toLocaleString("es-AR")} en total)` : null}.
+                </p>
+                <Button variant="secondary" disabled={saving} onClick={() => void saveQuota()}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                  Guardar cupo de los próximos días
+                </Button>
+              </CardContent>
+            </Card>
+          ) : undefined
+        }
+        recipientsPanel={
+          canReplaceCsv ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>{c.simulated ? "Destinatarios de prueba" : "Destinatarios (CSV)"}</CardTitle>
+                <CardDescription>
+                  {c.simulated
+                    ? `Generá una lista ficticia o subí un CSV. Ahora hay ${c.recipientCount.toLocaleString("es-AR")}.`
+                    : `Columnas: ${csvCamposRequeridos(c.canal, csvExtra)}. Se sube de a 500. Ahora hay ${c.recipientCount.toLocaleString("es-AR")}.`}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {c.simulated && (
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="space-y-1 max-w-[12rem]">
+                      <Label className="text-xs">Cantidad ficticia</Label>
+                      <Input
+                        type="number"
+                        min={SIM_RECIPIENT_MIN}
+                        max={SIM_RECIPIENT_MAX}
+                        value={simRecipientCount}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          if (Number.isInteger(n)) setSimRecipientCount(n);
+                        }}
+                      />
+                    </div>
+                    <Button variant="secondary" disabled={generating} onClick={() => void generateFakeRecipients()}>
+                      {generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FlaskConical className="h-4 w-4 mr-2" />}
+                      Generar lista
+                    </Button>
+                  </div>
+                )}
+                <input
+                  ref={inputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void onFile(f);
+                    e.target.value = "";
+                  }}
+                />
+                <Button variant="outline" disabled={uploading} onClick={() => inputRef.current?.click()}>
+                  {uploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
+                  {c.recipientCount > 0 ? "Reemplazar CSV" : "Subir CSV"}
+                </Button>
+                {uploading && uploadPct && (
+                  <p className="text-sm text-muted-foreground">
+                    Procesados {uploadPct.parsed.toLocaleString("es-AR")} · archivos {uploadPct.chunks} · salteados {uploadPct.skipped}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">{csvPlaceholder(c.canal, csvExtra)}</p>
+                <p className="text-xs text-muted-foreground">
+                  <code>telefono</code> es el destino del WhatsApp, no una variable del texto.
+                  {csvExtra.length > 0 ? ` El mensaje usa: ${csvExtra.join(", ")}.` : ""}
+                </p>
+                {csvExtra.length > 0 && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Guardá el template, subí un CSV con esas columnas y después reintentá los errores.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ) : undefined
+        }
+        messagePanel={
+          showWa && !c.simulated ? (
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4 text-emerald-500" />
+                    Template de WhatsApp
+                  </CardTitle>
+                  <CardDescription>
+                    Mapeá cada {"{{N}}"} acá (o aplicá un template guardado de esta empresa). Después subí el CSV
+                    con esas columnas. <code>telefono</code> es el destino, no una variable del texto.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <WaSavedTemplates
+                    orgId={c.orgId}
+                    mode="admin"
+                    disabled={!canEditTpl}
+                    current={{
+                      name: templateName,
+                      lang: templateLang,
+                      variables: templateVars,
+                      urlButton: templateUrlButton,
+                    }}
+                    onApply={(next) => {
+                      setTemplateName(next.name);
+                      setTemplateLang(next.lang);
+                      setTemplateVars(next.variables);
+                      setTemplateUrlButton(next.urlButton);
+                    }}
+                  />
+                  <WaTemplateFields
+                    idPrefix="admin-wa"
+                    disabled={!canEditTpl}
+                    namePlaceholder="Vacío = template por defecto de Notificas"
+                    value={{
+                      name: templateName,
+                      lang: templateLang,
+                      variables: templateVars,
+                      urlButton: templateUrlButton,
+                    }}
+                    onChange={(next) => {
+                      setTemplateName(next.name);
+                      setTemplateLang(next.lang);
+                      setTemplateVars(next.variables);
+                      setTemplateUrlButton(next.urlButton);
+                    }}
+                  />
+                  <Button variant="secondary" disabled={saving || !canEditTpl} onClick={() => void saveTemplate()}>
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                    Guardar template
+                  </Button>
+                  {!canEditTpl && (
+                    <p className="text-xs text-muted-foreground">
+                      El template se puede editar solo si todavía no hubo envíos exitosos.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+              {showEmail && (
+                <div className="rounded-md border p-4 bg-muted/30 space-y-2 text-sm">
+                  <p className="font-medium flex items-center gap-2">
+                    <Mail className="h-4 w-4" />
+                    Correo
+                  </p>
+                  <p className="text-muted-foreground">
+                    Asunto: <span className="font-medium text-foreground">{c.asunto || "—"}</span>
+                  </p>
+                  {c.cuerpo ? (
+                    <p className="text-muted-foreground whitespace-pre-wrap border-t pt-2">{c.cuerpo}</p>
+                  ) : null}
+                </div>
+              )}
+            </>
+          ) : showEmail ? (
+            <div className="rounded-md border p-4 bg-muted/30 space-y-2 text-sm">
+              <p className="font-medium flex items-center gap-2">
+                <Mail className="h-4 w-4" />
+                Correo
+              </p>
+              <p className="text-muted-foreground">
+                Asunto: <span className="font-medium text-foreground">{c.asunto || "—"}</span>
+              </p>
+              {c.cuerpo ? (
+                <p className="text-muted-foreground whitespace-pre-wrap border-t pt-2">{c.cuerpo}</p>
+              ) : null}
+            </div>
+          ) : undefined
+        }
       />
 
       <AlertDialog open={confirmSend} onOpenChange={setConfirmSend}>

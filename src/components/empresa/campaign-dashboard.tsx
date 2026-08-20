@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -41,6 +41,7 @@ import {
   ShieldCheck,
   Users,
   FileText,
+  Gauge,
   Save,
 } from "lucide-react";
 import { canEditWhatsAppTemplate, isUnsentCampaign } from "@/lib/campaign-edit";
@@ -284,21 +285,39 @@ function maybePortal(host: HTMLElement | null | undefined, node: ReactNode, fall
   return null;
 }
 
-export function CampaignDashboard({
-  mode = "empresa",
-  orgId: orgIdProp,
-  campaignId: campaignIdProp,
-  listHref,
-  embedded = false,
-  exportActionsHost,
-}: {
-  mode?: "empresa" | "admin";
-  orgId?: string;
-  campaignId?: string;
-  listHref?: string;
-  embedded?: boolean;
-  exportActionsHost?: HTMLElement | null;
-} = {}) {
+export type CampaignDashboardHandle = {
+  openDestinatarios: (nextFilter: string) => void;
+};
+
+export const CampaignDashboard = forwardRef<
+  CampaignDashboardHandle,
+  {
+    mode?: "empresa" | "admin";
+    orgId?: string;
+    campaignId?: string;
+    listHref?: string;
+    embedded?: boolean;
+    exportActionsHost?: HTMLElement | null;
+    quotaPanel?: ReactNode;
+    recipientsPanel?: ReactNode;
+    messagePanel?: ReactNode;
+    onViewChange?: (view: { section: string; filter: string }) => void;
+  }
+>(function CampaignDashboard(
+  {
+    mode = "empresa",
+    orgId: orgIdProp,
+    campaignId: campaignIdProp,
+    listHref,
+    embedded = false,
+    exportActionsHost,
+    quotaPanel,
+    recipientsPanel,
+    messagePanel,
+    onViewChange,
+  },
+  ref
+) {
   const params     = useParams();
   const isAdmin    = mode === "admin";
   const orgId      = orgIdProp || (params.orgId as string);
@@ -657,6 +676,12 @@ export function CampaignDashboard({
     setSection("destinatarios");
   }
 
+  useImperativeHandle(ref, () => ({ openDestinatarios }), []);
+
+  useEffect(() => {
+    onViewChange?.({ section, filter });
+  }, [section, filter, onViewChange]);
+
   function openIntegrity(messageId: string) {
     setVerifyTarget(messageId);
     setSection("integridad");
@@ -679,10 +704,36 @@ export function CampaignDashboard({
 
   const tableCols = 4 + (showEmail ? 1 : 0) + (showWa ? 1 : 0);
   const canEditTpl = showWa && canEditWhatsAppTemplate(campaign);
+  const empresaQuota =
+    mode === "empresa" &&
+    !campaign.simulated &&
+    showWa &&
+    campaign.estado !== "cancelada" &&
+    campaign.estado !== "completada";
+  const showLoteTab = Boolean(quotaPanel) || empresaQuota;
+  const showMessageTab = Boolean(messagePanel) || showEmail || showWa;
+  const tabCount = 2 + (showLoteTab ? 1 : 0) + (showMessageTab ? 1 : 0);
+  const loteContent = quotaPanel ?? (empresaQuota ? (
+    <div className="rounded-lg border bg-card p-4 space-y-3">
+      <DailyQuotaField
+        value={quotaDraft}
+        onChange={setQuotaDraft}
+        hint={
+          fmtTs(campaign.nextDailyAt)
+            ? `El lote de hoy ya está fijado. Próximo arranque: ${fmtTs(campaign.nextDailyAt)}.`
+            : "Cuando Meta aumente el cupo del número, subí este valor y guardá. Rige mañana a las 9:00."
+        }
+      />
+      <Button variant="secondary" size="sm" disabled={busy || quotaDraft === (campaign.tandaSize || 0)} onClick={() => void guardarTopeDiario()} className="gap-2">
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+        Guardar tope de los próximos días
+      </Button>
+    </div>
+  ) : null);
   const waErrorHint =
     showWa && stats && stats.errores > 0
       ? messages.map((m) => explainWhatsAppSendError(m.waError || m.errorMsg)).find(Boolean) ||
-        "Si WhatsApp falló, el template de Meta tiene que coincidir con las variables de esta campaña. Ajustalo en Mensaje y reintentá."
+        "Si WhatsApp falló, el template de Meta tiene que coincidir con las variables de esta campaña. Ajustalo en Template y reintentá."
       : null;
 
   const exportActions = (
@@ -810,23 +861,6 @@ export function CampaignDashboard({
               <Progress value={enviadoPct} className="h-2" />
             </div>
           )}
-          {mode === "empresa" && !campaign.simulated && showWa && campaign.estado !== "cancelada" && campaign.estado !== "completada" && (
-            <div className="rounded-lg border bg-card p-4 space-y-3">
-              <DailyQuotaField
-                value={quotaDraft}
-                onChange={setQuotaDraft}
-                hint={
-                  fmtTs(campaign.nextDailyAt)
-                    ? `El lote de hoy ya está fijado. Próximo arranque: ${fmtTs(campaign.nextDailyAt)}.`
-                    : "Cuando Meta aumente el cupo del número, subí este valor y guardá. Rige mañana a las 9:00."
-                }
-              />
-              <Button variant="secondary" size="sm" disabled={busy || quotaDraft === (campaign.tandaSize || 0)} onClick={() => void guardarTopeDiario()} className="gap-2">
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                Guardar tope de los próximos días
-              </Button>
-            </div>
-          )}
         </>
       )}
       </>
@@ -840,23 +874,37 @@ export function CampaignDashboard({
 
       <Tabs value={section} onValueChange={setSection} className="w-full">
         <div className="sticky top-14 z-10 -mx-2 border-b bg-background/95 px-2 py-2 backdrop-blur-sm lg:top-0">
-          <TabsList className="grid h-auto w-full grid-cols-3 gap-1 sm:inline-flex sm:w-auto">
+          <TabsList
+            className={cn(
+              "grid h-auto w-full gap-1 sm:inline-flex sm:w-auto",
+              tabCount >= 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"
+            )}
+          >
             <TabsTrigger value="destinatarios" className="gap-1.5">
               <Users className="h-4 w-4" />
               Destinatarios
             </TabsTrigger>
+            {showMessageTab && (
+              <TabsTrigger value="mensaje" className="gap-1.5">
+                {showWa ? <MessageCircle className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                {showWa ? "Template" : "Mensaje"}
+              </TabsTrigger>
+            )}
+            {showLoteTab && (
+              <TabsTrigger value="lote" className="gap-1.5">
+                <Gauge className="h-4 w-4" />
+                Lote
+              </TabsTrigger>
+            )}
             <TabsTrigger value="integridad" className="gap-1.5">
               <ShieldCheck className="h-4 w-4" />
               Integridad
-            </TabsTrigger>
-            <TabsTrigger value="mensaje" className="gap-1.5">
-              <FileText className="h-4 w-4" />
-              Mensaje
             </TabsTrigger>
           </TabsList>
         </div>
 
         <TabsContent value="destinatarios" className="mt-4 space-y-4 focus-visible:outline-none">
+          {recipientsPanel}
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <Tabs value={filter} onValueChange={(v) => { setFilter(v); setSelected(new Set()); }}>
               <TabsList>
@@ -1044,8 +1092,15 @@ export function CampaignDashboard({
           />
         </TabsContent>
 
+        {showLoteTab && loteContent ? (
+          <TabsContent value="lote" className="mt-4 focus-visible:outline-none">
+            {loteContent}
+          </TabsContent>
+        ) : null}
+
         <TabsContent value="mensaje" className="mt-4 space-y-4 focus-visible:outline-none">
-          {showEmail && (
+          {messagePanel}
+          {!messagePanel && showEmail && (
             <div className="rounded-md border p-4 bg-muted/30 space-y-2 text-sm">
               <p className="font-medium flex items-center gap-2">
                 <Mail className="h-4 w-4" />
@@ -1063,7 +1118,7 @@ export function CampaignDashboard({
               )}
             </div>
           )}
-          {showWa && (
+          {!messagePanel && showWa && (
             <div className="rounded-md border p-4 bg-muted/30 space-y-3 text-sm">
               <p className="font-medium flex items-center gap-2">
                 <MessageCircle className="h-4 w-4 text-emerald-500" />
@@ -1154,11 +1209,13 @@ export function CampaignDashboard({
               </ul>
             </div>
           )}
-          {!showEmail && !showWa && (
+          {!messagePanel && !showEmail && !showWa && (
             <p className="text-sm text-muted-foreground">No hay contenido de mensaje para mostrar.</p>
           )}
         </TabsContent>
       </Tabs>
     </div>
   );
-}
+});
+
+CampaignDashboard.displayName = "CampaignDashboard";
