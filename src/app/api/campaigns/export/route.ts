@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { FieldValue } from 'firebase-admin/firestore';
 import { requireCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { recordIssuedDocument, sha256Hex } from '@/lib/issued-documents';
@@ -149,6 +150,11 @@ export async function GET(request: NextRequest) {
       campaignNombre: String(campaign.nombre || ''),
       fileName: filename,
     });
+    await db.collection('campaigns').doc(campaignId).update({
+      csvExportHash: hash,
+      csvExportFileName: filename,
+      csvExportAt: FieldValue.serverTimestamp(),
+    }).catch(() => undefined);
 
     return new NextResponse(buffer, {
       status: 200,

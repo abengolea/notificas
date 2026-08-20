@@ -193,7 +193,7 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
           '2. El payload es CAMPAIGN_SEND|v1|{campaignId}|{batchId}|{merkleRoot}|{leafCount}|{timestamp}|{templateSealHash?}. Una TX por tanda de hasta 500, no por destinatario.',
           '3. El templateSealHash es la huella del formulario WA de toda la campaña (nombre, idioma, variables). Es el mismo para los 150 mil.',
           '4. Recalcular SHA-256(UTF-8(trim(texto_plano_personalizado))) de un destinatario: debe coincidir con su contentHash.',
-          '5. La hoja es SHA-256(v1|send|campaignId|messageId|email|telefono|contentHash|adjuntos|smtp|wamid|waBodyHash|templateSealHash). waVars (nombre, días, etc.) identifican el renglón.',
+          '5. La hoja es SHA-256(v1|send|campaignId|messageId|email|telefono|contentHash|adjuntos|smtp|wamid|waBodyHash|templateSealHash). Las variables efectivamente enviadas (waVars), el teléfono y el WAMID identifican el renglón.',
           '6. Con la prueba Merkle (hermano a hermano: SHA-256(left|right)) se llega a la raíz. Si coincide con la TX, ese renglón no se modificó.',
         ]
       : [
@@ -934,7 +934,9 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   y += 48;
   doc.setFont('helvetica', 'normal');
 
-  const eventRows = input.events.map((ev) => [
+  const eventRows = input.events
+    .filter((ev) => input.canal !== 'whatsapp' || ev.type !== 'email_read')
+    .map((ev) => [
     EVENT_LABEL[ev.type] || ev.type,
     ev.present ? formatTs(ev.occurredAt) : 'Pendiente',
     ev.present ? checkLabel(ev.merkleValid ?? true) : '—',
@@ -971,7 +973,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   const steps = [
     '1. Abrir la transacción en polygonscan.com y decodificar Input Data (UTF-8).',
     '2. El payload de envío es CAMPAIGN_SEND|v1|{campaignId}|{batchId}|{merkleRoot}|{leafCount}|{timestamp}|{templateSealHash?}. Una TX por tanda, no por persona.',
-    '3. El template es el formulario de toda la campaña. Esta foja es el renglón de esta persona (nombre, días, teléfono, wamid).',
+    '3. El template es el formulario de toda la campaña. Esta foja contiene los datos individualizados del destinatario, las variables efectivamente enviadas, el teléfono y el identificador WAMID correspondiente.',
     '4. Recalcular SHA-256(UTF-8(trim(texto_plano_personalizado))) del texto transcrito en la Parte I: debe coincidir con la huella de contenido.',
     '5. Si se altera esta foja, la raíz Merkle deja de coincidir con la registrada on-chain.',
   ];

@@ -4,6 +4,7 @@ export const PDF_SCHEMA = {
   certificadoLectura: 'certificado-lectura/v2',
   actaTanda: 'acta-tanda/v3',
   actaIndividual: 'acta-individual/v5',
+  campaignReport: 'campaign-report/v1',
 } as const;
 
 const ART_TZ = 'America/Argentina/Buenos_Aires';
