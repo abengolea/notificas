@@ -102,7 +102,15 @@ export async function POST(request: NextRequest) {
       retry: body.retry === true,
     });
     if (result.started) {
-      await enqueueCampaignCsvExport({ campaignId, version: result.record.version });
+      try {
+        await enqueueCampaignCsvExport({ campaignId, version: result.record.version });
+      } catch (e) {
+        console.error('No se pudo encolar export CSV', e);
+        return NextResponse.json({
+          error: 'El export quedó pendiente pero no se pudo encolar el worker. Reintentá.',
+          export: toCsvExportPublic(result.record),
+        }, { status: 503 });
+      }
     }
     return NextResponse.json({
       started: result.started,

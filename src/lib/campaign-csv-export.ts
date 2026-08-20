@@ -272,9 +272,6 @@ export async function streamCampaignCsvPages(opts: {
   const flag = opts.flag || '';
 
   for (;;) {
-    if (opts.failAfterRows && rowCount >= opts.failAfterRows) {
-      throw new Error(`Fallo inyectado tras ${rowCount} filas`);
-    }
     let q = messagesQuery(opts.db, opts.campaignId, estado, flag)
       .orderBy('recipientNombre')
       .orderBy(FieldPath.documentId())
@@ -306,6 +303,9 @@ export async function streamCampaignCsvPages(opts: {
 
     for (const d of pageSnap.docs) {
       rowCount += 1;
+      if (opts.failAfterRows && rowCount >= opts.failAfterRows) {
+        throw new Error(`Fallo inyectado tras ${rowCount} filas`);
+      }
       const m = d.data();
       const mail = m.mailId ? (mailDocs.get(m.mailId) ?? {}) : {};
       await write(`${csvRow(buildCampaignExportFields(rowCount, d.id, m, mail, opts.ctx))}\r\n`);
