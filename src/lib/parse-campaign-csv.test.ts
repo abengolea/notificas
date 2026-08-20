@@ -25,7 +25,7 @@ test('no persiste columnas ajenas al mapeo ni a los campos de template', () => {
 `;
   const parsed = parseCsvQuickResult(csv, 'whatsapp', ['cuotas']);
   assert.equal(parsed.rows[0].cuotas, '1');
-  assert.equal((parsed.rows[0] as Record<string, unknown>).notas_internas, undefined);
+  assert.equal((parsed.rows[0] as unknown as Record<string, unknown>).notas_internas, undefined);
 });
 
 test('cuotas 0 se conserva (no es vacío)', () => {

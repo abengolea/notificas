@@ -451,7 +451,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     id: input.messageId,
     campaignId: input.campaignId,
     kind: 'campaign_acta_recipient',
-    hash: input.contentHash || input.storedHash,
+    hash: input.contentHash || input.storedHash || undefined,
   });
   const email = input.recipientEmail && !isSyntheticEmail(input.recipientEmail) ? input.recipientEmail : '';
   const cuerpo = stripHtml(input.cuerpoPersonalizado || '');

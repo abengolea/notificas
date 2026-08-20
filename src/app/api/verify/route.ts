@@ -165,17 +165,6 @@ async function matchHashToRecord(
 
   return null;
 }
-  switch (kind) {
-    case "campaign_acta":
-      return "Acta de tanda de campaña";
-    case "campaign_acta_recipient":
-      return "Acta individual de destinatario";
-    case "campaign_report":
-      return "Reporte legal de campaña";
-    default:
-      return "Documento de campaña";
-  }
-}
 
 function campaignKindLabel(kind?: IssuedDocKind): string {
   switch (kind) {

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'crypto';
 import { finished } from 'stream/promises';
+import { Writable } from 'stream';
 import { FieldPath, FieldValue, type Firestore } from 'firebase-admin/firestore';
 import { getAdminBucket, getAdminDb } from '@/lib/firebase-admin';
 import { recordIssuedDocument, sha256Hex } from '@/lib/issued-documents';
@@ -197,7 +198,7 @@ type ByteSink = {
   end(): Promise<void>;
 };
 
-function gcsWriteSink(file: { createWriteStream: (opts: Record<string, unknown>) => NodeJS.WritableStream }): ByteSink {
+function gcsWriteSink(file: { createWriteStream: (opts: Record<string, unknown>) => Writable }): ByteSink {
   const stream = file.createWriteStream({
     resumable: true,
     contentType: 'text/csv; charset=utf-8',
