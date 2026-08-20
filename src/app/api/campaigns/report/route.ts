@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { FieldValue } from 'firebase-admin/firestore';
 import { requireCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { campaignMessageMatchesSearch } from '@/lib/search-text';
-import { recordIssuedDocument, sha256Hex } from '@/lib/issued-documents';
+import { recordIssuedDocument, sha256Hex, findLatestIssuedByCampaign } from '@/lib/issued-documents';
 import { campaignVerifyRef } from '@/lib/verify-hints';
 import { formatEvidenceTimestamp } from '@/lib/pdf-evidence-format';
 import { splitExportError } from '@/lib/campaign-export-csv';
@@ -118,14 +119,34 @@ export async function GET(request: NextRequest) {
 
     let templateId = '';
     let templateHash = '';
-    const firstMailId = truncated.find((r) => r.mailId)?.mailId;
-    if (firstMailId) {
-      const mailSnap = await db.collection('mail').doc(firstMailId).get();
+    let templateHeader = '';
+    let templateBody = '';
+    let templateFooter = '';
+    const mailIdsToTry = truncated.map((r) => r.mailId).filter(Boolean).slice(0, 8);
+    for (const mailId of mailIdsToTry) {
+      const mailSnap = await db.collection('mail').doc(mailId).get();
       const snap = mailSnap.data()?.waRequestSnapshot;
-      if (snap && typeof snap === 'object') {
-        const rec = snap as Record<string, unknown>;
-        templateId = str(rec.templateId);
-        templateHash = str(rec.templateHash);
+      if (!snap || typeof snap !== 'object') continue;
+      const rec = snap as Record<string, unknown>;
+      if (!templateId) templateId = str(rec.templateId);
+      if (!templateHash) templateHash = str(rec.templateHash);
+      if (!templateHeader) templateHeader = str(rec.renderedHeader);
+      if (!templateBody) templateBody = str(rec.templateBody);
+      if (!templateFooter) templateFooter = str(rec.renderedFooter);
+      if (templateBody && templateId && templateHash) break;
+    }
+
+    let csvExportHash = str(campaign.csvExportHash);
+    let csvExportFileName = str(campaign.csvExportFileName);
+    if (!csvExportHash) {
+      const issuedCsv = await findLatestIssuedByCampaign(db, campaignId, 'campaign_export');
+      if (issuedCsv?.hash) {
+        csvExportHash = issuedCsv.hash;
+        csvExportFileName = csvExportFileName || str(issuedCsv.fileName);
+        await db.collection('campaigns').doc(campaignId).update({
+          csvExportHash,
+          csvExportFileName: csvExportFileName || FieldValue.delete(),
+        }).catch(() => undefined);
       }
     }
 
@@ -203,9 +224,12 @@ export async function GET(request: NextRequest) {
       templateVariables: vars,
       templateId,
       templateHash,
+      templateHeader,
+      templateBody,
+      templateFooter,
       sendBatches,
-      csvExportHash: str(campaign.csvExportHash),
-      csvExportFileName: str(campaign.csvExportFileName),
+      csvExportHash,
+      csvExportFileName,
       verifyRef,
       verifyCampaignUrl: `${appBase}/verify?campaignId=${encodeURIComponent(campaignId)}`,
       verifyAppBase: appBase,

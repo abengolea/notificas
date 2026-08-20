@@ -60,6 +60,9 @@ export type CampaignReportInput = {
   templateVariables: string;
   templateId: string;
   templateHash: string;
+  templateHeader: string;
+  templateBody: string;
+  templateFooter: string;
   sendBatches: CampaignReportBatch[];
   csvExportHash: string;
   csvExportFileName: string;
@@ -255,6 +258,74 @@ export async function buildCampaignReportPdf(input: CampaignReportInput): Promis
     ],
   });
   y = lastAutoY(doc, y) + 6;
+
+  y = ensureY(doc, y, 20);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Contenido del template enviado', 14, y);
+  y += 4;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(71, 85, 105);
+  y = writeWrapped(
+    doc,
+    'Texto fijo aprobado por Meta (con {{N}}). No es el mensaje personalizado de cada destinatario; eso consta en el acta individual.',
+    14,
+    y,
+    182,
+    3.3
+  );
+  y += 3;
+  if (input.templateHeader || input.templateBody || input.templateFooter) {
+    if (input.templateHeader) {
+      y = ensureY(doc, y, 10);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      doc.text('Encabezado', 14, y);
+      y += 4;
+      doc.setFont('helvetica', 'normal');
+      y = writeWrapped(doc, input.templateHeader, 14, y, 182, 3.6);
+      y += 3;
+    }
+    if (input.templateBody) {
+      y = ensureY(doc, y, 12);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      doc.text('Cuerpo', 14, y);
+      y += 4;
+      doc.setFont('helvetica', 'normal');
+      y = writeWrapped(doc, input.templateBody, 14, y, 182, 3.6);
+      y += 3;
+    }
+    if (input.templateFooter) {
+      y = ensureY(doc, y, 10);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      doc.text('Pie', 14, y);
+      y += 4;
+      doc.setFont('helvetica', 'normal');
+      y = writeWrapped(doc, input.templateFooter, 14, y, 182, 3.6);
+      y += 3;
+    }
+  } else {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    y = writeWrapped(
+      doc,
+      'No hay BODY lacrado del template en los envíos de esta campaña (p. ej. Graph no devolvió el formulario al enviar). El acta individual de un destinatario posterior con snapshot completo sí puede transcribirlo.',
+      14,
+      y,
+      182,
+      3.4
+    );
+    y += 3;
+  }
+  y += 4;
 
   y = ensureY(doc, y, 36);
   drawSoftPanelMm(doc, 14, y, 182, 34);
