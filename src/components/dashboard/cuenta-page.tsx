@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { sendPasswordResetEmail, updateProfile } from "firebase/auth";
+import { updateProfile } from "firebase/auth";
 import { doc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
 import { Building, Loader2, Mail, Phone, User, Wallet } from "lucide-react";
 
@@ -179,7 +179,16 @@ export function CuentaPageComponent() {
     if (!mail || sendingReset) return;
     setSendingReset(true);
     try {
-      await sendPasswordResetEmail(auth, mail);
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("no-token");
+      const res = await fetch("/api/auth/send-password-reset-link", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error || "send-failed");
+      }
       toast({
         title: "Correo enviado",
         description: "Revisá tu bandeja para restablecer la contraseña.",

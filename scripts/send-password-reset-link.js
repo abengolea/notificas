@@ -121,16 +121,86 @@ async function main() {
   const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
   const from = (process.env.DEFAULT_CONTACT_FROM_EMAIL || DEFAULT_FROM).trim();
 
-  const subject = "Notificas — enlace para definir tu contraseña";
-  const html = `
-<p>Hola,</p>
-<p>Podés definir o restablecer tu contraseña en la nueva Notificas usando este enlace:</p>
-<p><a href="${escapeHref(link)}">Abrir enlace de contraseña</a></p>
-<p>Si el botón no funciona, copiá y pegá esta dirección en el navegador:</p>
-<pre style="white-space:pre-wrap;word-break:break-all">${escapeHtml(link)}</pre>
-<p style="color:#666;font-size:12px">Enviado por script interno (send-password-reset-link.js).</p>
-`.trim();
-  const text = `Definí tu contraseña en Notificas abriendo este enlace:\n\n${link}\n`;
+  const subject = "Notificas — restablecé tu contraseña";
+  let logoOrigin = "";
+  try {
+    logoOrigin = new URL(continueUrl).origin;
+  } catch {
+    logoOrigin = "";
+  }
+  const logoUrl = logoOrigin ? `${logoOrigin}/notificasLogo.jpg` : "";
+  const year = new Date().getFullYear();
+  const html = `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Restablecé tu contraseña</title>
+  <style>
+    body, table, td, a { font-family: "Inter", -apple-system, Segoe UI, Roboto, Arial, sans-serif !important; }
+    body { margin: 0; padding: 0; background-color: #F8FAFC; color: #1E293B; }
+    .wrapper { width: 100%; table-layout: fixed; background-color: #F8FAFC; padding: 24px 0; }
+    .container { width: 100%; max-width: 800px; background: #ffffff; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid #E2E8F0; }
+    .header { background: #0D9488; color: #ffffff; padding: 20px 24px; }
+    .badge { display: inline-block; background: #1E3A8A; color: #fff; font-size: 12px; letter-spacing: .4px; padding: 4px 8px; border-radius: 999px; }
+    .title { margin: 10px 0 0 0; font-size: 20px; line-height: 1.3; font-weight: 700; }
+    .content { padding: 24px; }
+    .lead { font-size: 16px; line-height: 1.6; margin: 0 0 16px 0; }
+    .btn { display: inline-block; background: #0D9488; color: #ffffff !important; text-decoration: none; padding: 12px 20px; border-radius: 8px; font-weight: 700; }
+    .muted { color: #64748B; font-size: 12px; line-height: 1.6; }
+    .divider { height: 1px; background: #E2E8F0; margin: 20px 0; }
+    .footer { padding: 16px 24px 24px; }
+  </style>
+</head>
+<body>
+  <table role="presentation" class="wrapper" width="100%" cellspacing="0" cellpadding="0">
+    <tr>
+      <td align="center">
+        <table role="presentation" class="container" cellspacing="0" cellpadding="0">
+          <tr>
+            <td class="header">
+              ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Notificas" width="40" height="40" style="display:block;border-radius:8px;border:0;margin-bottom:12px;" />` : ""}
+              <span class="badge">CUENTA</span>
+              <div class="title">Restablecé tu contraseña</div>
+              <div style="margin-top:6px;font-size:13px;opacity:.9;">
+                Mensaje automático de <strong>Notificas.com</strong>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="content">
+              <p class="lead">Hola,</p>
+              <p class="lead">Recibimos un pedido para definir o restablecer tu contraseña en Notificas. Usá el botón siguiente para continuar.</p>
+              <p class="lead">Después de este paso, ingresá desde:
+                <a href="${escapeHref(continueUrl)}" style="color:#0D9488;">${escapeHtml(continueUrl)}</a>
+              </p>
+              <p style="margin: 20px 0;">
+                <a class="btn" href="${escapeHref(link)}" target="_blank" rel="noopener">Restablecer contraseña</a>
+              </p>
+              <p class="muted">
+                Si el botón no funciona, copiá y pegá este enlace en tu navegador:<br>
+                <a href="${escapeHref(link)}" target="_blank" rel="noopener" style="color:inherit;">${escapeHtml(link)}</a>
+              </p>
+              <div class="divider"></div>
+              <p class="muted">
+                Mensaje automático de Notificas.com. No respondas a este correo; si necesitás ayuda, escribinos a
+                <a href="mailto:contacto@notificas.com" style="color:inherit;">contacto@notificas.com</a>.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td class="footer">
+              <div class="muted">
+                ${year} Notificas.com · Este mensaje fue destinado a ${escapeHtml(email)}.
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+  const text = `Restablecé tu contraseña en Notificas abriendo este enlace:\n\n${link}\n\nLuego ingresá en: ${continueUrl}\n`;
 
   await mailRef.set({
     to: [email],

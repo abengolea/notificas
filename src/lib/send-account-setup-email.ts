@@ -2,6 +2,7 @@ import { getAdminAuth } from "@/lib/firebase-admin";
 import { createMailDocumentAdmin } from "@/lib/email-server";
 import { sendEmailCfHeaders } from "@/lib/cf-send-auth";
 import { DEFAULT_CONTACT_FROM_EMAIL, getFirebaseSendEmailUrl } from "@/lib/mail-defaults";
+import { buildSystemEmailHtml } from "@/lib/email-template";
 
 function escapeHtml(s: string) {
   return String(s)
@@ -89,13 +90,93 @@ export async function sendAccountPasswordSetupEmail(options: {
     to: email,
     from: DEFAULT_CONTACT_FROM_EMAIL,
     subject: options.subject,
-    html: options.html.replace("{{PASSWORD_LINK}}", escapeHref(link)),
-    text: options.text.replace("{{PASSWORD_LINK}}", link),
+    html: options.html.replaceAll("{{PASSWORD_LINK}}", escapeHref(link)),
+    text: options.text.replaceAll("{{PASSWORD_LINK}}", link),
     createdBy: options.createdBy,
     contactRequest: true,
   });
 
   return dispatchMailDoc(docId);
+}
+
+function originFromUrl(raw: string): string | null {
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return null;
+  }
+}
+
+export type PasswordLinkEmailKind = "migration" | "reset";
+
+function passwordLinkCopy(kind: PasswordLinkEmailKind) {
+  if (kind === "migration") {
+    return {
+      badge: "MIGRACIÓN",
+      title: "Definí tu contraseña",
+      subtitle: "Cuenta migrada mediante <strong>Notificas.com</strong>",
+      preheader: "Definí tu contraseña para entrar a la nueva Notificas",
+      subject: "Notificas — enlace para definir tu contraseña",
+      intro: `<p class="lead">Hola,</p>
+<p class="lead">Tu cuenta de Notificas anterior ya está en el sistema nuevo. Para activarla, definí o restablecé tu contraseña con el botón siguiente.</p>`,
+      ctaLabel: "Definir contraseña",
+    };
+  }
+  return {
+    badge: "CUENTA",
+    title: "Restablecé tu contraseña",
+    subtitle: "Mensaje automático de <strong>Notificas.com</strong>",
+    preheader: "Restablecé tu contraseña en Notificas",
+    subject: "Notificas — restablecé tu contraseña",
+    intro: `<p class="lead">Hola,</p>
+<p class="lead">Recibimos un pedido para definir o restablecer tu contraseña en Notificas. Usá el botón siguiente para continuar.</p>`,
+    ctaLabel: "Restablecer contraseña",
+  };
+}
+
+/** Correo branded de migración o reset de contraseña (cola `mail` + sendEmail). */
+export async function sendPasswordLinkEmail(options: {
+  kind: PasswordLinkEmailKind;
+  email: string;
+  continueUrl: string;
+  createdBy: string;
+}): Promise<SendAccountSetupEmailResult> {
+  const copy = passwordLinkCopy(options.kind);
+  const logoBase = getAppPublicBaseUrl() || originFromUrl(options.continueUrl);
+  const loginUrl = options.continueUrl;
+
+  const html = buildSystemEmailHtml({
+    badge: copy.badge,
+    title: copy.title,
+    subtitle: copy.subtitle,
+    preheader: copy.preheader,
+    recipientEmail: options.email.trim().toLowerCase(),
+    logoUrl: logoBase ? `${logoBase}/notificasLogo.jpg` : null,
+    bodyHtml: `
+              ${copy.intro}
+              <p class="lead">Después de este paso, ingresá desde:
+                <a href="${escapeHref(loginUrl)}" style="color:#0D9488;">${escapeHtml(loginUrl)}</a>
+              </p>
+    `.trim(),
+    ctaLabel: copy.ctaLabel,
+    ctaHref: "{{PASSWORD_LINK}}",
+  });
+
+  const text = `${copy.preheader}.
+
+Definí tu contraseña: {{PASSWORD_LINK}}
+
+Luego ingresá en: ${loginUrl}
+`;
+
+  return sendAccountPasswordSetupEmail({
+    email: options.email,
+    continueUrl: options.continueUrl,
+    subject: copy.subject,
+    html,
+    text,
+    createdBy: options.createdBy,
+  });
 }
 
 /** Correo de bienvenida B2B tras alta desde panel admin. */
@@ -115,20 +196,28 @@ export async function sendEmpresaAdminOnboardingEmail(options: {
   const loginUrl = `${base}/login?next=${encodeURIComponent("/empresa")}`;
   const orgNombre = options.orgNombre.trim() || "tu organización";
   const intro = options.authCreated
-    ? `<p>Se dio de alta tu acceso como responsable de <strong>${escapeHtml(orgNombre)}</strong> en Notificas.</p>
-<p>Para activar la cuenta, definí tu contraseña con el enlace siguiente y luego ingresá al módulo de empresas:</p>`
-    : `<p>Tu usuario quedó vinculado como responsable de <strong>${escapeHtml(orgNombre)}</strong> en Notificas.</p>
-<p>Podés definir o actualizar tu contraseña con el enlace siguiente (si ya entrás con Google, también podés usar «Continuar con Google» en el login):</p>`;
+    ? `<p class="lead">Se dio de alta tu acceso como responsable de <strong>${escapeHtml(orgNombre)}</strong> en Notificas.</p>
+<p class="lead">Para activar la cuenta, definí tu contraseña con el botón siguiente y luego ingresá al módulo de empresas.</p>`
+    : `<p class="lead">Tu usuario quedó vinculado como responsable de <strong>${escapeHtml(orgNombre)}</strong> en Notificas.</p>
+<p class="lead">Podés definir o actualizar tu contraseña con el botón siguiente. Si ya entrás con Google, también podés usar «Continuar con Google» en el login.</p>`;
 
-  const html = `
-<p>Hola,</p>
-${intro}
-<p><a href="{{PASSWORD_LINK}}">Activar cuenta y definir contraseña</a></p>
-<p>Después del paso anterior, accedé desde: <a href="${escapeHref(loginUrl)}">${escapeHtml(loginUrl)}</a></p>
-<p>Si el botón no funciona, copiá y pegá esta dirección en el navegador:</p>
-<pre style="white-space:pre-wrap;word-break:break-all">{{PASSWORD_LINK}}</pre>
-<p style="color:#666;font-size:12px">Mensaje automático — no respondas a este correo.</p>
-`.trim();
+  const html = buildSystemEmailHtml({
+    badge: "ACCESO EMPRESA",
+    title: "Activá tu cuenta de empresa",
+    subtitle: `Alta de <strong>${escapeHtml(orgNombre)}</strong> mediante <strong>Notificas.com</strong>`,
+    preheader: `Activá tu cuenta de empresa en Notificas (${orgNombre})`,
+    recipientEmail: options.email.trim().toLowerCase(),
+    logoUrl: `${base}/notificasLogo.jpg`,
+    bodyHtml: `
+              <p class="lead">Hola,</p>
+              ${intro}
+              <p class="lead">Después de definir la contraseña, accedé desde:
+                <a href="${escapeHref(loginUrl)}" style="color:#0D9488;">${escapeHtml(loginUrl)}</a>
+              </p>
+    `.trim(),
+    ctaLabel: "Activar cuenta y definir contraseña",
+    ctaHref: "{{PASSWORD_LINK}}",
+  });
 
   const text = `Alta de empresa en Notificas (${orgNombre}).
 

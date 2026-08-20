@@ -77,6 +77,107 @@ export const emailTemplate = `<!doctype html>
 </body>
 </html>`;
 
+function escapeSystemHtml(s: string) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Plantilla visual de los correos de campaña (header teal, badge, botón, pie),
+ * para mensajes transaccionales que se envían con `contactRequest` (sin reader/certificación).
+ */
+export function buildSystemEmailHtml(params: {
+  badge: string;
+  title: string;
+  subtitle: string;
+  preheader: string;
+  recipientEmail: string;
+  bodyHtml: string;
+  ctaLabel: string;
+  ctaHref: string;
+  logoUrl?: string | null;
+  year?: number;
+}) {
+  const year = params.year ?? new Date().getFullYear();
+  const logo = params.logoUrl?.trim()
+    ? `<img src="${escapeSystemHtml(params.logoUrl.trim())}" alt="Notificas" width="40" height="40" style="display:block;border-radius:8px;border:0;margin-bottom:12px;" />`
+    : "";
+
+  return `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>${escapeSystemHtml(params.title)}</title>
+  <style>
+    body, table, td, a { font-family: "Inter", -apple-system, Segoe UI, Roboto, Arial, sans-serif !important; }
+    body { margin: 0; padding: 0; background-color: #F8FAFC; color: #1E293B; }
+    .wrapper { width: 100%; table-layout: fixed; background-color: #F8FAFC; padding: 24px 0; }
+    .container { width: 100%; max-width: 800px; background: #ffffff; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid #E2E8F0; }
+    .header { background: #0D9488; color: #ffffff; padding: 20px 24px; }
+    .badge { display: inline-block; background: #1E3A8A; color: #fff; font-size: 12px; letter-spacing: .4px; padding: 4px 8px; border-radius: 999px; }
+    .title { margin: 10px 0 0 0; font-size: 20px; line-height: 1.3; font-weight: 700; }
+    .content { padding: 24px; }
+    .lead { font-size: 16px; line-height: 1.6; margin: 0 0 16px 0; }
+    .btn { display: inline-block; background: #0D9488; color: #ffffff !important; text-decoration: none; padding: 12px 20px; border-radius: 8px; font-weight: 700; }
+    .btn:hover { background: #0F766E; }
+    .muted { color: #64748B; font-size: 12px; line-height: 1.6; }
+    .divider { height: 1px; background: #E2E8F0; margin: 20px 0; }
+    .footer { padding: 16px 24px 24px; }
+  </style>
+</head>
+<body>
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    ${escapeSystemHtml(params.preheader)}
+  </div>
+  <table role="presentation" class="wrapper" width="100%" cellspacing="0" cellpadding="0">
+    <tr>
+      <td align="center">
+        <table role="presentation" class="container" cellspacing="0" cellpadding="0">
+          <tr>
+            <td class="header">
+              ${logo}
+              <span class="badge">${escapeSystemHtml(params.badge)}</span>
+              <div class="title">${escapeSystemHtml(params.title)}</div>
+              <div style="margin-top:6px;font-size:13px;opacity:.9;">
+                ${params.subtitle}
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="content">
+              ${params.bodyHtml}
+              <p style="margin: 20px 0;">
+                <a class="btn" href="${escapeSystemHtml(params.ctaHref)}" target="_blank" rel="noopener">${escapeSystemHtml(params.ctaLabel)}</a>
+              </p>
+              <p class="muted">
+                Si el botón no funciona, copiá y pegá este enlace en tu navegador:<br>
+                <a href="${escapeSystemHtml(params.ctaHref)}" target="_blank" rel="noopener" style="color:inherit;">${escapeSystemHtml(params.ctaHref)}</a>
+              </p>
+              <div class="divider"></div>
+              <p class="muted">
+                Mensaje automático de Notificas.com. No respondas a este correo; si necesitás ayuda, escribinos a
+                <a href="mailto:contacto@notificas.com" style="color:inherit;">contacto@notificas.com</a>.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td class="footer">
+              <div class="muted">
+                ${year} Notificas.com · Este mensaje fue destinado a ${escapeSystemHtml(params.recipientEmail)}.
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
 export function generateEmailHtml(params: {
   senderName: string;
   recipientName: string;
