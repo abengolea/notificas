@@ -1,7 +1,11 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
-import { formatEvidenceTimestamp, PDF_SCHEMA } from '@/lib/pdf-evidence-format';
+import {
+  formatEvidenceTimestamp,
+  formatEvidenceTimestampCompact,
+  PDF_SCHEMA,
+} from '@/lib/pdf-evidence-format';
 import {
   PDF_BRAND,
   PDF_MM,
@@ -366,7 +370,7 @@ export async function buildCampaignReportPdf(input: CampaignReportInput): Promis
         b.merkleRoot || '—',
         b.txHash || '—',
       ]),
-      styles: { fontSize: 6, cellPadding: 1.2, overflow: 'ellipsize', font: 'courier' },
+      styles: { fontSize: 6, cellPadding: 1.2, overflow: 'linebreak', font: 'courier' },
       margin: PDF_TABLE_MARGIN,
       headStyles: { ...PDF_TABLE_HEAD, fontSize: 7, font: 'helvetica' },
       columnStyles: { 0: { cellWidth: 28, font: 'helvetica' }, 1: { cellWidth: 28, font: 'helvetica' } },
@@ -416,40 +420,98 @@ export async function buildCampaignReportPdf(input: CampaignReportInput): Promis
 
   const showDebt = input.rows.some((r) => r.fechaVencimiento || r.monto || r.cuotas);
   const showError = input.rows.some((r) => r.errorDetail || r.estado === 'error');
-  const head = [
-    '#',
-    'Notification ID',
-    'Nombre',
-    'DNI',
-    'Teléfono',
-    ...(showDebt ? ['Vencimiento', 'Monto', 'Cuotas'] : []),
-    'Enviado',
-    'Entregado',
-    'Leído',
-    'Estado',
-    ...(showError ? ['Error'] : []),
-  ];
-  const body = input.rows.map((r, i) => [
-    String(i + 1),
-    r.notificationId,
-    r.nombre || '—',
-    dash(r.dni),
-    dash(r.telefono),
-    ...(showDebt ? [dash(r.fechaVencimiento), dash(r.monto), dash(r.cuotas)] : []),
-    formatEvidenceTimestamp(r.enviadoAt),
-    formatEvidenceTimestamp(r.entregadoAt),
-    formatEvidenceTimestamp(r.leidoAt),
-    r.estado || '—',
-    ...(showError ? [r.errorCode ? `${r.errorCode} ${r.errorDetail}`.trim() : dash(r.errorDetail)] : []),
-  ]);
+  const tableStyles = {
+    fontSize: 7,
+    cellPadding: 1.6,
+    overflow: 'linebreak' as const,
+    valign: 'top' as const,
+    minCellHeight: 9,
+  };
 
   autoTable(doc, {
     startY: y,
-    head: [head],
-    body,
-    styles: { fontSize: 6, cellPadding: 1.1, overflow: 'ellipsize' },
+    head: [[
+      '#',
+      'Destinatario',
+      ...(showDebt ? ['Vencimiento', 'Monto', 'Cuotas'] : []),
+      'Estado',
+    ]],
+    body: input.rows.map((r, i) => [
+      String(i + 1),
+      [
+        r.nombre || '—',
+        [r.dni ? `DNI ${r.dni}` : '', r.telefono || ''].filter(Boolean).join('  ·  ') || undefined,
+        r.notificationId ? `Notification ID: ${r.notificationId}` : undefined,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      ...(showDebt ? [dash(r.fechaVencimiento), dash(r.monto), dash(r.cuotas)] : []),
+      r.estado || '—',
+    ]),
+    styles: tableStyles,
     margin: PDF_TABLE_MARGIN,
-    headStyles: { ...PDF_TABLE_HEAD, fontSize: 6.5 },
+    headStyles: { ...PDF_TABLE_HEAD, fontSize: 7.5 },
+    columnStyles: showDebt
+      ? {
+          0: { cellWidth: 10 },
+          1: { cellWidth: 78 },
+          2: { cellWidth: 28 },
+          3: { cellWidth: 26 },
+          4: { cellWidth: 16 },
+          5: { cellWidth: 24 },
+        }
+      : {
+          0: { cellWidth: 10 },
+          1: { cellWidth: 148 },
+          2: { cellWidth: 24 },
+        },
+  });
+  y = lastAutoY(doc, y) + 6;
+
+  y = ensureY(doc, y, 16);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Horarios UTC de la muestra (fecha y hora en dos líneas)', 14, y);
+  y += 3;
+
+  autoTable(doc, {
+    startY: y,
+    head: [[
+      '#',
+      'Nombre',
+      'Enviado UTC',
+      'Entregado UTC',
+      'Leído UTC',
+      ...(showError ? ['Error'] : []),
+    ]],
+    body: input.rows.map((r, i) => [
+      String(i + 1),
+      r.nombre || '—',
+      formatEvidenceTimestampCompact(r.enviadoAt),
+      formatEvidenceTimestampCompact(r.entregadoAt),
+      formatEvidenceTimestampCompact(r.leidoAt),
+      ...(showError ? [r.errorCode ? `${r.errorCode} ${r.errorDetail}`.trim() : dash(r.errorDetail)] : []),
+    ]),
+    styles: tableStyles,
+    margin: PDF_TABLE_MARGIN,
+    headStyles: { ...PDF_TABLE_HEAD, fontSize: 7.5 },
+    columnStyles: showError
+      ? {
+          0: { cellWidth: 10 },
+          1: { cellWidth: 46 },
+          2: { cellWidth: 28, font: 'courier' },
+          3: { cellWidth: 28, font: 'courier' },
+          4: { cellWidth: 28, font: 'courier' },
+          5: { cellWidth: 42 },
+        }
+      : {
+          0: { cellWidth: 10 },
+          1: { cellWidth: 72 },
+          2: { cellWidth: 33, font: 'courier' },
+          3: { cellWidth: 33, font: 'courier' },
+          4: { cellWidth: 34, font: 'courier' },
+        },
   });
   y = lastAutoY(doc, y) + 6;
 
@@ -458,7 +520,7 @@ export async function buildCampaignReportPdf(input: CampaignReportInput): Promis
   doc.setTextColor(71, 85, 105);
   y = writeWrapped(
     doc,
-    `Constancia individual: ${input.verifyAppBase}/verify?id={mailId}  ·  Notification ID en la tabla. Las TX de entrega y lectura de cada destinatario están en el CSV y en el acta individual; este reporte no las abrevia en la grilla para no volverla ilegible.`,
+    `Constancia individual: ${input.verifyAppBase}/verify?id={mailId}. El Notification ID figura debajo de cada nombre. Horarios de la grilla en UTC (fecha y hora en dos líneas); UTC+ART completo está en el CSV y en cada acta. Las TX de entrega y lectura no se listan aquí; están en el CSV y en el acta individual.`,
     14,
     y,
     182,

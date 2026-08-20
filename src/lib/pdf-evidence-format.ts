@@ -4,7 +4,7 @@ export const PDF_SCHEMA = {
   certificadoLectura: 'certificado-lectura/v2',
   actaTanda: 'acta-tanda/v3',
   actaIndividual: 'acta-individual/v5',
-  campaignReport: 'campaign-report/v1',
+  campaignReport: 'campaign-report/v2',
 } as const;
 
 const ART_TZ = 'America/Argentina/Buenos_Aires';
@@ -61,6 +61,14 @@ export function formatEvidenceTimestamp(value?: unknown): string {
     hour12: false,
   }).format(d);
   return `${utc} (${art} ART)`;
+}
+
+/** Fecha/hora UTC en dos líneas, para celdas de tabla. */
+export function formatEvidenceTimestampCompact(value?: unknown): string {
+  const d = toDate(value);
+  if (!d) return '—';
+  const utc = d.toISOString().replace(/\.\d{3}Z$/, 'Z');
+  return `${utc.slice(0, 10)}\n${utc.slice(11, 19)}Z`;
 }
 
 export function metaAccountIdsFromSources(input: {
