@@ -49,6 +49,134 @@ function toIsoString(value: any): string | undefined {
   return undefined;
 }
 
+function collectEvidenceHashes(evidence: Record<string, unknown>, extra?: string[]): string[] {
+  const out = new Set<string>();
+  const add = (v: unknown) => {
+    if (typeof v === "string") {
+      const h = normalizeHash(v);
+      if (h.length === 64) out.add(h);
+    }
+  };
+  const ch = evidence.contentHash as { stored?: string; current?: string; snapshot?: string } | undefined;
+  add(ch?.stored);
+  add(ch?.current);
+  add(ch?.snapshot);
+  add(evidence.snapshotHash);
+  add(evidence.merkleRoot);
+  extra?.forEach(add);
+  return [...out];
+}
+
+async function matchHashToRecord(
+  hash: string,
+  hints: VerifyHints,
+  messageId: string | null
+): Promise<{ data: Record<string, unknown>; hashKind: string } | null> {
+  const issued = await findIssuedDocument(getAdminDb(), hash);
+  if (issued) {
+    return {
+      hashKind: "pdf",
+      data: { ...buildCampaignPayload(issued, hash), issuedByNotificas: true },
+    };
+  }
+
+  if (messageId) {
+    const evidence = await buildPublicEvidence(messageId);
+    if (evidence) {
+      const mailSnap = await adminDb.collection("mail").doc(messageId).get();
+      const certs = mailSnap.exists && Array.isArray(mailSnap.data()?.certificateHashes)
+        ? (mailSnap.data()!.certificateHashes as string[])
+        : [];
+      const hashes = collectEvidenceHashes(evidence as unknown as Record<string, unknown>, certs);
+      if (hashes.includes(hash)) {
+        const hashKind = certs.map((c) => normalizeHash(c)).includes(hash)
+          ? "pdf"
+          : hash === normalizeHash(String(evidence.merkleRoot || ""))
+            ? "merkle"
+            : "content";
+        return {
+          hashKind,
+          data: {
+            ...evidence,
+            hash,
+            isCertificate: true,
+            integrityValid: evidence.intact,
+            issuedByNotificas: true,
+          },
+        };
+      }
+    }
+  }
+
+  const fromHints = await resolveCampaignFromHints({
+    ...hints,
+    messageId: hints.messageId || messageId || undefined,
+  });
+  if (fromHints?.campaignId) {
+    const db = getAdminDb();
+    if (fromHints.batchId) {
+      const batch = await db
+        .collection("campaigns")
+        .doc(fromHints.campaignId)
+        .collection("integrity_batches")
+        .doc(fromHints.batchId)
+        .get();
+      const merkle = typeof batch.data()?.merkleRoot === "string" ? normalizeHash(batch.data()!.merkleRoot) : "";
+      if (merkle === hash) {
+        return {
+          hashKind: "merkle",
+          data: {
+            ...buildCampaignPayload({ ...fromHints, hash }, hash),
+            merkleRoot: merkle,
+            issuedByNotificas: true,
+          },
+        };
+      }
+    }
+    if (fromHints.messageId) {
+      const msg = await db.collection("campaign_messages").doc(fromHints.messageId).get();
+      const send = (msg.data()?.integrity?.send || {}) as { contentHash?: string; merkleRoot?: string };
+      const live = msg.data() as { contentHash?: string } | undefined;
+      const candidates = [send.contentHash, send.merkleRoot, live?.contentHash, fromHints.hash].map((v) =>
+        typeof v === "string" ? normalizeHash(v) : ""
+      );
+      if (candidates.includes(hash)) {
+        return {
+          hashKind: "content",
+          data: {
+            ...buildCampaignPayload({ ...fromHints, hash }, hash),
+            issuedByNotificas: true,
+          },
+        };
+      }
+    }
+    const camp = await db.collection("campaigns").doc(fromHints.campaignId).get();
+    const csvHash = typeof camp.data()?.csvExportHash === "string" ? normalizeHash(camp.data()!.csvExportHash) : "";
+    if (csvHash === hash) {
+      return {
+        hashKind: "csv",
+        data: {
+          ...buildCampaignPayload({ ...fromHints, hash }, hash),
+          issuedByNotificas: true,
+        },
+      };
+    }
+  }
+
+  return null;
+}
+  switch (kind) {
+    case "campaign_acta":
+      return "Acta de tanda de campaña";
+    case "campaign_acta_recipient":
+      return "Acta individual de destinatario";
+    case "campaign_report":
+      return "Reporte legal de campaña";
+    default:
+      return "Documento de campaña";
+  }
+}
+
 function campaignKindLabel(kind?: IssuedDocKind): string {
   switch (kind) {
     case "campaign_acta":
@@ -285,6 +413,28 @@ export async function POST(request: NextRequest) {
     }
     if (messageId && !hints.messageId) hints.messageId = messageId;
 
+    const fromQr =
+      Boolean(hash && hash.length === 64) &&
+      !fileName &&
+      !hintText &&
+      Boolean(messageId || hints.campaignId || hints.batchId);
+
+    if (hash && hash.length === 64) {
+      const matched = await matchHashToRecord(hash, hints, messageId);
+      if (matched) {
+        return NextResponse.json({
+          success: true,
+          data: { ...matched.data, hashKind: matched.hashKind, hash },
+        });
+      }
+      if (fromQr) {
+        return NextResponse.json(
+          { error: "El hash no coincide con un registro de Notificas", hash },
+          { status: 404 }
+        );
+      }
+    }
+
     // Verificación por messageId (certificado de lectura + recálculo de integridad)
     if (messageId && !hash) {
       const evidence = await buildPublicEvidence(messageId);
@@ -409,6 +559,24 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const q = verifyQueryFromSearchParams(request.nextUrl.searchParams);
+  if (q.hash) {
+    const matched = await matchHashToRecord(q.hash, {
+      campaignId: q.campaignId,
+      batchId: q.batchId,
+      kind: q.kind,
+      messageId: q.id,
+    }, q.id || null);
+    if (matched) {
+      return NextResponse.json({
+        success: true,
+        data: { ...matched.data, hashKind: matched.hashKind, hash: q.hash, issuedByNotificas: true },
+      });
+    }
+    if (q.id || q.campaignId || q.batchId) {
+      return NextResponse.json({ error: "El hash no coincide con un registro de Notificas", hash: q.hash }, { status: 404 });
+    }
+    return NextResponse.json({ error: "Documento no encontrado", hash: q.hash }, { status: 404 });
+  }
   if (q.id) {
     const evidence = await buildPublicEvidence(q.id);
     if (evidence) {
@@ -445,7 +613,7 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json({ error: "Documento no encontrado" }, { status: 404 });
   }
-  return NextResponse.json({ error: "id, messageId o campaignId es requerido" }, { status: 400 });
+  return NextResponse.json({ error: "id, messageId, campaignId o hash es requerido" }, { status: 400 });
 }
 
 

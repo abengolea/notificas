@@ -33,12 +33,18 @@ export function publicAppBase(): string {
   return PUBLIC_VERIFY_ORIGIN;
 }
 
+export function asSha256Hex(raw?: string | null): string | undefined {
+  const h = (raw || '').trim().toLowerCase();
+  return /^[a-f0-9]{64}$/.test(h) ? h : undefined;
+}
+
 /** URL pública del validador. El QR del PDF debe apuntar acá, no a Polygonscan. */
 export function publicCertificateVerifyUrl(q: {
   id?: string;
   campaignId?: string;
   batchId?: string;
   kind?: IssuedDocKind;
+  hash?: string;
 }): string {
   const base = publicAppBase();
   const params = new URLSearchParams();
@@ -46,6 +52,8 @@ export function publicCertificateVerifyUrl(q: {
   if (q.campaignId) params.set('campaignId', q.campaignId);
   if (q.batchId) params.set('batchId', q.batchId);
   if (q.kind) params.set('kind', q.kind);
+  const hash = asSha256Hex(q.hash);
+  if (hash) params.set('hash', hash);
   const qs = params.toString();
   return qs ? `${base}/verify?${qs}` : `${base}/verify`;
 }
@@ -55,6 +63,7 @@ export function verifyQueryFromSearchParams(search: URLSearchParams): {
   campaignId?: string;
   batchId?: string;
   kind?: IssuedDocKind;
+  hash?: string;
 } {
   const ref = (search.get('ref') || '').trim();
   const fromRef = ref ? extractVerifyHints(`verify-ref: ${ref}`) : {};
@@ -63,10 +72,12 @@ export function verifyQueryFromSearchParams(search: URLSearchParams): {
   const batchId = (search.get('batchId') || fromRef.batchId || '').trim();
   const kindRaw = (search.get('kind') || fromRef.kind || '').trim();
   const kind = (kindRaw || undefined) as IssuedDocKind | undefined;
+  const hash = asSha256Hex(search.get('hash') || search.get('h'));
   return {
     id: id || undefined,
     campaignId: campaignId || undefined,
     batchId: batchId || undefined,
     kind,
+    hash,
   };
 }

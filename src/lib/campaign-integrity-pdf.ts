@@ -73,6 +73,7 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
     campaignId: input.campaignId,
     batchId: input.batchId,
     kind: 'campaign_acta',
+    hash: input.merkleRoot,
   });
   const anchored = input.status === 'anchored' && Boolean(input.merkleRoot && input.txHash);
   const docTitle = 'Acta de integridad de tanda';
@@ -450,6 +451,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     id: input.messageId,
     campaignId: input.campaignId,
     kind: 'campaign_acta_recipient',
+    hash: input.contentHash || input.storedHash,
   });
   const email = input.recipientEmail && !isSyntheticEmail(input.recipientEmail) ? input.recipientEmail : '';
   const cuerpo = stripHtml(input.cuerpoPersonalizado || '');

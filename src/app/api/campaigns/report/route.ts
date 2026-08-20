@@ -252,6 +252,7 @@ export async function GET(request: NextRequest) {
       verifyCampaignUrl: publicCertificateVerifyUrl({
         campaignId,
         kind: 'campaign_report',
+        hash: csvExportHash,
       }),
       verifyAppBase: appBase,
       rows: truncated.map(({ searchEmail: _s, ...row }) => row),

@@ -20,6 +20,7 @@ interface VerificationResult {
   recipientCuit?: string;
   sentAt?: string;
   hash?: string;
+  hashKind?: string;
   blockchainVerified?: boolean;
   integrityValid?: boolean | null;
   snapshotHash?: string;
@@ -75,6 +76,8 @@ function mapVerifyApiData(
       (typeof data?.contentHash === "string" ? data.contentHash : undefined),
     explorerUrl: data?.explorerUrl as string | undefined,
     summary: data?.summary as string | undefined,
+    hash: (typeof data?.hash === "string" ? data.hash : undefined),
+    hashKind: data?.hashKind as string | undefined,
     orgNombre: data?.orgNombre as string | undefined,
     orgCuit: data?.orgCuit as string | undefined,
     isCampaignDocument: data?.isCampaignDocument === true,
@@ -89,6 +92,7 @@ function mapVerifyApiData(
 export default function VerifyPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [messageIdInput, setMessageIdInput] = useState("");
+  const [hashInput, setHashInput] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [result, setResult] = useState<VerificationResult | null>(null);
@@ -102,9 +106,11 @@ export default function VerifyPage() {
     const campaignId = (params.get("campaignId") || "").trim();
     const batchId = (params.get("batchId") || "").trim();
     const kind = (params.get("kind") || "").trim();
-    if ((!id && !campaignId && !batchId) || autoVerifyDone.current) return;
+    const hash = (params.get("hash") || params.get("h") || "").trim().toLowerCase();
+    if ((!id && !campaignId && !batchId && !hash) || autoVerifyDone.current) return;
     autoVerifyDone.current = true;
     setMessageIdInput(id || campaignId);
+    if (hash) setHashInput(hash);
     void (async () => {
       setIsVerifying(true);
       try {
@@ -116,16 +122,20 @@ export default function VerifyPage() {
             ...(campaignId ? { campaignId } : {}),
             ...(batchId ? { batchId } : {}),
             ...(kind ? { kind } : {}),
+            ...(hash ? { hash } : {}),
           }),
         });
         if (response.ok) {
           const data = await response.json();
-          setResult(mapVerifyApiData(data?.data));
+          const mapped = mapVerifyApiData(data?.data, { hash: hash || (data?.data?.hash as string | undefined) });
+          setResult(mapped);
+          if (mapped.hash) setHashInput(mapped.hash);
         } else if (response.status === 404) {
           setResult({
             isValid: false,
             issuedByNotificas: false,
             messageId: id || campaignId,
+            hash: hash || undefined,
           });
         }
       } finally {
@@ -360,10 +370,24 @@ export default function VerifyPage() {
             Verificar Autenticidad de Documentos
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Al escanear el QR del certificado, esta página valida sola si Notificas lo emitió.
+            Al escanear el QR, se carga el hash y esta página contrasta sola si Notificas lo emitió.
             También puede subir el PDF o ingresar el identificador.
           </p>
         </div>
+
+        {hashInput && (
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Shield className="h-4 w-4" />
+                Hash cargado
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="font-mono text-xs break-all bg-muted rounded-md px-3 py-2">{hashInput}</p>
+            </CardContent>
+          </Card>
+        )}
 
         {isVerifying && !result && (
           <Card className="mb-8">
@@ -523,7 +547,9 @@ export default function VerifyPage() {
                 </div>
                 {result.isValid ? (
                   <p className="text-sm text-muted-foreground">
-                    El identificador del QR coincide con un registro emitido por Notificas.
+                    {result.hash
+                      ? "El hash del QR coincide con un registro emitido por Notificas."
+                      : "El identificador del QR coincide con un registro emitido por Notificas."}
                   </p>
                 ) : (
                   <p className="text-sm text-muted-foreground">
@@ -605,9 +631,17 @@ export default function VerifyPage() {
                         )}
                         {result.hash && (
                           <div className="flex justify-between gap-3">
-                            <span className="text-sm text-muted-foreground">Hash:</span>
-                            <span className="text-sm font-mono bg-muted px-2 py-1 rounded text-xs" title={result.hash}>
-                              {result.hash.substring(0, 16)}...
+                            <span className="text-sm text-muted-foreground">
+                              {result.hashKind === "merkle"
+                                ? "Raíz Merkle:"
+                                : result.hashKind === "content"
+                                  ? "Hash intimación:"
+                                  : result.hashKind === "csv"
+                                    ? "Hash CSV:"
+                                    : "Hash:"}
+                            </span>
+                            <span className="text-sm font-mono bg-muted px-2 py-1 rounded text-xs break-all text-right max-w-[240px]" title={result.hash}>
+                              {result.hash}
                             </span>
                           </div>
                         )}

@@ -712,6 +712,11 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   const contentHashStored = (mailData as any).polygonCertifications?.contentHash;
   const contentHashComputed = await computeContentHash(mailData.message?.contentText || '');
   const contentHash = contentHashStored || contentHashComputed;
+  const verifyUrl = publicCertificateVerifyUrl({
+    id: messageId,
+    kind: 'mail_certificate',
+    hash: contentHash,
+  });
 
   if (mailData.tracking?.token || mailData.readerUrl || mailData.delivery?.info || contentHash) {
     drawSectionTitle('Datos técnicos de verificación', 2);
@@ -751,7 +756,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     }
     techData.push({
       label: 'Verificación pública',
-      value: publicCertificateVerifyUrl({ id: messageId, kind: 'mail_certificate' }),
+      value: verifyUrl,
       monospace: true,
     });
     if (mailData.readerUrl) {
@@ -810,7 +815,6 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   }
 
   try {
-    const verifyUrl = publicCertificateVerifyUrl({ id: messageId, kind: 'mail_certificate' });
     const qr = await QRCode.toDataURL(verifyUrl, { margin: 0, width: 160 });
     ensureSpace(56);
     doc.addImage(qr, 'PNG', pageWidth - margin - 48, yPosition, 42, 42);
