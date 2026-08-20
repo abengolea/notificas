@@ -1531,7 +1531,7 @@ export function CampaignWizard({
             </div>
             {!csvListInline && csvInspect && (
               <p className="text-sm text-muted-foreground rounded-md border bg-muted/40 p-3">
-                Lista grande: no se muestra fila por fila. Al guardar se sube de a {WIZARD_INLINE_LIST_MAX}.
+                Lista grande: no se muestra fila por fila. Al guardar se sube el CSV completo (un archivo).
                 El adjunto distinto por destinatario no está disponible.
               </p>
             )}

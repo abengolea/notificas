@@ -89,7 +89,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
   const [data, setData] = useState<DetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [uploadPct, setUploadPct] = useState<{ parsed: number; skipped: number; chunks: number } | null>(null);
+  const [uploadPct, setUploadPct] = useState<{ parsed: number; skipped: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [confirmSend, setConfirmSend] = useState(false);
@@ -178,7 +178,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
   async function onFile(file: File) {
     if (!data) return;
     setUploading(true);
-    setUploadPct({ parsed: 0, skipped: 0, chunks: 0 });
+    setUploadPct({ parsed: 0, skipped: 0 });
     try {
       const extraColumns = usesNotificasDefaultTemplate(templateName)
         ? []
@@ -194,7 +194,6 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
           setUploadPct({
             parsed: p.parsed ?? 0,
             skipped: p.skipped ?? 0,
-            chunks: p.uploadedChunks,
           }),
       });
       toast({
@@ -592,7 +591,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
                 <CardDescription>
                   {c.simulated
                     ? `Generá una lista ficticia o subí un CSV. Ahora hay ${c.recipientCount.toLocaleString("es-AR")}.`
-                    : `Columnas: ${csvCamposRequeridos(c.canal, csvExtra)}. Se sube de a 500. Ahora hay ${c.recipientCount.toLocaleString("es-AR")}.`}
+                    : `Columnas: ${csvCamposRequeridos(c.canal, csvExtra)}. Un solo archivo, aunque tenga 150 mil filas. Ahora hay ${c.recipientCount.toLocaleString("es-AR")}.`}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -634,7 +633,8 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
                 </Button>
                 {uploading && uploadPct && (
                   <p className="text-sm text-muted-foreground">
-                    Procesados {uploadPct.parsed.toLocaleString("es-AR")} · archivos {uploadPct.chunks} · salteados {uploadPct.skipped}
+                    Procesados {uploadPct.parsed.toLocaleString("es-AR")} destinatarios
+                    {uploadPct.skipped > 0 ? ` · ${uploadPct.skipped.toLocaleString("es-AR")} filas salteadas` : ""}
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground font-mono whitespace-pre-wrap">{csvPlaceholder(c.canal, csvExtra)}</p>

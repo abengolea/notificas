@@ -124,7 +124,8 @@ export async function uploadCampaignRecipients(opts: {
 }
 
 /**
- * Lee el CSV de a líneas, sube de a 500 y no acumula los 150k en memoria.
+ * Un solo archivo CSV (aunque tenga 150k filas). Lo parte en tandas internas
+ * para no mandar todo en un POST, y sube varias tandas en paralelo.
  */
 export async function uploadCampaignCsvInChunks(opts: {
   campaignId: string;
@@ -167,21 +168,43 @@ export async function uploadCampaignCsvInChunks(opts: {
   const seenPhones = new Set<string>();
   let buffer: RecipientEntry[] = [];
   let chunkIndex = 0;
+  let uploadedChunks = 0;
   let parsed = 0;
   let skipped = 0;
+  const queue: { idx: number; slice: RecipientEntry[] }[] = [];
 
-  const sendChunk = async (slice: RecipientEntry[]) => {
-    const idx = chunkIndex;
-    chunkIndex += 1;
-    await withRetry(() =>
-      postJson(endpoint, { campaignId, orgId, chunkIndex: idx, recipients: slice }, token)
-    );
+  const report = () => {
     onProgress?.({
-      uploadedChunks: chunkIndex,
+      uploadedChunks,
       chunkCount: Math.max(chunkIndex, 1),
       parsed,
       skipped,
     });
+  };
+
+  const flushQueue = async (flushAll: boolean) => {
+    while (queue.length >= UPLOAD_CONCURRENCY || (flushAll && queue.length > 0)) {
+      const batch = queue.splice(0, UPLOAD_CONCURRENCY);
+      await Promise.all(
+        batch.map((job) =>
+          withRetry(() =>
+            postJson(
+              endpoint,
+              { campaignId, orgId, chunkIndex: job.idx, recipients: job.slice },
+              token
+            )
+          )
+        )
+      );
+      uploadedChunks += batch.length;
+      report();
+    }
+  };
+
+  const enqueueChunk = async (slice: RecipientEntry[]) => {
+    queue.push({ idx: chunkIndex, slice });
+    chunkIndex += 1;
+    await flushQueue(false);
   };
 
   for (let r = 1; r < lines.length; r++) {
@@ -203,14 +226,15 @@ export async function uploadCampaignCsvInChunks(opts: {
     buffer.push(row);
     parsed += 1;
     if (buffer.length >= RECIPIENT_CHUNK_SIZE) {
-      await sendChunk(buffer);
+      await enqueueChunk(buffer);
       buffer = [];
     }
   }
 
   if (buffer.length > 0) {
-    await sendChunk(buffer);
+    await enqueueChunk(buffer);
   }
+  await flushQueue(true);
 
   if (parsed === 0) {
     throw new Error('Ninguna fila válida en el CSV');
