@@ -44,7 +44,7 @@ import {
   Gauge,
   Save,
 } from "lucide-react";
-import { canEditWhatsAppTemplate, isUnsentCampaign } from "@/lib/campaign-edit";
+import { canEditWhatsAppTemplate, isAdminManagedCampaign, isUnsentCampaign } from "@/lib/campaign-edit";
 import { DailyQuotaField } from "@/components/empresa/daily-quota-field";
 import { DEFAULT_TANDA_SIZE } from "@/lib/campaign-tanda";
 import { explainWhatsAppSendError, WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-template-fields";
@@ -225,21 +225,25 @@ function CampaignExportActions({
   busy,
   errorCount,
   onCopy,
+  hideCopy,
   onDownloadPdf,
   onDownloadCsv,
 }: {
   busy: boolean;
   errorCount: number;
   onCopy: () => void;
+  hideCopy?: boolean;
   onDownloadPdf: () => void;
   onDownloadCsv: (kind: "vista" | "errores" | "completo") => void;
 }) {
   return (
     <>
-      <Button variant="outline" onClick={onCopy} disabled={busy} className="gap-2">
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
-        Copiar campaña
-      </Button>
+      {!hideCopy && (
+        <Button variant="outline" onClick={onCopy} disabled={busy} className="gap-2">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+          Copiar campaña
+        </Button>
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" disabled={busy} className="gap-2">
@@ -701,9 +705,11 @@ export const CampaignDashboard = forwardRef<
 
   const showEmail = campaign.canal === "email" || campaign.canal === "ambos" || !campaign.canal;
   const showWa    = campaign.canal === "whatsapp" || campaign.canal === "ambos";
+  const empresaReadOnly = !isAdmin && isAdminManagedCampaign(campaign);
+  const canOperate = !empresaReadOnly;
 
   const tableCols = 4 + (showEmail ? 1 : 0) + (showWa ? 1 : 0);
-  const canEditTpl = showWa && canEditWhatsAppTemplate(campaign);
+  const canEditTpl = canOperate && showWa && canEditWhatsAppTemplate(campaign);
   const empresaQuota =
     mode === "empresa" &&
     !campaign.simulated &&
@@ -718,16 +724,21 @@ export const CampaignDashboard = forwardRef<
       <DailyQuotaField
         value={quotaDraft}
         onChange={setQuotaDraft}
+        disabled={empresaReadOnly}
         hint={
-          fmtTs(campaign.nextDailyAt)
-            ? `El lote de hoy ya está fijado. Próximo arranque: ${fmtTs(campaign.nextDailyAt)}.`
-            : "Cuando Meta aumente el cupo del número, subí este valor y guardá. Rige mañana a las 9:00."
+          empresaReadOnly
+            ? "Esta campaña la gestiona el administrador. El tope diario es solo consulta."
+            : fmtTs(campaign.nextDailyAt)
+              ? `El lote de hoy ya está fijado. Próximo arranque: ${fmtTs(campaign.nextDailyAt)}.`
+              : "Cuando Meta aumente el cupo del número, subí este valor y guardá. Rige mañana a las 9:00."
         }
       />
-      <Button variant="secondary" size="sm" disabled={busy || quotaDraft === (campaign.tandaSize || 0)} onClick={() => void guardarTopeDiario()} className="gap-2">
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-        Guardar tope de los próximos días
-      </Button>
+      {canOperate && (
+        <Button variant="secondary" size="sm" disabled={busy || quotaDraft === (campaign.tandaSize || 0)} onClick={() => void guardarTopeDiario()} className="gap-2">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Guardar tope de los próximos días
+        </Button>
+      )}
     </div>
   ) : null);
   const waErrorHint =
@@ -741,6 +752,7 @@ export const CampaignDashboard = forwardRef<
       busy={busy}
       errorCount={stats?.errores ?? 0}
       onCopy={() => void copiarCampana()}
+      hideCopy={empresaReadOnly}
       onDownloadPdf={() => void descargarReporte()}
       onDownloadCsv={(kind) => void descargarCsv(kind)}
     />
@@ -756,45 +768,51 @@ export const CampaignDashboard = forwardRef<
             ← Campañas
           </Link>
           <h1 className="text-2xl font-bold mt-2">{campaign.nombre}</h1>
+          {empresaReadOnly && (
+            <p className="mt-2 text-sm text-muted-foreground max-w-xl">
+              Esta campaña la armó el administrador. Podés ver el avance y los destinatarios, pero no editarla, enviarla ni cancelarla. Las campañas que armes vos sí las podés editar y enviar.
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-2 mt-2 text-sm text-muted-foreground">
             {campaignEstadoBadge(campaign.estado)}
             {campaign.simulated ? <Badge variant="outline" className="border-amber-500 text-amber-700 dark:text-amber-400">simulada</Badge> : null}
+            {empresaReadOnly ? <Badge variant="secondary">solo consulta</Badge> : null}
             {showEmail && <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5" />Email</span>}
             {showWa && <span className="inline-flex items-center gap-1"><MessageCircle className="h-3.5 w-3.5 text-emerald-600" />WhatsApp</span>}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {campaign.estado === "enviando" && stats && stats.pendientes > 0 && !isAdmin && (
+          {canOperate && campaign.estado === "enviando" && stats && stats.pendientes > 0 && !isAdmin && (
             <Button variant="secondary" onClick={continuarEnvio} disabled={busy} className="gap-2">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Continuar envío
             </Button>
           )}
-          {campaign.estado === "enviando" && (
+          {canOperate && campaign.estado === "enviando" && (
             <Button variant="outline" onClick={pausarCampana} disabled={busy} className="gap-2">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4" />}
               Pausar campaña
             </Button>
           )}
-          {campaign.estado === "pausada" && (
+          {canOperate && campaign.estado === "pausada" && (
             <Button onClick={reanudarCampana} disabled={busy} className="gap-2">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               Reanudar
             </Button>
           )}
-          {(campaign.estado === "enviando" || campaign.estado === "pausada") && (
+          {canOperate && (campaign.estado === "enviando" || campaign.estado === "pausada") && (
             <Button variant="destructive" onClick={cancelarCampana} disabled={busy} className="gap-2">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
               Cancelar campaña
             </Button>
           )}
-          {campaign.estado === "completada" && stats && stats.errores > 0 && !isAdmin && (
+          {canOperate && campaign.estado === "completada" && stats && stats.errores > 0 && !isAdmin && (
             <Button variant="outline" onClick={reintentarErrores} disabled={busy} className="gap-2 border-destructive text-destructive hover:bg-destructive/10">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
               Reintentar {stats.errores.toLocaleString("es-AR")} errores
             </Button>
           )}
-          {isUnsentCampaign(campaign) && (
+          {canOperate && isUnsentCampaign(campaign) && (
             <Button variant="outline" asChild className="gap-2">
               <Link href={isAdmin ? `/admin/campanas/${campaignId}/editar` : `/empresa/${orgId}/campanas/${campaignId}/editar`}>
                 <Pencil className="h-4 w-4" />
@@ -802,13 +820,13 @@ export const CampaignDashboard = forwardRef<
               </Link>
             </Button>
           )}
-          {showWa && canEditWhatsAppTemplate(campaign) && !isUnsentCampaign(campaign) && (
+          {canEditTpl && !isUnsentCampaign(campaign) && (
             <Button variant="outline" onClick={() => setSection("mensaje")} className="gap-2">
               <Pencil className="h-4 w-4" />
               Editar template WA
             </Button>
           )}
-          {campaign.estado === "borrador" && !isAdmin && (
+          {canOperate && campaign.estado === "borrador" && !isAdmin && (
             <Button onClick={iniciarEnvio} disabled={busy} className="gap-2">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               Iniciar envío
@@ -936,6 +954,7 @@ export const CampaignDashboard = forwardRef<
             </div>
           </div>
 
+          {canOperate && (
           <div className="flex flex-wrap items-center gap-3">
             <Button variant="secondary" disabled={busy || selected.size === 0} onClick={reenviarSeleccion} className="gap-2">
               <RefreshCw className="h-4 w-4" />
@@ -949,6 +968,7 @@ export const CampaignDashboard = forwardRef<
             )}
             <p className="text-xs text-muted-foreground">Solo filas en error pueden seleccionarse individualmente.</p>
           </div>
+          )}
           {waErrorHint && (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
               {waErrorHint}{" "}
@@ -1000,7 +1020,7 @@ export const CampaignDashboard = forwardRef<
                     <TableRow key={m.id}>
                       <TableCell>
                         <Checkbox
-                          disabled={m.estado !== "error"}
+                          disabled={empresaReadOnly || m.estado !== "error"}
                           checked={selected.has(m.id)}
                           onCheckedChange={(c) => toggleRow(m.id, m, c === true)}
                         />
@@ -1089,6 +1109,7 @@ export const CampaignDashboard = forwardRef<
             campaignId={campaignId}
             initialMessageId={verifyTarget}
             adminSession={isAdmin}
+            readOnly={empresaReadOnly}
           />
         </TabsContent>
 

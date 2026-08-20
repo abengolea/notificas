@@ -9,7 +9,12 @@ import {
   saveRecipientChunk,
 } from '@/lib/campaign-recipients-storage';
 import type { RecipientEntry } from '@/lib/types';
-import { canReplaceCampaignRecipients, CSV_REPLACE_ERROR } from '@/lib/campaign-edit';
+import {
+  ADMIN_CAMPAIGN_READONLY_ERROR,
+  canReplaceCampaignRecipients,
+  CSV_REPLACE_ERROR,
+  isAdminManagedCampaign,
+} from '@/lib/campaign-edit';
 
 type UploadBody = {
   campaignId?: string;
@@ -40,6 +45,9 @@ export async function POST(request: NextRequest) {
     const campSnap = await db.collection('campaigns').doc(campaignId).get();
     if (!campSnap.exists || String(campSnap.data()!.orgId) !== orgId) {
       return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 });
+    }
+    if (isAdminManagedCampaign(campSnap.data() || {})) {
+      return NextResponse.json({ error: ADMIN_CAMPAIGN_READONLY_ERROR }, { status: 403 });
     }
     if (!canReplaceCampaignRecipients(campSnap.data() || {})) {
       return NextResponse.json({ error: CSV_REPLACE_ERROR }, { status: 409 });

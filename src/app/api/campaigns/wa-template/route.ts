@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { resolveCampaignOrgAccess } from '@/lib/campaign-access';
+import { denyOrgMemberWriteOnAdminCampaign, resolveCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { canEditWhatsAppTemplate, WA_TEMPLATE_EDIT_ERROR } from '@/lib/campaign-edit';
 import { whatsappTemplateCampaignPatch } from '@/lib/campaign-wa-template-patch';
@@ -33,6 +33,8 @@ export async function POST(request: NextRequest) {
     }
 
     const current = snap.data()!;
+    const blocked = denyOrgMemberWriteOnAdminCampaign(access, current);
+    if (blocked) return blocked;
     if (String(current.canal || 'email') === 'email') {
       return NextResponse.json({ error: 'Esta campaña no usa WhatsApp' }, { status: 400 });
     }

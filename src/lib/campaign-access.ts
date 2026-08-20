@@ -3,6 +3,7 @@ import { hasAdminSession } from '@/lib/admin-session';
 import { verifyAuthToken } from '@/lib/auth-helper';
 import { getOrgIfMember } from '@/lib/org-server';
 import { getAdminDb } from '@/lib/firebase-admin';
+import { ADMIN_CAMPAIGN_READONLY_ERROR, isAdminManagedCampaign } from '@/lib/campaign-edit';
 
 export type CampaignAccess =
   | { ok: false; response: NextResponse }
@@ -64,6 +65,17 @@ export async function resolveOrgMemberOrAdmin(
   return { ok: true, viaAdmin: false, uid: decoded!.uid, email: decoded!.email ?? null };
 }
 
+export function denyOrgMemberWriteOnAdminCampaign(
+  access: Extract<CampaignAccess, { ok: true }>,
+  campaignData: FirebaseFirestore.DocumentData | undefined
+): NextResponse | null {
+  if (access.viaAdmin) return null;
+  if (isAdminManagedCampaign(campaignData || {})) {
+    return NextResponse.json({ error: ADMIN_CAMPAIGN_READONLY_ERROR }, { status: 403 });
+  }
+  return null;
+}
+
 /** `null` = autorizado. */
 export async function requireCampaignOrgAccess(
   request: NextRequest,
@@ -72,6 +84,19 @@ export async function requireCampaignOrgAccess(
 ): Promise<NextResponse | null> {
   const access = await resolveCampaignOrgAccess(request, orgId, campaignId);
   return access.ok ? null : access.response;
+}
+
+/** Igual que requireCampaignOrgAccess, pero la empresa no puede mutar campañas del admin. */
+export async function requireCampaignOrgWrite(
+  request: NextRequest,
+  orgId: string,
+  campaignId: string
+): Promise<NextResponse | null> {
+  const access = await resolveCampaignOrgAccess(request, orgId, campaignId);
+  if (!access.ok) return access.response;
+  if (access.viaAdmin) return null;
+  const camp = await getAdminDb().collection('campaigns').doc(campaignId).get();
+  return denyOrgMemberWriteOnAdminCampaign(access, camp.data());
 }
 
 /** Para rutas que solo reciben campaignId (p.ej. listado de mensajes). */

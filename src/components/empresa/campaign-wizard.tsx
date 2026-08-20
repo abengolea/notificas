@@ -69,7 +69,7 @@ import {
 } from "@/lib/campaign-fake-recipients";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { CsvInspectResult } from "@/lib/parse-campaign-csv";
-import { isUnsentCampaign, toDatetimeLocalValue, UNSENT_EDIT_ERROR } from "@/lib/campaign-edit";
+import { ADMIN_CAMPAIGN_READONLY_ERROR, isUnsentCampaign, toDatetimeLocalValue, UNSENT_EDIT_ERROR } from "@/lib/campaign-edit";
 import {
   WA_DEFAULT_TEMPLATE_NAME,
   WA_TEMPLATE_DEFAULT_VARS,
@@ -361,6 +361,9 @@ export function CampaignWizard({
           const x = snap.data();
           if (orgIdProp && String(x.orgId) !== orgIdProp) throw new Error("Campaña no encontrada");
           if (!isUnsentCampaign(x)) throw new Error(UNSENT_EDIT_ERROR);
+          if (x.managedByAdmin === true) {
+            throw new Error(ADMIN_CAMPAIGN_READONLY_ERROR);
+          }
           if (cancelled) return;
           setCampaniaNombre(String(x.nombre || ""));
           setAsunto(String(x.asunto || ""));
@@ -878,6 +881,9 @@ export function CampaignWizard({
         const current = await getDoc(refDoc);
         if (!current.exists()) throw new Error("Campaña no encontrada");
         if (!isUnsentCampaign(current.data() || {})) throw new Error(UNSENT_EDIT_ERROR);
+        if (current.data()?.managedByAdmin === true) {
+          throw new Error(ADMIN_CAMPAIGN_READONLY_ERROR);
+        }
         if (String(current.data()?.estado) === "cancelada") {
           await updateDoc(refDoc, { estado: "borrador", updatedAt: serverTimestamp() });
         }

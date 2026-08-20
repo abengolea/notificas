@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query, where, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { Campaign } from "@/lib/types";
+import { isAdminManagedCampaign } from "@/lib/campaign-edit";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -41,6 +42,7 @@ export default function EmpresaOrgDashboardPage() {
               recipientData: Array.isArray(x.recipientData) ? x.recipientData : [],
               recipientCount: typeof x.recipientCount === "number" ? x.recipientCount : 0,
               estado: x.estado as Campaign["estado"],
+              managedByAdmin: x.managedByAdmin === true,
               stats: x.stats || {
                 total: 0,
                 enviados: 0,
@@ -105,7 +107,8 @@ export default function EmpresaOrgDashboardPage() {
                   <CardDescription>{c.asunto}</CardDescription>
                 </CardHeader>
                 <CardContent className="pb-4 text-sm text-muted-foreground">
-                  Estado: {c.estado} — Destinatarios: {c.recipientCount} — Leídos: {c.stats.leidos}/
+                  Estado: {c.estado}
+                  {isAdminManagedCampaign(c) ? " · solo consulta" : ""} — Destinatarios: {c.recipientCount} — Leídos: {c.stats.leidos}/
                   {c.stats.enviados}
                 </CardContent>
               </Card>

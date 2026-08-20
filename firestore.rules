@@ -265,11 +265,14 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.orgId is string
         && request.resource.data.createdBy == request.auth.uid
-        && isOrgMemberById(request.resource.data.orgId);
+        && isOrgMemberById(request.resource.data.orgId)
+        && request.resource.data.get('managedByAdmin', false) != true;
 
       allow update: if signedIn()
         && resource.data.orgId is string
         && isOrgMemberById(resource.data.orgId)
+        && resource.data.get('managedByAdmin', false) != true
+        && request.resource.data.get('managedByAdmin', false) != true
         && (
           resource.data.get('estado', 'borrador') == 'borrador'
           || campaignContentUnchanged()

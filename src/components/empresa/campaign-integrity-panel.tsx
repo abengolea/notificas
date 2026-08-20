@@ -137,11 +137,13 @@ export function CampaignIntegrityPanel({
   campaignId,
   initialMessageId,
   adminSession = false,
+  readOnly = false,
 }: {
   orgId: string;
   campaignId: string;
   initialMessageId?: string;
   adminSession?: boolean;
+  readOnly?: boolean;
 }) {
   const { toast } = useToast();
   const [batches, setBatches] = useState<Batch[]>([]);
@@ -469,10 +471,12 @@ export function CampaignIntegrityPanel({
             )}
 
             <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" size="sm" disabled={busy} onClick={() => closeBatches(undefined, true)}>
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Cerrar lotes abiertos ahora
-              </Button>
+              {!readOnly && (
+                <Button variant="secondary" size="sm" disabled={busy} onClick={() => closeBatches(undefined, true)}>
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Cerrar lotes abiertos ahora
+                </Button>
+              )}
               <Button variant="outline" size="sm" disabled={busy} onClick={() => void load()}>
                 Actualizar
               </Button>
@@ -514,7 +518,7 @@ export function CampaignIntegrityPanel({
                             <Download className="h-3 w-3" /> Acta PDF
                           </Button>
                         )}
-                        {(b.status === "open" || b.status === "failed") && (
+                        {(b.status === "open" || b.status === "failed") && !readOnly && (
                           <Button size="sm" variant="outline" disabled={busy} onClick={() => closeBatches(b.id, true)}>
                             Cerrar este lote
                           </Button>
@@ -557,7 +561,7 @@ export function CampaignIntegrityPanel({
                             <Download className="h-3 w-3" /> Acta PDF
                           </Button>
                         )}
-                        {(b.status === "open" || b.status === "failed") && (
+                        {(b.status === "open" || b.status === "failed") && !readOnly && (
                           <Button size="sm" variant="outline" disabled={busy} onClick={() => closeBatches(b.id, true)}>
                             Cerrar este lote
                           </Button>

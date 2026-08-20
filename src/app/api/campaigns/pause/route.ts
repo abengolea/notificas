@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
-import { requireCampaignOrgAccess } from '@/lib/campaign-access';
+import { requireCampaignOrgWrite } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { z } from 'zod';
 
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
     const { campaignId, orgId } = parsed.data;
-    const denied = await requireCampaignOrgAccess(request, orgId, campaignId);
+    const denied = await requireCampaignOrgWrite(request, orgId, campaignId);
     if (denied) return denied;
 
     const db = getAdminDb();

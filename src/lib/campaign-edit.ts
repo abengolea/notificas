@@ -1,3 +1,11 @@
+/** Campaña creada y operada desde el panel admin: la empresa solo puede consultarla. */
+export function isAdminManagedCampaign(data: { managedByAdmin?: unknown }): boolean {
+  return data.managedByAdmin === true;
+}
+
+export const ADMIN_CAMPAIGN_READONLY_ERROR =
+  "Esta campaña la gestiona el administrador. Solo podés consultarla.";
+
 /** Campaña que todavía no despachó ningún envío (borrador o cancelada vacía). */
 export function isUnsentCampaign(data: {
   estado?: unknown;

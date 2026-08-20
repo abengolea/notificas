@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { z } from 'zod';
-import { resolveCampaignOrgAccess } from '@/lib/campaign-access';
+import { denyOrgMemberWriteOnAdminCampaign, resolveCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
 
 const bodySchema = z.object({
@@ -25,6 +25,8 @@ export async function POST(request: NextRequest) {
     const ref = db.collection('campaigns').doc(campaignId);
     const snap = await ref.get();
     if (!snap.exists) return NextResponse.json({ error: 'Campaña no encontrada' }, { status: 404 });
+    const blocked = denyOrgMemberWriteOnAdminCampaign(access, snap.data());
+    if (blocked) return blocked;
     const estado = String(snap.data()?.estado || '');
     if (estado === 'cancelada' || estado === 'completada') {
       return NextResponse.json({ error: 'Esta campaña ya no admite cambio de cupo' }, { status: 400 });

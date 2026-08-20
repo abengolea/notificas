@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireCampaignOrgAccess } from '@/lib/campaign-access';
+import { requireCampaignOrgWrite } from '@/lib/campaign-access';
 import { closeIntegrityBatch, closeOpenBatches } from '@/lib/campaign-integrity';
 
 function verifyWorkerSecret(request: NextRequest): boolean {
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   if (!isWorker) {
     const orgId = String(body.orgId || '');
     if (!orgId) return NextResponse.json({ error: 'orgId requerido' }, { status: 400 });
-    const denied = await requireCampaignOrgAccess(request, orgId, campaignId);
+    const denied = await requireCampaignOrgWrite(request, orgId, campaignId);
     if (denied) return denied;
   }
 

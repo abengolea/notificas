@@ -3,6 +3,7 @@ import { verifyAuthToken } from '@/lib/auth-helper';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { getOrgIfMember, maxRecipientsForPlan } from '@/lib/org-server';
 import { startCampaignTanda } from '@/lib/campaign-start-tanda';
+import { ADMIN_CAMPAIGN_READONLY_ERROR, isAdminManagedCampaign } from '@/lib/campaign-edit';
 import { z } from 'zod';
 
 const bodySchema = z.object({
@@ -38,6 +39,9 @@ export async function POST(request: NextRequest) {
     const campaign = campSnap.data()!;
     if (String(campaign.orgId) !== parsed.data.orgId) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+    }
+    if (isAdminManagedCampaign(campaign)) {
+      return NextResponse.json({ error: ADMIN_CAMPAIGN_READONLY_ERROR }, { status: 403 });
     }
 
     const plan = String(orgGate.data.plan || 'starter');

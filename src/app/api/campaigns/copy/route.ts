@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
-import { resolveCampaignOrgAccess } from '@/lib/campaign-access';
+import { denyOrgMemberWriteOnAdminCampaign, resolveCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb, getAdminBucket } from '@/lib/firebase-admin';
 import type { RecipientEntry } from '@/lib/types';
 
@@ -24,6 +24,8 @@ export async function POST(request: NextRequest) {
     }
 
     const c = src.data()!;
+    const blocked = denyOrgMemberWriteOnAdminCampaign(access, c);
+    if (blocked) return blocked;
     const orgSnap = await db.collection('organizations').doc(orgId).get();
     const createdBy = access.viaAdmin
       ? String(orgSnap.data()?.adminUserId || c.createdBy || '')
