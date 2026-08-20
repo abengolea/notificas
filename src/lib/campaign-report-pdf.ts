@@ -70,6 +70,10 @@ export type CampaignReportInput = {
   sendBatches: CampaignReportBatch[];
   csvExportHash: string;
   csvExportFileName: string;
+  csvExportVersion?: number;
+  csvExportRowCount?: number;
+  csvExportByteSizeLabel?: string;
+  csvExportGeneratedAt?: string;
   verifyRef: string;
   verifyCampaignUrl: string;
   verifyAppBase: string;
@@ -392,6 +396,17 @@ export async function buildCampaignReportPdf(input: CampaignReportInput): Promis
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     y = writeWrapped(doc, `Archivo: ${input.csvExportFileName}`, 14, y, 182, 3.4);
+  }
+  if (input.csvExportVersion || input.csvExportRowCount || input.csvExportByteSizeLabel || input.csvExportGeneratedAt) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    const meta = [
+      input.csvExportVersion ? `Versión v${input.csvExportVersion}` : '',
+      input.csvExportRowCount != null ? `${input.csvExportRowCount.toLocaleString('es-AR')} filas` : '',
+      input.csvExportByteSizeLabel || '',
+      input.csvExportGeneratedAt ? `Generado: ${input.csvExportGeneratedAt}` : '',
+    ].filter(Boolean).join(' · ');
+    if (meta) y = writeWrapped(doc, meta, 14, y, 182, 3.4);
   }
   y += 6;
 

@@ -1,172 +1,116 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { FieldValue } from 'firebase-admin/firestore';
-import { requireCampaignOrgAccess } from '@/lib/campaign-access';
+import { resolveCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { recordIssuedDocument, sha256Hex } from '@/lib/issued-documents';
+import { enqueueCampaignCsvExport } from '@/lib/cloud-tasks';
 import {
-  CAMPAIGN_EXPORT_HEADERS,
-  buildCampaignExportFields,
-  csvRow,
-  type CampaignExportContext,
-} from '@/lib/campaign-export-csv';
+  csvExportDocId,
+  getCsvExportByDocId,
+  getLatestFullExports,
+  startFilteredCsvExport,
+  startFullCsvExport,
+  toCsvExportPublic,
+} from '@/lib/campaign-csv-export';
 
-async function fetchMailDocs(
-  db: FirebaseFirestore.Firestore,
-  mailIds: string[]
-): Promise<Map<string, FirebaseFirestore.DocumentData>> {
-  const result = new Map<string, FirebaseFirestore.DocumentData>();
-  const CHUNK = 100;
-  for (let i = 0; i < mailIds.length; i += CHUNK) {
-    const chunk = mailIds.slice(i, i + CHUNK);
-    const snaps = await Promise.all(chunk.map((id) => db.collection('mail').doc(id).get()));
-    snaps.forEach((snap) => {
-      if (snap.exists) result.set(snap.id, snap.data()!);
-    });
-  }
-  return result;
-}
-
-function messagesQuery(
-  db: FirebaseFirestore.Firestore,
-  campaignId: string,
-  estado: string,
-  flag: string,
-): FirebaseFirestore.Query {
-  let q: FirebaseFirestore.Query = db.collection('campaign_messages').where('campaignId', '==', campaignId);
-  if (flag === 'waWmidMissing') q = q.where('waWmidMissing', '==', true);
-  else if (estado && estado !== 'all' && estado !== 'todos') q = q.where('estado', '==', estado);
-  return q;
-}
-
-function exportCtx(
-  campaignId: string,
-  campaign: FirebaseFirestore.DocumentData,
-  org: FirebaseFirestore.DocumentData
-): CampaignExportContext {
-  const appBase = (process.env.NEXT_PUBLIC_APP_URL || 'https://notificas.com.ar').replace(/\/$/, '');
-  return {
-    campaignId,
-    campaignNombre: String(campaign.nombre || ''),
-    remitente: String(org.nombre || campaign.senderEmail || campaign.createdBy || ''),
-    cuitRemitente: typeof org.cuit === 'string' ? org.cuit : '',
-    canal: String(campaign.canal || ''),
-    appBase,
-  };
+function httpError(e: unknown): NextResponse {
+  const status = typeof e === 'object' && e && 'httpStatus' in e ? Number((e as { httpStatus: number }).httpStatus) : 500;
+  const message = e instanceof Error ? e.message : 'Error';
+  return NextResponse.json({ error: message }, { status: status || 500 });
 }
 
 export async function GET(request: NextRequest) {
   try {
     const campaignId = request.nextUrl.searchParams.get('campaignId');
     const orgId = request.nextUrl.searchParams.get('orgId');
-    const asJson = request.nextUrl.searchParams.get('format') === 'json';
-    const estado = request.nextUrl.searchParams.get('estado') || 'all';
-    const flag = request.nextUrl.searchParams.get('flag') || '';
+    const exportDocId = request.nextUrl.searchParams.get('exportDocId') || '';
+    const versionParam = request.nextUrl.searchParams.get('version');
     if (!campaignId || !orgId) {
       return NextResponse.json({ error: 'campaignId y orgId requeridos' }, { status: 400 });
     }
 
-    const denied = await requireCampaignOrgAccess(request, orgId, campaignId);
-    if (denied) return denied;
+    const access = await resolveCampaignOrgAccess(request, orgId, campaignId);
+    if (!access.ok) return access.response;
 
     const db = getAdminDb();
-    const campSnap = await db.collection('campaigns').doc(campaignId).get();
-    const campaign = campSnap.data() || {};
-    const orgSnap = await db.collection('organizations').doc(orgId).get();
-    const org = orgSnap.data() || {};
-    const ctx = exportCtx(campaignId, campaign, org);
-    const baseName = `reporte-${String(campaign.nombre || campaignId).replace(/[^a-z0-9]/gi, '-').slice(0, 40)}`;
-    const suffix = flag === 'waWmidMissing' ? 'wamid' : (estado !== 'all' && estado !== 'todos' ? estado : 'completo');
-    const filename = `${baseName}-${suffix}.csv`;
-    const PAGE = 200;
-
-    if (asJson) {
-      const jsonRows: Record<string, unknown>[] = [];
-      let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
-      let rowNum = 0;
-      for (;;) {
-        let q = messagesQuery(db, campaignId, estado, flag).orderBy('recipientNombre').limit(PAGE);
-        if (lastDoc) q = q.startAfter(lastDoc);
-        const pageSnap = await q.get();
-        if (pageSnap.empty) break;
-        const mailIds = pageSnap.docs
-          .map((d) => d.data().mailId as string | undefined)
-          .filter((id): id is string => !!id);
-        const mailDocs = await fetchMailDocs(db, mailIds);
-        for (const d of pageSnap.docs) {
-          rowNum += 1;
-          const m = d.data();
-          const mail = m.mailId ? (mailDocs.get(m.mailId) ?? {}) : {};
-          const fields = buildCampaignExportFields(rowNum, d.id, m, mail, ctx);
-          const row: Record<string, unknown> = {};
-          CAMPAIGN_EXPORT_HEADERS.forEach((h, i) => {
-            row[h] = fields[i];
-          });
-          jsonRows.push(row);
-        }
-        lastDoc = pageSnap.docs[pageSnap.docs.length - 1];
-        if (pageSnap.size < PAGE) break;
+    if (exportDocId) {
+      const rec = await getCsvExportByDocId(db, campaignId, exportDocId);
+      if (!rec) return NextResponse.json({ error: 'Export no encontrado' }, { status: 404 });
+      if (rec.orgId && rec.orgId !== orgId) {
+        return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
       }
-      return NextResponse.json({
-        campaignId,
-        campaignNombre: campaign.nombre || '',
-        exportedAt: new Date().toISOString(),
-        filter: { estado, flag },
-        rows: jsonRows,
-        sha256: sha256Hex(Buffer.from(JSON.stringify(jsonRows), 'utf8')),
-      });
+      return NextResponse.json({ export: toCsvExportPublic(rec), exportDocId });
+    }
+    if (versionParam) {
+      const rec = await getCsvExportByDocId(db, campaignId, csvExportDocId(Number(versionParam)));
+      if (!rec) return NextResponse.json({ error: 'Export no encontrado' }, { status: 404 });
+      return NextResponse.json({ export: toCsvExportPublic(rec), exportDocId: csvExportDocId(Number(versionParam)) });
     }
 
-    const lines: string[] = [];
-    let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
-    let rowNum = 0;
-    for (;;) {
-      let q = messagesQuery(db, campaignId, estado, flag).orderBy('recipientNombre').limit(PAGE);
-      if (lastDoc) q = q.startAfter(lastDoc);
-      const pageSnap = await q.get();
-      if (pageSnap.empty) break;
-      const mailIds = pageSnap.docs
-        .map((d) => d.data().mailId as string | undefined)
-        .filter((id): id is string => !!id);
-      const mailDocs = await fetchMailDocs(db, mailIds);
-      for (const d of pageSnap.docs) {
-        rowNum += 1;
-        const m = d.data();
-        const mail = m.mailId ? (mailDocs.get(m.mailId) ?? {}) : {};
-        lines.push(csvRow(buildCampaignExportFields(rowNum, d.id, m, mail, ctx)));
-      }
-      lastDoc = pageSnap.docs[pageSnap.docs.length - 1];
-      if (pageSnap.size < PAGE) break;
-    }
-
-    const csv = '\uFEFF' + csvRow([...CAMPAIGN_EXPORT_HEADERS]) + '\r\n' + (lines.length ? lines.join('\r\n') + '\r\n' : '');
-    const buffer = Buffer.from(csv, 'utf8');
-    const hash = sha256Hex(buffer);
-    await recordIssuedDocument(db, {
-      hash,
-      kind: 'campaign_export',
-      campaignId,
-      orgId,
-      orgNombre: typeof campaign.orgNombre === 'string' ? campaign.orgNombre : undefined,
-      campaignNombre: String(campaign.nombre || ''),
-      fileName: filename,
-    });
-    await db.collection('campaigns').doc(campaignId).update({
-      csvExportHash: hash,
-      csvExportFileName: filename,
-      csvExportAt: FieldValue.serverTimestamp(),
-    }).catch(() => undefined);
-
-    return new NextResponse(buffer, {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${filename}"`,
-        'X-Notificas-SHA256': hash,
-        'X-Notificas-Export-Kind': 'campaign_export',
-      },
+    const latest = await getLatestFullExports(db, campaignId);
+    return NextResponse.json({
+      latestReady: latest.ready ? toCsvExportPublic(latest.ready) : null,
+      inFlight: latest.inFlight && (latest.inFlight.status === 'pending' || latest.inFlight.status === 'generating')
+        ? toCsvExportPublic(latest.inFlight)
+        : null,
+      latestFailed: latest.failed ? toCsvExportPublic(latest.failed) : null,
+      latest: latest.latest ? toCsvExportPublic(latest.latest) : null,
     });
   } catch (e) {
     console.error('GET /api/campaigns/export', e);
-    return NextResponse.json({ error: 'Error al generar CSV' }, { status: 500 });
+    return NextResponse.json({ error: 'Error al consultar el export CSV' }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json().catch(() => ({})) as {
+      campaignId?: string;
+      orgId?: string;
+      newVersion?: boolean;
+      retry?: boolean;
+      kind?: 'completo' | 'vista' | 'errores' | 'full' | 'filtered';
+      estado?: string;
+      flag?: string;
+    };
+    const campaignId = String(body.campaignId || '');
+    const orgId = String(body.orgId || '');
+    if (!campaignId || !orgId) {
+      return NextResponse.json({ error: 'campaignId y orgId requeridos' }, { status: 400 });
+    }
+
+    const access = await resolveCampaignOrgAccess(request, orgId, campaignId);
+    if (!access.ok) return access.response;
+    const createdBy = access.viaAdmin ? 'admin' : (access.email || access.uid || 'user');
+
+    const kind = body.kind || 'completo';
+    if (kind === 'vista' || kind === 'errores' || kind === 'filtered') {
+      const estado = kind === 'errores' ? 'error' : (body.estado || 'all');
+      const flag = body.flag || '';
+      const started = await startFilteredCsvExport({ campaignId, orgId, createdBy, estado, flag });
+      await enqueueCampaignCsvExport({ campaignId, exportDocId: started.exportDocId });
+      return NextResponse.json({
+        started: true,
+        exportDocId: started.exportDocId,
+        export: toCsvExportPublic(started.record),
+      }, { status: 202 });
+    }
+
+    const result = await startFullCsvExport({
+      campaignId,
+      orgId,
+      createdBy,
+      newVersion: body.newVersion === true,
+      retry: body.retry === true,
+    });
+    if (result.started) {
+      await enqueueCampaignCsvExport({ campaignId, version: result.record.version });
+    }
+    return NextResponse.json({
+      started: result.started,
+      export: toCsvExportPublic(result.record),
+      exportDocId: csvExportDocId(result.record.version),
+    }, { status: result.httpStatus });
+  } catch (e) {
+    console.error('POST /api/campaigns/export', e);
+    return httpError(e);
   }
 }

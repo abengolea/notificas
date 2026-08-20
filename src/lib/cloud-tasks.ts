@@ -105,17 +105,19 @@ async function enqueueTask(
   path: string,
   payload: unknown,
   taskId?: string,
-  delaySeconds = 0
+  delaySeconds = 0,
+  opts?: { dispatchDeadlineSeconds?: number; localDetach?: boolean }
 ): Promise<void> {
   const url = workerUrl(path);
 
   if (isLocalWorkerUrl(url)) {
-    if (delaySeconds > 0) {
+    if (delaySeconds > 0 || opts?.localDetach) {
+      const waitMs = delaySeconds > 0 ? delaySeconds * 1000 : 0;
       setTimeout(() => {
         void enqueueLocal(path, payload).catch((e) =>
           console.warn('⚠️ Local delayed task failed:', e?.message)
         );
-      }, delaySeconds * 1000);
+      }, waitMs);
       return;
     }
     await enqueueLocal(path, payload);
@@ -139,6 +141,10 @@ async function enqueueTask(
 
   if (delaySeconds > 0) {
     task.scheduleTime = new Date(Date.now() + delaySeconds * 1000).toISOString();
+  }
+
+  if (opts?.dispatchDeadlineSeconds) {
+    task.dispatchDeadline = `${opts.dispatchDeadlineSeconds}s`;
   }
 
   if (taskId) {
@@ -200,6 +206,24 @@ export async function enqueueCampaignWorker(
     '/api/campaigns/worker',
     { campaignId, messageDocIds },
     `send-${campaignId}-${first}-${last}-${messageDocIds.length}`
+  );
+}
+
+export async function enqueueCampaignCsvExport(payload: {
+  campaignId: string;
+  version?: number;
+  exportDocId?: string;
+}): Promise<void> {
+  const stamp = Date.now().toString(36);
+  const label = payload.exportDocId
+    ? `csv-export-${payload.campaignId}-${payload.exportDocId}-${stamp}`
+    : `csv-export-${payload.campaignId}-v${payload.version || 0}-${stamp}`;
+  await enqueueTask(
+    '/api/campaigns/export/worker',
+    payload,
+    label,
+    0,
+    { dispatchDeadlineSeconds: 1800, localDetach: true }
   );
 }
 

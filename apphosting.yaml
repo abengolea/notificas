@@ -22,6 +22,8 @@ runtime: nodejs22
 runConfig:
   # Workers, webhooks y fanout de campañas grandes (150k) no caben en 1 instancia.
   maxInstances: 10
+  # Export CSV streaming (150k+) y workers largos. Default Cloud Run = 300s.
+  timeoutSeconds: 3600
 
 env:
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY

@@ -221,21 +221,57 @@ function useMessages(
   return { messages, loading, hasMore, currentPage, nextPage, prevPage, filteredTotal };
 }
 
+type CsvExportInfo = {
+  version: number;
+  status: string;
+  fileName: string;
+  sha256: string;
+  rowCount: number;
+  byteSize: number;
+  generatedAt: string | null;
+  error?: string;
+};
+
+function formatCsvSize(n: number) {
+  if (n < 1024) return `${n} B`;
+  const kb = n / 1024;
+  if (kb < 1024) return `${kb.toLocaleString("es-AR", { maximumFractionDigits: 1 })} KB`;
+  return `${(kb / 1024).toLocaleString("es-AR", { maximumFractionDigits: 1 })} MB`;
+}
+
 function CampaignExportActions({
   busy,
+  csvBusy,
   errorCount,
+  csvReady,
+  csvInFlight,
+  csvFailed,
   onCopy,
   hideCopy,
   onDownloadPdf,
-  onDownloadCsv,
+  onDownloadFilteredCsv,
+  onGenerateCsv,
+  onDownloadReadyCsv,
+  onGenerateNewCsvVersion,
+  onRetryCsv,
 }: {
   busy: boolean;
+  csvBusy: boolean;
   errorCount: number;
+  csvReady: CsvExportInfo | null;
+  csvInFlight: CsvExportInfo | null;
+  csvFailed: CsvExportInfo | null;
   onCopy: () => void;
   hideCopy?: boolean;
   onDownloadPdf: () => void;
-  onDownloadCsv: (kind: "vista" | "errores" | "completo") => void;
+  onDownloadFilteredCsv: (kind: "vista" | "errores") => void;
+  onGenerateCsv: () => void;
+  onDownloadReadyCsv: () => void;
+  onGenerateNewCsvVersion: () => void;
+  onRetryCsv: () => void;
 }) {
+  const generating = csvBusy || csvInFlight?.status === "pending" || csvInFlight?.status === "generating";
+  const meta = csvReady && !generating ? csvReady : null;
   return (
     <>
       {!hideCopy && (
@@ -244,14 +280,59 @@ function CampaignExportActions({
           Copiar campaña
         </Button>
       )}
+      {csvReady && !generating ? (
+        <Button variant="outline" onClick={onDownloadReadyCsv} disabled={busy} className="gap-2">
+          <Download className="h-4 w-4" />
+          Descargar CSV
+        </Button>
+      ) : generating ? (
+        <Button variant="outline" disabled className="gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Generando CSV…
+        </Button>
+      ) : csvFailed ? (
+        <Button variant="outline" onClick={onRetryCsv} disabled={busy} className="gap-2">
+          <RefreshCw className="h-4 w-4" />
+          Reintentar CSV
+        </Button>
+      ) : (
+        <Button variant="outline" onClick={onGenerateCsv} disabled={busy} className="gap-2">
+          <Download className="h-4 w-4" />
+          Generar CSV
+        </Button>
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" disabled={busy} className="gap-2">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            Descargar <ChevronDown className="h-3 w-3 opacity-60" />
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-3 w-3 opacity-60" />}
+            Más <ChevronDown className="h-3 w-3 opacity-60" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-72">
+        <DropdownMenuContent align="end" className="w-80">
+          {csvReady ? (
+            <>
+              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground space-y-1">
+                <div>CSV v{csvReady.version} · {csvReady.rowCount.toLocaleString("es-AR")} registros · {formatCsvSize(csvReady.byteSize)}</div>
+                {csvReady.generatedAt ? <div>Generado {new Date(csvReady.generatedAt).toLocaleString("es-AR")}</div> : null}
+                {csvReady.sha256 ? <div className="font-mono break-all">SHA-256 {csvReady.sha256}</div> : null}
+              </DropdownMenuLabel>
+              <DropdownMenuItem onClick={onDownloadReadyCsv} className="gap-2">
+                <Download className="h-4 w-4" />
+                Descargar CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onGenerateNewCsvVersion} disabled={generating} className="gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Generar nueva versión
+              </DropdownMenuItem>
+              {csvFailed ? (
+                <DropdownMenuItem onClick={onRetryCsv} disabled={generating} className="gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  Reintentar v{csvFailed.version} fallida
+                </DropdownMenuItem>
+              ) : null}
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
           <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
             PDF — para imprimir (máx. 500 filas)
           </DropdownMenuLabel>
@@ -261,24 +342,29 @@ function CampaignExportActions({
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-            Excel / CSV — sin tope de filas
+            CSV filtrado (snapshot aparte, no pisa v1/v2)
           </DropdownMenuLabel>
-          <DropdownMenuItem onClick={() => onDownloadCsv("vista")} className="gap-2">
+          <DropdownMenuItem onClick={() => onDownloadFilteredCsv("vista")} className="gap-2">
             <Download className="h-4 w-4" />
             CSV de esta vista
           </DropdownMenuItem>
           {errorCount > 0 && (
-            <DropdownMenuItem onClick={() => onDownloadCsv("errores")} className="gap-2">
+            <DropdownMenuItem onClick={() => onDownloadFilteredCsv("errores")} className="gap-2">
               <Download className="h-4 w-4" />
               CSV solo errores ({errorCount.toLocaleString("es-AR")})
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem onClick={() => onDownloadCsv("completo")} className="gap-2">
-            <Download className="h-4 w-4" />
-            CSV de toda la campaña
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      {meta ? (
+        <p className="basis-full text-xs text-muted-foreground leading-relaxed">
+          v{meta.version} · {meta.rowCount.toLocaleString("es-AR")} registros · {formatCsvSize(meta.byteSize)}
+          {meta.generatedAt ? ` · ${new Date(meta.generatedAt).toLocaleString("es-AR")}` : ""}
+          {meta.sha256 ? ` · SHA-256 ${meta.sha256}` : ""}
+        </p>
+      ) : csvFailed && !generating ? (
+        <p className="basis-full text-xs text-destructive">{csvFailed.error || "Falló la generación del CSV."}</p>
+      ) : null}
     </>
   );
 }
@@ -336,6 +422,10 @@ export const CampaignDashboard = forwardRef<
   const [debouncedQ, setDebouncedQ] = useState("");
   const [selected, setSelected]     = useState<Set<string>>(new Set());
   const [busy, setBusy]             = useState(false);
+  const [csvBusy, setCsvBusy]       = useState(false);
+  const [csvReady, setCsvReady]     = useState<CsvExportInfo | null>(null);
+  const [csvInFlight, setCsvInFlight] = useState<CsvExportInfo | null>(null);
+  const [csvFailed, setCsvFailed]   = useState<CsvExportInfo | null>(null);
   const [quotaDraft, setQuotaDraft] = useState(DEFAULT_TANDA_SIZE);
   const [refreshKey, setRefreshKey] = useState(0);
   const [verifyTarget, setVerifyTarget] = useState<string | undefined>();
@@ -435,6 +525,132 @@ export const CampaignDashboard = forwardRef<
     }
   }
 
+  useEffect(() => {
+    void refreshCsvStatus().catch(() => undefined);
+  }, [campaignId, orgId, mode]);
+
+  useEffect(() => {
+    if (!csvInFlight || (csvInFlight.status !== "pending" && csvInFlight.status !== "generating")) return;
+    const t = setInterval(() => {
+      void refreshCsvStatus().then((data) => {
+        if (data?.latestReady?.sha256 && data.latestReady.version === csvInFlight.version) {
+          toast({
+            title: "CSV listo para descargar",
+            description: `v${data.latestReady.version} · ${data.latestReady.rowCount.toLocaleString("es-AR")} registros`,
+          });
+        }
+      }).catch(() => undefined);
+    }, 2500);
+    return () => clearInterval(t);
+  }, [csvInFlight?.status, csvInFlight?.version, campaignId, orgId, mode]);
+
+  function applyCsvStatus(data: {
+    latestReady?: CsvExportInfo | null;
+    inFlight?: CsvExportInfo | null;
+    latestFailed?: CsvExportInfo | null;
+  }) {
+    setCsvReady(data.latestReady || null);
+    setCsvInFlight(data.inFlight || null);
+    setCsvFailed(data.latestFailed || null);
+  }
+
+  async function refreshCsvStatus() {
+    const p = new URLSearchParams({ campaignId, orgId });
+    const res = await campaignRequest(mode, `/api/campaigns/export?${p}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return data;
+    applyCsvStatus(data);
+    return data;
+  }
+
+  async function openSignedCsv(params: { version?: number; exportDocId?: string }) {
+    const p = new URLSearchParams({ campaignId, orgId });
+    if (params.exportDocId) p.set("exportDocId", params.exportDocId);
+    if (params.version) p.set("version", String(params.version));
+    const res = await campaignRequest(mode, `/api/campaigns/export/download?${p}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.url) throw new Error(data.error || "No se pudo firmar la descarga");
+    const a = document.createElement("a");
+    a.href = data.url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.click();
+  }
+
+  async function generarCsv(opts?: { newVersion?: boolean; retry?: boolean }) {
+    setCsvBusy(true);
+    try {
+      const res = await campaignRequest(mode, "/api/campaigns/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId,
+          orgId,
+          newVersion: opts?.newVersion === true,
+          retry: opts?.retry === true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se pudo iniciar el export");
+      await refreshCsvStatus();
+      if (data.started) {
+        toast({ title: "Generando CSV…", description: "Te avisamos cuando esté listo. No hace falta dejar esta pantalla abierta." });
+      } else if (data.export?.status === "ready") {
+        toast({ title: "CSV ya disponible", description: "Usá Descargar CSV. No se regeneró el archivo." });
+      }
+    } catch (e: unknown) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Falló el export", variant: "destructive" });
+    } finally {
+      setCsvBusy(false);
+    }
+  }
+
+  async function descargarCsvListo() {
+    if (!csvReady) return;
+    try {
+      await openSignedCsv({ version: csvReady.version });
+    } catch (e: unknown) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "No se pudo descargar", variant: "destructive" });
+    }
+  }
+
+  async function descargarCsvFiltrado(kind: "vista" | "errores") {
+    setCsvBusy(true);
+    try {
+      const body: Record<string, unknown> = { campaignId, orgId, kind };
+      if (kind === "vista") {
+        if (filter === "waWmidMissing") body.flag = "waWmidMissing";
+        else if (filter !== "all") body.estado = filter;
+      }
+      const res = await campaignRequest(mode, "/api/campaigns/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se pudo iniciar el CSV");
+      const exportDocId = String(data.exportDocId || "");
+      toast({ title: "Generando CSV…", description: "Snapshot filtrado en segundo plano." });
+      for (let i = 0; i < 180; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const st = await campaignRequest(mode, `/api/campaigns/export?${new URLSearchParams({ campaignId, orgId, exportDocId })}`);
+        const payload = await st.json().catch(() => ({}));
+        const exp = payload.export as CsvExportInfo | undefined;
+        if (exp?.status === "ready") {
+          await openSignedCsv({ exportDocId });
+          toast({ title: "CSV listo", description: exp.sha256 ? `SHA-256 ${exp.sha256.slice(0, 12)}…` : undefined });
+          return;
+        }
+        if (exp?.status === "failed") throw new Error(exp.error || "Falló la generación");
+      }
+      throw new Error("Sigue generando. Reintentá en un momento.");
+    } catch (e: unknown) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Falló el CSV", variant: "destructive" });
+    } finally {
+      setCsvBusy(false);
+    }
+  }
+
   async function descargarReporte() {
     setBusy(true);
     try {
@@ -457,40 +673,6 @@ export const CampaignDashboard = forwardRef<
           description: `El PDF muestra como máximo 500 filas. Para el listado completo usá el CSV.`,
         });
       }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function descargarCsv(kind: "vista" | "errores" | "completo") {
-    setBusy(true);
-    try {
-      const p = new URLSearchParams({ campaignId, orgId });
-      if (kind === "errores") p.set("estado", "error");
-      else if (kind === "vista") {
-        if (filter === "waWmidMissing") p.set("flag", "waWmidMissing");
-        else if (filter !== "all") p.set("estado", filter);
-      }
-      if (kind === "completo") {
-        toast({ title: "Armando CSV completo", description: "En campañas grandes puede tardar unos minutos." });
-      }
-      const url = `/api/campaigns/export?${p}`;
-      const res = await campaignRequest(mode, url);
-      if (!res.ok) { toast({ title: "No se pudo generar el CSV", variant: "destructive" }); return; }
-      const hash = res.headers.get("X-Notificas-SHA256");
-      const blob = await res.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      const tag = kind === "errores" ? "errores" : kind === "vista" && filter !== "all" ? filter : "completo";
-      a.download = `evidencia-${tag}-${campaignId.slice(0, 8)}.csv`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-      toast({
-        title: "CSV descargado",
-        description: hash
-          ? `Huella SHA-256 registrada: ${hash.slice(0, 12)}…${hash.slice(-8)}`
-          : "Archivo listo.",
-      });
     } finally {
       setBusy(false);
     }
@@ -750,11 +932,19 @@ export const CampaignDashboard = forwardRef<
   const exportActions = (
     <CampaignExportActions
       busy={busy}
+      csvBusy={csvBusy}
       errorCount={stats?.errores ?? 0}
+      csvReady={csvReady}
+      csvInFlight={csvInFlight}
+      csvFailed={csvFailed}
       onCopy={() => void copiarCampana()}
       hideCopy={empresaReadOnly}
       onDownloadPdf={() => void descargarReporte()}
-      onDownloadCsv={(kind) => void descargarCsv(kind)}
+      onDownloadFilteredCsv={(kind) => void descargarCsvFiltrado(kind)}
+      onGenerateCsv={() => void generarCsv()}
+      onDownloadReadyCsv={() => void descargarCsvListo()}
+      onGenerateNewCsvVersion={() => void generarCsv({ newVersion: true })}
+      onRetryCsv={() => void generarCsv({ retry: true })}
     />
   );
 

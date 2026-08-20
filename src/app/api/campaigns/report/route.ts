@@ -7,6 +7,7 @@ import { recordIssuedDocument, sha256Hex, findLatestIssuedByCampaign } from '@/l
 import { campaignVerifyRef } from '@/lib/verify-hints';
 import { formatEvidenceTimestamp } from '@/lib/pdf-evidence-format';
 import { splitExportError } from '@/lib/campaign-export-csv';
+import { formatCsvBytes, getLatestFullExports } from '@/lib/campaign-csv-export';
 import { buildCampaignReportPdf, type CampaignReportRow } from '@/lib/campaign-report-pdf';
 
 const MAX_ROWS = 500;
@@ -138,7 +139,19 @@ export async function GET(request: NextRequest) {
 
     let csvExportHash = str(campaign.csvExportHash);
     let csvExportFileName = str(campaign.csvExportFileName);
-    if (!csvExportHash) {
+    let csvExportVersion: number | undefined;
+    let csvExportRowCount: number | undefined;
+    let csvExportByteSizeLabel: string | undefined;
+    let csvExportGeneratedAt: string | undefined;
+    const persisted = await getLatestFullExports(db, campaignId);
+    if (persisted.ready?.sha256) {
+      csvExportHash = persisted.ready.sha256;
+      csvExportFileName = persisted.ready.fileName || csvExportFileName;
+      csvExportVersion = persisted.ready.version;
+      csvExportRowCount = persisted.ready.rowCount;
+      csvExportByteSizeLabel = persisted.ready.byteSize ? formatCsvBytes(persisted.ready.byteSize) : undefined;
+      csvExportGeneratedAt = formatEvidenceTimestamp(persisted.ready.generatedAt);
+    } else if (!csvExportHash) {
       const issuedCsv = await findLatestIssuedByCampaign(db, campaignId, 'campaign_export');
       if (issuedCsv?.hash) {
         csvExportHash = issuedCsv.hash;
@@ -230,6 +243,10 @@ export async function GET(request: NextRequest) {
       sendBatches,
       csvExportHash,
       csvExportFileName,
+      csvExportVersion,
+      csvExportRowCount,
+      csvExportByteSizeLabel,
+      csvExportGeneratedAt,
       verifyRef,
       verifyCampaignUrl: `${appBase}/verify?campaignId=${encodeURIComponent(campaignId)}`,
       verifyAppBase: appBase,

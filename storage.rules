@@ -26,6 +26,10 @@ service firebase.storage {
       allow read, write: if false;
     }
 
+    match /campaign-exports/{orgId}/{campaignId}/{allPaths=**} {
+      allow read, write: if false;
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }
