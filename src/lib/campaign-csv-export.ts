@@ -9,6 +9,7 @@ import {
   csvRow,
   type CampaignExportContext,
 } from '@/lib/campaign-export-csv';
+import { publicAppBase } from '@/lib/public-verify-url';
 
 export const CSV_EXPORT_PAGE = 200;
 export const CSV_EXPORTS_SUBCOLLECTION = 'csv_exports';
@@ -180,7 +181,7 @@ function exportCtx(
   campaign: FirebaseFirestore.DocumentData,
   org: FirebaseFirestore.DocumentData
 ): CampaignExportContext {
-  const appBase = (process.env.NEXT_PUBLIC_APP_URL || 'https://notificas.com.ar').replace(/\/$/, '');
+  const appBase = publicAppBase();
   return {
     campaignId,
     campaignNombre: String(campaign.nombre || ''),

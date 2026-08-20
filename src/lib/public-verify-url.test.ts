@@ -4,6 +4,8 @@ import { publicCertificateVerifyUrl, verifyQueryFromSearchParams } from './publi
 
 test('URL de certificado 1:1 incluye id y kind', () => {
   const url = publicCertificateVerifyUrl({ id: 'abc', kind: 'mail_certificate' });
+  assert.match(url, /^https:\/\//);
+  assert.doesNotMatch(url, /localhost/);
   assert.match(url, /\/verify\?/);
   assert.match(url, /id=abc/);
   assert.match(url, /kind=mail_certificate/);
