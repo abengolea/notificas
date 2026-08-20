@@ -101,6 +101,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
   const [templateVars, setTemplateVars] = useState<string[]>([...WA_TEMPLATE_DEFAULT_VARS]);
   const [templateUrlButton, setTemplateUrlButton] = useState(false);
   const formReady = useRef(false);
+  const [exportActionsHost, setExportActionsHost] = useState<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/admin/campaigns/${campaignId}`, { credentials: "include" });
@@ -406,7 +407,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
             <span>{data.org.nombre}{c.simulated ? " · no se factura" : ` · se factura a ${data.org.adminUserEmail || "la empresa"}`}</span>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {isUnsentCampaign(c) && (
             <Button variant="outline" asChild className="gap-2">
               <Link href={`/admin/campanas/${campaignId}/editar`}>
@@ -450,6 +451,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
               Cancelar campaña
             </Button>
           )}
+          <div ref={setExportActionsHost} className="flex flex-wrap gap-2" />
         </div>
       </div>
 
@@ -691,6 +693,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
         campaignId={campaignId}
         listHref="/admin/campanas"
         embedded
+        exportActionsHost={exportActionsHost}
       />
 
       <AlertDialog open={confirmSend} onOpenChange={setConfirmSend}>

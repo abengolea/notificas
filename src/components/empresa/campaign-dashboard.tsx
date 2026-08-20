@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
@@ -219,18 +220,84 @@ function useMessages(
   return { messages, loading, hasMore, currentPage, nextPage, prevPage, filteredTotal };
 }
 
+function CampaignExportActions({
+  busy,
+  errorCount,
+  onCopy,
+  onDownloadPdf,
+  onDownloadCsv,
+}: {
+  busy: boolean;
+  errorCount: number;
+  onCopy: () => void;
+  onDownloadPdf: () => void;
+  onDownloadCsv: (kind: "vista" | "errores" | "completo") => void;
+}) {
+  return (
+    <>
+      <Button variant="outline" onClick={onCopy} disabled={busy} className="gap-2">
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+        Copiar campaña
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" disabled={busy} className="gap-2">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Descargar <ChevronDown className="h-3 w-3 opacity-60" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-72">
+          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+            PDF — para imprimir (máx. 500 filas)
+          </DropdownMenuLabel>
+          <DropdownMenuItem onClick={onDownloadPdf} className="gap-2">
+            <Download className="h-4 w-4" />
+            PDF de esta vista
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+            Excel / CSV — sin tope de filas
+          </DropdownMenuLabel>
+          <DropdownMenuItem onClick={() => onDownloadCsv("vista")} className="gap-2">
+            <Download className="h-4 w-4" />
+            CSV de esta vista
+          </DropdownMenuItem>
+          {errorCount > 0 && (
+            <DropdownMenuItem onClick={() => onDownloadCsv("errores")} className="gap-2">
+              <Download className="h-4 w-4" />
+              CSV solo errores ({errorCount.toLocaleString("es-AR")})
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onClick={() => onDownloadCsv("completo")} className="gap-2">
+            <Download className="h-4 w-4" />
+            CSV de toda la campaña
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  );
+}
+
+function maybePortal(host: HTMLElement | null | undefined, node: ReactNode, fallback: ReactNode) {
+  if (host) return createPortal(node, host);
+  if (host === undefined) return fallback;
+  return null;
+}
+
 export function CampaignDashboard({
   mode = "empresa",
   orgId: orgIdProp,
   campaignId: campaignIdProp,
   listHref,
   embedded = false,
+  exportActionsHost,
 }: {
   mode?: "empresa" | "admin";
   orgId?: string;
   campaignId?: string;
   listHref?: string;
   embedded?: boolean;
+  exportActionsHost?: HTMLElement | null;
 } = {}) {
   const params     = useParams();
   const isAdmin    = mode === "admin";
@@ -618,6 +685,16 @@ export function CampaignDashboard({
         "Si WhatsApp falló, el template de Meta tiene que coincidir con las variables de esta campaña. Ajustalo en Mensaje y reintentá."
       : null;
 
+  const exportActions = (
+    <CampaignExportActions
+      busy={busy}
+      errorCount={stats?.errores ?? 0}
+      onCopy={() => void copiarCampana()}
+      onDownloadPdf={() => void descargarReporte()}
+      onDownloadCsv={(kind) => void descargarCsv(kind)}
+    />
+  );
+
   return (
     <div className={embedded ? "space-y-6" : "p-6 md:p-8 max-w-6xl space-y-6"}>
       {!embedded && (
@@ -686,45 +763,7 @@ export function CampaignDashboard({
               Iniciar envío
             </Button>
           )}
-          <Button variant="outline" onClick={copiarCampana} disabled={busy} className="gap-2">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
-            Copiar campaña
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" disabled={busy} className="gap-2">
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                Descargar <ChevronDown className="h-3 w-3 opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-72">
-              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                PDF — para imprimir (máx. 500 filas)
-              </DropdownMenuLabel>
-              <DropdownMenuItem onClick={descargarReporte} className="gap-2">
-                <Download className="h-4 w-4" />
-                PDF de esta vista
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                Excel / CSV — sin tope de filas
-              </DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => descargarCsv("vista")} className="gap-2">
-                <Download className="h-4 w-4" />
-                CSV de esta vista
-              </DropdownMenuItem>
-              {stats && stats.errores > 0 && (
-                <DropdownMenuItem onClick={() => descargarCsv("errores")} className="gap-2">
-                  <Download className="h-4 w-4" />
-                  CSV solo errores ({stats.errores.toLocaleString("es-AR")})
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onClick={() => descargarCsv("completo")} className="gap-2">
-                <Download className="h-4 w-4" />
-                CSV de toda la campaña
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {exportActions}
         </div>
       </div>
 
@@ -793,48 +832,10 @@ export function CampaignDashboard({
       </>
       )}
 
-      {embedded && (
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="outline" onClick={copiarCampana} disabled={busy} className="gap-2">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
-            Copiar campaña
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" disabled={busy} className="gap-2">
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                Descargar <ChevronDown className="h-3 w-3 opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-72">
-              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                PDF — para imprimir (máx. 500 filas)
-              </DropdownMenuLabel>
-              <DropdownMenuItem onClick={descargarReporte} className="gap-2">
-                <Download className="h-4 w-4" />
-                PDF de esta vista
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                Excel / CSV — sin tope de filas
-              </DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => descargarCsv("vista")} className="gap-2">
-                <Download className="h-4 w-4" />
-                CSV de esta vista
-              </DropdownMenuItem>
-              {stats && stats.errores > 0 && (
-                <DropdownMenuItem onClick={() => descargarCsv("errores")} className="gap-2">
-                  <Download className="h-4 w-4" />
-                  CSV solo errores ({stats.errores.toLocaleString("es-AR")})
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onClick={() => descargarCsv("completo")} className="gap-2">
-                <Download className="h-4 w-4" />
-                CSV de toda la campaña
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+      {embedded && maybePortal(
+        exportActionsHost,
+        <div className="contents">{exportActions}</div>,
+        <div className="flex flex-wrap justify-end gap-2">{exportActions}</div>
       )}
 
       <Tabs value={section} onValueChange={setSection} className="w-full">
