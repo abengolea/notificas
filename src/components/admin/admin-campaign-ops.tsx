@@ -409,7 +409,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
             ) : null}
             {showEmail && <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5" />Email</span>}
             {showWa && <span className="inline-flex items-center gap-1"><MessageCircle className="h-3.5 w-3.5 text-emerald-600" />WhatsApp</span>}
-            <span>{data.org.nombre}{c.simulated ? " · no se factura" : ` · se factura a ${data.org.adminUserEmail || "la empresa"}`}</span>
+            <span>{data.org.nombre}</span>
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
