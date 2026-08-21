@@ -344,11 +344,7 @@ export function MetaCommunicationPanel({
                 value={report.identification.wabaId}
                 check={report.live.waba}
               />
-              <IdentityRow
-                label="Phone Number ID"
-                value={report.identification.phoneNumberId}
-                check={report.live.phone}
-              />
+              <PhoneIdentityBlock report={report} />
               <div className="text-sm space-y-1">
                 <div className="flex flex-wrap justify-between gap-2">
                   <span className="text-muted-foreground">Template</span>
@@ -485,6 +481,43 @@ export function MetaCommunicationPanel({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function PhoneIdentityBlock({ report }: { report: MetaCommunicationReport }) {
+  const phone = report.live.phone;
+  const wabaId = report.identification.wabaId;
+  return (
+    <div className="text-sm space-y-1">
+      <div className="flex flex-wrap justify-between gap-2">
+        <span className="text-muted-foreground">Phone Number ID</span>
+        <Mono>{report.identification.phoneNumberId}</Mono>
+      </div>
+      {phone && (
+        <>
+          <p className="flex items-start gap-2">
+            <StatusMark status={phone.status} />
+            <span>{phone.message}</span>
+          </p>
+          {phone.fields.displayPhoneNumber && (
+            <p className="text-muted-foreground">
+              Número asociado: <span className="text-foreground">{phone.fields.displayPhoneNumber}</span>
+            </p>
+          )}
+          {phone.fields.verifiedName && (
+            <p className="text-muted-foreground">
+              Nombre verificado: <span className="text-foreground">{phone.fields.verifiedName}</span>
+            </p>
+          )}
+          {phone.belongsToWaba === true && wabaId && (
+            <p className="flex items-start gap-2">
+              <StatusMark status="VERIFIED" />
+              <span>Pertenece al WABA {wabaId}</span>
+            </p>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

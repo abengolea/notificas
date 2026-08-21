@@ -37,6 +37,8 @@ export type MetaLiveIdentity = {
   cached: boolean;
   fields: Record<string, string | null>;
   matchesEvidence?: boolean | null;
+  belongsToWaba?: boolean | null;
+  source?: "META_GRAPH_API" | "META_WABA_PHONE_NUMBERS" | null;
 };
 
 export type MetaCommunicationReport = {

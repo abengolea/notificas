@@ -6,7 +6,6 @@ import { metaAccountIdsFromSources } from "@/lib/pdf-evidence-format";
 import {
   createMetaGraphFetcher,
   isSafeMetaObjectId,
-  pickPhonePublic,
   pickTemplatePublic,
   pickWabaPublic,
   sha256Utf8,
@@ -21,11 +20,11 @@ import {
   mapEventKind,
   sendResponseEvent,
 } from "@/lib/meta-webhook-evidence";
+import { verifyPhoneNumberAgainstMeta } from "@/lib/meta-phone-verification";
 
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const FORCE_REFRESH_MIN_MS = 120 * 1000;
 const WABA_FIELDS = "id,name,timezone_id,account_review_status";
-const PHONE_FIELDS = "id,display_phone_number,verified_name,quality_rating,whatsapp_business_account{id}";
 const TEMPLATE_FIELDS = "id,name,language,status,category";
 
 type MailBundle = {
@@ -138,7 +137,7 @@ async function writeAudit(input: {
 }
 
 async function liveCheck(opts: {
-  kind: "waba" | "phone" | "template";
+  kind: "waba" | "template";
   id: string | null;
   fields: string;
   fetcher: MetaGraphFetcher | null;
@@ -334,16 +333,12 @@ export async function buildMetaCommunicationReport(opts: {
     verifiedMessage: "WABA ID verificado actualmente mediante Meta Graph API.",
     missingMessage: "No hay WABA ID conservado en la evidencia de este envío.",
   });
-  const livePhone = await liveCheck({
-    kind: "phone",
-    id: ids.phoneNumberId,
-    fields: PHONE_FIELDS,
+  const livePhone = await verifyPhoneNumberAgainstMeta({
+    storedPhoneNumberId: ids.phoneNumberId,
+    storedWabaId: ids.wabaId,
+    recipientId: ids.recipientPhone,
     fetcher,
-    refresh: Boolean(opts.refresh),
-    uid: opts.uid,
-    pick: (j) => pickPhonePublic(j),
-    verifiedMessage: "Número de WhatsApp Business verificado actualmente mediante Meta Graph API.",
-    missingMessage: "No hay Phone Number ID conservado en la evidencia de este envío.",
+    now: opts.now,
   });
   const liveTemplate = await liveCheck({
     kind: "template",
@@ -357,10 +352,8 @@ export async function buildMetaCommunicationReport(opts: {
     missingMessage: "No hay Template ID conservado en la evidencia de este envío.",
   });
 
-  const liveOutage = liveWaba.unavailable || livePhone.unavailable || liveTemplate.unavailable;
-  const phoneWaba = livePhone.identity?.fields.wabaId || null;
-  const wabaAssoc =
-    ids.wabaId && phoneWaba ? phoneWaba === ids.wabaId : null;
+  const liveOutage = liveWaba.unavailable && livePhone.unavailable && liveTemplate.unavailable;
+  const wabaAssoc = livePhone.belongsToWaba;
 
   const templateNameMatches =
     liveTemplate.identity?.fields.name && ids.templateName
@@ -482,7 +475,7 @@ export async function buildMetaCommunicationReport(opts: {
       });
     }
   }
-  if (wabaAssoc === false) {
+  if (wabaAssoc === false && livePhone.identity?.status === "VERIFIED") {
     inconsistencies.push({
       code: "phone_waba_mismatch",
       message: "El Phone Number ID consultado en vivo no aparece asociado al WABA consignado en la evidencia.",
@@ -491,7 +484,7 @@ export async function buildMetaCommunicationReport(opts: {
   }
 
   const lastLive =
-    liveWaba.queriedAt || livePhone.queriedAt || liveTemplate.queriedAt || null;
+    liveWaba.queriedAt || livePhone.checkedAt || liveTemplate.queriedAt || null;
 
   return {
     channel: "whatsapp",

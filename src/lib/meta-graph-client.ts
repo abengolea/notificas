@@ -7,6 +7,7 @@ export const META_GRAPH_TIMEOUT_MS = 8_000;
 
 const NUMERIC_ID = /^[0-9]{5,32}$/;
 const SAFE_FIELDS = /^[a-z0-9_,.{}]{1,240}$/i;
+const SAFE_EDGE = /^(phone_numbers)$/;
 
 export type MetaGraphHttpResult = {
   ok: boolean;
@@ -20,7 +21,8 @@ export type MetaGraphHttpResult = {
 
 export type MetaGraphFetcher = (
   objectId: string,
-  fields: string
+  fields: string,
+  edge?: string
 ) => Promise<MetaGraphHttpResult>;
 
 export function isSafeMetaObjectId(id: string): boolean {
@@ -36,11 +38,52 @@ function assertSafePathParts(objectId: string, fields: string): void {
   }
 }
 
-export function metaGraphUrl(objectId: string, fields: string): URL {
+export function metaGraphUrl(objectId: string, fields: string, edge?: string): URL {
   assertSafePathParts(objectId, fields);
-  const url = new URL(`https://${META_GRAPH_HOST}/${META_GRAPH_VERSION}/${objectId.trim()}`);
+  if (edge && !SAFE_EDGE.test(edge)) {
+    throw new Error("Edge Graph no permitido");
+  }
+  const path = edge ? `${objectId.trim()}/${edge}` : objectId.trim();
+  const url = new URL(`https://${META_GRAPH_HOST}/${META_GRAPH_VERSION}/${path}`);
   if (fields) url.searchParams.set("fields", fields);
+  if (edge === "phone_numbers") url.searchParams.set("limit", "100");
   return url;
+}
+
+export function asMetaId(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+/** Comparación secundaria del número comercial visible. No valida el Phone Number ID. */
+export function normalizeDisplayPhoneNumber(value: string | null | undefined): string {
+  return String(value || "").replace(/\D/g, "");
+}
+
+export function metaGraphErrorCode(json: Record<string, unknown> | null | undefined): number | null {
+  const err = json?.error;
+  if (!err || typeof err !== "object" || Array.isArray(err)) return null;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === "number" ? code : null;
+}
+
+export function metaGraphErrorMessage(json: Record<string, unknown> | null | undefined): string | null {
+  const err = json?.error;
+  if (!err || typeof err !== "object" || Array.isArray(err)) return null;
+  const message = (err as { message?: unknown }).message;
+  return typeof message === "string" && message.trim() ? message.trim() : null;
+}
+
+/**
+ * Timeout, 5xx, rate-limit y falta de permisos/credencial: no se puede afirmar que el ID sea incorrecto.
+ */
+export function isMetaGraphUnavailable(result: Pick<MetaGraphHttpResult, "ok" | "status" | "timedOut" | "json">): boolean {
+  if (result.ok) return false;
+  if (result.timedOut || result.status === 0 || result.status >= 500 || result.status === 429) return true;
+  if (result.status === 401 || result.status === 403) return true;
+  const code = metaGraphErrorCode(result.json);
+  return code === 2 || code === 4 || code === 10 || code === 17 || code === 104 || code === 190 || code === 200 || code === 613;
 }
 
 export function sha256Utf8(value: string): string {
@@ -56,8 +99,8 @@ export function createMetaGraphFetcher(opts: {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const timeoutMs = opts.timeoutMs ?? META_GRAPH_TIMEOUT_MS;
 
-  return async (objectId, fields) => {
-    const url = metaGraphUrl(objectId, fields);
+  return async (objectId, fields, edge) => {
+    const url = metaGraphUrl(objectId, fields, edge);
     const started = Date.now();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -125,17 +168,29 @@ export function pickWabaPublic(json: Record<string, unknown> | null) {
 export function pickPhonePublic(json: Record<string, unknown> | null) {
   if (!json) return null;
   const waba = json.whatsapp_business_account;
-  const wabaId =
-    waba && typeof waba === "object" && !Array.isArray(waba) && typeof (waba as { id?: unknown }).id === "string"
-      ? String((waba as { id: string }).id)
+  const nestedWabaId =
+    waba && typeof waba === "object" && !Array.isArray(waba)
+      ? asMetaId((waba as { id?: unknown }).id)
       : null;
   return {
-    id: typeof json.id === "string" ? json.id : null,
+    id: asMetaId(json.id),
     displayPhoneNumber: typeof json.display_phone_number === "string" ? json.display_phone_number : null,
     verifiedName: typeof json.verified_name === "string" ? json.verified_name : null,
     qualityRating: typeof json.quality_rating === "string" ? json.quality_rating : null,
-    wabaId,
+    wabaId: nestedWabaId,
   };
+}
+
+export function pickWabaPhoneNumbers(json: Record<string, unknown> | null) {
+  const data = json?.data;
+  if (!Array.isArray(data)) return [];
+  const out: NonNullable<ReturnType<typeof pickPhonePublic>>[] = [];
+  for (const item of data) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const picked = pickPhonePublic(item as Record<string, unknown>);
+    if (picked?.id) out.push(picked);
+  }
+  return out;
 }
 
 export function pickTemplatePublic(json: Record<string, unknown> | null) {

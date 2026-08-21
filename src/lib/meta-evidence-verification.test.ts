@@ -6,9 +6,10 @@ import {
   createMetaGraphFetcher,
   isSafeMetaObjectId,
   metaGraphUrl,
+  normalizeDisplayPhoneNumber,
   payloadContainsSecrets,
-  pickPhonePublic,
   pickTemplatePublic,
+  pickWabaPhoneNumbers,
   pickWabaPublic,
 } from "./meta-graph-client";
 import {
@@ -19,6 +20,7 @@ import {
 } from "./meta-webhook-evidence";
 import { liveMetaFailureDoesNotInvalidateDocument } from "./meta-verify-status";
 import { buildEventLeafPayload, parseEventLeafPayload } from "./campaign-leaf-payload";
+import { verifyPhoneNumberAgainstMeta } from "./meta-phone-verification";
 
 const SECRET = "test-app-secret";
 
@@ -62,26 +64,221 @@ test("WABA correcto: Meta devuelve el mismo ID → VERIFIED", async () => {
   assert.equal(JSON.stringify(res.json).includes("server-token"), false);
 });
 
-test("Phone Number ID correcto: Meta devuelve relación con el WABA", async () => {
+test("Phone Number ID correcto: Meta devuelve el mismo ID → VERIFIED y pertenece al WABA", async () => {
   const phoneId = "693302653873170";
   const waba = "2169826596871026";
+  const fetcher = createMetaGraphFetcher({
+    accessToken: "tok",
+    fetchImpl: async (url) => {
+      const u = new URL(String(url));
+      assert.equal(u.pathname.includes("whatsapp_business_account"), false);
+      if (u.pathname.endsWith(`/${phoneId}`)) {
+        assert.match(u.searchParams.get("fields") || "", /display_phone_number/);
+        assert.equal((u.searchParams.get("fields") || "").includes("whatsapp_business_account"), false);
+        return new Response(
+          JSON.stringify({
+            id: phoneId,
+            display_phone_number: "+54 9 336 400-0000",
+            verified_name: "Notificas",
+          }),
+          { status: 200 }
+        );
+      }
+      if (u.pathname.endsWith(`/${waba}/phone_numbers`)) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: phoneId,
+                display_phone_number: "+54 9 336 400-0000",
+                verified_name: "Notificas",
+              },
+            ],
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response("{}", { status: 404 });
+    },
+  });
+  const res = await verifyPhoneNumberAgainstMeta({
+    storedPhoneNumberId: phoneId,
+    storedWabaId: waba,
+    recipientId: "54911111111",
+    fetcher,
+  });
+  assert.equal(res.status, "VERIFIED");
+  assert.equal(res.belongsToWaba, true);
+  assert.equal(res.metaId, phoneId);
+  assert.equal(res.verifiedName, "Notificas");
+  assert.equal(res.source, "META_GRAPH_API");
+});
+
+test("Phone Number ID pertenece al WABA vía /phone_numbers si el GET directo falla", async () => {
+  const phoneId = "693302653873170";
+  const waba = "2169826596871026";
+  const fetcher = createMetaGraphFetcher({
+    accessToken: "tok",
+    fetchImpl: async (url) => {
+      const u = new URL(String(url));
+      if (u.pathname.endsWith(`/${phoneId}`)) {
+        return new Response(
+          JSON.stringify({
+            error: { message: "(#100) Tried accessing nonexisting field", code: 100, type: "OAuthException" },
+          }),
+          { status: 400 }
+        );
+      }
+      if (u.pathname.endsWith(`/${waba}/phone_numbers`)) {
+        return new Response(
+          JSON.stringify({
+            data: [{ id: Number(phoneId), display_phone_number: "+54 9 336 4XX-XXXX", verified_name: "Notificas" }],
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response("{}", { status: 404 });
+    },
+  });
+  const res = await verifyPhoneNumberAgainstMeta({
+    storedPhoneNumberId: phoneId,
+    storedWabaId: waba,
+    fetcher,
+  });
+  assert.equal(res.status, "VERIFIED");
+  assert.equal(res.belongsToWaba, true);
+  assert.equal(res.source, "META_WABA_PHONE_NUMBERS");
+});
+
+test("número con formato distinto no produce falso negativo si el Phone Number ID coincide", async () => {
+  assert.equal(normalizeDisplayPhoneNumber("+54 9 336 400-0000"), "5493364000000");
+  const phoneId = "693302653873170";
+  const waba = "2169826596871026";
+  const fetcher = createMetaGraphFetcher({
+    accessToken: "tok",
+    fetchImpl: async (url) => {
+      const u = new URL(String(url));
+      if (u.pathname.endsWith("/phone_numbers")) {
+        return new Response(JSON.stringify({ data: [{ id: phoneId }] }), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({ id: phoneId, display_phone_number: "+54 9 336 400-0000", verified_name: "Notificas" }),
+        { status: 200 }
+      );
+    },
+  });
+  const res = await verifyPhoneNumberAgainstMeta({
+    storedPhoneNumberId: phoneId,
+    storedWabaId: waba,
+    storedDisplayPhone: "5493364000000",
+    fetcher,
+  });
+  assert.equal(res.status, "VERIFIED");
+});
+
+test("recipient_id distinto al emisor no genera error de Phone Number ID", async () => {
+  const phoneId = "693302653873170";
+  const waba = "2169826596871026";
+  const fetcher = createMetaGraphFetcher({
+    accessToken: "tok",
+    fetchImpl: async (url) => {
+      const u = new URL(String(url));
+      if (u.pathname.endsWith("/phone_numbers")) {
+        return new Response(JSON.stringify({ data: [{ id: phoneId }] }), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({ id: phoneId, display_phone_number: "+54 9 336 400-0000", verified_name: "Notificas" }),
+        { status: 200 }
+      );
+    },
+  });
+  const res = await verifyPhoneNumberAgainstMeta({
+    storedPhoneNumberId: phoneId,
+    storedWabaId: waba,
+    recipientId: "5491119999999",
+    fetcher,
+  });
+  assert.equal(res.status, "VERIFIED");
+  assert.equal(res.belongsToWaba, true);
+});
+
+test("timeout Meta del Phone Number ID → API_UNAVAILABLE, no FAILED", async () => {
+  const fetcher = createMetaGraphFetcher({
+    accessToken: "tok",
+    timeoutMs: 20,
+    fetchImpl: async (_url, init) => {
+      await new Promise<void>((_resolve, reject) => {
+        const timer = setTimeout(() => {}, 80);
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(timer);
+          const err = new Error("aborted");
+          err.name = "AbortError";
+          reject(err);
+        });
+      });
+      return new Response("{}", { status: 200 });
+    },
+  });
+  const res = await verifyPhoneNumberAgainstMeta({
+    storedPhoneNumberId: "693302653873170",
+    storedWabaId: "2169826596871026",
+    fetcher,
+  });
+  assert.equal(res.status, "API_UNAVAILABLE");
+  assert.notEqual(res.status, "FAILED");
+  assert.match(res.message, /No fue posible realizar en este momento/);
+});
+
+test("Phone Number ID realmente diferente → FAILED", async () => {
+  const stored = "693302653873170";
+  const fetcher = createMetaGraphFetcher({
+    accessToken: "tok",
+    fetchImpl: async (url) => {
+      const u = new URL(String(url));
+      if (u.pathname.endsWith("/phone_numbers")) {
+        return new Response(JSON.stringify({ data: [{ id: "111111111111111" }] }), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({ id: "111111111111111", display_phone_number: "+54 9 11 0000-0000" }),
+        { status: 200 }
+      );
+    },
+  });
+  const res = await verifyPhoneNumberAgainstMeta({
+    storedPhoneNumberId: stored,
+    storedWabaId: "2169826596871026",
+    fetcher,
+  });
+  assert.equal(res.status, "FAILED");
+  assert.match(res.message, /no coincide/);
+});
+
+test("token insuficiente/permisos no afirma que el Phone Number ID sea incorrecto", async () => {
   const fetcher = createMetaGraphFetcher({
     accessToken: "tok",
     fetchImpl: async () =>
       new Response(
         JSON.stringify({
-          id: phoneId,
-          display_phone_number: "+54 9 11 0000-0000",
-          verified_name: "Notificas",
-          whatsapp_business_account: { id: waba },
+          error: { message: "Invalid OAuth access token", type: "OAuthException", code: 190 },
         }),
-        { status: 200 }
+        { status: 400 }
       ),
   });
-  const res = await fetcher(phoneId, "id,display_phone_number,verified_name,whatsapp_business_account{id}");
-  const picked = pickPhonePublic(res.json);
-  assert.equal(picked?.id, phoneId);
-  assert.equal(picked?.wabaId, waba);
+  const res = await verifyPhoneNumberAgainstMeta({
+    storedPhoneNumberId: "693302653873170",
+    storedWabaId: "2169826596871026",
+    fetcher,
+  });
+  assert.equal(res.status, "API_UNAVAILABLE");
+  assert.match(res.message, /permisos|credencial|No fue posible/);
+  assert.equal(res.message.includes("no coincide"), false);
+});
+
+test("pickWabaPhoneNumbers encuentra el ID en data[]", () => {
+  const found = pickWabaPhoneNumbers({
+    data: [{ id: "693302653873170", display_phone_number: "+54 9 336 400-0000" }],
+  });
+  assert.equal(found[0]?.id, "693302653873170");
 });
 
 test("Template correcto: Meta devuelve el template esperado", async () => {
@@ -260,9 +457,11 @@ test("SSRF: solo IDs numéricos contra graph.facebook.com", () => {
   assert.equal(isSafeMetaObjectId("2169826596871026"), true);
   assert.equal(isSafeMetaObjectId("http://evil.test/steal"), false);
   assert.throws(() => metaGraphUrl("../etc/passwd", "id"));
-  const url = metaGraphUrl("2169826596871026", "id,name");
-  assert.equal(url.hostname, "graph.facebook.com");
-  assert.equal(url.protocol, "https:");
+  assert.throws(() => metaGraphUrl("2169826596871026", "id", "messages"));
+  const phones = metaGraphUrl("2169826596871026", "id,display_phone_number,verified_name", "phone_numbers");
+  assert.equal(phones.pathname, "/v18.0/2169826596871026/phone_numbers");
+  assert.equal(phones.hostname, "graph.facebook.com");
+  assert.equal(phones.protocol, "https:");
 });
 
 test("hoja Merkle v1 se conserva; v2 incorpora hash del RAW", () => {
