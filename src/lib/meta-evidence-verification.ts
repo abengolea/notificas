@@ -310,6 +310,8 @@ export async function buildMetaCommunicationReport(opts: {
         templateId: null,
         templateName: null,
         templateLang: null,
+        recipientPhone: ids.recipientPhone,
+        webhookRecipientId: null,
       },
       disclaimer:
         "Las consultas en vivo permiten verificar determinados identificadores e infraestructura de WhatsApp Business directamente contra Meta. Los estados históricos del mensaje fueron comunicados oportunamente por Meta mediante webhooks y son conservados por Notificas junto con sus elementos técnicos de integridad y autenticación.",
@@ -527,6 +529,8 @@ export async function buildMetaCommunicationReport(opts: {
       templateId: ids.templateId,
       templateName: ids.templateName,
       templateLang: ids.templateLang,
+      recipientPhone: ids.recipientPhone,
+      webhookRecipientId: chronology.find((ev) => ev.recipientId)?.recipientId || null,
     },
     disclaimer:
       "Las consultas en vivo permiten verificar determinados identificadores e infraestructura de WhatsApp Business directamente contra Meta. Los estados históricos de entrega y lectura no se consultan actualmente a Meta: corresponden a eventos que Meta comunicó oportunamente a Notificas mediante webhooks y cuya evidencia técnica fue preservada.",

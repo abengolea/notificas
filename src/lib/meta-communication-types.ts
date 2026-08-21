@@ -77,6 +77,10 @@ export type MetaCommunicationReport = {
     templateId: string | null;
     templateName: string | null;
     templateLang: string | null;
+    /** Teléfono del destinatario conservado en la constancia. No es el Phone Number ID. */
+    recipientPhone: string | null;
+    /** recipient_id informado por Meta en webhooks históricos. */
+    webhookRecipientId: string | null;
   };
   disclaimer: string;
 };

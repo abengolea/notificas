@@ -96,6 +96,8 @@ function TechnicalBlock({
             <li>WAMID: <Mono>{report.identification.wamid}</Mono></li>
             <li>WABA ID: <Mono>{report.identification.wabaId}</Mono></li>
             <li>Phone Number ID: <Mono>{report.identification.phoneNumberId}</Mono></li>
+            <li>Teléfono destinatario: <Mono>{report.identification.recipientPhone}</Mono></li>
+            <li>recipient_id (webhook): <Mono>{report.identification.webhookRecipientId}</Mono></li>
             <li>Template ID: <Mono>{report.identification.templateId}</Mono></li>
           </ul>
         </div>
@@ -345,6 +347,7 @@ export function MetaCommunicationPanel({
                 check={report.live.waba}
               />
               <PhoneIdentityBlock report={report} />
+              <RecipientIdentityBlock report={report} />
               <div className="text-sm space-y-1">
                 <div className="flex flex-wrap justify-between gap-2">
                   <span className="text-muted-foreground">Template</span>
@@ -501,7 +504,8 @@ function PhoneIdentityBlock({ report }: { report: MetaCommunicationReport }) {
           </p>
           {phone.fields.displayPhoneNumber && (
             <p className="text-muted-foreground">
-              Número asociado: <span className="text-foreground">{phone.fields.displayPhoneNumber}</span>
+              Número emisor (WhatsApp Business):{" "}
+              <span className="text-foreground">{phone.fields.displayPhoneNumber}</span>
             </p>
           )}
           {phone.fields.verifiedName && (
@@ -516,6 +520,27 @@ function PhoneIdentityBlock({ report }: { report: MetaCommunicationReport }) {
             </p>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+function RecipientIdentityBlock({ report }: { report: MetaCommunicationReport }) {
+  const phone = report.identification.recipientPhone;
+  const webhookId = report.identification.webhookRecipientId;
+  return (
+    <div className="text-sm space-y-1">
+      <div className="flex flex-wrap justify-between gap-2">
+        <span className="text-muted-foreground">Destinatario</span>
+        <Mono>{phone}</Mono>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Teléfono consignado en la constancia. No es el Phone Number ID ni el número emisor de Notificas.
+      </p>
+      {webhookId && (
+        <p className="text-muted-foreground">
+          recipient_id informado por Meta (webhook): <Mono>{webhookId}</Mono>
+        </p>
       )}
     </div>
   );
