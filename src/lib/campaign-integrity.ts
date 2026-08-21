@@ -9,8 +9,10 @@ export { buildSendLeafPayload, parseSendLeafPayload } from '@/lib/campaign-leaf-
 
 export const SEND_TANDA_SIZE = 500;
 export const EVENT_TANDA_SIZE = 500;
-export const SEND_CLOSE_DELAY_SEC = 5 * 60;
-export const EVENT_CLOSE_DELAY_SEC = 5 * 60;
+/** Sin hojas nuevas en este plazo → se lacre el resto (aunque no llegue a 500). */
+export const IDLE_CLOSE_DELAY_SEC = 6 * 60 * 60;
+export const SEND_CLOSE_DELAY_SEC = IDLE_CLOSE_DELAY_SEC;
+export const EVENT_CLOSE_DELAY_SEC = IDLE_CLOSE_DELAY_SEC;
 /** Versión del payload on-chain. v1 no tenía leavesDigest; v2 lo pone en posición 7. El prefijo sigue siendo CAMPAIGN_SEND / CAMPAIGN_EVENT. */
 export const ONCHAIN_PAYLOAD_VERSION = 'v2';
 
@@ -29,6 +31,7 @@ export type IntegrityBatch = {
   expectedCount: number;
   sealedCount: number;
   leafCount: number;
+  lastLeafAt?: unknown;
   merkleRoot?: string;
   txHash?: string;
   payload?: string;
@@ -104,6 +107,27 @@ function isCampaignOnChainPrefix(prefix: string | undefined): boolean {
   return prefix === 'CAMPAIGN_SEND' || prefix === 'CAMPAIGN_EVENT';
 }
 
+function timestampMs(v: unknown): number {
+  if (v == null) return 0;
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (v instanceof Date) return v.getTime();
+  if (typeof v === 'object') {
+    const o = v as { toMillis?: () => number; _seconds?: number; seconds?: number };
+    if (typeof o.toMillis === 'function') return o.toMillis();
+    const secs = o._seconds ?? o.seconds;
+    if (typeof secs === 'number') return secs * 1000;
+  }
+  return 0;
+}
+
+/** Segundos que faltan para el cierre por inactividad. 0 = ya se puede lacrar. */
+export function idleCloseRemainingSec(data: { lastLeafAt?: unknown; createdAt?: unknown }): number {
+  const last = timestampMs(data.lastLeafAt) || timestampMs(data.createdAt);
+  if (!last) return IDLE_CLOSE_DELAY_SEC;
+  const elapsed = Math.max(0, Math.floor((Date.now() - last) / 1000));
+  return Math.max(0, IDLE_CLOSE_DELAY_SEC - elapsed);
+}
+
 export function extractMerkleRootFromPayload(payload: string | null): string | null {
   if (!payload) return null;
   const parts = payload.split('|');
@@ -158,6 +182,7 @@ export async function ensureSendBatch(params: {
         sealedCount: 0,
         leafCount: 0,
         createdAt: FieldValue.serverTimestamp(),
+        lastLeafAt: FieldValue.serverTimestamp(),
       });
     } else if (snap.data()?.status === 'open') {
       t.update(ref, {
@@ -246,11 +271,13 @@ export async function recordSendLeaf(params: {
         sealedCount: 1,
         leafCount: 1,
         createdAt: FieldValue.serverTimestamp(),
+        lastLeafAt: FieldValue.serverTimestamp(),
       });
     } else {
       t.update(batchRef, {
         leafCount: FieldValue.increment(1),
         sealedCount: FieldValue.increment(1),
+        lastLeafAt: FieldValue.serverTimestamp(),
       });
     }
 
@@ -387,6 +414,7 @@ export async function recordSendError(params: {
     t.update(batchRef, {
       sealedCount: FieldValue.increment(1),
       leafCount: FieldValue.increment(1),
+      lastLeafAt: FieldValue.serverTimestamp(),
     });
     return true;
   });
@@ -456,9 +484,13 @@ export async function recordEventLeaf(params: {
           sealedCount: 0,
           leafCount: 1,
           createdAt: FieldValue.serverTimestamp(),
+          lastLeafAt: FieldValue.serverTimestamp(),
         });
       } else {
-        t.update(batchRef, { leafCount: FieldValue.increment(1) });
+        t.update(batchRef, {
+          leafCount: FieldValue.increment(1),
+          lastLeafAt: FieldValue.serverTimestamp(),
+        });
       }
 
       t.set(leafRef, {
@@ -545,7 +577,7 @@ export async function closeOpenBatches(campaignId: string, force = false): Promi
 export async function closeIntegrityBatch(
   campaignId: string,
   batchId: string,
-  opts: { force?: boolean } = {}
+  opts: { force?: boolean; idle?: boolean } = {}
 ): Promise<{
   status: string;
   txHash?: string;
@@ -553,6 +585,7 @@ export async function closeIntegrityBatch(
   leafCount?: number;
   error?: string;
   leavesDigest?: string;
+  deferredSec?: number;
 }> {
   const db = getAdminDb();
   const batchRef = batchesCol(campaignId).doc(batchId);
@@ -565,17 +598,24 @@ export async function closeIntegrityBatch(
     if (d.status === 'sealing') return { skip: true as const, data: d };
     if (d.status !== 'open') return { skip: true as const, data: d };
 
+    const remaining = idleCloseRemainingSec(d);
+    if (opts.idle && !opts.force && remaining > 0 && Number(d.leafCount || 0) > 0) {
+      return { skip: true as const, data: d, deferSec: Math.max(60, remaining) };
+    }
+
+    const idleReady = Boolean(opts.idle) && remaining <= 0 && Number(d.leafCount || 0) > 0;
+
     const ready =
       opts.force ||
+      idleReady ||
       (d.kind === 'send' &&
         d.leafCount > 0 &&
         (d.sealedCount >= SEND_TANDA_SIZE ||
           (d.sealedCount >= d.expectedCount && d.expectedCount > 0 && d.accepting === false))) ||
-      (d.kind === 'event' && d.leafCount >= EVENT_TANDA_SIZE) ||
-      (opts.force && d.leafCount > 0);
+      (d.kind === 'event' && d.leafCount >= EVENT_TANDA_SIZE);
 
     if (!ready) {
-      if (opts.force && d.leafCount === 0) {
+      if ((opts.force || opts.idle) && d.leafCount === 0) {
         t.update(batchRef, { status: 'empty', sealedAt: FieldValue.serverTimestamp(), accepting: false });
         return { skip: true as const, data: { ...d, status: 'empty' } };
       }
@@ -587,6 +627,12 @@ export async function closeIntegrityBatch(
   });
 
   if (claimed.skip) {
+    if ('deferSec' in claimed && typeof claimed.deferSec === 'number') {
+      void enqueueIntegrityClose(campaignId, batchId, claimed.deferSec, { idle: true }).catch((e) =>
+        console.warn('⚠️ No se pudo reprogramar cierre por inactividad:', e?.message)
+      );
+      return { status: 'open', leafCount: claimed.data.leafCount, deferredSec: claimed.deferSec };
+    }
     if (claimed.data.status === 'anchored') {
       return {
         status: 'anchored',

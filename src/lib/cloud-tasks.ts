@@ -227,16 +227,18 @@ export async function enqueueCampaignCsvExport(payload: {
   );
 }
 
-/** Cierra (o intenta cerrar) una tanda Merkle. delaySeconds=0 = inmediato. */
+/** Cierra (o intenta cerrar) una tanda Merkle. delaySeconds=0 = inmediato (lleno). idle = cierre por inactividad. */
 export async function enqueueIntegrityClose(
   campaignId: string,
   batchId: string,
-  delaySeconds = 0
+  delaySeconds = 0,
+  opts?: { idle?: boolean }
 ): Promise<void> {
-  const suffix = delaySeconds > 0 ? `d${delaySeconds}` : 'now';
+  const idle = opts?.idle === true || delaySeconds > 0;
+  const suffix = delaySeconds > 0 ? `idle-${Date.now()}` : 'now';
   await enqueueTask(
     '/api/campaigns/integrity/close',
-    { campaignId, batchId, force: delaySeconds > 0 },
+    { campaignId, batchId, idle, force: false },
     `integrity-${campaignId}-${batchId}-${suffix}`,
     delaySeconds
   );

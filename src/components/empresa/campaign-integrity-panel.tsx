@@ -415,8 +415,9 @@ export function CampaignIntegrityPanel({
         </CardTitle>
         <p className="text-sm text-muted-foreground font-normal">
           El formulario de WhatsApp (el template) se sella una vez por campaña. Cada persona
-          es un renglón del padrón. Polygon recibe un sello cada 500 renglones, no 150 mil
-          transacciones. Las lecturas y entregas van en tandas aparte.
+          es un renglón del padrón. Polygon recibe un sello cada 500 renglones. Si un lote
+          queda corto y no entra nada nuevo en 6 horas, se cierra igual. Las lecturas y
+          entregas van en tandas aparte.
         </p>
       </CardHeader>
       <CardContent className="space-y-5">

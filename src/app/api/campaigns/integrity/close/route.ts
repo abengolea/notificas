@@ -9,7 +9,7 @@ function verifyWorkerSecret(request: NextRequest): boolean {
 }
 
 export async function POST(request: NextRequest) {
-  let body: { campaignId?: string; batchId?: string; orgId?: string; force?: boolean };
+  let body: { campaignId?: string; batchId?: string; orgId?: string; force?: boolean; idle?: boolean };
   try {
     body = await request.json();
   } catch {
@@ -31,7 +31,10 @@ export async function POST(request: NextRequest) {
 
   try {
     if (body.batchId) {
-      const result = await closeIntegrityBatch(campaignId, body.batchId, { force: Boolean(body.force) });
+      const result = await closeIntegrityBatch(campaignId, body.batchId, {
+        force: Boolean(body.force),
+        idle: Boolean(body.idle),
+      });
       return NextResponse.json({ ok: true, ...result });
     }
     const closed = await closeOpenBatches(campaignId, Boolean(body.force));
