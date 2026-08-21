@@ -294,6 +294,7 @@ export async function buildMetaCommunicationReport(opts: {
       message: {
         wamid: null,
         explanation: "No hay WAMID conservado para esta constancia.",
+        wamidSource: "none",
         inSendResponse: false,
         sendResponseRawPreserved: false,
         sendHttpStatus: null,

@@ -209,7 +209,7 @@ export function historicalEventFromProvider(
   let status: MetaVerifyStatus = "HISTORICAL_PRESERVED";
   if (wamidMismatch || recipientMismatch || integrity.signatureValidation === "incorrect" || integrity.hashMatches === false) {
     status = "FAILED";
-  } else if (integrity.signatureValidation === "correct" && integrity.rawPreserved && integrity.hashMatches !== false) {
+  } else if (integrity.signatureValidation === "correct" && integrity.rawPreserved) {
     status = "HISTORICAL_VERIFIED";
   }
 
