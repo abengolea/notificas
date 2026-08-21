@@ -2195,6 +2195,7 @@ async function processWhatsAppStatus(status, inbound) {
         httpBody: inbound?.httpBody || null,
         contentType: inbound?.contentType || null,
         receivedAt: FieldValue.serverTimestamp(),
+        receivedAtIso: new Date().toISOString(),
       });
     } catch (e) {
       console.warn('⚠️ No se pudo guardar provider_event WA (CF):', e.message);

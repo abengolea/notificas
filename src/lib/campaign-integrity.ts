@@ -928,7 +928,7 @@ export async function verifyCampaignMessage(campaignId: string, messageId: strin
 
   const events = (msg.integrity?.events || {}) as Record<
     string,
-    { batchId?: string; leafHash?: string; proof?: string[]; merkleRoot?: string; txHash?: string; occurredAt?: string }
+    { batchId?: string; leafHash?: string; proof?: string[]; merkleRoot?: string; txHash?: string; occurredAt?: string; leafIndex?: number }
   >;
 
   const eventResults = await Promise.all(
@@ -951,6 +951,9 @@ export async function verifyCampaignMessage(campaignId: string, messageId: strin
         merkleValid: proofOk,
         txHash: ev.txHash,
         merkleRoot: ev.merkleRoot,
+        leafHash: ev.leafHash,
+        leafIndex: typeof (ev as { leafIndex?: number }).leafIndex === 'number' ? (ev as { leafIndex: number }).leafIndex : null,
+        proof: Array.isArray(ev.proof) ? ev.proof : null,
         batchId: ev.batchId,
       };
     })

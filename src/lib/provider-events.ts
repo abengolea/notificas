@@ -69,6 +69,7 @@ export async function recordProviderEvent(input: ProviderEventInput): Promise<st
     phoneNumberId: input.phoneNumberId || null,
     signatureValidatedAt: input.signatureValidatedAt || null,
     receivedAt: FieldValue.serverTimestamp(),
+    receivedAtIso: new Date().toISOString(),
   });
   return ref.id;
 }

@@ -19,6 +19,7 @@ export type StoredProviderEvent = {
   wabaId?: string | null;
   phoneNumberId?: string | null;
   receivedAt?: unknown;
+  receivedAtIso?: string | null;
   raw?: unknown;
 };
 
@@ -32,6 +33,33 @@ function httpBodyString(httpBody: unknown): { text: string | null; truncated: bo
 
 export function sha256Utf8(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+export function toIsoUnknown(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "string") {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? value : d.toISOString();
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const ms = value < 1e12 ? value * 1000 : value;
+    return new Date(ms).toISOString();
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
+  if (typeof value === "object") {
+    const rec = value as { toDate?: () => Date; seconds?: number; _seconds?: number };
+    if (typeof rec.toDate === "function") {
+      try {
+        const d = rec.toDate();
+        return d instanceof Date && !Number.isNaN(d.getTime()) ? d.toISOString() : null;
+      } catch {
+        return null;
+      }
+    }
+    const secs = rec._seconds ?? rec.seconds;
+    if (typeof secs === "number" && Number.isFinite(secs)) return new Date(secs * 1000).toISOString();
+  }
+  return null;
 }
 
 export function normalizeWaRecipient(value: string | null | undefined): string {
@@ -178,22 +206,22 @@ export function historicalEventFromProvider(
         !normalizeWaRecipient(recipient).endsWith(normalizeWaRecipient(opts.expectedRecipient))
       : false;
 
-  let status: MetaVerifyStatus = "HISTORICAL_VERIFIED";
+  let status: MetaVerifyStatus = "HISTORICAL_PRESERVED";
   if (wamidMismatch || recipientMismatch || integrity.signatureValidation === "incorrect" || integrity.hashMatches === false) {
     status = "FAILED";
-  } else if (!integrity.rawPreserved) {
+  } else if (integrity.signatureValidation === "correct" && integrity.rawPreserved && integrity.hashMatches !== false) {
     status = "HISTORICAL_VERIFIED";
   }
 
   const rawSensitive = payloadContainsSecrets(ev.httpBody) || payloadContainsSecrets(ev.raw);
   const webhookAuthLabel =
     integrity.signatureValidation === "correct"
-      ? "Autenticación técnica del webhook mediante X-Hub-Signature-256."
+      ? "Autenticación criptográfica del webhook verificada mediante HMAC-SHA256 contra X-Hub-Signature-256."
       : integrity.signatureValidation === "ingest_only"
-        ? "Autenticación técnica del webhook registrada al recibirlo (X-Hub-Signature-256)."
+        ? "Firma X-Hub-Signature-256 presente. Validación criptográfica retrospectiva no disponible para este evento (se registró al recibirlo, sin recomputar HMAC ahora)."
         : integrity.signatureValidation === "incorrect"
           ? "La autenticación técnica del webhook no coincide."
-          : "Autenticación técnica del webhook no disponible para este evento.";
+          : "Validación criptográfica de X-Hub-Signature-256 no disponible para este evento.";
 
   return {
     status,
@@ -204,7 +232,7 @@ export function historicalEventFromProvider(
     wamid,
     recipientId: recipient,
     metaTimestamp: ev.providerTimestamp || null,
-    receivedAt: typeof ev.receivedAt === "string" ? ev.receivedAt : null,
+    receivedAt: toIsoUnknown(ev.receivedAt) || toIsoUnknown(ev.receivedAtIso),
     rawPreserved: integrity.rawPreserved,
     rawTruncated: integrity.rawTruncated,
     signatureHeaderPresent: Boolean(ev.signatureHeader),
@@ -225,12 +253,14 @@ export function sendResponseEvent(input: {
   rawPreserved: boolean;
 }): HistoricalMetaEvent {
   return {
-    status: input.wamid ? "HISTORICAL_VERIFIED" : "NOT_AVAILABLE",
+    status: input.wamid ? "HISTORICAL_PRESERVED" : "NOT_AVAILABLE",
     kind: "sent",
-    title: "Respuesta original de Meta al envío",
-    claim: input.wamid
-      ? "Identificador asignado por Meta al mensaje al momento de su procesamiento."
-      : "No consta una respuesta RAW conservada del POST de envío a Meta.",
+    title: "Respuesta de Meta al envío",
+    claim: input.rawPreserved
+      ? "Se conservó el cuerpo HTTP RAW de la respuesta de Meta al POST /messages, incluido el WAMID."
+      : input.wamid
+        ? "El WAMID registrado por Notificas corresponde al identificador devuelto por Meta al procesar el envío. Para esta comunicación histórica se conservó el identificador extraído, pero no el cuerpo HTTP RAW completo de la respuesta."
+        : "No consta una respuesta RAW conservada del POST de envío a Meta.",
     source: "meta_send_response",
     wamid: input.wamid,
     recipientId: null,
@@ -242,7 +272,7 @@ export function sendResponseEvent(input: {
     signatureValidation: "not_available",
     payloadSha256: input.bodyHash || null,
     integrityMatchesStoredHash: null,
-    webhookAuthLabel: "No aplica: es la respuesta HTTP del POST /messages, no un webhook.",
+    webhookAuthLabel: "No aplica: es la respuesta HTTP del POST /messages, no un webhook firmado con X-Hub-Signature-256.",
     rawPublic: input.rawPreserved ? "hash_only" : "none",
   };
 }

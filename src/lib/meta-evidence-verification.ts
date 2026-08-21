@@ -12,12 +12,13 @@ import {
   sha256Utf8,
   type MetaGraphFetcher,
 } from "@/lib/meta-graph-client";
-import { getWhatsAppAccessToken } from "@/lib/meta-access-token";
+import { getWhatsAppAccessToken, getWhatsAppAppSecret } from "@/lib/meta-access-token";
 import type { MetaVerifyStatus } from "@/lib/meta-verify-status";
 import type { MetaCommunicationReport, MetaLiveIdentity, HistoricalMetaEvent } from "@/lib/meta-communication-types";
 import {
   detectWamidMismatch,
   historicalEventFromProvider,
+  mapEventKind,
   sendResponseEvent,
 } from "@/lib/meta-webhook-evidence";
 
@@ -329,7 +330,7 @@ export async function buildMetaCommunicationReport(opts: {
     refresh: Boolean(opts.refresh),
     uid: opts.uid,
     pick: (j) => pickWabaPublic(j),
-    verifiedMessage: "WABA ID verificado mediante consulta actual a Meta Graph API.",
+    verifiedMessage: "WABA ID verificado actualmente mediante Meta Graph API.",
     missingMessage: "No hay WABA ID conservado en la evidencia de este envío.",
   });
   const livePhone = await liveCheck({
@@ -340,7 +341,7 @@ export async function buildMetaCommunicationReport(opts: {
     refresh: Boolean(opts.refresh),
     uid: opts.uid,
     pick: (j) => pickPhonePublic(j),
-    verifiedMessage: "Número de WhatsApp Business verificado mediante consulta actual a Meta Graph API.",
+    verifiedMessage: "Número de WhatsApp Business verificado actualmente mediante Meta Graph API.",
     missingMessage: "No hay Phone Number ID conservado en la evidencia de este envío.",
   });
   const liveTemplate = await liveCheck({
@@ -351,7 +352,7 @@ export async function buildMetaCommunicationReport(opts: {
     refresh: Boolean(opts.refresh),
     uid: opts.uid,
     pick: (j) => pickTemplatePublic(j),
-    verifiedMessage: "Template identificado mediante Meta Graph API.",
+    verifiedMessage: "Template identificado actualmente mediante Meta Graph API.",
     missingMessage: "No hay Template ID conservado en la evidencia de este envío.",
   });
 
@@ -407,14 +408,22 @@ export async function buildMetaCommunicationReport(opts: {
       polyByType.delivered = {
         txHash: ev.txHash,
         merkleRoot: ev.merkleRoot,
+        leafHash: ev.leafHash,
+        leafIndex: ev.leafIndex,
+        proof: ev.proof,
         merkleValid: ev.merkleValid,
+        batchId: ev.batchId,
       };
     }
     if (ev.type === "wa_read") {
       polyByType.read = {
         txHash: ev.txHash,
         merkleRoot: ev.merkleRoot,
+        leafHash: ev.leafHash,
+        leafIndex: ev.leafIndex,
+        proof: ev.proof,
         merkleValid: ev.merkleValid,
+        batchId: ev.batchId,
       };
     }
   }
@@ -423,7 +432,7 @@ export async function buildMetaCommunicationReport(opts: {
   if (waDeliveredTx) polyByType.delivered = { ...(polyByType.delivered || {}), txHash: waDeliveredTx };
   if (waReadTx) polyByType.read = { ...(polyByType.read || {}), txHash: waReadTx };
 
-  const appSecret = (process.env.WHATSAPP_APP_SECRET || "").trim() || null;
+  const appSecret = (await getWhatsAppAppSecret()) || null;
   const chronology: HistoricalMetaEvent[] = [];
   chronology.push(
     sendResponseEvent({
@@ -441,7 +450,7 @@ export async function buildMetaCommunicationReport(opts: {
         expectedWamid: ids.wamid || sendWamid,
         expectedRecipient: ids.recipientPhone,
         appSecret,
-        polygon: polyByType[kind],
+        polygon: polyByType[mapEventKind(kind)],
       })
     );
   }
@@ -506,8 +515,9 @@ export async function buildMetaCommunicationReport(opts: {
     message: {
       wamid: ids.wamid || sendWamid,
       explanation:
-        "Identificador asignado por Meta al mensaje al momento de su procesamiento. No se consulta GET sobre el WAMID: Meta no ofrece una API documentada para recuperar retrospectivamente el estado de un mensaje a partir de ese identificador.",
-      inSendResponse: Boolean(sendWamid && ids.wamid && sendWamid === ids.wamid) || Boolean(sendWamid),
+        "Identificador asignado por Meta al procesamiento del mensaje. No se consulta GET sobre el WAMID: Meta no ofrece una API documentada para recuperar retrospectivamente el estado de un mensaje a partir de ese identificador.",
+      wamidSource: sendRaw ? "graph_http_raw" : sendWamid ? "parsed_graph_json" : ids.wamid ? "extracted_id_only" : "none",
+      inSendResponse: Boolean(sendWamid),
       sendResponseRawPreserved: sendRaw,
       sendHttpStatus,
       sendBodyHash,
@@ -525,6 +535,6 @@ export async function buildMetaCommunicationReport(opts: {
       templateLang: ids.templateLang,
     },
     disclaimer:
-      "Las consultas en vivo permiten verificar determinados identificadores e infraestructura de WhatsApp Business directamente contra Meta. Los estados históricos del mensaje —como entregado o leído— fueron comunicados oportunamente por Meta mediante webhooks y son conservados por Notificas junto con sus elementos técnicos de integridad y autenticación.",
+      "Las consultas en vivo permiten verificar determinados identificadores e infraestructura de WhatsApp Business directamente contra Meta. Los estados históricos de entrega y lectura no se consultan actualmente a Meta: corresponden a eventos que Meta comunicó oportunamente a Notificas mediante webhooks y cuya evidencia técnica fue preservada.",
   };
 }

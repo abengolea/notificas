@@ -24,6 +24,9 @@ function StatusMark({ status }: { status: MetaVerifyStatus }) {
   if (status === "VERIFIED" || status === "HISTORICAL_VERIFIED") {
     return <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden />;
   }
+  if (status === "HISTORICAL_PRESERVED") {
+    return <Circle className="h-4 w-4 text-muted-foreground" aria-hidden />;
+  }
   if (status === "FAILED") {
     return <XCircle className="h-4 w-4 text-destructive" aria-hidden />;
   }
@@ -41,7 +44,9 @@ function statusLabel(status: MetaVerifyStatus): string {
     case "VERIFIED":
       return "Verificado";
     case "HISTORICAL_VERIFIED":
-      return "Evidencia histórica preservada y validada";
+      return "Evidencia histórica preservada y autenticación criptográfica verificada";
+    case "HISTORICAL_PRESERVED":
+      return "Evidencia histórica preservada";
     case "NOT_AVAILABLE":
       return "Comprobación no disponible";
     case "PENDING":
@@ -57,7 +62,7 @@ function formatWhen(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
+  return `${d.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" })} ART`;
 }
 
 function Mono({ children }: { children: string | null | undefined }) {
@@ -112,7 +117,14 @@ function TechnicalBlock({
           <div>
             <p className="font-medium mb-1">Integridad</p>
             <ul className="space-y-1 text-muted-foreground">
+              <li>SHA-256 payload RAW: {event.payloadSha256 ? <Mono>{event.payloadSha256}</Mono> : "—"}</li>
               <li>Merkle leaf: {event.polygon.leafHash ? <Mono>{event.polygon.leafHash}</Mono> : "—"}</li>
+              <li>
+                Merkle proof:{" "}
+                {event.polygon.proof?.length
+                  ? `${event.polygon.proof.length} hermanos · índice ${event.polygon.leafIndex ?? "—"}`
+                  : "—"}
+              </li>
               <li>Merkle root: {event.polygon.merkleRoot ? <Mono>{event.polygon.merkleRoot}</Mono> : "—"}</li>
               <li>
                 Transaction Hash:{" "}
@@ -129,7 +141,23 @@ function TechnicalBlock({
                   "—"
                 )}
               </li>
+              <li>
+                Prueba Merkle (servidor):{" "}
+                {event.polygon.merkleValid === true
+                  ? "válida"
+                  : event.polygon.merkleValid === false
+                    ? "no válida"
+                    : "no disponible"}
+              </li>
             </ul>
+            {event.polygon.leafHash && event.polygon.proof && event.polygon.merkleRoot != null && typeof event.polygon.leafIndex === "number" && (
+              <MerkleCheckButton
+                leafHash={event.polygon.leafHash}
+                proof={event.polygon.proof}
+                merkleRoot={event.polygon.merkleRoot}
+                leafIndex={event.polygon.leafIndex}
+              />
+            )}
           </div>
         )}
         <div>
@@ -146,6 +174,46 @@ function TechnicalBlock({
         </div>
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+function MerkleCheckButton({
+  leafHash,
+  proof,
+  merkleRoot,
+  leafIndex,
+}: {
+  leafHash: string;
+  proof: string[];
+  merkleRoot: string;
+  leafIndex: number;
+}) {
+  const [state, setState] = useState<"idle" | "loading" | "ok" | "fail">("idle");
+  return (
+    <div className="mt-2 space-y-1">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={state === "loading"}
+        onClick={() => {
+          void (async () => {
+            setState("loading");
+            const { verifyMerkleProof } = await import("@/lib/merkle");
+            const ok = await verifyMerkleProof(leafHash, proof, merkleRoot, leafIndex);
+            setState(ok ? "ok" : "fail");
+          })();
+        }}
+      >
+        Verificar prueba Merkle
+      </Button>
+      {state === "ok" && (
+        <p className="text-sm text-emerald-700">La hoja pertenece a la raíz Merkle indicada.</p>
+      )}
+      {state === "fail" && (
+        <p className="text-sm text-destructive">La prueba Merkle no reconstruye la raíz.</p>
+      )}
+    </div>
   );
 }
 
@@ -304,7 +372,7 @@ export function MetaCommunicationPanel({
                 <p className="text-xs text-muted-foreground">{report.live.templateContentHistoricalNote}</p>
               </div>
               <p className="text-xs text-muted-foreground">
-                Última comprobación directa con Meta: {formatWhen(report.live.lastLiveCheckAt)} ART
+                Última comprobación directa con Meta: {report.live.lastLiveCheckAt ? formatWhen(report.live.lastLiveCheckAt) : "—"}
               </p>
               <Button type="button" variant="outline" size="sm" onClick={() => void load(true)} disabled={loading}>
                 <RefreshCw className="mr-2 h-3.5 w-3.5" />
@@ -319,15 +387,21 @@ export function MetaCommunicationPanel({
                 WAMID: <Mono>{report.message.wamid}</Mono>
               </p>
               <p className="text-sm text-muted-foreground">{report.message.explanation}</p>
-              {report.message.inSendResponse && (
+              {report.message.wamidSource === "graph_http_raw" && (
                 <p className="flex items-center gap-2 text-sm">
                   <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  El mismo WAMID consta en la respuesta original conservada de Meta.
+                  Respuesta HTTP RAW de Meta al POST /messages preservada. El WAMID extraído coincide.
                 </p>
               )}
-              {!report.message.sendResponseRawPreserved && (
+              {report.message.wamidSource === "parsed_graph_json" && (
                 <p className="text-sm text-muted-foreground">
-                  La respuesta HTTP RAW del POST de envío no está conservada para esta comunicación (solo envíos futuros).
+                  El WAMID registrado por Notificas corresponde al identificador devuelto por Meta al procesar el envío.
+                  Para esta comunicación histórica se conservó el identificador extraído, pero no el cuerpo HTTP RAW completo de la respuesta.
+                </p>
+              )}
+              {report.message.wamidSource === "extracted_id_only" && (
+                <p className="text-sm text-muted-foreground">
+                  Se conservó el WAMID extraído. No hay cuerpo HTTP RAW de la respuesta de envío para esta comunicación.
                 </p>
               )}
             </section>
@@ -357,26 +431,43 @@ export function MetaCommunicationPanel({
                     <Badge variant="outline">{statusLabel(ev.status)}</Badge>
                   </div>
                   <p className="text-sm">{ev.claim}</p>
-                  <p className="text-sm text-muted-foreground">{formatWhen(ev.metaTimestamp)}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Timestamp informado por Meta: {formatWhen(ev.metaTimestamp)}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Recibido por Notificas: {formatWhen(ev.receivedAt)}
+                  </p>
                   <ul className="text-sm text-muted-foreground space-y-1">
                     <li>WAMID: <Mono>{ev.wamid}</Mono></li>
                     {ev.kind !== "sent" && (
                       <>
-                        <li>Webhook original: {ev.rawPreserved ? "Conservado" : "Payload original no conservado para este evento"}</li>
+                        <li>
+                          Payload original:{" "}
+                          {ev.rawPreserved ? "preservado" : "no conservado para este evento"}
+                        </li>
+                        <li>
+                          X-Hub-Signature-256: {ev.signatureHeaderPresent ? "preservada" : "no disponible"}
+                        </li>
                         <li>{ev.webhookAuthLabel}</li>
                         <li>
-                          Integridad:{" "}
+                          SHA-256:{" "}
                           {ev.integrityMatchesStoredHash === false
-                            ? "hash no coincidente"
+                            ? "no coincidente"
                             : ev.payloadSha256
-                              ? "hash coincidente / registrado"
+                              ? "coincidente / registrado"
                               : "no disponible"}
                         </li>
                         <li>
+                          Merkle:{" "}
+                          {ev.polygon?.leafHash
+                            ? ev.polygon.merkleValid === true
+                              ? "hoja incluida y prueba verificada en servidor"
+                              : "hoja registrada"
+                            : "sin hoja Merkle de tanda (puede haber anclaje individual)"}
+                        </li>
+                        <li>
                           Blockchain:{" "}
-                          {ev.polygon?.txHash
-                            ? "Anclado"
-                            : "Sin anclaje asociado a este evento"}
+                          {ev.polygon?.txHash ? "Anclado" : "Sin anclaje asociado a este evento"}
                         </li>
                       </>
                     )}

@@ -22,6 +22,8 @@ export type HistoricalMetaEvent = {
     txHash?: string | null;
     merkleRoot?: string | null;
     leafHash?: string | null;
+    leafIndex?: number | null;
+    proof?: string[] | null;
     batchId?: string | null;
     merkleValid?: boolean | null;
   };
@@ -56,6 +58,7 @@ export type MetaCommunicationReport = {
   message: {
     wamid: string | null;
     explanation: string;
+    wamidSource: "graph_http_raw" | "parsed_graph_json" | "extracted_id_only" | "none";
     inSendResponse: boolean;
     sendResponseRawPreserved: boolean;
     sendHttpStatus: number | null;

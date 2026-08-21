@@ -208,7 +208,45 @@ test("evento histórico sin RAW no inventa validación", () => {
   assert.equal(ev.rawPreserved, false);
   assert.equal(ev.rawPublic, "none");
   assert.match(ev.claim, /informó el estado delivered/);
+  assert.equal(ev.status, "HISTORICAL_PRESERVED");
+  assert.equal(ev.signatureValidation, "ingest_only");
+});
+
+test("HMAC retrospectivo con RAW + App Secret → HISTORICAL_VERIFIED", () => {
+  const raw = JSON.stringify({ object: "whatsapp_business_account", entry: [] });
+  const ev = historicalEventFromProvider(
+    {
+      eventType: "read",
+      providerMessageId: "wamid.AAA",
+      recipient: "54911111111",
+      httpBody: raw,
+      payloadHash: createHash("sha256").update(raw, "utf8").digest("hex"),
+      signatureHeader: hmacHeader(raw),
+      signatureValid: true,
+      receivedAt: { _seconds: 1755684553, _nanoseconds: 284000000 },
+    },
+    { appSecret: SECRET, expectedWamid: "wamid.AAA", expectedRecipient: "54911111111" }
+  );
   assert.equal(ev.status, "HISTORICAL_VERIFIED");
+  assert.equal(ev.signatureValidation, "correct");
+  assert.equal(ev.receivedAt, "2025-08-20T10:09:13.000Z");
+});
+
+test("RAW presente sin App Secret no afirma HMAC", () => {
+  const raw = '{"ok":true}';
+  const ev = historicalEventFromProvider(
+    {
+      eventType: "delivered",
+      providerMessageId: "wamid.AAA",
+      httpBody: raw,
+      payloadHash: createHash("sha256").update(raw, "utf8").digest("hex"),
+      signatureHeader: hmacHeader(raw),
+      signatureValid: true,
+    },
+    { expectedWamid: "wamid.AAA" }
+  );
+  assert.equal(ev.status, "HISTORICAL_PRESERVED");
+  assert.equal(ev.signatureValidation, "ingest_only");
 });
 
 test("privacidad: no se aceptan tokens/secretos en el payload expuesto", () => {
