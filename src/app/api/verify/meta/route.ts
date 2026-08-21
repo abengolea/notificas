@@ -143,6 +143,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Respuesta bloqueada por contenido sensible" }, { status: 500 });
     }
 
+    const format = typeof body?.format === "string" ? body.format.trim().toLowerCase() : "";
+    if (format === "pdf") {
+      const { buildMetaVerificationPdf } = await import("@/lib/meta-communication-pdf");
+      const pdf = await buildMetaVerificationPdf(sanitized);
+      const fileName = `constancia-meta-${mailId}.pdf`;
+      return new NextResponse(new Uint8Array(pdf), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${fileName}"`,
+        },
+      });
+    }
+
     return NextResponse.json({ success: true, data: sanitized });
   } catch (e) {
     console.error("POST /api/verify/meta", e instanceof Error ? e.message : e);

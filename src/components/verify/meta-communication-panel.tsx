@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Circle,
+  Download,
   Loader2,
   Lock,
   RefreshCw,
@@ -236,6 +237,7 @@ export function MetaCommunicationPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<MetaCommunicationReport | null>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   useEffect(() => {
     if (adminSession) {
@@ -281,6 +283,45 @@ export function MetaCommunicationPanel({
     },
     [adminSession, campaignId, enabled, messageId]
   );
+
+  const downloadPdf = useCallback(async () => {
+    if (!messageId || !enabled) return;
+    setPdfBusy(true);
+    setError(null);
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const fetchInit: RequestInit = {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ messageId, campaignId, format: "pdf" }),
+      };
+      if (adminSession) {
+        fetchInit.credentials = "include";
+      } else {
+        const user = auth.currentUser;
+        if (!user) return;
+        headers.Authorization = `Bearer ${await user.getIdToken()}`;
+      }
+      const res = await fetch("/api/verify/meta", fetchInit);
+      if (!res.ok) {
+        setError("No se pudo generar la constancia PDF de verificación Meta.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `constancia-meta-${messageId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("No se pudo generar la constancia PDF de verificación Meta.");
+    } finally {
+      setPdfBusy(false);
+    }
+  }, [adminSession, campaignId, enabled, messageId]);
 
   useEffect(() => {
     if (authed && enabled && messageId) void load(false);
@@ -377,10 +418,16 @@ export function MetaCommunicationPanel({
                 <p className="text-xs text-muted-foreground">
                   Última comprobación directa con Meta: {report.live.lastLiveCheckAt ? formatWhen(report.live.lastLiveCheckAt) : "—"}
                 </p>
-                <Button type="button" variant="outline" size="sm" onClick={() => void load(true)} disabled={loading}>
-                  <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                  Actualizar validación
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => void load(true)} disabled={loading || pdfBusy}>
+                    <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                    Actualizar validación
+                  </Button>
+                  <Button type="button" size="sm" onClick={() => void downloadPdf()} disabled={loading || pdfBusy}>
+                    {pdfBusy ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-2 h-3.5 w-3.5" />}
+                    Descargar constancia Meta (PDF)
+                  </Button>
+                </div>
               </div>
 
               <RecipientIdentityBlock report={report} />

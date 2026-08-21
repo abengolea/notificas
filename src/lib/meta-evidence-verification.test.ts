@@ -570,3 +570,84 @@ test("hoja Merkle v1 se conserva; v2 incorpora hash del RAW", () => {
   const parsed2 = parseEventLeafPayload(v2);
   assert.equal(parsed2?.rawPayloadHash, "bb".repeat(32));
 });
+
+test("constancia PDF de verificación Meta arranca como PDF y no es certificado de lectura", async () => {
+  const { buildMetaVerificationPdf } = await import("./meta-communication-pdf");
+  const pdf = await buildMetaVerificationPdf({
+    channel: "whatsapp",
+    documentUnaffectedByLiveOutage: true,
+    liveUnavailable: null,
+    live: {
+      waba: {
+        id: "2169826596871026",
+        status: "VERIFIED",
+        message: "WABA ID verificado actualmente mediante Meta Graph API.",
+        queriedAt: "2026-08-21T21:00:00.000Z",
+        cached: false,
+        fields: { name: "Notificas" },
+      },
+      phone: {
+        id: "693302653873170",
+        status: "VERIFIED",
+        message: "Número de WhatsApp Business verificado actualmente mediante Meta Graph API.",
+        queriedAt: "2026-08-21T21:00:00.000Z",
+        cached: false,
+        fields: { displayPhoneNumber: "+54 9 336 451-3355", verifiedName: "Notificas" },
+      },
+      template: {
+        id: "1393418889653150",
+        status: "VERIFIED",
+        message: "Template identificado actualmente mediante Meta Graph API.",
+        queriedAt: "2026-08-21T21:00:00.000Z",
+        cached: false,
+        fields: { name: "notificacion_deuda_180_dias" },
+      },
+      lastLiveCheckAt: "2026-08-21T21:00:00.000Z",
+      templateNameMatchesSnapshot: true,
+      templateLangMatchesSnapshot: true,
+      templateContentHistoricalNote: "El contenido histórico se demuestra con el snapshot.",
+    },
+    message: {
+      wamid: "wamid.TEST",
+      explanation: "Identificador asignado por Meta al procesamiento del mensaje.",
+      wamidSource: "extracted_id_only",
+      inSendResponse: true,
+      sendResponseRawPreserved: false,
+      sendHttpStatus: null,
+      sendBodyHash: null,
+    },
+    inconsistencies: [],
+    chronology: [],
+    identification: {
+      notificationId: "usLRcAqoscRGPesh5WTV",
+      campaignId: null,
+      wamid: "wamid.TEST",
+      wabaId: "2169826596871026",
+      phoneNumberId: "693302653873170",
+      templateId: "1393418889653150",
+      templateName: "notificacion_deuda_180_dias",
+      templateLang: "es",
+      recipientPhone: "5493364513355",
+      webhookRecipientId: "5493364513355",
+    },
+    recipientEvidence: {
+      consignedPhone: "5493364513355",
+      webhookRecipientId: "5493364513355",
+      match: true,
+      status: "HISTORICAL_PRESERVED",
+      matchMessage: "Coinciden",
+      delivered: true,
+      read: true,
+      rawPreserved: true,
+      summary: "Evidencia histórica de destinatario.",
+      sourceNote: null,
+    },
+    disclaimer: "Los estados históricos de entrega y lectura no se consultan actualmente a Meta.",
+  });
+  const bytes = Buffer.from(pdf);
+  assert.equal(bytes.subarray(0, 4).toString("ascii"), "%PDF");
+  const latin = bytes.toString("latin1");
+  assert.match(latin, /Constancia de verificaci/);
+  assert.match(latin, /No es el certificado de lectura/);
+  assert.equal(latin.includes("access_token"), false);
+});
