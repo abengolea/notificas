@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import {
   CAMPAIGN_EXPORT_HEADERS,
   buildCampaignExportFields,
+  buildCampaignUploadFields,
   canalExportLabel,
   csvEscape,
+  isUndeliveredOrError,
   publicRecipientEmail,
   publicSmtpMessageId,
   splitExportError,
@@ -31,6 +33,30 @@ test('código de error Meta se separa del detalle', () => {
   const e = splitExportError('(#131008) Variable {{5}} (cuotas) está vacía.');
   assert.equal(e.code, '131008');
   assert.match(e.detail, /cuotas/);
+});
+
+test('CSV de subida: columnas del archivo original', () => {
+  const headers = ['telefono', 'nombre', 'dni', 'fecha', 'monto', 'cuotas'];
+  const fields = buildCampaignUploadFields(
+    {
+      recipientNombre: 'Adrian Bengolea',
+      recipientEmail: 'sin-email-1@wa.internal',
+      recipientTelefono: '+5493364645357',
+      recipientDni: '25715970',
+      recipientFecha: '14/02/26',
+      recipientMonto: '130000',
+      recipientCuotas: '1',
+    },
+    headers
+  );
+  assert.deepEqual(fields, ['+5493364645357', 'Adrian Bengolea', '25715970', '14/02/26', '130000', '1']);
+});
+
+test('problemas: error y WhatsApp enviado sin entregar', () => {
+  assert.equal(isUndeliveredOrError({ estado: 'error' }), true);
+  assert.equal(isUndeliveredOrError({ estado: 'enviado', waEstado: 'enviado' }), true);
+  assert.equal(isUndeliveredOrError({ estado: 'enviado', waEstado: 'entregado' }), false);
+  assert.equal(isUndeliveredOrError({ estado: 'leido', waEstado: 'leido' }), false);
 });
 
 test('CSV escapa comas y comillas', () => {

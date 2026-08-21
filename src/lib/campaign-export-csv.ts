@@ -231,6 +231,40 @@ function emailOpened(mail: Record<string, unknown>, m: Record<string, unknown>):
   });
 }
 
+const UPLOAD_FIELD_GETTERS: Record<string, (m: Record<string, unknown>) => string> = {
+  telefono: (m) => str(m.recipientTelefono),
+  nombre: (m) => str(m.recipientNombre),
+  email: (m) => publicRecipientEmail(m.recipientEmail),
+  dni: (m) => str(m.recipientDni),
+  legajo: (m) => str(m.recipientLegajo),
+  dias: (m) => str(m.recipientDias),
+  fecha: (m) => str(m.recipientFecha),
+  monto: (m) => str(m.recipientMonto),
+  cuotas: (m) => str(m.recipientCuotas),
+  area: (m) => str(m.recipientArea),
+};
+
+export function buildCampaignUploadFields(m: Record<string, unknown>, headers: string[]): unknown[] {
+  return headers.map((h) => {
+    const key = String(h || '').trim().toLowerCase();
+    const getter = UPLOAD_FIELD_GETTERS[key];
+    if (getter) return getter(m);
+    const camel = `recipient${key.charAt(0).toUpperCase()}${key.slice(1)}`;
+    return str(m[camel]);
+  });
+}
+
+/** Error de envío o WhatsApp aceptado por Meta que nunca llegó (enviado, no entregado). */
+export function isUndeliveredOrError(m: Record<string, unknown>): boolean {
+  const estado = str(m.estado);
+  const wa = str(m.waEstado);
+  const email = str(m.emailEstado);
+  if (estado === 'error' || wa === 'error' || email === 'error') return true;
+  if (wa === 'enviado') return true;
+  if (m.waWmidMissing === true) return true;
+  return false;
+}
+
 export function buildCampaignExportFields(
   rowNum: number,
   messageId: string,

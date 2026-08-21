@@ -250,6 +250,7 @@ function CampaignExportActions({
   hideCopy,
   onDownloadPdf,
   onDownloadFilteredCsv,
+  onDownloadProblemasCsv,
   onGenerateCsv,
   onDownloadReadyCsv,
   onGenerateNewCsvVersion,
@@ -265,6 +266,7 @@ function CampaignExportActions({
   hideCopy?: boolean;
   onDownloadPdf: () => void;
   onDownloadFilteredCsv: (kind: "vista" | "errores") => void;
+  onDownloadProblemasCsv: () => void;
   onGenerateCsv: () => void;
   onDownloadReadyCsv: () => void;
   onGenerateNewCsvVersion: () => void;
@@ -301,6 +303,16 @@ function CampaignExportActions({
           Generar CSV
         </Button>
       )}
+      <Button
+        variant="outline"
+        onClick={onDownloadProblemasCsv}
+        disabled={busy || csvBusy}
+        className="gap-2"
+        title="Mismo formato que el CSV de subida: errores y WhatsApp que no se entregó"
+      >
+        {csvBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+        CSV para la empresa
+      </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" disabled={busy} className="gap-2">
@@ -339,6 +351,14 @@ function CampaignExportActions({
           <DropdownMenuItem onClick={onDownloadPdf} className="gap-2">
             <Download className="h-4 w-4" />
             PDF de esta vista
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+            Para enviar a la empresa (mismo formato de subida)
+          </DropdownMenuLabel>
+          <DropdownMenuItem onClick={onDownloadProblemasCsv} className="gap-2">
+            <AlertTriangle className="h-4 w-4" />
+            Errores y no entregados
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
@@ -614,7 +634,7 @@ export const CampaignDashboard = forwardRef<
     }
   }
 
-  async function descargarCsvFiltrado(kind: "vista" | "errores") {
+  async function descargarCsvFiltrado(kind: "vista" | "errores" | "problemas") {
     setCsvBusy(true);
     try {
       const body: Record<string, unknown> = { campaignId, orgId, kind };
@@ -638,7 +658,15 @@ export const CampaignDashboard = forwardRef<
         const exp = payload.export as CsvExportInfo | undefined;
         if (exp?.status === "ready") {
           await openSignedCsv({ exportDocId });
-          toast({ title: "CSV listo", description: exp.sha256 ? `SHA-256 ${exp.sha256.slice(0, 12)}…` : undefined });
+          toast({
+            title: "CSV listo",
+            description:
+              kind === "problemas"
+                ? `${exp.rowCount.toLocaleString("es-AR")} filas · mismo formato que la subida`
+                : exp.sha256
+                  ? `SHA-256 ${exp.sha256.slice(0, 12)}…`
+                  : undefined,
+          });
           return;
         }
         if (exp?.status === "failed") throw new Error(exp.error || "Falló la generación");
@@ -941,6 +969,7 @@ export const CampaignDashboard = forwardRef<
       hideCopy={empresaReadOnly}
       onDownloadPdf={() => void descargarReporte()}
       onDownloadFilteredCsv={(kind) => void descargarCsvFiltrado(kind)}
+      onDownloadProblemasCsv={() => void descargarCsvFiltrado("problemas")}
       onGenerateCsv={() => void generarCsv()}
       onDownloadReadyCsv={() => void descargarCsvListo()}
       onGenerateNewCsvVersion={() => void generarCsv({ newVersion: true })}
@@ -1156,6 +1185,15 @@ export const CampaignDashboard = forwardRef<
                 Reintentar todos los errores ({stats.errores.toLocaleString("es-AR")})
               </Button>
             )}
+            <Button
+              variant="outline"
+              disabled={busy || csvBusy}
+              onClick={() => void descargarCsvFiltrado("problemas")}
+              className="gap-2"
+            >
+              {csvBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              Bajar errores y no entregados
+            </Button>
             <p className="text-xs text-muted-foreground">Solo filas en error pueden seleccionarse individualmente.</p>
           </div>
           )}

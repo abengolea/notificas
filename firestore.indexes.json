@@ -145,6 +145,25 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "campaignId", "order": "ASCENDING" },
+        { "fieldPath": "waEstado", "order": "ASCENDING" },
+        { "fieldPath": "recipientNombre", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "campaign_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "campaignId", "order": "ASCENDING" },
+        { "fieldPath": "waEstado", "order": "ASCENDING" },
+        { "fieldPath": "recipientNombre", "order": "ASCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "campaign_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "campaignId", "order": "ASCENDING" },
         { "fieldPath": "waWmidMissing", "order": "ASCENDING" },
         { "fieldPath": "recipientNombre", "order": "ASCENDING" }
       ]

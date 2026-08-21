@@ -7,9 +7,12 @@ import { recordIssuedDocument, sha256Hex } from '@/lib/issued-documents';
 import {
   CAMPAIGN_EXPORT_HEADERS,
   buildCampaignExportFields,
+  buildCampaignUploadFields,
   csvRow,
   type CampaignExportContext,
 } from '@/lib/campaign-export-csv';
+import { csvHeaderColumns } from '@/lib/parse-campaign-csv';
+import { csvColumnsFromWaVariables, usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
 import { publicAppBase } from '@/lib/public-verify-url';
 
 export const CSV_EXPORT_PAGE = 200;
@@ -18,6 +21,7 @@ export const CSV_EXPORTS_SUBCOLLECTION = 'csv_exports';
 export type CsvExportStatus = 'pending' | 'generating' | 'ready' | 'failed';
 
 export type CsvExportKind = 'full' | 'filtered';
+export type CsvExportFormat = 'results' | 'upload';
 
 export type CsvExportRecord = {
   campaignId: string;
@@ -43,6 +47,7 @@ export type CsvExportRecord = {
   workerNonce?: string;
   filterEstado?: string;
   filterFlag?: string;
+  format?: CsvExportFormat;
 };
 
 export type CsvExportPublic = {
@@ -165,16 +170,43 @@ async function fetchMailDocs(
   return result;
 }
 
+type MessageQueryPhase = {
+  estado?: string;
+  flag?: string;
+  waEstado?: string;
+};
+
+function problemasPhases(canal: string): MessageQueryPhase[] {
+  const phases: MessageQueryPhase[] = [{ estado: 'error' }];
+  if (canal === 'whatsapp' || canal === 'ambos') {
+    phases.push({ waEstado: 'enviado' });
+  }
+  return phases;
+}
+
+function exportPhases(estado: string, flag: string, canal: string): MessageQueryPhase[] {
+  if (flag === 'problemas') return problemasPhases(canal);
+  return [{ estado, flag }];
+}
+
 function messagesQuery(
   db: FirebaseFirestore.Firestore,
   campaignId: string,
-  estado: string,
-  flag: string,
+  phase: MessageQueryPhase,
 ): FirebaseFirestore.Query {
   let q: FirebaseFirestore.Query = db.collection('campaign_messages').where('campaignId', '==', campaignId);
-  if (flag === 'waWmidMissing') q = q.where('waWmidMissing', '==', true);
-  else if (estado && estado !== 'all' && estado !== 'todos') q = q.where('estado', '==', estado);
+  if (phase.flag === 'waWmidMissing') q = q.where('waWmidMissing', '==', true);
+  else if (phase.waEstado) q = q.where('waEstado', '==', phase.waEstado);
+  else if (phase.estado && phase.estado !== 'all' && phase.estado !== 'todos') q = q.where('estado', '==', phase.estado);
   return q;
+}
+
+export function campaignUploadHeaders(campaign: FirebaseFirestore.DocumentData): string[] {
+  const canal = String(campaign.canal || 'email') as 'email' | 'whatsapp' | 'ambos';
+  const extra = usesNotificasDefaultTemplate(String(campaign.waTemplateName || ''))
+    ? []
+    : csvColumnsFromWaVariables(Array.isArray(campaign.waTemplateVariables) ? campaign.waTemplateVariables : []);
+  return csvHeaderColumns(canal, extra);
 }
 
 function exportCtx(
@@ -248,6 +280,8 @@ export async function streamCampaignCsvPages(opts: {
   sink: ByteSink;
   estado?: string;
   flag?: string;
+  format?: CsvExportFormat;
+  uploadHeaders?: string[];
   failAfterRows?: number;
   onHeartbeat?: (rows: number) => Promise<void>;
 }): Promise<CsvStreamStats> {
@@ -258,6 +292,9 @@ export async function streamCampaignCsvPages(opts: {
   let mailReads = 0;
   let mailFetchMs = 0;
   let pages = 0;
+  const format: CsvExportFormat = opts.format === 'upload' ? 'upload' : 'results';
+  const uploadHeaders = opts.uploadHeaders && opts.uploadHeaders.length ? opts.uploadHeaders : ['nombre', 'dni'];
+  const seenIds = new Set<string>();
 
   const write = async (chunk: string) => {
     const buf = Buffer.from(chunk, 'utf8');
@@ -266,58 +303,70 @@ export async function streamCampaignCsvPages(opts: {
     await opts.sink.write(buf);
   };
 
-  await write(`\uFEFF${csvRow([...CAMPAIGN_EXPORT_HEADERS])}\r\n`);
+  await write(`\uFEFF${csvRow(format === 'upload' ? uploadHeaders : [...CAMPAIGN_EXPORT_HEADERS])}\r\n`);
 
-  let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
   const estado = opts.estado || 'all';
   const flag = opts.flag || '';
+  const phases = exportPhases(estado, flag, String(opts.ctx.canal || ''));
 
-  for (;;) {
-    let q = messagesQuery(opts.db, opts.campaignId, estado, flag)
-      .orderBy('recipientNombre')
-      .orderBy(FieldPath.documentId())
-      .limit(CSV_EXPORT_PAGE);
-    if (lastDoc) q = q.startAfter(lastDoc);
-    let pageSnap: FirebaseFirestore.QuerySnapshot;
-    try {
-      pageSnap = await q.get();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (!/index|FAILED_PRECONDITION/i.test(msg)) throw e;
-      let q2 = messagesQuery(opts.db, opts.campaignId, estado, flag)
+  for (const phase of phases) {
+    let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+    for (;;) {
+      let q = messagesQuery(opts.db, opts.campaignId, phase)
         .orderBy('recipientNombre')
+        .orderBy(FieldPath.documentId())
         .limit(CSV_EXPORT_PAGE);
-      if (lastDoc) q2 = q2.startAfter(lastDoc);
-      pageSnap = await q2.get();
-    }
-    if (pageSnap.empty) break;
-    messageReads += pageSnap.size;
-
-    const mailIds = pageSnap.docs
-      .map((d) => d.data().mailId as string | undefined)
-      .filter((id): id is string => !!id);
-    const uniqueMailIds = [...new Set(mailIds)];
-    const t0 = Date.now();
-    const mailDocs = uniqueMailIds.length ? await fetchMailDocs(opts.db, uniqueMailIds) : new Map();
-    mailFetchMs += Date.now() - t0;
-    mailReads += uniqueMailIds.length;
-
-    for (const d of pageSnap.docs) {
-      rowCount += 1;
-      if (opts.failAfterRows && rowCount >= opts.failAfterRows) {
-        throw new Error(`Fallo inyectado tras ${rowCount} filas`);
+      if (lastDoc) q = q.startAfter(lastDoc);
+      let pageSnap: FirebaseFirestore.QuerySnapshot;
+      try {
+        pageSnap = await q.get();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/index|FAILED_PRECONDITION/i.test(msg)) throw e;
+        let q2 = messagesQuery(opts.db, opts.campaignId, phase)
+          .orderBy('recipientNombre')
+          .limit(CSV_EXPORT_PAGE);
+        if (lastDoc) q2 = q2.startAfter(lastDoc);
+        pageSnap = await q2.get();
       }
-      const m = d.data();
-      const mail = m.mailId ? (mailDocs.get(m.mailId) ?? {}) : {};
-      await write(`${csvRow(buildCampaignExportFields(rowCount, d.id, m, mail, opts.ctx))}\r\n`);
-    }
+      if (pageSnap.empty) break;
+      messageReads += pageSnap.size;
 
-    lastDoc = pageSnap.docs[pageSnap.docs.length - 1];
-    pages += 1;
-    if (opts.onHeartbeat && pages % 1 === 0) {
-      await opts.onHeartbeat(rowCount);
+      let mailDocs = new Map<string, FirebaseFirestore.DocumentData>();
+      if (format !== 'upload') {
+        const mailIds = pageSnap.docs
+          .map((d) => d.data().mailId as string | undefined)
+          .filter((id): id is string => !!id);
+        const uniqueMailIds = [...new Set(mailIds)];
+        const t0 = Date.now();
+        mailDocs = uniqueMailIds.length ? await fetchMailDocs(opts.db, uniqueMailIds) : new Map();
+        mailFetchMs += Date.now() - t0;
+        mailReads += uniqueMailIds.length;
+      }
+
+      for (const d of pageSnap.docs) {
+        if (seenIds.has(d.id)) continue;
+        seenIds.add(d.id);
+        rowCount += 1;
+        if (opts.failAfterRows && rowCount >= opts.failAfterRows) {
+          throw new Error(`Fallo inyectado tras ${rowCount} filas`);
+        }
+        const m = d.data();
+        if (format === 'upload') {
+          await write(`${csvRow(buildCampaignUploadFields(m, uploadHeaders))}\r\n`);
+        } else {
+          const mail = m.mailId ? (mailDocs.get(m.mailId) ?? {}) : {};
+          await write(`${csvRow(buildCampaignExportFields(rowCount, d.id, m, mail, opts.ctx))}\r\n`);
+        }
+      }
+
+      lastDoc = pageSnap.docs[pageSnap.docs.length - 1];
+      pages += 1;
+      if (opts.onHeartbeat) {
+        await opts.onHeartbeat(rowCount);
+      }
+      if (pageSnap.size < CSV_EXPORT_PAGE) break;
     }
-    if (pageSnap.size < CSV_EXPORT_PAGE) break;
   }
 
   await opts.sink.end();
@@ -484,6 +533,7 @@ export async function startFilteredCsvExport(opts: {
   createdBy: string;
   estado: string;
   flag: string;
+  format?: CsvExportFormat;
 }): Promise<{ record: CsvExportRecord; exportDocId: string; started: boolean }> {
   const db = getAdminDb();
   const campSnap = await db.collection('campaigns').doc(opts.campaignId).get();
@@ -493,7 +543,13 @@ export async function startFilteredCsvExport(opts: {
   const camp = campSnap.data()!;
   const id = `adhoc-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
   const version = 0;
-  const suffix = opts.flag === 'waWmidMissing' ? 'wamid' : (opts.estado && opts.estado !== 'all' && opts.estado !== 'todos' ? opts.estado : 'vista');
+  const format: CsvExportFormat = opts.format === 'upload' ? 'upload' : 'results';
+  const suffix =
+    opts.flag === 'problemas'
+      ? 'para-empresa'
+      : opts.flag === 'waWmidMissing'
+        ? 'wamid'
+        : (opts.estado && opts.estado !== 'all' && opts.estado !== 'todos' ? opts.estado : 'vista');
   const fileName = `${sanitizeExportSlug(String(camp.nombre || ''), opts.campaignId)}-${csvExportDateStamp()}-${suffix}.csv`;
   const record: CsvExportRecord = {
     campaignId: opts.campaignId,
@@ -511,6 +567,7 @@ export async function startFilteredCsvExport(opts: {
     createdAt: FieldValue.serverTimestamp(),
     filterEstado: opts.estado,
     filterFlag: opts.flag,
+    format,
   };
   await csvExportsRef(db, opts.campaignId).doc(id).set(record);
   return { record, exportDocId: id, started: true };
@@ -581,6 +638,7 @@ export async function runCsvExportJob(opts: {
   const startedAt = Date.now();
 
   try {
+    const format: CsvExportFormat = current.format === 'upload' ? 'upload' : 'results';
     const stats = await streamCampaignCsvPages({
       db,
       campaignId: opts.campaignId,
@@ -588,6 +646,8 @@ export async function runCsvExportJob(opts: {
       sink: gcsWriteSink(tempFile),
       estado: current.filterEstado || 'all',
       flag: current.filterFlag || '',
+      format,
+      uploadHeaders: format === 'upload' ? campaignUploadHeaders(campaign) : undefined,
       failAfterRows: opts.failAfterRows,
       onHeartbeat: async (rows) => {
         await exportRef.update({
@@ -609,9 +669,13 @@ export async function runCsvExportJob(opts: {
       throw new Error('SHA-256 inválido');
     }
 
-    const head = await tempFile.download({ start: 0, end: 120 });
+    const head = await tempFile.download({ start: 0, end: 160 });
     const headText = head[0].toString('utf8');
-    if (!headText.includes('Campaign ID') || !headText.includes('Notification ID')) {
+    if (format === 'upload') {
+      if (!headText.includes('nombre') || !headText.includes('dni')) {
+        throw new Error('Encabezado CSV ausente');
+      }
+    } else if (!headText.includes('Campaign ID') || !headText.includes('Notification ID')) {
       throw new Error('Encabezado CSV ausente');
     }
 

@@ -67,9 +67,10 @@ export async function POST(request: NextRequest) {
       orgId?: string;
       newVersion?: boolean;
       retry?: boolean;
-      kind?: 'completo' | 'vista' | 'errores' | 'full' | 'filtered';
+      kind?: 'completo' | 'vista' | 'errores' | 'problemas' | 'full' | 'filtered';
       estado?: string;
       flag?: string;
+      format?: 'results' | 'upload';
     };
     const campaignId = String(body.campaignId || '');
     const orgId = String(body.orgId || '');
@@ -82,10 +83,11 @@ export async function POST(request: NextRequest) {
     const createdBy = access.viaAdmin ? 'admin' : (access.email || access.uid || 'user');
 
     const kind = body.kind || 'completo';
-    if (kind === 'vista' || kind === 'errores' || kind === 'filtered') {
-      const estado = kind === 'errores' ? 'error' : (body.estado || 'all');
-      const flag = body.flag || '';
-      const started = await startFilteredCsvExport({ campaignId, orgId, createdBy, estado, flag });
+    if (kind === 'vista' || kind === 'errores' || kind === 'problemas' || kind === 'filtered') {
+      const estado = kind === 'errores' ? 'error' : (kind === 'problemas' ? 'all' : (body.estado || 'all'));
+      const flag = kind === 'problemas' ? 'problemas' : (body.flag || '');
+      const format = kind === 'problemas' ? 'upload' : (body.format === 'upload' ? 'upload' : 'results');
+      const started = await startFilteredCsvExport({ campaignId, orgId, createdBy, estado, flag, format });
       await enqueueCampaignCsvExport({ campaignId, exportDocId: started.exportDocId });
       return NextResponse.json({
         started: true,
