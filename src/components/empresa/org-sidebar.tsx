@@ -6,7 +6,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { Organization } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, List, Megaphone, PlusCircle } from "lucide-react";
+import { LayoutDashboard, List, Megaphone, PlusCircle, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 
@@ -54,6 +54,7 @@ export function OrgSidebarNav({ orgId, org, onNavigate, className }: OrgSidebarN
     { href: `${base}/dashboard`, label: "Dashboard", icon: LayoutDashboard },
     { href: `${base}/listas`, label: "Listas", icon: List },
     { href: `${base}/campanas`, label: "Campañas", icon: Megaphone },
+    { href: `${base}/verificacion-meta`, label: "Verificación Meta", icon: ShieldCheck },
   ];
 
   return (

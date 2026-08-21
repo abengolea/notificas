@@ -142,6 +142,15 @@ export async function GET(request: NextRequest) {
       firstEventTime(providerEvents, (e) => e.provider === 'meta' && e.eventType === 'sent') ||
       (snapshot?.whatsapp.wamid ? toIso(snapshot.sealedAt) : undefined);
 
+    const webhookPreserved = (type: string) =>
+      providerEvents.some(
+        (e) =>
+          e.provider === 'meta' &&
+          e.eventType === type &&
+          e.signatureValid === true &&
+          Boolean(e.httpBody || e.payloadHash)
+      );
+
     const pdf = await buildActaDestinatarioPdf({
       orgNombre: String(snapshot?.sender.orgNombre || org.nombre || ''),
       orgCuit: snapshot?.sender.orgCuit || (typeof org.cuit === 'string' ? org.cuit : undefined),
@@ -177,6 +186,8 @@ export async function GET(request: NextRequest) {
         waEnviadoAt: waSentAt,
         waEntregadoAt: waDeliveredAt,
         waLeidoAt: waReadAt,
+        waDeliveredWebhookPreserved: webhookPreserved('delivered'),
+        waReadWebhookPreserved: webhookPreserved('read'),
       },
       intact: verified.intact,
       summary: verified.summary,

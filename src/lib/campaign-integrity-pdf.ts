@@ -345,6 +345,8 @@ export type ActaDestinatarioInput = {
     waEnviadoAt?: string;
     waEntregadoAt?: string;
     waLeidoAt?: string;
+    waDeliveredWebhookPreserved?: boolean;
+    waReadWebhookPreserved?: boolean;
   };
   intact: boolean;
   summary: string;
@@ -439,8 +441,19 @@ function writeWrapped(
   return y;
 }
 
-function hechoFecha(iso?: string): [string, string] {
+function hechoFecha(
+  iso?: string,
+  opts?: { meta?: boolean; webhookPreserved?: boolean }
+): [string, string] {
   if (!iso) return ['No consta a la fecha de esta constancia', 'Pendiente de registro'];
+  if (opts?.meta) {
+    return [
+      formatTs(iso),
+      opts.webhookPreserved
+        ? 'Evento informado por Meta. Webhook autenticado y evidencia preservada'
+        : 'Evento informado por Meta y registrado por Notificas',
+    ];
+  }
   return [formatTs(iso), 'Registrado por el sistema'];
 }
 
@@ -817,9 +830,15 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     chronoRows.push(['Correo abierto (pixel / reader)', leiFecha, leiObs]);
   }
   if (showWa) {
-    const [envFecha, envObs] = hechoFecha(input.chronology.waEnviadoAt);
-    const [entFecha, entObs] = hechoFecha(input.chronology.waEntregadoAt);
-    const [leiFecha, leiObs] = hechoFecha(input.chronology.waLeidoAt);
+    const [envFecha, envObs] = hechoFecha(input.chronology.waEnviadoAt, { meta: true });
+    const [entFecha, entObs] = hechoFecha(input.chronology.waEntregadoAt, {
+      meta: true,
+      webhookPreserved: input.chronology.waDeliveredWebhookPreserved,
+    });
+    const [leiFecha, leiObs] = hechoFecha(input.chronology.waLeidoAt, {
+      meta: true,
+      webhookPreserved: input.chronology.waReadWebhookPreserved,
+    });
     chronoRows.push(['WhatsApp enviado (aceptado por Meta)', envFecha, envObs]);
     chronoRows.push(['WhatsApp entregado al dispositivo (Meta)', entFecha, entObs]);
     chronoRows.push(['WhatsApp leído (Meta)', leiFecha, leiObs]);

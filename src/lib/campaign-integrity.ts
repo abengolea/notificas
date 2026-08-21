@@ -2,10 +2,20 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { sendPolygonTransaction } from '@/lib/blockchain';
 import { buildMerkleTree, getMerkleProof, sha256Hex, verifyMerkleProof } from '@/lib/merkle';
-import { buildSendLeafPayload, parseSendLeafPayload } from '@/lib/campaign-leaf-payload';
+import {
+  buildSendLeafPayload,
+  buildEventLeafPayload,
+  type EventLeafMetaEvidence,
+} from '@/lib/campaign-leaf-payload';
 import { enqueueIntegrityClose } from '@/lib/cloud-tasks';
 
-export { buildSendLeafPayload, parseSendLeafPayload } from '@/lib/campaign-leaf-payload';
+export {
+  buildSendLeafPayload,
+  parseSendLeafPayload,
+  buildEventLeafPayload,
+  parseEventLeafPayload,
+} from '@/lib/campaign-leaf-payload';
+export type { EventLeafMetaEvidence } from '@/lib/campaign-leaf-payload';
 
 export const SEND_TANDA_SIZE = 500;
 export const EVENT_TANDA_SIZE = 500;
@@ -83,24 +93,6 @@ export async function resolveOpenEventBatchId(campaignId: string, at = new Date(
     if (!snap.exists || snap.data()?.status === 'open') return id;
   }
   return `events-${eventDayKey(at)}-${Date.now()}`;
-}
-
-export function buildEventLeafPayload(input: {
-  campaignId: string;
-  messageId: string;
-  eventType: IntegrityEventType;
-  occurredAt: string;
-  sendLeafHash: string;
-}): string {
-  return [
-    'v1',
-    'event',
-    input.campaignId,
-    input.messageId,
-    input.eventType,
-    input.occurredAt,
-    input.sendLeafHash || '',
-  ].join('|');
 }
 
 function isCampaignOnChainPrefix(prefix: string | undefined): boolean {
@@ -430,6 +422,7 @@ export async function recordEventLeaf(params: {
   messageId: string;
   eventType: IntegrityEventType;
   occurredAt?: string;
+  meta?: EventLeafMetaEvidence;
 }): Promise<{ leafHash: string; already: boolean; batchId: string }> {
   const db = getAdminDb();
   const occurredAt = params.occurredAt || new Date().toISOString();
@@ -448,6 +441,7 @@ export async function recordEventLeaf(params: {
     eventType: params.eventType,
     occurredAt,
     sendLeafHash,
+    meta: params.meta,
   });
   const leafHash = await sha256Hex(leafPayload);
 

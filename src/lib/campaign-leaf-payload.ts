@@ -84,3 +84,81 @@ export function parseSendLeafPayload(payload: string | undefined): {
   }
   return null;
 }
+
+export type EventLeafMetaEvidence = {
+  wamid?: string;
+  status?: string;
+  metaTimestamp?: string;
+  recipientId?: string;
+  rawPayloadHash?: string;
+};
+
+export type IntegrityEventTypeLeaf = 'email_read' | 'wa_delivered' | 'wa_read';
+
+export function buildEventLeafPayload(input: {
+  campaignId: string;
+  messageId: string;
+  eventType: IntegrityEventTypeLeaf;
+  occurredAt: string;
+  sendLeafHash: string;
+  meta?: EventLeafMetaEvidence;
+}): string {
+  const v1 = [
+    'v1',
+    'event',
+    input.campaignId,
+    input.messageId,
+    input.eventType,
+    input.occurredAt,
+    input.sendLeafHash || '',
+  ];
+  const hash = input.meta?.rawPayloadHash?.trim();
+  if (!hash) return v1.join('|');
+  return [
+    'v2',
+    'event',
+    input.campaignId,
+    input.messageId,
+    input.eventType,
+    input.occurredAt,
+    input.sendLeafHash || '',
+    input.meta?.wamid || '',
+    input.meta?.status || '',
+    input.meta?.metaTimestamp || '',
+    input.meta?.recipientId || '',
+    hash,
+  ].join('|');
+}
+
+export function parseEventLeafPayload(payload: string | undefined): {
+  version: string;
+  eventType: string;
+  occurredAt: string;
+  sendLeafHash: string;
+  wamid?: string;
+  rawPayloadHash?: string;
+} | null {
+  if (!payload) return null;
+  const p = payload.split('|');
+  if (p[1] !== 'event') return null;
+  if (p[0] === 'v2' && p.length >= 12) {
+    return {
+      version: 'v2',
+      eventType: p[4] || '',
+      occurredAt: p[5] || '',
+      sendLeafHash: p[6] || '',
+      wamid: p[7] || '',
+      rawPayloadHash: p[11] || '',
+    };
+  }
+  if (p[0] === 'v1' && p.length >= 7) {
+    return {
+      version: 'v1',
+      eventType: p[4] || '',
+      occurredAt: p[5] || '',
+      sendLeafHash: p[6] || '',
+    };
+  }
+  return null;
+}
+

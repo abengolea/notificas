@@ -113,6 +113,10 @@ env:
     secret: WHATSAPP_APP_SECRET
     availability:
       - RUNTIME
+  - variable: WHATSAPP_ACCESS_TOKEN
+    secret: WHATSAPP_ACCESS_TOKEN
+    availability:
+      - RUNTIME
   # IDs de la cuenta Meta sellados al enviar (el Phone Number ID ya existe como secreto de Functions).
   - variable: WHATSAPP_PHONE_NUMBER_ID
     secret: WHATSAPP_PHONE_NUMBER_ID

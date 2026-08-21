@@ -63,6 +63,8 @@ export async function POST(request: NextRequest) {
     signatureHeader,
     signatureValid: true,
     payloadHash,
+    contentType: request.headers.get("content-type"),
+    signatureValidatedAt: new Date().toISOString(),
   }).catch((e) =>
     console.error("❌ Error en whatsapp webhook:", e?.message)
   );
@@ -95,6 +97,8 @@ async function processWebhookBody(
     signatureHeader: string | null;
     signatureValid: boolean;
     payloadHash: string;
+    contentType?: string | null;
+    signatureValidatedAt?: string | null;
   }
 ) {
   if (!body || body.object !== "whatsapp_business_account") return;
@@ -125,12 +129,25 @@ async function processStatus(
       signatureHeader: string | null;
       signatureValid: boolean;
       payloadHash: string;
+      contentType?: string | null;
+      signatureValidatedAt?: string | null;
     };
   }
 ) {
   const wamid: string = status.id;
   const statusType: string = status.status; // sent | delivered | read | failed
   const recipientPhone: string = status.recipient_id ?? "Unknown";
+  const metaPhoneId =
+    extra?.metadata && typeof extra.metadata === "object"
+      ? String((extra.metadata as { phone_number_id?: string }).phone_number_id || "") || null
+      : null;
+  const metaWabaId = extra?.entryId ? String(extra.entryId) : null;
+  const providerExtra = {
+    contentType: extra?.inbound?.contentType ?? null,
+    wabaId: metaWabaId,
+    phoneNumberId: metaPhoneId,
+    signatureValidatedAt: extra?.inbound?.signatureValidatedAt ?? null,
+  };
   const timestamp = status.timestamp
     ? new Date(parseInt(status.timestamp, 10) * 1000).toISOString()
     : new Date().toISOString();
@@ -179,7 +196,16 @@ async function processStatus(
       // whatsapp_ids aún no existe (race condition: webhook llegó antes que el worker lo escribiera).
       // Guardar el evento pendiente — el worker lo procesará al escribir whatsapp_ids.
       await db.doc(`pending_wa_webhooks/${wamid}`).set(
-        { statusType, timestamp, recipientPhone, wamid, raw: status, createdAt: FieldValue.serverTimestamp() },
+        {
+          statusType,
+          timestamp,
+          recipientPhone,
+          wamid,
+          raw: status,
+          payloadHash: extra?.inbound?.payloadHash ?? null,
+          signatureHeader: extra?.inbound?.signatureHeader ?? null,
+          createdAt: FieldValue.serverTimestamp(),
+        },
         { merge: true }
       );
       await recordProviderEvent({
@@ -193,6 +219,7 @@ async function processStatus(
         signatureValid: extra?.inbound?.signatureValid ?? null,
         payloadHash: extra?.inbound?.payloadHash ?? null,
         httpBody: extra?.inbound?.httpBody ?? null,
+        ...providerExtra,
       }).catch(() => undefined);
       console.log(`⏳ Webhook ${statusType} guardado en pending_wa_webhooks/${wamid} — se procesará cuando llegue whatsapp_ids`);
       return;
@@ -272,6 +299,10 @@ async function processStatus(
     signatureValid: extra?.inbound?.signatureValid ?? null,
     payloadHash: extra?.inbound?.payloadHash ?? null,
     httpBody: extra?.inbound?.httpBody ?? null,
+    contentType: extra?.inbound?.contentType ?? null,
+    wabaId: metaWabaId,
+    phoneNumberId: metaPhoneId,
+    signatureValidatedAt: extra?.inbound?.signatureValidatedAt ?? null,
   }).catch((e) => console.warn("⚠️ No se pudo guardar raw WA:", e?.message));
 
   if (!recorded.campaignId && (statusType === "delivered" || statusType === "read")) {
@@ -282,14 +313,20 @@ async function processStatus(
   }
 
   // Propagar estado al campaign_message correspondiente
-  await syncCampaignMessage(db, mailDocId, statusType, timestamp);
+  await syncCampaignMessage(db, mailDocId, statusType, timestamp, {
+    wamid,
+    recipientId: recipientPhone,
+    metaTimestamp: timestamp,
+    rawPayloadHash: extra?.inbound?.payloadHash ?? undefined,
+  });
 }
 
 async function syncCampaignMessage(
   db: ReturnType<typeof getAdminDb>,
   mailId: string,
   statusType: string,
-  timestamp: string
+  timestamp: string,
+  meta?: { wamid?: string; recipientId?: string; metaTimestamp?: string; rawPayloadHash?: string }
 ) {
   try {
     const snap = await db.collection('campaign_messages').where('mailId', '==', mailId).limit(1).get();
@@ -359,6 +396,15 @@ async function syncCampaignMessage(
         messageId: snap.docs[0].id,
         eventType: statusType === 'delivered' ? 'wa_delivered' : 'wa_read',
         occurredAt: timestamp,
+        meta: meta?.rawPayloadHash
+          ? {
+              wamid: meta.wamid,
+              status: statusType,
+              metaTimestamp: meta.metaTimestamp,
+              recipientId: meta.recipientId,
+              rawPayloadHash: meta.rawPayloadHash,
+            }
+          : undefined,
       }).catch((e) => console.warn('⚠️ Hoja Merkle WA:', e?.message));
     }
     console.log(`✅ campaign_message sincronizado: ${statusType} para mail/${mailId}`);

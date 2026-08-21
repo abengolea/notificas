@@ -18,6 +18,10 @@ export type ProviderEventInput = {
   signatureValid?: boolean | null;
   payloadHash?: string | null;
   httpBody?: string | null;
+  contentType?: string | null;
+  wabaId?: string | null;
+  phoneNumberId?: string | null;
+  signatureValidatedAt?: string | null;
 };
 
 const MAX_RAW_CHARS = 80_000;
@@ -60,6 +64,10 @@ export async function recordProviderEvent(input: ProviderEventInput): Promise<st
     signatureValid: input.signatureValid ?? null,
     payloadHash: input.payloadHash || null,
     httpBody: input.httpBody ? clipString(input.httpBody) : null,
+    contentType: input.contentType || null,
+    wabaId: input.wabaId || null,
+    phoneNumberId: input.phoneNumberId || null,
+    signatureValidatedAt: input.signatureValidatedAt || null,
     receivedAt: FieldValue.serverTimestamp(),
   });
   return ref.id;

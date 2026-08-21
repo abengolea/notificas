@@ -168,6 +168,11 @@ export async function buildPublicEvidence(mailId: string) {
     blockchainVerified: Boolean(sendTx || campaign?.send.txHash || waTx),
     intact,
     campaign,
+    campaignId: mail.campaignId ? String(mail.campaignId) : null,
+    campaignMessageId: mail.campaignMessageId ? String(mail.campaignMessageId) : null,
+    hasWhatsApp: Boolean(
+      snapshot?.whatsapp.wamid || mail.whatsappMessageId || mail.tracking?.whatsappMessageId || mail.waRequestSnapshot
+    ),
     providerEvents: events.map((e) => ({
       id: e.id,
       provider: (e as { provider?: string }).provider,

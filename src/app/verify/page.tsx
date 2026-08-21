@@ -4,11 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Upload, Search, CheckCircle, XCircle, FileText, Shield } from "lucide-react";
+import { Upload, Search, CheckCircle, XCircle, FileText, Shield, ChevronDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { hashArrayBuffer } from "@/lib/storage";
 import { extractVerifyHints } from "@/lib/verify-hints";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { MetaCommunicationPanel } from "@/components/verify/meta-communication-panel";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface VerificationResult {
   isValid: boolean;
@@ -38,6 +40,10 @@ interface VerificationResult {
   campaignNombre?: string;
   orgNombre?: string;
   orgCuit?: string;
+  campaignId?: string;
+  hasWhatsApp?: boolean;
+  merkleRoot?: string;
+  snapshotMatch?: boolean;
 }
 
 function mapVerifyApiData(
@@ -85,6 +91,13 @@ function mapVerifyApiData(
     campaignNombre: data?.campaignNombre as string | undefined,
     fileName: data?.fileName as string | undefined,
     attachmentUrl: data?.attachmentUrl as string | undefined,
+    campaignId: data?.campaignId as string | undefined,
+    hasWhatsApp: data?.hasWhatsApp === true || Boolean(data?.wamid),
+    merkleRoot: data?.merkleRoot as string | undefined,
+    snapshotMatch:
+      typeof (data?.contentHash as { snapshotMatch?: boolean } | undefined)?.snapshotMatch === "boolean"
+        ? (data?.contentHash as { snapshotMatch?: boolean }).snapshotMatch
+        : undefined,
     ...extras,
   };
 }
@@ -367,10 +380,10 @@ export default function VerifyPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-foreground mb-4">
-            Verificar Autenticidad de Documentos
+            Validación de Notificas
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Al escanear el QR, se carga el hash y esta página contrasta sola si Notificas lo emitió.
+            Comprobá si esta constancia fue emitida por Notificas y si su contenido coincide con el registro original.
             También puede subir el PDF o ingresar el identificador.
           </p>
         </div>
@@ -519,37 +532,33 @@ export default function VerifyPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                {result.isValid ? (
-                  <CheckCircle className="h-5 w-5 text-green-500" />
+                {result.isValid && result.issuedByNotificas ? (
+                  <CheckCircle className="h-5 w-5 text-emerald-600" />
                 ) : (
-                  <XCircle className="h-5 w-5 text-red-500" />
+                  <XCircle className="h-5 w-5 text-destructive" />
                 )}
-                Resultado de la Verificación
+                Validación del documento / constancia
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {/* Estado de verificación */}
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={result.isValid ? "default" : "destructive"}>
+                  <Badge variant={result.isValid && result.issuedByNotificas ? "default" : "destructive"}>
                     {result.isValid && result.issuedByNotificas
-                      ? "NOTIFICAS EMITIÓ ESTE CERTIFICADO"
-                      : result.isValid
-                        ? "DOCUMENTO VÁLIDO"
-                        : "NOTIFICAS NO EMITIÓ ESTE DOCUMENTO"}
+                      ? "Constancia auténtica emitida por Notificas"
+                      : "No fue posible validar la constancia"}
                   </Badge>
                   {result.blockchainVerified && result.isValid && (
-                    <Badge variant="outline" className="text-green-600 border-green-600">
+                    <Badge variant="outline" className="text-emerald-700 border-emerald-600">
                       <Shield className="mr-1 h-3 w-3" />
-                      VERIFICADO EN BLOCKCHAIN
+                      Evidencia íntegra en blockchain
                     </Badge>
                   )}
                 </div>
                 {result.isValid ? (
-                  <p className="text-sm text-muted-foreground">
-                    {result.hash
-                      ? "El hash del QR coincide con un registro emitido por Notificas."
-                      : "El identificador del QR coincide con un registro emitido por Notificas."}
+                  <p className="text-sm text-muted-foreground max-w-prose">
+                    Esta constancia fue emitida por Notificas. El contenido coincide con el registro original
+                    según las comprobaciones de identificador, hash, snapshot, tanda y anclaje disponibles.
                   </p>
                 ) : (
                   <p className="text-sm text-muted-foreground">
@@ -559,7 +568,6 @@ export default function VerifyPage() {
 
                 {result.isValid ? (
                   <>
-                    {/* Detalles del documento */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         {result.fileName && (
@@ -570,6 +578,12 @@ export default function VerifyPage() {
                             </span>
                           </div>
                         )}
+                        <div className="flex justify-between gap-3">
+                          <span className="text-sm text-muted-foreground">ID de constancia:</span>
+                          <span className="text-sm font-mono bg-muted px-2 py-1 rounded">
+                            {result.messageId}
+                          </span>
+                        </div>
                         {result.isCampaignDocument ? (
                           <>
                             <div className="flex justify-between gap-3">
@@ -584,21 +598,9 @@ export default function VerifyPage() {
                               <span className="text-sm text-muted-foreground">Campaña:</span>
                               <span className="text-sm font-medium">{result.campaignNombre || "—"}</span>
                             </div>
-                            {result.recipientEmail && (
-                              <div className="flex justify-between gap-3">
-                                <span className="text-sm text-muted-foreground">Destinatario:</span>
-                                <span className="text-sm font-medium">{result.recipientEmail}</span>
-                              </div>
-                            )}
                           </>
                         ) : (
                           <>
-                            <div className="flex justify-between gap-3">
-                              <span className="text-sm text-muted-foreground">ID del Mensaje:</span>
-                              <span className="text-sm font-mono bg-muted px-2 py-1 rounded">
-                                {result.messageId}
-                              </span>
-                            </div>
                             <div className="flex justify-between gap-3">
                               <span className="text-sm text-muted-foreground">Remitente:</span>
                               <span className="text-sm font-medium">{result.senderName}</span>
@@ -625,7 +627,7 @@ export default function VerifyPage() {
                       <div className="space-y-2">
                         {result.sentAt && (
                           <div className="flex justify-between gap-3">
-                            <span className="text-sm text-muted-foreground">Fecha de Envío:</span>
+                            <span className="text-sm text-muted-foreground">Fecha de emisión / envío:</span>
                             <span className="text-sm font-medium">{result.sentAt}</span>
                           </div>
                         )}
@@ -645,18 +647,14 @@ export default function VerifyPage() {
                             </span>
                           </div>
                         )}
-                        {result.integrityValid === true && (
-                          <div className="flex justify-between gap-3">
-                            <span className="text-sm text-muted-foreground">Integridad:</span>
-                            <span className="text-sm font-medium">Coincide con el snapshot / Polygon</span>
-                          </div>
-                        )}
-                        {result.integrityValid === false && (
-                          <div className="flex justify-between gap-3">
-                            <span className="text-sm text-muted-foreground">Integridad:</span>
-                            <span className="text-sm font-medium text-destructive">No coincide</span>
-                          </div>
-                        )}
+                        <div className="flex justify-between gap-3">
+                          <span className="text-sm text-muted-foreground">Integridad:</span>
+                          <span className="text-sm font-medium">
+                            {result.integrityValid === false
+                              ? "No coincide"
+                              : "Verificada"}
+                          </span>
+                        </div>
                         {result.contentHash && (
                           <div className="flex justify-between gap-3">
                             <span className="text-sm text-muted-foreground">Hash intimación:</span>
@@ -665,40 +663,19 @@ export default function VerifyPage() {
                             </span>
                           </div>
                         )}
-                        {result.wamid && (
+                        {result.snapshotHash && (
                           <div className="flex justify-between gap-3">
-                            <span className="text-sm text-muted-foreground">WAMID:</span>
-                            <span className="text-sm font-mono truncate max-w-[180px]" title={result.wamid}>
-                              {result.wamid}
-                            </span>
-                          </div>
-                        )}
-                        {result.waBodyHash && (
-                          <div className="flex justify-between gap-3">
-                            <span className="text-sm text-muted-foreground">Hash aviso WA:</span>
-                            <span className="text-sm font-mono truncate max-w-[180px]" title={result.waBodyHash}>
-                              {result.waBodyHash.substring(0, 16)}…
+                            <span className="text-sm text-muted-foreground">evidence_snapshot:</span>
+                            <span className="text-sm font-mono truncate max-w-[180px]" title={result.snapshotHash}>
+                              {result.snapshotHash.substring(0, 16)}…
                             </span>
                           </div>
                         )}
                         {result.explorerUrl && (
                           <div className="flex justify-between gap-3">
-                            <span className="text-sm text-muted-foreground">Polygon (intimación):</span>
+                            <span className="text-sm text-muted-foreground">Polygon:</span>
                             <a
                               href={result.explorerUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-sm text-primary underline"
-                            >
-                              Ver transacción
-                            </a>
-                          </div>
-                        )}
-                        {result.waExplorerUrl && (
-                          <div className="flex justify-between gap-3">
-                            <span className="text-sm text-muted-foreground">Polygon (aviso WA):</span>
-                            <a
-                              href={result.waExplorerUrl}
                               target="_blank"
                               rel="noreferrer"
                               className="text-sm text-primary underline"
@@ -710,26 +687,41 @@ export default function VerifyPage() {
                       </div>
                     </div>
 
-                    {/* Información adicional */}
-                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                      <h4 className="font-semibold text-blue-800 mb-2 flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        ¿Qué significa este resultado?
-                      </h4>
-                      <p className="text-sm text-blue-700">
-                        {result.summary ||
-                          "Este documento fue emitido por Notificas.com. La integridad se recálcula contra el snapshot sellado y, si existe, contra la transacción en Polygon."}
-                      </p>
-                      {result.whatsappRole && (
-                        <p className="text-sm text-blue-700 mt-2">{result.whatsappRole}</p>
-                      )}
-                    </div>
+                    <Collapsible>
+                      <CollapsibleTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          Ver detalles técnicos
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="mt-3 rounded-md border p-4 text-sm space-y-2 bg-muted/40">
+                        {result.wamid && (
+                          <p>WAMID (identificador de mensaje asignado por Meta): <span className="font-mono break-all">{result.wamid}</span></p>
+                        )}
+                        {result.waBodyHash && (
+                          <p>Hash aviso WA: <span className="font-mono break-all">{result.waBodyHash}</span></p>
+                        )}
+                        {result.merkleRoot && (
+                          <p>Raíz Merkle: <span className="font-mono break-all">{result.merkleRoot}</span></p>
+                        )}
+                        {result.summary && <p>{result.summary}</p>}
+                        {result.whatsappRole && <p>{result.whatsappRole}</p>}
+                        {result.waExplorerUrl && (
+                          <p>
+                            Polygon (aviso WA):{" "}
+                            <a className="text-primary underline" href={result.waExplorerUrl} target="_blank" rel="noreferrer">
+                              Ver transacción
+                            </a>
+                          </p>
+                        )}
+                      </CollapsibleContent>
+                    </Collapsible>
                   </>
                 ) : (
                   <div className="space-y-3">
                     {(result.fileName || result.messageId) && (
                       <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">{result.fileName ? "Archivo:" : "ID buscado:"}</span>
+                        <span className="text-sm text-muted-foreground">{result.fileName ? "Archivo:" : "ID buscado:"}</span>
                         <span className="text-sm font-medium truncate max-w-[200px]" title={result.fileName || result.messageId || ""}>
                           {result.fileName || result.messageId}
                         </span>
@@ -737,19 +729,19 @@ export default function VerifyPage() {
                     )}
                     {result.hash && (
                       <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">Hash calculado:</span>
-                        <span className="text-sm font-mono bg-gray-100 px-2 py-1 rounded text-xs" title={result.hash}>
+                        <span className="text-sm text-muted-foreground">Hash calculado:</span>
+                        <span className="text-sm font-mono bg-muted px-2 py-1 rounded text-xs" title={result.hash}>
                           {result.hash.substring(0, 16)}...
                         </span>
                       </div>
                     )}
-                    <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-                      <h4 className="font-semibold text-red-700 mb-2 flex items-center gap-2">
+                    <div className="bg-destructive/10 p-4 rounded-lg border border-destructive/30">
+                      <h4 className="font-semibold text-destructive mb-2 flex items-center gap-2">
                         <XCircle className="h-4 w-4" />
-                        Documento no certificado
+                        No fue posible validar la constancia
                       </h4>
-                      <p className="text-sm text-red-600">
-                        Este PDF no coincide con ningún registro emitido por Notificas.com. Asegúrate de utilizar el documento original recibido o contacta al emisor para confirmar su autenticidad.
+                      <p className="text-sm text-muted-foreground">
+                        Este PDF no coincide con ningún registro emitido por Notificas.com. Asegurate de utilizar el documento original recibido o contactá al emisor.
                       </p>
                     </div>
                   </div>
@@ -757,6 +749,14 @@ export default function VerifyPage() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {result?.isValid && (result.hasWhatsApp || result.wamid) && (
+          <MetaCommunicationPanel
+            messageId={result.messageId}
+            campaignId={result.campaignId}
+            enabled
+          />
         )}
 
         {/* Sistema de certificación - Explicación para usuarios y autoridades */}

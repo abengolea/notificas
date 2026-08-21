@@ -278,7 +278,7 @@ Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@noti
   const BASE_DELAY_MS = 1000;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    let res, data;
+    let res, data, rawText;
     try {
       res = await fetch(url, {
         method: 'POST',
@@ -288,7 +288,12 @@ Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@noti
         },
         body: JSON.stringify(payload)
       });
-      data = await res.json();
+      rawText = await res.text();
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        data = {};
+      }
     } catch (err) {
       console.error(`❌ WhatsApp fetch error (intento ${attempt}/${MAX_ATTEMPTS}):`, err.message);
       if (attempt === MAX_ATTEMPTS) return { error: { message: err.message } };
@@ -297,9 +302,17 @@ Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@noti
     }
 
     if (res.ok) {
-      console.log('📱 WhatsApp enviado:', data.messages?.[0]?.id);
+      const wamid = data.messages?.[0]?.id || null;
+      console.log('📱 WhatsApp enviado:', wamid);
+      const graphHttp = {
+        status: res.status,
+        body: rawText.length > 80000 ? rawText.slice(0, 80000) : rawText,
+        bodyHash: crypto.createHash('sha256').update(rawText, 'utf8').digest('hex'),
+        receivedAt: new Date().toISOString(),
+        wamid,
+      };
       return {
-        id: data.messages?.[0]?.id,
+        id: wamid,
         requestSnapshot: {
           to,
           type: payload.type,
@@ -325,6 +338,7 @@ Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@noti
           contacts: data.contacts || null,
           messages: data.messages || null,
         },
+        graphHttp,
       };
     }
 
@@ -703,6 +717,7 @@ exports.sendEmail = onRequest(
         whatsappWabaId: (whatsappWabaId.value() || '').trim() || null,
         waRequestSnapshot: waId.requestSnapshot || null,
         waGraphResponse: waId.graphResponse || null,
+        waGraphHttp: waId.graphHttp || null,
         source: 'whatsapp_campaign',
         sourceLabel: 'Campaña WhatsApp',
         sourceIcon: '📱',
@@ -1089,6 +1104,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
                   await docRef.update({
                     waRequestSnapshot: resultWA.requestSnapshot,
                     waGraphResponse: resultWA.graphResponse || null,
+                    waGraphHttp: resultWA.graphHttp || null,
                     whatsappPhoneNumberId: phoneId,
                     whatsappWabaId: (whatsappWabaId.value() || '').trim() || null,
                   });
@@ -2176,6 +2192,8 @@ async function processWhatsAppStatus(status, inbound) {
         signatureHeader: inbound?.signatureHeader || null,
         signatureValid: inbound?.signatureValid === true,
         payloadHash: inbound?.payloadHash || null,
+        httpBody: inbound?.httpBody || null,
+        contentType: inbound?.contentType || null,
         receivedAt: FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -2301,7 +2319,11 @@ exports.whatsappWebhook = onRequest(
       console.error('WHATSAPP_APP_SECRET no configurado: se rechaza el webhook CF');
       return res.status(401).send('Unauthorized');
     }
-    const raw = req.rawBody || Buffer.from(typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}));
+    if (!req.rawBody) {
+      console.error('WhatsApp webhook CF: falta rawBody; no se recrea el body con JSON.stringify');
+      return res.status(400).send('Raw body required');
+    }
+    const raw = req.rawBody;
     const ok = verifyWhatsAppHubSignature(raw, req.get('x-hub-signature-256'), appSecret);
     if (!ok) {
       console.warn('⚠️ WhatsApp webhook CF: firma X-Hub-Signature-256 inválida');
@@ -2314,6 +2336,9 @@ exports.whatsappWebhook = onRequest(
       signatureHeader: req.get('x-hub-signature-256') || null,
       signatureValid: true,
       payloadHash,
+      httpBody: rawStr,
+      contentType: req.get('content-type') || null,
+      signatureValidatedAt: new Date().toISOString(),
     };
 
     try {

@@ -482,6 +482,16 @@ async function processMessage(
           messageId: messageDocId,
           eventType: st === 'delivered' ? 'wa_delivered' : 'wa_read',
           occurredAt: typeof pending.timestamp === 'string' ? pending.timestamp : undefined,
+          meta:
+            typeof pending.payloadHash === 'string' && pending.payloadHash
+              ? {
+                  wamid,
+                  status: st,
+                  metaTimestamp: typeof pending.timestamp === 'string' ? pending.timestamp : undefined,
+                  recipientId: typeof pending.recipientPhone === 'string' ? pending.recipientPhone : undefined,
+                  rawPayloadHash: pending.payloadHash,
+                }
+              : undefined,
         }).catch((e) => console.warn('⚠️ Hoja de hecho WA pendiente:', e?.message));
       }
       await db.doc(`pending_wa_webhooks/${wamid}`).delete();
