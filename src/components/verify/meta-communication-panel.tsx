@@ -338,45 +338,52 @@ export function MetaCommunicationPanel({
               </div>
             )}
 
-            <section className="space-y-3">
-              <h3 className="font-semibold">Identificación en Meta</h3>
-              <p className="text-xs text-muted-foreground">Fuente: Meta Graph API — consulta actual</p>
-              <IdentityRow
-                label="WABA ID"
-                value={report.identification.wabaId}
-                check={report.live.waba}
-              />
-              <PhoneIdentityBlock report={report} />
-              <RecipientIdentityBlock report={report} />
-              <div className="text-sm space-y-1">
-                <div className="flex flex-wrap justify-between gap-2">
-                  <span className="text-muted-foreground">Template</span>
-                  <span>{report.identification.templateName || "—"}</span>
-                </div>
-                <div className="flex flex-wrap justify-between gap-2">
-                  <span className="text-muted-foreground">Template ID</span>
-                  <Mono>{report.identification.templateId}</Mono>
-                </div>
-                {report.live.template && (
-                  <p className="flex items-start gap-2 text-sm">
-                    <StatusMark status={report.live.template.status} />
-                    <span>
-                      {report.live.template.message}
-                      {report.live.templateNameMatchesSnapshot && report.live.templateLangMatchesSnapshot
-                        ? " Nombre e idioma coinciden con la evidencia conservada."
-                        : ""}
-                    </span>
+            <section className="space-y-4">
+              <div className="rounded-lg border bg-card p-4 space-y-3">
+                <div>
+                  <h3 className="font-semibold text-base">Emisor — validación actual contra Meta</h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Fuente: Meta Graph API — consulta actual. Es el número de WhatsApp Business de Notificas, no el destinatario.
                   </p>
-                )}
-                <p className="text-xs text-muted-foreground">{report.live.templateContentHistoricalNote}</p>
+                </div>
+                <IdentityRow
+                  label="WABA ID"
+                  value={report.identification.wabaId}
+                  check={report.live.waba}
+                />
+                <PhoneIdentityBlock report={report} />
+                <div className="text-sm space-y-1 pt-2 border-t">
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <span className="text-muted-foreground">Template</span>
+                    <span>{report.identification.templateName || "—"}</span>
+                  </div>
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <span className="text-muted-foreground">Template ID</span>
+                    <Mono>{report.identification.templateId}</Mono>
+                  </div>
+                  {report.live.template && (
+                    <p className="flex items-start gap-2 text-sm">
+                      <StatusMark status={report.live.template.status} />
+                      <span>
+                        {report.live.template.message}
+                        {report.live.templateNameMatchesSnapshot && report.live.templateLangMatchesSnapshot
+                          ? " Nombre e idioma coinciden con la evidencia conservada."
+                          : ""}
+                      </span>
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">{report.live.templateContentHistoricalNote}</p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Última comprobación directa con Meta: {report.live.lastLiveCheckAt ? formatWhen(report.live.lastLiveCheckAt) : "—"}
+                </p>
+                <Button type="button" variant="outline" size="sm" onClick={() => void load(true)} disabled={loading}>
+                  <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                  Actualizar validación
+                </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Última comprobación directa con Meta: {report.live.lastLiveCheckAt ? formatWhen(report.live.lastLiveCheckAt) : "—"}
-              </p>
-              <Button type="button" variant="outline" size="sm" onClick={() => void load(true)} disabled={loading}>
-                <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                Actualizar validación
-              </Button>
+
+              <RecipientIdentityBlock report={report} />
             </section>
 
             <section className="space-y-2">
@@ -490,8 +497,15 @@ export function MetaCommunicationPanel({
 function PhoneIdentityBlock({ report }: { report: MetaCommunicationReport }) {
   const phone = report.live.phone;
   const wabaId = report.identification.wabaId;
+  const display = phone?.fields.displayPhoneNumber;
   return (
     <div className="text-sm space-y-1">
+      {display && (
+        <div className="flex flex-wrap justify-between gap-2">
+          <span className="text-muted-foreground">Número WhatsApp Business</span>
+          <span>{display}</span>
+        </div>
+      )}
       <div className="flex flex-wrap justify-between gap-2">
         <span className="text-muted-foreground">Phone Number ID</span>
         <Mono>{report.identification.phoneNumberId}</Mono>
@@ -502,12 +516,6 @@ function PhoneIdentityBlock({ report }: { report: MetaCommunicationReport }) {
             <StatusMark status={phone.status} />
             <span>{phone.message}</span>
           </p>
-          {phone.fields.displayPhoneNumber && (
-            <p className="text-muted-foreground">
-              Número emisor (WhatsApp Business):{" "}
-              <span className="text-foreground">{phone.fields.displayPhoneNumber}</span>
-            </p>
-          )}
           {phone.fields.verifiedName && (
             <p className="text-muted-foreground">
               Nombre verificado: <span className="text-foreground">{phone.fields.verifiedName}</span>
@@ -526,22 +534,54 @@ function PhoneIdentityBlock({ report }: { report: MetaCommunicationReport }) {
 }
 
 function RecipientIdentityBlock({ report }: { report: MetaCommunicationReport }) {
-  const phone = report.identification.recipientPhone;
-  const webhookId = report.identification.webhookRecipientId;
+  const ev = report.recipientEvidence;
+  const matchOk = ev.match === true;
   return (
-    <div className="text-sm space-y-1">
-      <div className="flex flex-wrap justify-between gap-2">
-        <span className="text-muted-foreground">Destinatario</span>
-        <Mono>{phone}</Mono>
+    <div className="rounded-lg border bg-card p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="font-semibold text-base">Destinatario — evidencia histórica de Meta</h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            Confronta el teléfono de la constancia con el recipient_id del webhook de Meta.
+          </p>
+        </div>
+        {matchOk && (
+          <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white border-0">Coinciden</Badge>
+        )}
+        {ev.match === false && (
+          <Badge variant="destructive">No coinciden</Badge>
+        )}
       </div>
-      <p className="text-xs text-muted-foreground">
-        Teléfono consignado en la constancia. No es el Phone Number ID ni el número emisor de Notificas.
+      <div className="flex flex-wrap justify-between gap-2 text-sm">
+        <span className="text-muted-foreground">Número consignado en la constancia</span>
+        <Mono>{ev.consignedPhone}</Mono>
+      </div>
+      <div className="flex flex-wrap justify-between gap-2 text-sm">
+        <span className="text-muted-foreground">recipient_id informado por Meta</span>
+        <Mono>{ev.webhookRecipientId}</Mono>
+      </div>
+      <p className="flex items-start gap-2 text-sm font-medium">
+        <StatusMark status={ev.status} />
+        <span>{ev.matchMessage}</span>
       </p>
-      {webhookId && (
-        <p className="text-muted-foreground">
-          recipient_id informado por Meta (webhook): <Mono>{webhookId}</Mono>
+      {matchOk && ev.delivered && (
+        <p className="flex items-start gap-2 text-sm">
+          <StatusMark status="VERIFIED" />
+          <span>
+            Meta informó <code className="font-mono text-xs">delivered</code> para este recipient_id
+          </span>
         </p>
       )}
+      {matchOk && ev.read && (
+        <p className="flex items-start gap-2 text-sm">
+          <StatusMark status="VERIFIED" />
+          <span>
+            Meta informó <code className="font-mono text-xs">read</code> para este recipient_id
+          </span>
+        </p>
+      )}
+      {matchOk && ev.summary && <p className="text-sm">{ev.summary}</p>}
+      {ev.sourceNote && <p className="text-xs text-muted-foreground">{ev.sourceNote}</p>}
     </div>
   );
 }

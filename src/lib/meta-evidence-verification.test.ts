@@ -13,14 +13,17 @@ import {
   pickWabaPublic,
 } from "./meta-graph-client";
 import {
+  buildRecipientMetaEvidence,
   detectWamidMismatch,
   historicalEventFromProvider,
   normalizeWaRecipient,
   recomputeWebhookIntegrity,
+  waRecipientsCorrespond,
 } from "./meta-webhook-evidence";
 import { liveMetaFailureDoesNotInvalidateDocument } from "./meta-verify-status";
 import { buildEventLeafPayload, parseEventLeafPayload } from "./campaign-leaf-payload";
 import { verifyPhoneNumberAgainstMeta } from "./meta-phone-verification";
+import type { HistoricalMetaEvent } from "./meta-communication-types";
 
 const SECRET = "test-app-secret";
 
@@ -387,6 +390,80 @@ test("recipient_id diferente se detecta", () => {
   );
   assert.equal(ev.status, "FAILED");
   assert.equal(normalizeWaRecipient("54900000000") === normalizeWaRecipient("54911111111"), false);
+});
+
+test("teléfono consignado +54 9 … coincide con recipient_id de Meta", () => {
+  assert.equal(waRecipientsCorrespond("+54 9 356 466-0236", "5493564660236"), true);
+  assert.equal(waRecipientsCorrespond("5493564660236", "+54 9 356 466-0236"), true);
+  assert.equal(waRecipientsCorrespond("+54 9 356 466-0236", "5491111111111"), false);
+});
+
+test("recipientEvidence: coincidencia, delivered/read y RAW preservado", () => {
+  const raw = '{"object":"whatsapp_business_account"}';
+  const base = {
+    status: "HISTORICAL_VERIFIED" as const,
+    title: "x",
+    claim: "x",
+    source: "meta_webhook_historical" as const,
+    wamid: "wamid.AAA",
+    recipientId: "5493564660236",
+    metaTimestamp: null,
+    receivedAt: null,
+    rawPreserved: true,
+    rawTruncated: false,
+    signatureHeaderPresent: true,
+    signatureValidation: "correct" as const,
+    payloadSha256: "aa",
+    integrityMatchesStoredHash: true,
+    webhookAuthLabel: "",
+    rawPublic: "hash_only" as const,
+  };
+  const chronology: HistoricalMetaEvent[] = [
+    { ...base, kind: "delivered" },
+    { ...base, kind: "read" },
+  ];
+  const ev = buildRecipientMetaEvidence({
+    consignedPhone: "+54 9 356 466-0236",
+    chronology,
+  });
+  assert.equal(ev.match, true);
+  assert.equal(ev.status, "VERIFIED");
+  assert.equal(ev.delivered, true);
+  assert.equal(ev.read, true);
+  assert.equal(ev.rawPreserved, true);
+  assert.match(ev.summary, /delivered y read/);
+  assert.match(ev.sourceNote || "", /payload original del webhook/);
+});
+
+test("recipientEvidence: mismatch no afirma coincidencia", () => {
+  const chronology: HistoricalMetaEvent[] = [
+    {
+      status: "HISTORICAL_PRESERVED",
+      kind: "delivered",
+      title: "x",
+      claim: "x",
+      source: "meta_webhook_historical",
+      wamid: "wamid.AAA",
+      recipientId: "54900000000",
+      metaTimestamp: null,
+      receivedAt: null,
+      rawPreserved: false,
+      rawTruncated: false,
+      signatureHeaderPresent: false,
+      signatureValidation: "ingest_only",
+      payloadSha256: null,
+      integrityMatchesStoredHash: null,
+      webhookAuthLabel: "",
+      rawPublic: "none",
+    },
+  ];
+  const ev = buildRecipientMetaEvidence({
+    consignedPhone: "+54 9 356 466-0236",
+    chronology,
+  });
+  assert.equal(ev.match, false);
+  assert.equal(ev.status, "FAILED");
+  assert.equal(ev.delivered, false);
 });
 
 test("evento histórico sin RAW no inventa validación", () => {

@@ -19,6 +19,7 @@ import {
   historicalEventFromProvider,
   mapEventKind,
   sendResponseEvent,
+  buildRecipientMetaEvidence,
 } from "@/lib/meta-webhook-evidence";
 import { verifyPhoneNumberAgainstMeta } from "@/lib/meta-phone-verification";
 
@@ -313,6 +314,10 @@ export async function buildMetaCommunicationReport(opts: {
         recipientPhone: ids.recipientPhone,
         webhookRecipientId: null,
       },
+      recipientEvidence: buildRecipientMetaEvidence({
+        consignedPhone: ids.recipientPhone,
+        chronology: [],
+      }),
       disclaimer:
         "Las consultas en vivo permiten verificar determinados identificadores e infraestructura de WhatsApp Business directamente contra Meta. Los estados históricos del mensaje fueron comunicados oportunamente por Meta mediante webhooks y son conservados por Notificas junto con sus elementos técnicos de integridad y autenticación.",
     };
@@ -485,6 +490,18 @@ export async function buildMetaCommunicationReport(opts: {
     });
   }
 
+  const recipientEvidence = buildRecipientMetaEvidence({
+    consignedPhone: ids.recipientPhone,
+    chronology,
+  });
+  if (recipientEvidence.match === false) {
+    inconsistencies.push({
+      code: "recipient_mismatch",
+      message: recipientEvidence.matchMessage,
+      status: "FAILED",
+    });
+  }
+
   const lastLive =
     liveWaba.queriedAt || livePhone.checkedAt || liveTemplate.queriedAt || null;
 
@@ -530,8 +547,9 @@ export async function buildMetaCommunicationReport(opts: {
       templateName: ids.templateName,
       templateLang: ids.templateLang,
       recipientPhone: ids.recipientPhone,
-      webhookRecipientId: chronology.find((ev) => ev.recipientId)?.recipientId || null,
+      webhookRecipientId: recipientEvidence.webhookRecipientId,
     },
+    recipientEvidence,
     disclaimer:
       "Las consultas en vivo permiten verificar determinados identificadores e infraestructura de WhatsApp Business directamente contra Meta. Los estados históricos de entrega y lectura no se consultan actualmente a Meta: corresponden a eventos que Meta comunicó oportunamente a Notificas mediante webhooks y cuya evidencia técnica fue preservada.",
   };

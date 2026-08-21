@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { verifyWhatsAppHubSignature } from "@/lib/whatsapp-webhook-auth";
 import { payloadContainsSecrets } from "@/lib/meta-graph-client";
-import type { HistoricalMetaEvent } from "@/lib/meta-communication-types";
+import type { HistoricalMetaEvent, RecipientMetaEvidence } from "@/lib/meta-communication-types";
 import type { MetaVerifyStatus } from "@/lib/meta-verify-status";
 
 export type StoredProviderEvent = {
@@ -64,6 +64,27 @@ export function toIsoUnknown(value: unknown): string | null {
 
 export function normalizeWaRecipient(value: string | null | undefined): string {
   return String(value || "").replace(/\D/g, "");
+}
+
+/** Quita el 9 de celulares AR (54 9 …) para comparar con recipient_id de Meta. */
+function dropArMobileNine(digits: string): string {
+  if (digits.startsWith("549") && digits.length >= 12) return `54${digits.slice(3)}`;
+  return digits;
+}
+
+/** Coincidencia probatoria entre teléfono consignado y recipient_id de Meta. */
+export function waRecipientsCorrespond(
+  consigned: string | null | undefined,
+  metaRecipientId: string | null | undefined
+): boolean {
+  const a = normalizeWaRecipient(consigned);
+  const b = normalizeWaRecipient(metaRecipientId);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (dropArMobileNine(a) === dropArMobileNine(b)) return true;
+  const shorter = a.length <= b.length ? a : b;
+  const longer = a.length > b.length ? a : b;
+  return shorter.length >= 8 && longer.endsWith(shorter);
 }
 
 export function wamidsEqual(a: string | null | undefined, b: string | null | undefined): boolean {
@@ -199,12 +220,7 @@ export function historicalEventFromProvider(
   const recipient = typeof ev.recipient === "string" ? ev.recipient : null;
   const wamidMismatch = opts.expectedWamid && wamid ? !wamidsEqual(wamid, opts.expectedWamid) : false;
   const recipientMismatch =
-    opts.expectedRecipient && recipient
-      ? normalizeWaRecipient(recipient) !== normalizeWaRecipient(opts.expectedRecipient) &&
-        normalizeWaRecipient(opts.expectedRecipient).length > 0 &&
-        !normalizeWaRecipient(opts.expectedRecipient).endsWith(normalizeWaRecipient(recipient)) &&
-        !normalizeWaRecipient(recipient).endsWith(normalizeWaRecipient(opts.expectedRecipient))
-      : false;
+    opts.expectedRecipient && recipient ? !waRecipientsCorrespond(opts.expectedRecipient, recipient) : false;
 
   let status: MetaVerifyStatus = "HISTORICAL_PRESERVED";
   if (wamidMismatch || recipientMismatch || integrity.signatureValidation === "incorrect" || integrity.hashMatches === false) {
@@ -283,4 +299,71 @@ export function detectWamidMismatch(
 ): boolean {
   if (!sendWamid || !eventWamid) return false;
   return !wamidsEqual(sendWamid, eventWamid);
+}
+
+export function buildRecipientMetaEvidence(input: {
+  consignedPhone: string | null;
+  chronology: HistoricalMetaEvent[];
+}): RecipientMetaEvidence {
+  const webhookEvents = input.chronology.filter(
+    (e) => e.source === "meta_webhook_historical" && Boolean(e.recipientId)
+  );
+  const matchingEvent = input.consignedPhone
+    ? webhookEvents.find((e) => waRecipientsCorrespond(input.consignedPhone, e.recipientId))
+    : undefined;
+  const webhookRecipientId = matchingEvent?.recipientId || webhookEvents[0]?.recipientId || null;
+  const match =
+    input.consignedPhone && webhookRecipientId
+      ? waRecipientsCorrespond(input.consignedPhone, webhookRecipientId)
+      : null;
+  const relatedToMetaId = webhookRecipientId
+    ? webhookEvents.filter((e) => waRecipientsCorrespond(webhookRecipientId, e.recipientId))
+    : [];
+  const related = match === true ? relatedToMetaId : [];
+  const delivered = related.some((e) => e.kind === "delivered");
+  const read = related.some((e) => e.kind === "read");
+  const rawPreserved = relatedToMetaId.some((e) => e.rawPreserved);
+
+  let status: MetaVerifyStatus = "NOT_AVAILABLE";
+  let matchMessage = "No hay recipient_id de Meta conservado para confrontar con el destinatario de la constancia.";
+  if (match === true) {
+    status = "VERIFIED";
+    matchMessage = "Coincidencia verificada";
+  } else if (match === false) {
+    status = "FAILED";
+    matchMessage = "El teléfono consignado en la constancia no coincide con el recipient_id informado por Meta.";
+  } else if (input.consignedPhone && !webhookRecipientId) {
+    status = "NOT_AVAILABLE";
+    matchMessage =
+      "Hay un destinatario consignado en la constancia, pero no hay recipient_id de Meta para acreditarlo.";
+  }
+
+  const states = [delivered ? "delivered" : null, read ? "read" : null].filter(Boolean) as string[];
+  const statesTxt =
+    states.length === 1 ? `el estado ${states[0]}` : states.length > 1 ? `los estados ${states.join(" y ")}` : "";
+  const summary =
+    match === true && webhookRecipientId && statesTxt
+      ? `Meta informó ${statesTxt} respecto del recipient_id ${webhookRecipientId}, correspondiente al destinatario consignado en esta constancia.`
+      : match === true && webhookRecipientId
+        ? `El recipient_id ${webhookRecipientId} informado por Meta corresponde al destinatario consignado en esta constancia.`
+        : matchMessage;
+
+  const sourceNote = !webhookRecipientId
+    ? null
+    : rawPreserved
+      ? "Fuente del recipient_id: payload original del webhook de Meta preservado por Notificas."
+      : "Fuente del recipient_id: identificador extraído del webhook de Meta. El payload RAW no está conservado para estos eventos.";
+
+  return {
+    consignedPhone: input.consignedPhone,
+    webhookRecipientId,
+    match,
+    status,
+    matchMessage,
+    delivered,
+    read,
+    rawPreserved,
+    summary,
+    sourceNote,
+  };
 }

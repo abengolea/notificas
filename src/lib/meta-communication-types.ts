@@ -82,5 +82,19 @@ export type MetaCommunicationReport = {
     /** recipient_id informado por Meta en webhooks históricos. */
     webhookRecipientId: string | null;
   };
+  recipientEvidence: RecipientMetaEvidence;
   disclaimer: string;
+};
+
+export type RecipientMetaEvidence = {
+  consignedPhone: string | null;
+  webhookRecipientId: string | null;
+  match: boolean | null;
+  status: MetaVerifyStatus;
+  matchMessage: string;
+  delivered: boolean;
+  read: boolean;
+  rawPreserved: boolean;
+  summary: string;
+  sourceNote: string | null;
 };
