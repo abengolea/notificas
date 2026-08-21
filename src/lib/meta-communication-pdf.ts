@@ -8,6 +8,7 @@ import {
   PDF_TABLE_HEAD,
   PDF_TABLE_MARGIN,
   drawPdfLetterheadMm,
+  drawSoftPanelMm,
   drawWarnPanelMm,
   stampPdfChromeMm,
 } from "@/lib/pdf-brand";
@@ -108,6 +109,12 @@ function kvTable(doc: jsPDF, y: number, rows: Array<[string, string]>): number {
   return lastAutoY(doc, y) + 6;
 }
 
+function liveNameLabel(objectLabel: string): string {
+  if (objectLabel.includes("Template")) return "Nombre del template (Graph)";
+  if (objectLabel.includes("WABA")) return "Nombre WABA (Graph)";
+  return `${objectLabel} — nombre (Graph)`;
+}
+
 function liveRow(label: string, id: string | null, live: MetaLiveIdentity | null): Array<[string, string]> {
   const rows: Array<[string, string]> = [[label, id || "—"]];
   if (live) {
@@ -116,9 +123,63 @@ function liveRow(label: string, id: string | null, live: MetaLiveIdentity | null
       rows.push(["Número WhatsApp Business (Graph)", live.fields.displayPhoneNumber]);
     }
     if (live.fields.verifiedName) rows.push(["Nombre verificado (Graph)", live.fields.verifiedName]);
-    if (live.fields.name) rows.push(["Nombre WABA (Graph)", live.fields.name]);
+    if (live.fields.name) rows.push([liveNameLabel(label), live.fields.name]);
   }
   return rows;
+}
+
+function eventOf(report: MetaCommunicationReport, kind: HistoricalMetaEvent["kind"]): HistoricalMetaEvent | undefined {
+  return report.chronology.find((e) => e.kind === kind);
+}
+
+function hmacVerified(ev?: HistoricalMetaEvent): boolean {
+  return ev?.signatureValidation === "correct";
+}
+
+function merkleAnchored(ev?: HistoricalMetaEvent): boolean {
+  return Boolean(ev?.polygon?.merkleValid === true && ev?.polygon?.txHash);
+}
+
+/** Cinco líneas para que AFIP no tenga que leer el detalle técnico. */
+export function metaVerificationExecutiveLines(report: MetaCommunicationReport): string[] {
+  const graphOk =
+    report.live.waba?.status === "VERIFIED" &&
+    report.live.phone?.status === "VERIFIED" &&
+    report.live.template?.status === "VERIFIED";
+  const delivered = eventOf(report, "delivered");
+  const read = eventOf(report, "read");
+  const rec = report.recipientEvidence;
+
+  let hechos = "Hechos: no constan webhooks históricos de entrega o lectura autenticados en esta emisión.";
+  if (delivered && hmacVerified(delivered) && read && hmacVerified(read)) {
+    hechos =
+      "Hechos: Meta informó delivered y read. Ambos webhooks tienen HMAC-SHA256 verificado contra X-Hub-Signature-256.";
+  } else if (delivered && hmacVerified(delivered)) {
+    hechos = "Hechos: Meta informó delivered con HMAC-SHA256 verificado. La lectura no está autenticada o no consta.";
+  } else if (read && hmacVerified(read)) {
+    hechos = "Hechos: Meta informó read con HMAC-SHA256 verificado. La entrega no está autenticada o no consta.";
+  } else if (rec.delivered || rec.read) {
+    hechos =
+      "Hechos: constan estados históricos informados por Meta, pero esta emisión no afirma autenticación criptográfica HMAC.";
+  }
+
+  const tx = delivered?.polygon?.txHash || read?.polygon?.txHash || "";
+  let ancla = "Anclaje: no consta hoja Merkle verificada ni transacción Polygon para estos eventos.";
+  if (merkleAnchored(delivered) && merkleAnchored(read)) {
+    ancla = `Anclaje: delivered y read están en el árbol Merkle (prueba válida) y en Polygon${tx ? ` (${tx.slice(0, 18)}…)` : ""}.`;
+  } else if (merkleAnchored(delivered) || merkleAnchored(read)) {
+    ancla = "Anclaje: hay prueba Merkle válida y transacción Polygon para parte de los eventos, no para todos.";
+  }
+
+  return [
+    "Qué es: anexo técnico de la comunicación WhatsApp. No es el certificado de lectura.",
+    graphOk
+      ? "Infraestructura ahora: WABA, número WhatsApp Business y template verificados hoy contra Meta Graph API."
+      : "Infraestructura ahora: la consulta en vivo a Meta no está completa en esta emisión.",
+    hechos,
+    ancla,
+    "Qué no afirma: Meta no reconsulta hoy el WAMID. Este PDF no es la prueba inmutable; si hay anclaje, la da Polygon.",
+  ];
 }
 
 export async function buildMetaVerificationPdf(report: MetaCommunicationReport): Promise<ArrayBuffer> {
@@ -172,6 +233,22 @@ export async function buildMetaVerificationPdf(report: MetaCommunicationReport):
     });
     return doc.output("arraybuffer");
   }
+
+  y = heading(doc, y, "Resumen para quien valida");
+  const exec = metaVerificationExecutiveLines(report);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  const execWrapped = exec.flatMap((line) => doc.splitTextToSize(`• ${line}`, PDF_MM.contentWidth - 6));
+  const execH = 6 + execWrapped.length * 3.8;
+  y = ensureY(doc, y, execH + 4);
+  drawSoftPanelMm(doc, PDF_MM.margin, y - 4, PDF_MM.contentWidth, execH);
+  doc.setTextColor(...PDF_BRAND.textMain);
+  let ey = y;
+  for (const line of execWrapped) {
+    doc.text(line, PDF_MM.margin + 3, ey);
+    ey += 3.8;
+  }
+  y = ey + 6;
 
   y = heading(doc, y, "1. Identificación");
   y = kvTable(doc, y, [
@@ -291,7 +368,12 @@ export async function buildMetaVerificationPdf(report: MetaCommunicationReport):
             : "—",
         ],
         ["Merkle root", ev.polygon?.merkleRoot || "—"],
-        ["Transaction Hash (Polygon)", ev.polygon?.txHash || "—"]
+        [
+          "Transaction Hash (Polygon)",
+          ev.polygon?.txHash
+            ? `${ev.polygon.txHash}\nhttps://polygonscan.com/tx/${ev.polygon.txHash}`
+            : "—",
+        ]
       );
     } else {
       rows.push(["Respuesta RAW POST /messages", ev.rawPreserved ? "Preservada" : "No conservada para esta comunicación"]);

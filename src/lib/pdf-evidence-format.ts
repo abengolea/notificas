@@ -5,7 +5,7 @@ export const PDF_SCHEMA = {
   actaTanda: 'acta-tanda/v3',
   actaIndividual: 'acta-individual/v6',
   campaignReport: 'campaign-report/v2',
-  metaVerification: 'meta-verification/v1',
+  metaVerification: 'meta-verification/v2',
 } as const;
 
 const ART_TZ = 'America/Argentina/Buenos_Aires';

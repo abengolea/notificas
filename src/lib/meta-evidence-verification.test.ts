@@ -22,6 +22,7 @@ import {
 } from "./meta-webhook-evidence";
 import { liveMetaFailureDoesNotInvalidateDocument } from "./meta-verify-status";
 import { buildEventLeafPayload, parseEventLeafPayload } from "./campaign-leaf-payload";
+import { metaVerificationExecutiveLines } from "./meta-communication-pdf";
 import { verifyPhoneNumberAgainstMeta } from "./meta-phone-verification";
 import type { HistoricalMetaEvent } from "./meta-communication-types";
 
@@ -571,6 +572,116 @@ test("hoja Merkle v1 se conserva; v2 incorpora hash del RAW", () => {
   assert.equal(parsed2?.rawPayloadHash, "bb".repeat(32));
 });
 
+test("resumen ejecutivo Meta: Graph + HMAC + Merkle, sin afirmar lectura viva", () => {
+  const lines = metaVerificationExecutiveLines({
+    channel: "whatsapp",
+    documentUnaffectedByLiveOutage: true,
+    liveUnavailable: null,
+    live: {
+      waba: { id: "1", status: "VERIFIED", message: "ok", queriedAt: null, cached: false, fields: {} },
+      phone: { id: "2", status: "VERIFIED", message: "ok", queriedAt: null, cached: false, fields: {} },
+      template: { id: "3", status: "VERIFIED", message: "ok", queriedAt: null, cached: false, fields: {} },
+      lastLiveCheckAt: null,
+      templateNameMatchesSnapshot: true,
+      templateLangMatchesSnapshot: true,
+      templateContentHistoricalNote: "",
+    },
+    message: {
+      wamid: "wamid.X",
+      explanation: "",
+      wamidSource: "extracted_id_only",
+      inSendResponse: true,
+      sendResponseRawPreserved: false,
+      sendHttpStatus: null,
+      sendBodyHash: null,
+    },
+    inconsistencies: [],
+    chronology: [
+      {
+        status: "HISTORICAL_VERIFIED",
+        kind: "delivered",
+        title: "WhatsApp entregado",
+        claim: "",
+        source: "meta_webhook_historical",
+        wamid: "wamid.X",
+        recipientId: "54911",
+        metaTimestamp: "2026-08-20T10:49:13.000Z",
+        receivedAt: "2026-08-20T10:49:14.000Z",
+        rawPreserved: true,
+        rawTruncated: false,
+        signatureHeaderPresent: true,
+        signatureValidation: "correct",
+        payloadSha256: "aa",
+        integrityMatchesStoredHash: true,
+        webhookAuthLabel: "",
+        rawPublic: "hash_only",
+        polygon: {
+          txHash: "0xaaa8a7d408d723ac849473044cf550438d477194d45e29aacff8e4814b6b8427",
+          merkleValid: true,
+          merkleRoot: "f6",
+          leafHash: "ed",
+        },
+      },
+      {
+        status: "HISTORICAL_VERIFIED",
+        kind: "read",
+        title: "WhatsApp leído",
+        claim: "",
+        source: "meta_webhook_historical",
+        wamid: "wamid.X",
+        recipientId: "54911",
+        metaTimestamp: "2026-08-20T10:49:18.000Z",
+        receivedAt: "2026-08-20T10:49:19.000Z",
+        rawPreserved: true,
+        rawTruncated: false,
+        signatureHeaderPresent: true,
+        signatureValidation: "correct",
+        payloadSha256: "bb",
+        integrityMatchesStoredHash: true,
+        webhookAuthLabel: "",
+        rawPublic: "hash_only",
+        polygon: {
+          txHash: "0xaaa8a7d408d723ac849473044cf550438d477194d45e29aacff8e4814b6b8427",
+          merkleValid: true,
+          merkleRoot: "f6",
+          leafHash: "9d",
+        },
+      },
+    ],
+    identification: {
+      notificationId: "id1",
+      campaignId: null,
+      wamid: "wamid.X",
+      wabaId: "1",
+      phoneNumberId: "2",
+      templateId: "3",
+      templateName: "t",
+      templateLang: "es",
+      recipientPhone: "54911",
+      webhookRecipientId: "54911",
+    },
+    recipientEvidence: {
+      consignedPhone: "54911",
+      webhookRecipientId: "54911",
+      match: true,
+      status: "HISTORICAL_VERIFIED",
+      matchMessage: "ok",
+      delivered: true,
+      read: true,
+      rawPreserved: true,
+      summary: "",
+      sourceNote: null,
+    },
+    disclaimer: "",
+  });
+  assert.equal(lines.length, 5);
+  assert.match(lines[0], /No es el certificado de lectura/);
+  assert.match(lines[1], /verificados hoy contra Meta Graph API/);
+  assert.match(lines[2], /HMAC-SHA256 verificado/);
+  assert.match(lines[3], /Polygon/);
+  assert.match(lines[4], /no reconsulta hoy el WAMID/);
+});
+
 test("constancia PDF de verificación Meta arranca como PDF y no es certificado de lectura", async () => {
   const { buildMetaVerificationPdf } = await import("./meta-communication-pdf");
   const pdf = await buildMetaVerificationPdf({
@@ -649,5 +760,10 @@ test("constancia PDF de verificación Meta arranca como PDF y no es certificado 
   const latin = bytes.toString("latin1");
   assert.match(latin, /Constancia de verificaci/);
   assert.match(latin, /No es el certificado de lectura/);
+  assert.match(latin, /Resumen para quien valida/);
+  assert.match(latin, /meta-verification\/v2/);
+  assert.match(latin, /Nombre del template/);
+  assert.match(latin, /notificacion_deuda_180_dias/);
+  assert.equal(/Nombre WABA.{0,80}notificacion_deuda_180_dias/.test(latin), false);
   assert.equal(latin.includes("access_token"), false);
 });
