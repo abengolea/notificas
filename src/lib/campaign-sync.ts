@@ -9,7 +9,7 @@ import {
 import { db } from '@/lib/firebase';
 import type { Campaign, CampaignMessage, CanalCampaign } from '@/lib/types';
 
-function mapCampaign(id: string, data: DocumentData): Campaign {
+export function mapCampaign(id: string, data: DocumentData): Campaign {
   return {
     id,
     orgId: String(data.orgId ?? ''),
