@@ -350,7 +350,7 @@ Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@noti
     console.error(`❌ WhatsApp API error (intento ${attempt}/${MAX_ATTEMPTS}): HTTP ${res.status} código ${errorCode}`, JSON.stringify(data?.error));
 
     if (!isRetryable || attempt === MAX_ATTEMPTS) {
-      return { error: data };
+      return { error: data, limitHit: isRateLimit || (isRetryable && attempt === MAX_ATTEMPTS), errorCode };
     }
 
     // Respetar Retry-After de Meta si viene en el header; si no, backoff exponencial.
@@ -363,7 +363,7 @@ Si no reconoce este envío, puede ignorar este mensaje. Consultas: contacto@noti
     await new Promise(r => setTimeout(r, delayMs));
   }
 
-  return { error: { message: 'Max reintentos WhatsApp alcanzado' } };
+  return { error: { message: 'Max reintentos WhatsApp alcanzado' }, limitHit: true };
 }
 
 const REGION = 'us-central1';
@@ -530,6 +530,30 @@ function injectTrackingIntoHtml(html, docId, token) {
 
 
 
+function whatsappErrorCode(waId) {
+  if (!waId || typeof waId === 'string') return null;
+  const err = waId.error || waId;
+  const nested = err.error || err;
+  const code = nested.code || err.code;
+  return code == null ? null : code;
+}
+
+function isWhatsAppAccountLimit(code, httpStatus, message) {
+  const n = Number(code);
+  if (httpStatus === 429) return true;
+  if ([4, 102, 190, 613, 80007, 130429, 131031, 131048, 131056, 132015, 132016, 133016].includes(n)) {
+    return true;
+  }
+  return /rate.?limit|too many requests|throughput|spam rate|account.{0,40}(locked|restricted)|limit reached|temporarily (blocked|unavailable)|pairing rate|unique user/i.test(String(message || ''));
+}
+
+function whatsappLimitPayload(waId, httpStatus) {
+  const code = (waId && waId.errorCode != null) ? waId.errorCode : whatsappErrorCode(waId);
+  const message = whatsappErrorMessage(waId);
+  const limitHit = Boolean(waId && waId.limitHit) || isWhatsAppAccountLimit(code, httpStatus, message);
+  return { error: message, errorCode: code, limitHit, limitSource: limitHit ? 'whatsapp' : undefined };
+}
+
 function whatsappErrorMessage(waId) {
   if (!waId) return 'La API de WhatsApp no devolvió un ID de mensaje';
   if (typeof waId === 'string') return null;
@@ -596,6 +620,18 @@ exports.sendEmail = onRequest(
       if (emailData.simulated === true) {
         console.log(`🧪 sendEmail ignorado (simulación) docId=${docId}`);
         return res.status(200).json({ success: true, simulated: true, message: 'Campaña simulada: no se envía' });
+      }
+
+      if (emailData.campaignId) {
+        const campSnap = await db.collection('campaigns').doc(String(emailData.campaignId)).get();
+        const campEstado = String(campSnap.data()?.estado || '');
+        if (campEstado === 'pausada' || campEstado === 'cancelada' || campEstado === 'completada') {
+          return res.status(409).json({
+            success: false,
+            skipped: true,
+            error: `Campaña ${campEstado}`,
+          });
+        }
       }
       
       const alreadyDelivered = emailData.delivery?.state === 'DELIVERED';
@@ -697,7 +733,15 @@ exports.sendEmail = onRequest(
         await docRef.update({
           delivery: { state: 'ERROR', time: FieldValue.serverTimestamp(), error: waErr },
         });
-        return res.status(502).json({ success: false, error: waErr, channel: 'whatsapp-only' });
+        const limit = whatsappLimitPayload(waId, 502);
+        return res.status(502).json({
+          success: false,
+          error: waErr,
+          channel: 'whatsapp-only',
+          errorCode: limit.errorCode,
+          limitHit: limit.limitHit,
+          limitSource: limit.limitSource,
+        });
       }
 
       const waOnlyId = whatsappResultId(waId);
@@ -1053,6 +1097,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
       const recipientPhone = emailData.recipientPhone;
       let whatsappId = null;
       let whatsappError = null;
+      let lastWaResult = null;
       if (recipientPhone) {
         console.log('📱 Intentando WhatsApp a:', recipientPhone);
         try {
@@ -1096,6 +1141,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
                 cuotas: asWaText(emailData.recipientCuotas),
               },
             });
+            lastWaResult = resultWA;
             const waResultId = whatsappResultId(resultWA);
             if (waResultId) {
               whatsappId = waResultId;
@@ -1159,10 +1205,15 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
 
       if (emailData.campaignId && recipientPhone && whatsappError) {
         console.error('❌ WhatsApp de campaña falló:', whatsappError);
+        const limit = whatsappLimitPayload(lastWaResult, 502);
+        const limitHit = limit.limitHit || isWhatsAppAccountLimit(limit.errorCode, 502, whatsappError);
         return res.status(502).json({
           success: false,
           error: whatsappError,
           messageId: result.messageId || undefined,
+          errorCode: limit.errorCode,
+          limitHit,
+          limitSource: limitHit ? 'whatsapp' : undefined,
         });
       }
 

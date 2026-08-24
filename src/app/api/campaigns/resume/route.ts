@@ -3,6 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { requireCampaignOrgWrite } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { requeuePendingCampaignMessages, startCampaignTanda } from '@/lib/campaign-start-tanda';
+import { autoPauseClearFields } from '@/lib/campaign-auto-pause';
 import { z } from 'zod';
 
 const bodySchema = z.object({
@@ -35,6 +36,7 @@ export async function POST(request: NextRequest) {
       estado: 'enviando',
       resumedAt: FieldValue.serverTimestamp(),
       fanoutActive: false,
+      ...autoPauseClearFields(),
     });
 
     const requeued = await requeuePendingCampaignMessages(campaignId);

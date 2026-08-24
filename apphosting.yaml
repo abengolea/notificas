@@ -165,3 +165,8 @@ env:
     value: "us-central1"
     availability:
       - RUNTIME
+  # Espacio entre WhatsApps de campaña (ms). 2000 = uno cada 2 segundos.
+  - variable: CAMPAIGN_SEND_GAP_MS
+    value: "2000"
+    availability:
+      - RUNTIME

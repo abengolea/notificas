@@ -5,6 +5,7 @@ import { campaignFanoutIsBusy, FANOUT_BUSY_MSG, planDailySend } from '@/lib/camp
 import { enqueueCampaignFanout, enqueueCampaignWorker } from '@/lib/cloud-tasks';
 import { sealCampaignWhatsAppTemplate } from '@/lib/wa-template-seal';
 import { scheduleNextDailySend } from '@/lib/campaign-daily';
+import { pauseCampaignIfLimit } from '@/lib/campaign-auto-pause';
 import type { RecipientEntry } from '@/lib/types';
 
 export type StartTandaOk = {
@@ -216,7 +217,10 @@ export async function startCampaignTanda(params: {
     await sealCampaignWhatsAppTemplate(params.campaignId).catch(() => null);
     await enqueueCampaignFanout(params.campaignId, startOffset);
   } catch (e) {
-    await campRef.update({ estado: previousEstado, fanoutActive: false }).catch(() => undefined);
+    const hit = await pauseCampaignIfLimit(params.campaignId, e);
+    if (!hit) {
+      await campRef.update({ estado: previousEstado, fanoutActive: false }).catch(() => undefined);
+    }
     throw e;
   }
 

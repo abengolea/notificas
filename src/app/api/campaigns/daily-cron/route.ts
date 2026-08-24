@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { startCampaignTanda } from '@/lib/campaign-start-tanda';
 import { campaignIsStopped } from '@/lib/campaign-daily';
+import { pauseCampaignIfLimit } from '@/lib/campaign-auto-pause';
 
 function verifyWorkerSecret(request: NextRequest): boolean {
   const secret = (process.env.CAMPAIGN_WORKER_SECRET || '').trim();
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
       });
       results.push({ campaignId: doc.id, ...result });
     } catch (e: unknown) {
+      await pauseCampaignIfLimit(doc.id, e);
       const msg = e instanceof Error ? e.message : 'error';
       const status = typeof (e as { status?: number }).status === 'number' ? (e as { status: number }).status : 500;
       results.push({ campaignId: doc.id, error: msg, status });

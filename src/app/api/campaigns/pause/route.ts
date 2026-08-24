@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { requireCampaignOrgWrite } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
+import { manualPauseFields } from '@/lib/campaign-auto-pause';
 import { z } from 'zod';
 
 const bodySchema = z.object({
@@ -36,11 +37,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Solo se puede pausar una campaña en envío' }, { status: 400 });
     }
 
-    await campRef.update({
-      estado: 'pausada',
-      pausedAt: FieldValue.serverTimestamp(),
-      fanoutActive: false,
-    });
+    await campRef.update(manualPauseFields());
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('POST /api/campaigns/pause', e);

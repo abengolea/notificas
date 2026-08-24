@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { assertAdminSession } from '@/lib/assert-admin-session';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { requeuePendingCampaignMessages, startCampaignTanda } from '@/lib/campaign-start-tanda';
+import { autoPauseClearFields } from '@/lib/campaign-auto-pause';
 
 const bodySchema = z.object({
   campaignId: z.string().min(1),
@@ -34,6 +35,7 @@ export async function POST(request: NextRequest) {
       estado: 'enviando',
       resumedAt: FieldValue.serverTimestamp(),
       fanoutActive: false,
+      ...autoPauseClearFields(),
     });
 
     const requeued = await requeuePendingCampaignMessages(parsed.data.campaignId);

@@ -19,6 +19,9 @@ import { certifyWhatsAppPayloadIfNeeded } from '@/lib/certification-polygon';
 import { recipientWhatsAppVars, sealCampaignWhatsAppTemplate } from '@/lib/wa-template-seal';
 import { usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
 import { maybeCompleteCampaign } from '@/lib/campaign-complete';
+import { campaignIsStopped } from '@/lib/campaign-daily';
+import { pauseCampaignIfLimit } from '@/lib/campaign-auto-pause';
+import { waitCampaignSendGap } from '@/lib/campaign-send-pace';
 import { completeSimulatedSend, isCampaignSimulated } from '@/lib/campaign-simulate';
 import { presentRecipientValue, recipientValueText } from '@/lib/parse-campaign-csv';
 import type { CampaignAttachment, RecipientEntry } from '@/lib/types';
@@ -151,7 +154,7 @@ async function processMessage(
   campaign: FirebaseFirestore.DocumentData,
   campaignId: string,
   messageDocId: string
-): Promise<'sent' | 'error' | 'skipped'> {
+): Promise<'sent' | 'error' | 'skipped' | 'limit_paused'> {
   const msgRef = db.collection('campaign_messages').doc(messageDocId);
   const msgSnap = await msgRef.get();
   if (!msgSnap.exists) return 'skipped';
@@ -160,6 +163,9 @@ async function processMessage(
   // Un error ya contabilizado no se vuelve a tirar el dado (Cloud Tasks reintenta el lote).
   // El reintento manual resetea a pendiente en fanout/resend.
   if (msg.estado === 'enviado' || msg.estado === 'leido' || msg.estado === 'error') return 'skipped';
+
+  const campNow = await db.collection('campaigns').doc(campaignId).get();
+  if (campaignIsStopped(campNow.data() || {})) return 'skipped';
 
   const canal: string = campaign.canal || 'email';
   const emailRaw = String(msg.recipientEmail || '').toLowerCase();
@@ -352,10 +358,21 @@ async function processMessage(
     return 'sent';
   }
 
-  // Invocar Cloud Function (maneja internamente email y/o WA según lo que tenga el mail doc).
+  // Un envío a Meta cada 2 s (y la cola solo despacha 1 worker a la vez).
+  await waitCampaignSendGap();
   const cfResult = await invokeSendEmail(mailId);
 
+  if (cfResult.skipped) return 'skipped';
+
   if (!cfResult.ok) {
+    const limit = await pauseCampaignIfLimit(campaignId, cfResult.error, {
+      httpStatus: cfResult.httpStatus,
+      errorCode: cfResult.errorCode,
+      limitHit: cfResult.limitHit,
+      limitSource: cfResult.limitSource,
+    });
+    if (limit) return 'limit_paused';
+
     const errUpdate: Record<string, unknown> = {
       estado: 'error',
       errorMsg: cfResult.error || 'Error en Cloud Function de envío',
@@ -556,6 +573,7 @@ export async function POST(request: NextRequest) {
   }
 
   let sent = 0, errors = 0, skipped = 0;
+  let paused: { source: string; code: string } | null = null;
 
   const flushStatsAndRethrow = async (err: unknown): Promise<never> => {
     await applyWorkerStats(campRef, sent, errors).catch(() => undefined);
@@ -567,10 +585,20 @@ export async function POST(request: NextRequest) {
       const result = await processMessage(db, campaign, campaignId, messageDocId);
       if (result === 'sent') sent++;
       else if (result === 'error') errors++;
-      else skipped++;
+      else if (result === 'limit_paused') {
+        skipped++;
+        paused = { source: 'limit', code: 'paused' };
+        break;
+      } else skipped++;
     } catch (e: unknown) {
-      if (e instanceof WorkerRetryError) await flushStatsAndRethrow(e);
       const message = e instanceof Error ? e.message : String(e);
+      const limit = await pauseCampaignIfLimit(campaignId, e);
+      if (limit) {
+        skipped++;
+        paused = { source: limit.source, code: limit.code };
+        break;
+      }
+      if (e instanceof WorkerRetryError) await flushStatsAndRethrow(e);
       console.error(`[campaign-worker] Error procesando ${messageDocId}:`, message);
       try {
         const failed = await db.collection('campaign_messages').doc(messageDocId).get();
@@ -600,14 +628,31 @@ export async function POST(request: NextRequest) {
           });
         }
         errors++;
-      } catch {
+      } catch (inner: unknown) {
+        const innerLimit = await pauseCampaignIfLimit(campaignId, inner);
+        if (innerLimit) {
+          paused = { source: innerLimit.source, code: innerLimit.code };
+          break;
+        }
         // Si esto falla, Cloud Tasks reintentará la tarea completa.
       }
     }
   }
 
-  await applyWorkerStats(campRef, sent, errors);
+  try {
+    await applyWorkerStats(campRef, sent, errors);
+  } catch (e: unknown) {
+    const limit = await pauseCampaignIfLimit(campaignId, e);
+    if (!limit) throw e;
+    paused = paused || { source: limit.source, code: limit.code };
+  }
   await maybeCompleteCampaign(campRef);
 
-  return NextResponse.json({ ok: true, sent, errors, skipped });
+  return NextResponse.json({
+    ok: true,
+    sent,
+    errors,
+    skipped,
+    ...(paused ? { paused: true, pauseSource: paused.source, pauseCode: paused.code } : {}),
+  });
 }

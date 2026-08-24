@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { startCampaignTanda } from '@/lib/campaign-start-tanda';
 import { campaignIsStopped } from '@/lib/campaign-daily';
+import { pauseCampaignIfLimit } from '@/lib/campaign-auto-pause';
 
 function verifyWorkerSecret(request: NextRequest): boolean {
   const secret = (process.env.CAMPAIGN_WORKER_SECRET || '').trim();
@@ -44,6 +45,7 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ ok: true, ...result });
   } catch (e: unknown) {
+    await pauseCampaignIfLimit(campaignId, e);
     const msg = e instanceof Error ? e.message : 'Error al arrancar lote diario';
     const status = typeof (e as { status?: number }).status === 'number' ? (e as { status: number }).status : 500;
     if (status === 409) {

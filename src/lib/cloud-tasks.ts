@@ -19,6 +19,8 @@ function queuePath(): string {
   return `projects/${project}/locations/${location}/queues/${queue}`;
 }
 
+/** Ritmo Meta: 1 worker a la vez. El gap de 2 s vive en el worker (CAMPAIGN_SEND_GAP_MS). */
+
 function workerUrl(path: string): string {
   const base = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
   return `${base}${path}`;

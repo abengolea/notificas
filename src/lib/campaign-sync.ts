@@ -33,6 +33,10 @@ export function mapCampaign(id: string, data: DocumentData): Campaign {
     nextDailyAt: data.nextDailyAt,
     managedByAdmin: data.managedByAdmin === true,
     simulated: data.simulated === true,
+    autoPauseSource: data.autoPauseSource,
+    autoPauseReason: data.autoPauseReason,
+    autoPauseCode: data.autoPauseCode,
+    autoPausedAt: data.autoPausedAt,
     canal: (data.canal as CanalCampaign) || 'email',
     estado: data.estado as Campaign['estado'],
     stats: {

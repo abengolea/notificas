@@ -8,6 +8,7 @@
  * El límite diario se edita en la campaña (campo tandaSize / "Envíos por día").
  * Un cambio a mitad de campaña rige al día siguiente (tandaDayQuota queda congelado hoy).
  * Día 1 = 2.000 (cupo actual de Meta). Subilo en la UI cuando WhatsApp lo permita.
+ * El ritmo real de WhatsApp lo marca CAMPAIGN_SEND_GAP_MS (2 s) + cola concurrente = 1.
  *
  * Requiere: FIREBASE_PROJECT_ID, CAMPAIGN_WORKER_SECRET en env.
  */

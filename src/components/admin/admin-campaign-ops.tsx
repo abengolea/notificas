@@ -52,6 +52,9 @@ type CampaignPayload = {
   nextDailyAt?: string | null;
   nextDailyDayKey?: string;
   simulated?: boolean;
+  autoPauseSource?: string;
+  autoPauseReason?: string;
+  autoPauseCode?: string;
   waTemplateName: string;
   waTemplateLang: string;
   waTemplateVariables: string[];
@@ -508,7 +511,15 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
 
       {c.estado === "pausada" ? (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-          Campaña pausada. No sale el lote de mañana hasta que la reanudés. El cupo que guardes rige al día siguiente de reanudar.
+          {c.autoPauseReason ? (
+            <>
+              <p className="font-medium">Campaña pausada automáticamente</p>
+              <p className="mt-1 text-muted-foreground">{c.autoPauseReason}</p>
+              <p className="mt-2">Reanudá cuando el límite se haya despejado. El lote de mañana no arranca solo mientras esté pausada.</p>
+            </>
+          ) : (
+            <>Campaña pausada. No sale el lote de mañana hasta que la reanudés. El cupo que guardes rige al día siguiente de reanudar.</>
+          )}
         </div>
       ) : c.estado === "enviando" && thisTanda === 0 && remaining > 0 ? (
         <div className="rounded-md border bg-muted/40 p-3 text-sm">

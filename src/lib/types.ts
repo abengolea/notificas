@@ -237,6 +237,11 @@ export interface Campaign {
     urlButton: boolean;
     sealedAt?: unknown;
   };
+  /** Pausa automática por límite de WhatsApp, Polygon o Google Cloud. */
+  autoPauseSource?: 'whatsapp' | 'polygon' | 'gcp';
+  autoPauseReason?: string;
+  autoPauseCode?: string;
+  autoPausedAt?: unknown;
   estado: 'borrador' | 'enviando' | 'pausada' | 'completada' | 'cancelada';
   stats: {
     total: number;

@@ -5,6 +5,7 @@ import { sha256Hex } from '@/lib/merkle';
 import { sourceRowCanonical } from '@/lib/campaign-source-canonical';
 import { enqueueCampaignFanout, enqueueCampaignWorker } from '@/lib/cloud-tasks';
 import { scheduleNextDailySend, campaignIsStopped } from '@/lib/campaign-daily';
+import { pauseCampaignIfLimit } from '@/lib/campaign-auto-pause';
 import { ensureSendBatch, resolveOpenSendBatchId, tandaIndexFromOffset } from '@/lib/campaign-integrity';
 import { sealCampaignWhatsAppTemplate } from '@/lib/wa-template-seal';
 import { RECIPIENT_CHUNK_SIZE } from '@/lib/campaign-recipients';
@@ -180,7 +181,19 @@ async function concludeFanout(
     return;
   }
   if (continueNext) {
-    await enqueueCampaignFanout(campaignId, resumeOffset);
+    await campRef.update({
+      fanoutResumeOffset: resumeOffset,
+    }).catch(() => undefined);
+    try {
+      await enqueueCampaignFanout(campaignId, resumeOffset);
+    } catch (e: unknown) {
+      const hit = await pauseCampaignIfLimit(campaignId, e);
+      await campRef.update({
+        fanoutResumeOffset: resumeOffset,
+        fanoutActive: false,
+      }).catch(() => undefined);
+      if (!hit) throw e;
+    }
     return;
   }
   await campRef.update({
@@ -351,10 +364,37 @@ async function processFanoutPage(
     });
   }
 
-  // Encolar workers en batches de SEND_BATCH.
+  let enqueued = 0;
   for (let i = 0; i < toProcess.length; i += SEND_BATCH) {
-    await enqueueCampaignWorker(campaignId, toProcess.slice(i, i + SEND_BATCH));
+    const fresh = await db.collection('campaigns').doc(campaignId).get();
+    if (campaignIsStopped(fresh.data() || {})) {
+      return NextResponse.json({
+        ok: true,
+        page: offset,
+        created: batchCount,
+        enqueued,
+        paused: true,
+        reason: String(fresh.data()?.estado || 'pausada'),
+      });
+    }
+    try {
+      await enqueueCampaignWorker(campaignId, toProcess.slice(i, i + SEND_BATCH));
+      enqueued += Math.min(SEND_BATCH, toProcess.length - i);
+    } catch (e: unknown) {
+      const hit = await pauseCampaignIfLimit(campaignId, e);
+      if (hit) {
+        return NextResponse.json({
+          ok: true,
+          page: offset,
+          created: batchCount,
+          enqueued,
+          paused: true,
+          pauseSource: hit.source,
+        });
+      }
+      throw e;
+    }
   }
 
-  return NextResponse.json({ ok: true, page: offset, created: batchCount, enqueued: toProcess.length });
+  return NextResponse.json({ ok: true, page: offset, created: batchCount, enqueued });
 }

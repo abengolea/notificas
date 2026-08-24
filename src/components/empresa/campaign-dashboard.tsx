@@ -1055,6 +1055,16 @@ export const CampaignDashboard = forwardRef<
         </div>
       </div>
 
+      {campaign.estado === "pausada" && campaign.autoPauseReason ? (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+          <p className="font-medium">Campaña pausada automáticamente</p>
+          <p className="mt-1 text-muted-foreground">{campaign.autoPauseReason}</p>
+          <p className="mt-2 text-muted-foreground">
+            Los destinatarios que no se enviaron siguen pendientes. Reanudá cuando el límite se haya despejado.
+          </p>
+        </div>
+      ) : null}
+
       {stats && (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

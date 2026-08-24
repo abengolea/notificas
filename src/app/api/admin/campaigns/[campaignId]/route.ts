@@ -43,6 +43,9 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     waUrlButton: data.waUrlButton === true,
     managedByAdmin: data.managedByAdmin === true,
     simulated: data.simulated === true,
+    autoPauseSource: typeof data.autoPauseSource === 'string' ? data.autoPauseSource : '',
+    autoPauseReason: typeof data.autoPauseReason === 'string' ? data.autoPauseReason : '',
+    autoPauseCode: typeof data.autoPauseCode === 'string' ? data.autoPauseCode : '',
     senderUid: String(data.senderUid || ''),
     senderEmail: String(data.senderEmail || ''),
     stats: {

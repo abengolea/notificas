@@ -8,6 +8,7 @@ import {
   type EventLeafMetaEvidence,
 } from '@/lib/campaign-leaf-payload';
 import { enqueueIntegrityClose } from '@/lib/cloud-tasks';
+import { pauseCampaignIfLimit } from '@/lib/campaign-auto-pause';
 
 export {
   buildSendLeafPayload,
@@ -750,6 +751,7 @@ export async function closeIntegrityBatch(
     const errorMsg = e instanceof Error ? e.message : 'Error al anclar tanda';
     await batchRef.update({ status: 'failed', errorMsg, accepting: false });
     console.error('❌ closeIntegrityBatch', campaignId, batchId, errorMsg);
+    await pauseCampaignIfLimit(campaignId, errorMsg);
     return { status: 'failed', error: errorMsg, leafCount: leaves.length };
   }
 }
