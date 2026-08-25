@@ -6,6 +6,7 @@ export const metadata: Metadata = createPageMetadata({
   description:
     "Accedé a tu cuenta de Notificas para enviar notificaciones fehacientes digitales y gestionar certificados.",
   path: "/login",
+  noIndex: true,
 });
 
 export default function LoginLayout({

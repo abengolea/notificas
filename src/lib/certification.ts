@@ -139,7 +139,7 @@ export async function generateCertificationPDF(data: CertificationData): Promise
   doc.setFontSize(12);
   doc.setTextColor(100, 116, 139);
   doc.text('Para verificar la autenticidad de este documento:', 20, certBaseY + instructionsY);
-  doc.text('1. Ve a: https://notificas.com/verify', 20, certBaseY + instructionsY + 10);
+  doc.text('1. Ve a: https://notificas.com.ar/verify', 20, certBaseY + instructionsY + 10);
   doc.text('2. Sube este PDF o ingresa el hash', 20, certBaseY + instructionsY + 20);
   doc.text('3. Confirma que fue emitido por Notificas.com', 20, certBaseY + instructionsY + 30);
   

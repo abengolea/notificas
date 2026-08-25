@@ -40,7 +40,7 @@ export default function TerminosPage() {
           <section>
             <h2 className="text-lg font-semibold mb-2">2. Objeto del servicio</h2>
             <p>
-              Notificas.com es una plataforma de notificaciones digitales con constancia técnica. El envío y el contenido se hashean y ese hash puede anclarse en Polygon. SMTP aceptado no implica entrega en la casilla. WhatsApp deja constancia del template aprobado por Meta. El certificado de lectura se emite una sola vez. Estas constancias no reemplazan una forma legal que la ley exija.
+              Notificas es una plataforma de notificaciones digitales con constancia técnica. El envío y el contenido se hashean y ese hash puede anclarse en Polygon. SMTP aceptado no implica entrega en la casilla. WhatsApp deja constancia del template aprobado por Meta. El certificado de lectura se emite una sola vez. Estas constancias no reemplazan una forma legal que la ley exija.
             </p>
             <p className="mt-2">
               Asimismo, Notificas podrá prestar a empresas y organizaciones servicios de procesamiento,
@@ -202,7 +202,7 @@ export default function TerminosPage() {
           <section>
             <h2 className="text-lg font-semibold mb-2">9. Valor probatorio</h2>
             <p>
-              Los certificados emitidos por Notificas.com constituyen constancias técnicas digitales.
+              Los certificados emitidos por Notificas constituyen constancias técnicas digitales.
               Su eficacia probatoria en sede administrativa o judicial depende del caso concreto y de la
               normativa aplicable. Notificas SRL no garantiza un resultado determinado en ningún
               procedimiento legal. Se recomienda contar con asesoramiento profesional habilitado.

@@ -380,7 +380,7 @@ export default function VerifyPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-foreground mb-4">
-            Validación de Notificas
+            Verificar certificado
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
             Comprobá si esta constancia fue emitida por Notificas y si su contenido coincide con el registro original.
@@ -741,7 +741,7 @@ export default function VerifyPage() {
                         No fue posible validar la constancia
                       </h4>
                       <p className="text-sm text-muted-foreground">
-                        Este PDF no coincide con ningún registro emitido por Notificas.com. Asegurate de utilizar el documento original recibido o contactá al emisor.
+                        Este PDF no coincide con ningún registro emitido por Notificas. Asegurate de utilizar el documento original recibido o contactá al emisor.
                       </p>
                     </div>
                   </div>
@@ -772,9 +772,9 @@ export default function VerifyPage() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div>
-              <h4 className="font-semibold text-foreground mb-2">1. ¿Qué es Notificas.com?</h4>
+              <h4 className="font-semibold text-foreground mb-2">1. ¿Qué es Notificas?</h4>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Notificas.com deja constancia de un mensaje digital: qué se envió, a quién y cuándo. La huella de ese texto queda en Polygon, una red pública que no se puede reescribir. El expediente (el texto y los eventos) se guarda en Notificas; no está “dentro” de la blockchain.
+                Notificas deja constancia de un mensaje digital: qué se envió, a quién y cuándo. La huella de ese texto queda en Polygon, una red pública que no se puede reescribir. El expediente (el texto y los eventos) se guarda en Notificas; no está “dentro” de la blockchain.
               </p>
             </div>
 

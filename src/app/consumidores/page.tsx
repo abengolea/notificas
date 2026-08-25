@@ -75,7 +75,7 @@ export default function ConsumidoresPage() {
           <section>
             <h2 className="text-lg font-semibold mb-2">Información del servicio contratado</h2>
             <p>
-              Notificas.com es un servicio de notificaciones fehacientes digitales. El usuario adquiere
+              Notificas es un servicio de notificaciones fehacientes digitales. El usuario adquiere
               créditos prepagos para el envío de comunicaciones certificadas. Las características, precios
               y condiciones de cada plan se informan de manera clara antes de la contratación.
             </p>

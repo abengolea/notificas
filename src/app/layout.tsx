@@ -31,11 +31,15 @@ export const metadata: Metadata = {
   creator: SITE_NAME,
   publisher: SITE_NAME,
   category: 'legaltech',
+  verification: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+    ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
+    : undefined,
   alternates: {
     canonical: '/',
     languages: {
       'es-AR': '/',
       es: '/',
+      'x-default': '/',
     },
   },
   openGraph: {

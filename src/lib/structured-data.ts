@@ -50,6 +50,14 @@ export function websiteJsonLd() {
     description: SITE_TAGLINE,
     inLanguage: "es-AR",
     publisher: { "@id": `${SITE_URL}/#organization` },
+    potentialAction: {
+      "@type": "SearchAction",
+      target: {
+        "@type": "EntryPoint",
+        urlTemplate: `${SITE_URL}/verify?id={search_term_string}`,
+      },
+      "query-input": "required name=search_term_string",
+    },
   };
 }
 
@@ -68,12 +76,28 @@ export function serviceJsonLd() {
       name: "Argentina",
     },
     url: SITE_URL,
-    offers: {
-      "@type": "Offer",
-      url: absoluteUrl("/signup"),
-      availability: "https://schema.org/InStock",
-      priceCurrency: "ARS",
-    },
+    termsOfService: absoluteUrl("/terminos"),
+  };
+}
+
+export function articleJsonLd(opts: {
+  title: string;
+  description: string;
+  path: string;
+}) {
+  const url = absoluteUrl(opts.path);
+  return {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: opts.title,
+    description: opts.description,
+    inLanguage: "es-AR",
+    datePublished: "2026-08-25",
+    dateModified: "2026-08-25",
+    mainEntityOfPage: url,
+    url,
+    author: { "@id": `${SITE_URL}/#organization` },
+    publisher: { "@id": `${SITE_URL}/#organization` },
   };
 }
 

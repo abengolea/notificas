@@ -55,6 +55,48 @@ export const SITE_CONTACT = {
   cuit: "33-71729868-9",
 } as const;
 
+/** Fecha real de la última revisión de URLs públicas (no “ahora” en cada build). */
+export const SITEMAP_LASTMOD = new Date("2026-08-25T00:00:00.000Z");
+
+export const SEO_GUIDE_PAGES = [
+  {
+    path: "/notificacion-fehaciente-digital",
+    title: "Qué es una notificación fehaciente digital",
+    description:
+      "Qué deja constancia Notificas, qué no prueba un correo aceptado y cómo se usa un certificado de lectura en Argentina.",
+    blurb: "Qué se registra, qué no, y cómo usarlo.",
+  },
+  {
+    path: "/carta-documento-digital",
+    title: "Carta documento digital: qué cubre Notificas y qué no",
+    description:
+      "Notificas no reemplaza una carta documento si la ley pide esa forma. Compará costos, plazos y valor de la constancia técnica.",
+    blurb: "No reemplaza la carta documento. Sí deja rastro comprobable.",
+  },
+  {
+    path: "/notificaciones-whatsapp-empresas",
+    title: "Notificaciones por WhatsApp para empresas",
+    description:
+      "Campañas de volumen por WhatsApp Business: plantillas de Meta, qué se certifica y cómo se cotizan los envíos masivos.",
+    blurb: "Plantillas de Meta, trazabilidad y campañas de volumen.",
+  },
+  {
+    path: "/como-verificar-certificado",
+    title: "Cómo verificar un certificado de Notificas",
+    description:
+      "Subí el PDF o ingresá el ID en notificas.com.ar/verify. Comparamos la huella del archivo con el registro en Polygon.",
+    blurb: "Validá un PDF o un ID contra Polygon.",
+  },
+] as const;
+
+export type SeoGuidePath = (typeof SEO_GUIDE_PAGES)[number]["path"];
+
+export function getSeoGuide(path: SeoGuidePath) {
+  const page = SEO_GUIDE_PAGES.find((item) => item.path === path);
+  if (!page) throw new Error(`SEO guide missing: ${path}`);
+  return page;
+}
+
 /** FAQs en texto plano para Schema.org FAQPage (sin JSX). */
 export const FAQ_SEO_ITEMS = FAQ_CLAIMS;
 
@@ -91,6 +133,11 @@ export function createPageMetadata({
     keywords: keywords?.length ? [...keywords] : undefined,
     alternates: {
       canonical: url,
+      languages: {
+        "es-AR": url,
+        es: url,
+        "x-default": url,
+      },
     },
     openGraph: {
       title,

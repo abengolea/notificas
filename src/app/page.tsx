@@ -22,7 +22,7 @@ import { FaqSection } from '@/components/faq-section';
 import { FooterContactForm, QuoteContactForm } from '@/components/footer-contact-form';
 import { LandingHeader } from '@/components/landing-header';
 import { JsonLd } from '@/components/json-ld';
-import { createPageMetadata } from '@/lib/seo';
+import { createPageMetadata, SEO_GUIDE_PAGES } from '@/lib/seo';
 import {
   faqPageJsonLd,
   organizationJsonLd,
@@ -324,7 +324,7 @@ export default function LandingPage() {
                             ¿Necesitas verificar un documento?
                         </h3>
                         <p className="mb-5 max-w-[60ch] text-muted-foreground">
-                            Verifica la autenticidad de cualquier constancia PDF emitida por Notificas.com
+                            Verificá la autenticidad de cualquier constancia PDF emitida por Notificas
                         </p>
                         <Button asChild size="lg">
                             <Link href="/verify">
@@ -334,6 +334,25 @@ export default function LandingPage() {
                     </div>
                 </div>
             </div>
+        </section>
+
+        <section id="guias" className="px-4 pb-16 sm:pb-20">
+          <div className="container max-w-4xl">
+            <h2 className="mb-6 text-2xl font-bold tracking-tight md:text-3xl">Guías</h2>
+            <ul className="grid gap-4 sm:grid-cols-2">
+              {SEO_GUIDE_PAGES.map((guide) => (
+                <li key={guide.path}>
+                  <Link
+                    href={guide.path}
+                    className="block rounded-lg border border-border bg-background/60 p-4 transition-colors hover:bg-muted/60"
+                  >
+                    <span className="font-semibold leading-snug">{guide.title}</span>
+                    <span className="mt-1 block text-sm text-muted-foreground">{guide.blurb}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
         </section>
 
         <FaqSection />
@@ -346,6 +365,10 @@ export default function LandingPage() {
                 <p className="text-sm text-background/80">Colon 12, primer piso - San Nicolás de los Arroyos</p>
                 <p className="text-sm text-background/80">Buenos Aires - Argentina</p>
                 <div className="mt-5 space-y-2 text-sm">
+                    <Link href="/notificacion-fehaciente-digital" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Notificación fehaciente digital</Link>
+                    <Link href="/carta-documento-digital" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Carta documento digital</Link>
+                    <Link href="/notificaciones-whatsapp-empresas" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">WhatsApp para empresas</Link>
+                    <Link href="/como-verificar-certificado" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Cómo verificar un certificado</Link>
                     <Link href="/consumidores" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Defensa del Consumidor</Link>
                     <Link href="/terminos" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Términos y Condiciones</Link>
                     <Link href="/privacidad" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Política de Privacidad</Link>
