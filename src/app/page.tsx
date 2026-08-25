@@ -164,7 +164,7 @@ export default function LandingPage() {
                 Notificas: notificaciones digitales con constancia de envío y lectura
               </h1>
               <p className="landing-hero-muted mb-8 max-w-[65ch] text-pretty text-base leading-relaxed sm:text-lg">
-                Queda qué enviaste, a quién y cuándo. El correo aceptado no es lo mismo que “llegó a la bandeja”. WhatsApp deja rastro de la plantilla de Meta, no de la carta entera. El certificado de lectura se saca una sola vez.
+                Notificá por WhatsApp o correo y obtené un rastro comprobable. Más rápido y económico que una carta documento, con PDF para tu expediente.
               </p>
               <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
                 <Button size="lg" className="w-full sm:w-auto" asChild>
