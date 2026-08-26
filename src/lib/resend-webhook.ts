@@ -74,6 +74,68 @@ export function evidentiaryClass(eventType: string): string {
   }
 }
 
+export function movementForResendEvent(
+  eventType: string,
+  occurredAt: string,
+  webhookEventId: string,
+  recipient: string | null
+): Record<string, unknown> | null {
+  const labels: Record<string, { type: string; description: string }> = {
+    "email.sent": {
+      type: "resend_sent",
+      description: "Resend aceptó el mensaje para entrega. No es lectura.",
+    },
+    "email.delivered": {
+      type: "resend_delivered",
+      description:
+        "Resend informó que el servidor de correo del destinatario aceptó el mensaje. No es lectura fehaciente.",
+    },
+    "email.delivery_delayed": {
+      type: "resend_delayed",
+      description: "Resend informó demora temporal de entrega.",
+    },
+    "email.bounced": {
+      type: "resend_bounced",
+      description: "Resend informó rebote: el mensaje no llegó al buzón.",
+    },
+    "email.failed": {
+      type: "resend_failed",
+      description: "Resend informó fallo de envío.",
+    },
+    "email.suppressed": {
+      type: "resend_suppressed",
+      description: "Resend no envió: dirección en lista de supresión.",
+    },
+    "email.complained": {
+      type: "resend_complained",
+      description: "Resend informó marca de spam. No es lectura.",
+    },
+    "email.opened": {
+      type: "resend_opened_signal",
+      description:
+        "Señal técnica de apertura informada por Resend (pixel/proxy). No equivale a lectura fehaciente.",
+    },
+    "email.clicked": {
+      type: "resend_clicked_signal",
+      description: "Señal técnica de clic informada por Resend. No equivale a acceso al reader.",
+    },
+  };
+  const spec = labels[eventType];
+  if (!spec) return null;
+  return {
+    id: `resend-${webhookEventId}`,
+    type: spec.type,
+    description: spec.description,
+    timestamp: occurredAt,
+    userAgent: "Resend webhook",
+    clientIP: "Resend",
+    browser: "Resend",
+    source: "resend_webhook",
+    evidentiaryClass: evidentiaryClass(eventType),
+    recipientEmail: recipient || undefined,
+  };
+}
+
 export function shouldUpdateTransportStatus(
   current: string | null | undefined,
   incoming: TransportStatus
@@ -285,6 +347,10 @@ export async function processResendWebhook(input: {
       "transport.lastEventType": eventType,
       "transport.lastEventAt": occurredAt,
     };
+    const movement = movementForResendEvent(eventType, occurredAt, webhookEventId, recipient);
+    if (movement) {
+      updates["tracking.movements"] = FieldValue.arrayUnion(movement);
+    }
     if (incomingStatus && shouldUpdateTransportStatus(currentStatus, incomingStatus)) {
       updates["transport.status"] = incomingStatus;
       updates["transport.statusUpdatedAt"] = occurredAt;

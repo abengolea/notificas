@@ -3,7 +3,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { createHmac, randomBytes } = require("crypto");
-const { verifyResendSvixSignature, shouldUpdateTransportStatus } = require("./resend-webhook");
+const { verifyResendSvixSignature, shouldUpdateTransportStatus, movementForResendEvent } = require("./resend-webhook");
 
 function sign(secretBytes, id, timestamp, body) {
   const sig = createHmac("sha256", secretBytes).update(`${id}.${timestamp}.${body}`).digest("base64");
@@ -36,6 +36,18 @@ test("transport sube de sent a delivered", () => {
 
 test("delayed no pisa delivered", () => {
   assert.equal(shouldUpdateTransportStatus("delivered", "delayed"), false);
+});
+
+test("delivered es movimiento de llegada, no de lectura", () => {
+  const m = movementForResendEvent("email.delivered", "2026-08-26T20:00:00.000Z", "msg_1", "abengolea1@gmail.com");
+  assert.equal(m.type, "resend_delivered");
+  assert.equal(m.type === "email_opened" || m.type === "reader_magic_open" || m.type === "read_confirmed", false);
+  assert.match(m.description, /servidor de correo/i);
+});
+
+test("opened de Resend no usa tipo de lectura fehaciente", () => {
+  const m = movementForResendEvent("email.opened", "2026-08-26T20:00:00.000Z", "msg_2", "abengolea1@gmail.com");
+  assert.equal(m.type, "resend_opened_signal");
 });
 
 test("body alterado falla", () => {

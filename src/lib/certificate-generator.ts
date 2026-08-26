@@ -95,6 +95,15 @@ interface CertificateData {
 
 const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   email_sent: 'Correo enviado',
+  resend_sent: 'Resend aceptó el mensaje para entrega',
+  resend_delivered: 'Servidor del destinatario aceptó el correo (Resend)',
+  resend_delayed: 'Entrega demorada (Resend)',
+  resend_bounced: 'Correo rebotó (Resend)',
+  resend_failed: 'Fallo de envío (Resend)',
+  resend_suppressed: 'Correo suprimido (Resend)',
+  resend_complained: 'Marcado como spam (Resend)',
+  resend_opened_signal: 'Señal técnica de apertura Resend (no es lectura fehaciente)',
+  resend_clicked_signal: 'Señal técnica de clic Resend (no es lectura)',
   email_bounced: 'Correo rebotó (no llegó al buzón)',
   email_opened: 'Correo abierto (pixel)',
   reader_magic_open: 'Acceso al reader digital',

@@ -33,7 +33,16 @@ interface Movement {
     | 'whatsapp_delivered'
     | 'whatsapp_read'
     | 'whatsapp_failed'
-    | 'reader_magic_open';
+    | 'reader_magic_open'
+    | 'resend_sent'
+    | 'resend_delivered'
+    | 'resend_delayed'
+    | 'resend_bounced'
+    | 'resend_failed'
+    | 'resend_suppressed'
+    | 'resend_complained'
+    | 'resend_opened_signal'
+    | 'resend_clicked_signal';
   description: string;
   timestamp: any; // Firestore timestamp
   userAgent?: string;
@@ -59,7 +68,19 @@ interface MovementsTrackingProps {
 const getMovementIcon = (type: string) => {
   switch (type) {
     case 'email_sent':
+    case 'resend_sent':
       return <Mail className="h-4 w-4 text-blue-500" />;
+    case 'resend_delivered':
+      return <CheckCircle className="h-4 w-4 text-sky-600" />;
+    case 'resend_delayed':
+    case 'resend_bounced':
+    case 'resend_failed':
+    case 'resend_suppressed':
+    case 'resend_complained':
+      return <Clock className="h-4 w-4 text-amber-600" />;
+    case 'resend_opened_signal':
+    case 'resend_clicked_signal':
+      return <Eye className="h-4 w-4 text-slate-500" />;
     case 'email_opened':
       return <Eye className="h-4 w-4 text-green-500" />;
     case 'read_confirmed':
@@ -85,7 +106,19 @@ const getMovementIcon = (type: string) => {
 const getMovementColor = (type: string) => {
   switch (type) {
     case 'email_sent':
+    case 'resend_sent':
       return 'bg-blue-100 text-blue-800';
+    case 'resend_delivered':
+      return 'bg-sky-100 text-sky-900';
+    case 'resend_delayed':
+    case 'resend_bounced':
+    case 'resend_failed':
+    case 'resend_suppressed':
+    case 'resend_complained':
+      return 'bg-amber-100 text-amber-900';
+    case 'resend_opened_signal':
+    case 'resend_clicked_signal':
+      return 'bg-slate-100 text-slate-700';
     case 'email_opened':
       return 'bg-green-100 text-green-800';
     case 'read_confirmed':
@@ -134,6 +167,15 @@ const READER_MAGIC_OPEN_DESCRIPTION =
 
 const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   email_sent: 'CORREO ENVIADO',
+  resend_sent: 'RESEND ACEPTÓ EL ENVÍO',
+  resend_delivered: 'CORREO LLEGÓ AL SERVIDOR DESTINATARIO',
+  resend_delayed: 'ENTREGA DEMORADA (RESEND)',
+  resend_bounced: 'REBOTÓ (RESEND)',
+  resend_failed: 'FALLO DE ENVÍO (RESEND)',
+  resend_suppressed: 'SUPRIMIDO (RESEND)',
+  resend_complained: 'MARCADO COMO SPAM (RESEND)',
+  resend_opened_signal: 'SEÑAL TÉCNICA DE APERTURA (NO ES LECTURA)',
+  resend_clicked_signal: 'SEÑAL TÉCNICA DE CLIC (NO ES LECTURA)',
   email_opened: 'CORREO ABIERTO',
   read_confirmed: 'LECTURA CONFIRMADA',
   attachment_opened: 'ARCHIVO ABIERTO',
@@ -154,6 +196,13 @@ const MOVEMENT_TYPES_WITH_RECIPIENT_CONTEXT = new Set([
   'whatsapp_failed',
   'link_clicked',
   'email_sent',
+  'resend_sent',
+  'resend_delivered',
+  'resend_delayed',
+  'resend_bounced',
+  'resend_failed',
+  'resend_suppressed',
+  'resend_complained',
   'app_opened',
 ]);
 
