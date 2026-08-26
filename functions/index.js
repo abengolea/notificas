@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const cheerio = require('cheerio');
 const { generateEmailWithTracking } = require('./email-template');
 const { injectTrackingIntoHtml: injectTrackingIntoHtmlImpl } = require('./tracking-html');
+const { processResendWebhook } = require('./resend-webhook');
 const {
   buildWhatsAppTemplateEvidence,
   pickApprovedTemplate,
@@ -37,6 +38,11 @@ const whatsappAccessToken = defineSecret('WHATSAPP_ACCESS_TOKEN');
 const whatsappPhoneNumberId = defineSecret('WHATSAPP_PHONE_NUMBER_ID');
 // Secret SMTP (firebase functions:secrets:set SMTP_PASS)
 const smtpPass = defineSecret('SMTP_PASS');
+// Resend: campañas si CAMPAIGN_EMAIL_PROVIDER=resend. Rollback: donweb.
+const resendApiKey = defineSecret('RESEND_API_KEY');
+const resendWebhookSecret = defineSecret('RESEND_WEBHOOK_SECRET');
+const emailProviderParam = defineString('EMAIL_PROVIDER', { default: 'donweb' });
+const campaignEmailProviderParam = defineString('CAMPAIGN_EMAIL_PROVIDER', { default: 'donweb' });
 // Mismo valor que App Hosting POLYGON_CERTIFY_SECRET — protege /api/polygon/certify-event
 const polygonCertifySecret = defineSecret('POLYGON_CERTIFY_SECRET');
 const campaignWorkerSecret = defineSecret('CAMPAIGN_WORKER_SECRET');
@@ -470,6 +476,8 @@ function extractBrowserInfo(userAgent) {
 
 const DEFAULT_FROM_EMAIL = 'contacto@notificas.com';
 const DEFAULT_FROM_DISPLAY_NAME = 'Notificas';
+const RESEND_CAMPAIGN_FROM_EMAIL = 'notificaciones@notificas.com.ar';
+const RESEND_CAMPAIGN_REPLY_TO = 'contacto@notificas.com';
 
 /** Nombre visible en bandeja de entrada: "Notificas" en lugar de "contacto". */
 function formatSmtpFrom(email, displayName = DEFAULT_FROM_DISPLAY_NAME) {
@@ -492,6 +500,50 @@ function getTransporter() {
       pass,
     },
   });
+}
+
+function getResendTransporter() {
+  const pass = resendApiKey.value();
+  if (!pass) throw new Error('RESEND_API_KEY secret no configurado. Ejecutar: firebase functions:secrets:set RESEND_API_KEY');
+  return nodemailer.createTransport({
+    host: 'smtp.resend.com',
+    port: 465,
+    secure: true,
+    auth: {
+      user: 'resend',
+      pass,
+    },
+  });
+}
+
+function normalizeEmailProvider(value) {
+  return String(value || '').trim().toLowerCase() === 'resend' ? 'resend' : 'donweb';
+}
+
+/** Campaña con correo (no formulario, no WA-only). */
+function isCampaignEmailSend(emailData) {
+  return Boolean(emailData && emailData.campaignId) && emailData.contactRequest !== true && emailData.waOnly !== true;
+}
+
+function resolveEmailProvider(emailData) {
+  if (isCampaignEmailSend(emailData)) {
+    return normalizeEmailProvider(campaignEmailProviderParam.value() || emailProviderParam.value());
+  }
+  return normalizeEmailProvider(emailProviderParam.value());
+}
+
+function getEmailTransporter(provider) {
+  if (provider === 'resend') return getResendTransporter();
+  return getTransporter();
+}
+
+function extractProviderMessageId(provider, result) {
+  const response = String(result && result.response ? result.response : '');
+  if (provider === 'resend') {
+    const uuid = response.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    if (uuid) return uuid[0];
+  }
+  return (result && result.messageId) || null;
 }
 
 function generateToken() {
@@ -584,7 +636,7 @@ exports.sendEmail = onRequest(
     // Techo bajo el MPS típico de Cloud API (~80). minInstances evita el cold start del primer lote.
     maxInstances: 40,
     minInstances: 1,
-    secrets: [whatsappAccessToken, whatsappPhoneNumberId, smtpPass, polygonCertifySecret],
+    secrets: [whatsappAccessToken, whatsappPhoneNumberId, smtpPass, polygonCertifySecret, resendApiKey],
   },
   async (req, res) => {
     const timestamp = new Date().toISOString();
@@ -982,13 +1034,16 @@ Confirmar lectura: ${readerUrl}
 ${new Date().getFullYear()} Notificas.com
 Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce esta notificacion, ignore este correo o responda a contacto@notificas.com.`;
 
+      const emailProvider = resolveEmailProvider(emailData);
       const mailOptions = {
-        from: formatSmtpFrom(from),
+        from: emailProvider === 'resend'
+          ? formatSmtpFrom(RESEND_CAMPAIGN_FROM_EMAIL)
+          : formatSmtpFrom(from),
         to,
         subject,
         text: textVersion,
         html: htmlWithTracking,
-        replyTo: emailData.replyTo,
+        replyTo: emailProvider === 'resend' ? RESEND_CAMPAIGN_REPLY_TO : emailData.replyTo,
         cc: emailData.cc,
         bcc: emailData.bcc,
         headers: { 'X-Notificas-Mail-Id': docId },
@@ -999,7 +1054,8 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
       if (!alreadyDelivered) {
       console.log('📧 Enviando email a:', to);
       console.log('📧 Asunto:', subject);
-      result = await getTransporter().sendMail(mailOptions);
+      console.log('📧 Proveedor SMTP:', emailProvider);
+      result = await getEmailTransporter(emailProvider).sendMail(mailOptions);
       
       console.log('📧 Resultado del envío:', result);
       
@@ -1008,6 +1064,8 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
         console.error('❌ Error: No se recibió messageId del servidor de correo');
         throw new Error('No se recibió messageId del servidor de correo');
       }
+
+      const providerMessageId = extractProviderMessageId(emailProvider, result);
 
       // Crear movimiento inicial de envío
       const destinatarioEtiqueta =
@@ -1038,6 +1096,10 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
         },
         // smtpMessageId guardado en campo raíz para que certify-event lo incluya en la TX de Polygon
         smtpMessageId: result.messageId,
+        smtpResponse: result.response || null,
+        emailProvider,
+        providerMessageId: providerMessageId || null,
+        smtpFrom: mailOptions.from,
         smtpAccepted: {
           messageId: result.messageId || null,
           accepted: result.accepted || null,
@@ -1221,17 +1283,30 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
         success: true,
         messageId: result.messageId,
         docId: docId,
+        emailProvider: resolveEmailProvider(emailData),
+        providerMessageId: extractProviderMessageId(resolveEmailProvider(emailData), result) || undefined,
+        smtpResponse: result.response || undefined,
         whatsappId: whatsappId || undefined,
         whatsappError: whatsappError || undefined
       });
       
     } catch (error) {
       console.error('Error:', error);
+
+      let failedProvider = 'donweb';
+      try {
+        const failId = req.body && req.body.docId;
+        if (failId) {
+          const failSnap = await getFirestore().doc(`mail/${failId}`).get();
+          if (failSnap.exists) failedProvider = resolveEmailProvider(failSnap.data());
+        }
+      } catch (_) { /* ignore */ }
       
       // Solo actualizar el documento si docRef está definida
       if (typeof docRef !== 'undefined') {
         try {
           await docRef.update({
+            emailProvider: failedProvider,
             delivery: {
               state: 'ERROR',
               time: FieldValue.serverTimestamp(),
@@ -1246,7 +1321,8 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
       // Devolver respuesta de error
       res.status(500).json({ 
         success: false, 
-        error: error.message 
+        error: error.message,
+        emailProvider: failedProvider,
       });
     }
   }
@@ -2528,5 +2604,38 @@ exports.sealEvidenceObject = onObjectFinalized(
     }
     await getStorage().bucket(event.data.bucket).file(name).copy(dest);
     console.log('WORM copiado:', name);
+  }
+);
+
+exports.resendWebhook = onRequest(
+  {
+    region: REGION,
+    secrets: [resendWebhookSecret],
+    cors: false,
+    invoker: 'public',
+  },
+  async (req, res) => {
+    if (req.method === 'GET') {
+      return res.status(200).json({ ok: true, service: 'resend-webhook' });
+    }
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'method_not_allowed' });
+    }
+    const rawBody = Buffer.isBuffer(req.rawBody)
+      ? req.rawBody.toString('utf8')
+      : typeof req.rawBody === 'string'
+        ? req.rawBody
+        : typeof req.body === 'string'
+          ? req.body
+          : JSON.stringify(req.body || {});
+    const result = await processResendWebhook({
+      rawBody,
+      svixId: String(req.get('svix-id') || ''),
+      svixTimestamp: String(req.get('svix-timestamp') || ''),
+      svixSignature: String(req.get('svix-signature') || ''),
+      contentType: req.get('content-type') || null,
+      secret: resendWebhookSecret.value(),
+    });
+    return res.status(result.httpStatus).json(result.body);
   }
 );

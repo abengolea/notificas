@@ -126,6 +126,14 @@ service cloud.firestore {
         && r.get('polygonCertifications', null) == n.get('polygonCertifications', null);
     }
 
+    match /email_provider_events/{eventId} {
+      allow read, write: if false;
+    }
+
+    match /email_provider_webhook_rejects/{eventId} {
+      allow read, write: if false;
+    }
+
     match /mail/{mailId} {
       allow get: if mailReadable();
 
@@ -147,6 +155,10 @@ service cloud.firestore {
         && mailAuditFieldsUnchanged()
         && (mailSenderCanUpdate() || mailRecipientSafeUpdate());
       allow delete: if false;
+
+      match /providerEvents/{eventId} {
+        allow read, write: if false;
+      }
     }
 
     match /users/{userId} {

@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { createHash } from "node:crypto";
 import { getAdminDb } from "@/lib/firebase-admin";
 
-export type ProviderName = "meta" | "smtp";
+export type ProviderName = "meta" | "smtp" | "resend";
 
 export type ProviderEventInput = {
   mailId?: string | null;

@@ -157,6 +157,10 @@ env:
     secret: CAMPAIGN_WORKER_SECRET
     availability:
       - RUNTIME
+  - variable: RESEND_WEBHOOK_SECRET
+    secret: RESEND_WEBHOOK_SECRET
+    availability:
+      - RUNTIME
   - variable: CLOUD_TASKS_QUEUE
     value: "campaign-notifications"
     availability:
