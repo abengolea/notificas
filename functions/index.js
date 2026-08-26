@@ -38,11 +38,11 @@ const whatsappAccessToken = defineSecret('WHATSAPP_ACCESS_TOKEN');
 const whatsappPhoneNumberId = defineSecret('WHATSAPP_PHONE_NUMBER_ID');
 // Secret SMTP (firebase functions:secrets:set SMTP_PASS)
 const smtpPass = defineSecret('SMTP_PASS');
-// Resend: campañas si CAMPAIGN_EMAIL_PROVIDER=resend. Rollback: donweb.
+// Resend: envío por defecto. Rollback: EMAIL_PROVIDER=donweb (y CAMPAIGN_EMAIL_PROVIDER=donweb).
 const resendApiKey = defineSecret('RESEND_API_KEY');
 const resendWebhookSecret = defineSecret('RESEND_WEBHOOK_SECRET');
-const emailProviderParam = defineString('EMAIL_PROVIDER', { default: 'donweb' });
-const campaignEmailProviderParam = defineString('CAMPAIGN_EMAIL_PROVIDER', { default: 'donweb' });
+const emailProviderParam = defineString('EMAIL_PROVIDER', { default: 'resend' });
+const campaignEmailProviderParam = defineString('CAMPAIGN_EMAIL_PROVIDER', { default: 'resend' });
 // Mismo valor que App Hosting POLYGON_CERTIFY_SECRET — protege /api/polygon/certify-event
 const polygonCertifySecret = defineSecret('POLYGON_CERTIFY_SECRET');
 const campaignWorkerSecret = defineSecret('CAMPAIGN_WORKER_SECRET');
@@ -520,16 +520,20 @@ function normalizeEmailProvider(value) {
   return String(value || '').trim().toLowerCase() === 'resend' ? 'resend' : 'donweb';
 }
 
-/** Campaña con correo (no formulario, no WA-only). */
+/** Conservado por si hace falta distinguir campañas; el proveedor lo resuelve EMAIL_PROVIDER. */
 function isCampaignEmailSend(emailData) {
   return Boolean(emailData && emailData.campaignId) && emailData.contactRequest !== true && emailData.waOnly !== true;
 }
 
-function resolveEmailProvider(emailData) {
-  if (isCampaignEmailSend(emailData)) {
-    return normalizeEmailProvider(campaignEmailProviderParam.value() || emailProviderParam.value());
-  }
-  return normalizeEmailProvider(emailProviderParam.value());
+function resolveEmailProvider(_emailData) {
+  return normalizeEmailProvider(emailProviderParam.value() || campaignEmailProviderParam.value() || 'resend');
+}
+
+function resendMailEnvelope(from, replyTo) {
+  return {
+    from: formatSmtpFrom(RESEND_CAMPAIGN_FROM_EMAIL),
+    replyTo: replyTo || from || RESEND_CAMPAIGN_REPLY_TO,
+  };
 }
 
 function getEmailTransporter(provider) {
@@ -709,10 +713,14 @@ exports.sendEmail = onRequest(
       const htmlCf = emailData.message?.html || '';
       const textCf =
         emailData.message?.text || String(htmlCf).replace(/<[^>]*>/g, '');
-      const resultCf = await getTransporter().sendMail({
-        from: formatSmtpFrom(fromCf),
+      const providerCf = resolveEmailProvider(emailData);
+      const envelopeCf = providerCf === 'resend'
+        ? resendMailEnvelope(fromCf, emailData.replyTo)
+        : { from: formatSmtpFrom(fromCf), replyTo: emailData.replyTo };
+      const resultCf = await getEmailTransporter(providerCf).sendMail({
+        from: envelopeCf.from,
         to: toCf,
-        replyTo: emailData.replyTo,
+        replyTo: envelopeCf.replyTo,
         subject: subjectCf,
         html: htmlCf,
         text: textCf,
@@ -726,6 +734,9 @@ exports.sendEmail = onRequest(
           time: FieldValue.serverTimestamp(),
           info: resultCf.messageId
         },
+        emailProvider: providerCf,
+        providerMessageId: extractProviderMessageId(providerCf, resultCf) || null,
+        smtpFrom: envelopeCf.from,
         source: 'contact_form',
         sourceLabel: 'Formulario Contáctenos',
         sourceIcon: '📝'
@@ -1035,15 +1046,16 @@ ${new Date().getFullYear()} Notificas.com
 Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce esta notificacion, ignore este correo o responda a contacto@notificas.com.`;
 
       const emailProvider = resolveEmailProvider(emailData);
+      const envelope = emailProvider === 'resend'
+        ? resendMailEnvelope(from, emailData.replyTo)
+        : { from: formatSmtpFrom(from), replyTo: emailData.replyTo };
       const mailOptions = {
-        from: emailProvider === 'resend'
-          ? formatSmtpFrom(RESEND_CAMPAIGN_FROM_EMAIL)
-          : formatSmtpFrom(from),
+        from: envelope.from,
         to,
         subject,
         text: textVersion,
         html: htmlWithTracking,
-        replyTo: emailProvider === 'resend' ? RESEND_CAMPAIGN_REPLY_TO : emailData.replyTo,
+        replyTo: envelope.replyTo,
         cc: emailData.cc,
         bcc: emailData.bcc,
         headers: { 'X-Notificas-Mail-Id': docId },
@@ -2004,7 +2016,7 @@ function inboundAuthorized(req) {
 }
 
 // Función para procesar correos entrantes desde clientes de email externos
-exports.processIncomingEmail = onRequest({ region: REGION, secrets: [smtpPass, polygonCertifySecret] }, async (req, res) => {
+exports.processIncomingEmail = onRequest({ region: REGION, secrets: [smtpPass, polygonCertifySecret, resendApiKey] }, async (req, res) => {
   try {
     if (!inboundAuthorized(req)) {
       return res.status(401).json({ error: 'No autorizado' });
@@ -2169,18 +2181,23 @@ Este mensaje fue destinado a ${recipientNorm}. Si no reconoce esta notificacion,
     });
 
     // Enviar el correo certificado
+    const emailProviderIn = resolveEmailProvider({ campaignId: null });
+    const envelopeIn = emailProviderIn === 'resend'
+      ? resendMailEnvelope(DEFAULT_FROM_EMAIL, user.email)
+      : { from: formatSmtpFrom(DEFAULT_FROM_EMAIL), replyTo: user.email };
     const mailOptions = {
-      from: formatSmtpFrom(DEFAULT_FROM_EMAIL),
+      from: envelopeIn.from,
       to: recipientNorm,
       subject: parsed.actualSubject,
       text: textVersion,
       html: htmlWithTracking,
-      replyTo: user.email,
+      replyTo: envelopeIn.replyTo,
       headers: { 'X-Notificas-Mail-Id': docId },
     };
     
     console.log('📧 Enviando correo certificado a:', recipientNorm);
-    const result = await getTransporter().sendMail(mailOptions);
+    console.log('📧 Proveedor SMTP:', emailProviderIn);
+    const result = await getEmailTransporter(emailProviderIn).sendMail(mailOptions);
 
     if (!result.messageId) {
       throw new Error('No se recibió messageId del servidor de correo');
@@ -2191,7 +2208,11 @@ Este mensaje fue destinado a ${recipientNorm}. Si no reconoce esta notificacion,
       'delivery.time': FieldValue.serverTimestamp(),
       'delivery.info': result.messageId,
       'tracking.sentAt': FieldValue.serverTimestamp(),
-      'tracking.messageId': result.messageId
+      'tracking.messageId': result.messageId,
+      smtpMessageId: result.messageId,
+      emailProvider: emailProviderIn,
+      providerMessageId: extractProviderMessageId(emailProviderIn, result) || null,
+      smtpFrom: mailOptions.from,
     });
     
     console.log('✅ Correo certificado enviado:', result.messageId);
