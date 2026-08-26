@@ -83,12 +83,12 @@ export function movementForResendEvent(
   const labels: Record<string, { type: string; description: string }> = {
     "email.sent": {
       type: "resend_sent",
-      description: "Resend aceptó el mensaje para entrega. No es lectura.",
+      description: "Resend aceptó el mensaje para entrega.",
     },
     "email.delivered": {
       type: "resend_delivered",
       description:
-        "Resend informó que el servidor de correo del destinatario aceptó el mensaje. No es lectura fehaciente.",
+        "Resend informó que el servidor de correo del destinatario aceptó el mensaje.",
     },
     "email.delivery_delayed": {
       type: "resend_delayed",
@@ -108,16 +108,16 @@ export function movementForResendEvent(
     },
     "email.complained": {
       type: "resend_complained",
-      description: "Resend informó marca de spam. No es lectura.",
+      description: "Resend informó marca de spam.",
     },
     "email.opened": {
       type: "resend_opened_signal",
       description:
-        "Señal técnica de apertura informada por Resend (pixel/proxy). No equivale a lectura fehaciente.",
+        "Señal técnica de apertura informada por Resend (pixel/proxy).",
     },
     "email.clicked": {
       type: "resend_clicked_signal",
-      description: "Señal técnica de clic informada por Resend. No equivale a acceso al reader.",
+      description: "Señal técnica de clic informada por Resend.",
     },
   };
   const spec = labels[eventType];

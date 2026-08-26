@@ -174,8 +174,8 @@ const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   resend_failed: 'FALLO DE ENVÍO (RESEND)',
   resend_suppressed: 'SUPRIMIDO (RESEND)',
   resend_complained: 'MARCADO COMO SPAM (RESEND)',
-  resend_opened_signal: 'SEÑAL TÉCNICA DE APERTURA (NO ES LECTURA)',
-  resend_clicked_signal: 'SEÑAL TÉCNICA DE CLIC (NO ES LECTURA)',
+  resend_opened_signal: 'SEÑAL TÉCNICA DE APERTURA',
+  resend_clicked_signal: 'SEÑAL TÉCNICA DE CLIC',
   email_opened: 'CORREO ABIERTO',
   read_confirmed: 'LECTURA CONFIRMADA',
   attachment_opened: 'ARCHIVO ABIERTO',
@@ -208,7 +208,12 @@ const MOVEMENT_TYPES_WITH_RECIPIENT_CONTEXT = new Set([
 
 function getMovementDescription(movement: Movement): string {
   if (movement.type === 'reader_magic_open') return READER_MAGIC_OPEN_DESCRIPTION;
-  return movement.description;
+  return String(movement.description || '')
+    .replace(/\s*No es lectura fehaciente\.?/gi, '')
+    .replace(/\s*No es lectura\.?/gi, '')
+    .replace(/\s*No equivale a lectura fehaciente\.?/gi, '')
+    .replace(/\s*No equivale a acceso al reader\.?/gi, '')
+    .trim();
 }
 
 function getMovementLabel(movement: Movement): string {
