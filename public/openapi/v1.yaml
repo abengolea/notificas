@@ -14,6 +14,9 @@ info:
     La constancia de envío documenta qué se envió, a quién y cuándo, con huellas SHA-256
     y eventos de proveedor (Meta / transporte de correo). No es firma digital, documento
     público, certificación notarial ni carta documento.
+
+    SDK web (widget + cliente JS, sin exponer `ntf_live_` en el navegador):
+    `https://notificas.com.ar/sdk/v1/notificas.js` — guía en `/docs/api/embed`.
   contact:
     name: Notificas
     url: https://notificas.com.ar

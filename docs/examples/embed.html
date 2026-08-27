@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Notificas — ejemplo de widget</title>
+  </head>
+  <body>
+    <h1>Insertar Notificas en una web</h1>
+    <p>
+      En producción reemplazá <code>data-demo="true"</code> por
+      <code>data-proxy-url="/api/notificas"</code> y serví el proxy de
+      <code>docs/examples/nextjs-proxy-route.ts</code> o
+      <code>docs/examples/express-proxy.js</code>.
+      No pongas una clave <code>ntf_live_</code> en el HTML.
+    </p>
+
+    <div
+      data-notificas-embed
+      data-demo="true"
+      data-channel="whatsapp"
+      data-template="notificacion_deuda_180_dias"
+      data-button-label="Enviar notificación certificada"
+    ></div>
+
+    <!-- En producción: https://notificas.com.ar/sdk/v1/notificas.js -->
+    <script src="https://notificas.com.ar/sdk/v1/notificas.js" async></script>
+  </body>
+</html>

@@ -67,7 +67,7 @@ Una clave revocada responde `401` con `code: revoked_api_key`.
 
 ## Endpoints
 
-Ver OpenAPI en `/openapi/v1.yaml` y UI en `/docs/api`.
+Ver OpenAPI en `/openapi/v1.yaml` y UI en `/docs/api`. Widget/SDK para sitios: `/docs/api/embed` (`https://notificas.com.ar/sdk/v1/notificas.js`).
 
 | Método | Endpoint | Función |
 |--------|----------|---------|
@@ -173,6 +173,44 @@ No hace falta agregar secretos nuevos a `apphosting.yaml` para el primer deploy.
 5. Probar `GET https://notificas.com.ar/api/v1/me` y `GET https://notificas.com.ar/docs/api`.
 
 Índices nuevos tardan en habilitarse; el listado puede fallar hasta que Firestore los construya.
+
+## Insertar la API en una web (SDK)
+
+Script público: `https://notificas.com.ar/sdk/v1/notificas.js`.
+
+**No pongas `ntf_live_…` en el HTML.** El widget o el cliente JS deben usar `proxyUrl` hacia un backend tuyo que agregue `Authorization: Bearer`. Una clave `ntf_live_` en el navegador lanza error salvo `allowBrowserKey: true` (solo para pruebas internas).
+
+Widget (copy-paste):
+
+```html
+<div
+  data-notificas-embed
+  data-proxy-url="/api/notificas"
+  data-channel="whatsapp"
+  data-template="notificacion_deuda_180_dias"
+></div>
+<script src="https://notificas.com.ar/sdk/v1/notificas.js" async></script>
+```
+
+Cliente:
+
+```js
+const client = Notificas.create({ proxyUrl: "/api/notificas" });
+await client.sendCertifiedNotification({
+  channel: "whatsapp",
+  recipient: { name: "Ana Pérez", phone: "+5491112345678" },
+  template: "notificacion_deuda_180_dias",
+  variables: { nombre: "Ana Pérez", monto: "128400" },
+});
+```
+
+El proxy reenvía `/api/notificas/*` → `https://notificas.com.ar/api/v1/*`. Ejemplos:
+
+- `docs/examples/nextjs-proxy-route.ts`
+- `docs/examples/express-proxy.js`
+- `docs/examples/embed.html`
+
+Demo sin API: `Notificas.embed("#el", { demo: true })` o `data-demo="true"`.
 
 ## Preparado para agentes / iPaaS
 
