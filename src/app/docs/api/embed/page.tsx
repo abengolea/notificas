@@ -65,7 +65,23 @@ export default function EmbedApiPage() {
 
   const copy = async (which: "html" | "js") => {
     const text = which === "html" ? SNIPPET : JS_SNIPPET;
-    await navigator.clipboard.writeText(text);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        throw new Error("clipboard unavailable");
+      }
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "true");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
     setCopied(which);
     window.setTimeout(() => setCopied(null), 2000);
   };
