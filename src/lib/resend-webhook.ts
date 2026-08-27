@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { recordProviderEvent } from "@/lib/provider-events";
 import { verifyResendSvixSignature } from "@/lib/resend-webhook-verify";
+import { syncPublicApiNotificationFromMail } from "@/lib/public-api/status-sync";
 
 export const RESEND_EMAIL_EVENTS = [
   "email.sent",
@@ -395,6 +396,15 @@ export async function processResendWebhook(input: {
       contentType: input.contentType,
       signatureValidatedAt: receivedAtIso,
     });
+    const hint =
+      eventType === "email.delivered"
+        ? "delivered"
+        : eventType === "email.sent"
+          ? "sent"
+          : eventType === "email.bounced" || eventType === "email.failed" || eventType === "email.suppressed"
+            ? "failed"
+            : undefined;
+    void syncPublicApiNotificationFromMail(mailId, hint).catch(() => undefined);
   }
 
   return {

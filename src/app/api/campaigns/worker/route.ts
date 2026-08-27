@@ -25,6 +25,7 @@ import { waitCampaignSendGap } from '@/lib/campaign-send-pace';
 import { completeSimulatedSend, isCampaignSimulated } from '@/lib/campaign-simulate';
 import { presentRecipientValue, recipientValueText } from '@/lib/parse-campaign-csv';
 import type { CampaignAttachment, RecipientEntry } from '@/lib/types';
+import { registerPublicApiNotification, syncPublicApiNotificationFromMail } from '@/lib/public-api/status-sync';
 
 class WorkerRetryError extends Error {
   readonly retry = true;
@@ -251,6 +252,17 @@ async function processMessage(
           } : {}),
           ...(waOnly ? { waOnly: true } : {}),
           ...(isCampaignSimulated(campaign) ? { simulated: true } : {}),
+          ...(typeof campaign.publicApiBatchId === 'string' && campaign.publicApiBatchId
+            ? {
+                orgId,
+                publicApiId: typeof msg.publicApiId === 'string' ? msg.publicApiId : undefined,
+                apiSource: 'public_api',
+                apiBatchId: String(campaign.publicApiBatchId),
+                testMode: campaign.publicApiTestMode === true,
+                apiKeyId: typeof campaign.apiKeyId === 'string' ? campaign.apiKeyId : undefined,
+                apiReference: typeof campaign.apiReference === 'string' ? campaign.apiReference : undefined,
+              }
+            : {}),
         });
         await msgRef.update({
           mailId,
@@ -258,6 +270,24 @@ async function processMessage(
           mailClaimAt: FieldValue.delete(),
           estado: 'pendiente',
         });
+        if (typeof campaign.publicApiBatchId === 'string' && campaign.publicApiBatchId && mailId) {
+          const ntfId = typeof msg.publicApiId === 'string' ? msg.publicApiId : undefined;
+          if (ntfId) {
+            void registerPublicApiNotification({
+              id: ntfId,
+              orgId,
+              mailId,
+              channel: canal === 'email' ? 'email' : 'whatsapp',
+              batchId: String(campaign.publicApiBatchId),
+              testMode: campaign.publicApiTestMode === true,
+              apiKeyId: typeof campaign.apiKeyId === 'string' ? campaign.apiKeyId : undefined,
+              reference: typeof campaign.apiReference === 'string' ? campaign.apiReference : null,
+              recipientPhone: row.telefono,
+              recipientEmail: emailRaw,
+              recipientName: row.nombre,
+            }).catch(() => undefined);
+          }
+        }
       } catch (e) {
         await msgRef.update({
           mailClaimLock: FieldValue.delete(),
@@ -389,6 +419,7 @@ async function processMessage(
       phone: String(row.telefono || ''),
       contentHash,
     });
+    void syncPublicApiNotificationFromMail(mailId, 'failed').catch(() => undefined);
     return 'error';
   }
 
@@ -515,6 +546,7 @@ async function processMessage(
       console.log(`✅ Evento WA pendiente '${st}' procesado para wamid=${wamid}`);
     }
   }
+  void syncPublicApiNotificationFromMail(mailId, 'sent').catch(() => undefined);
   return 'sent';
 }
 

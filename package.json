@@ -30,7 +30,10 @@
     "export:users-excel": "node scripts/export-firestore-users-to-xlsx.js",
     "script:send-reset-link": "node scripts/send-password-reset-link.js",
     "bounce:send": "node scripts/send-email-bounce.js",
-    "deploy:functions": "node scripts/deploy-functions.js"
+    "deploy:functions": "node scripts/deploy-functions.js",
+    "test": "npx tsx --tsconfig tsconfig.json --test src/lib/*.test.ts src/lib/public-api/*.test.ts",
+    "test:public-api": "npx tsx --tsconfig tsconfig.json --test src/lib/public-api/public-api.test.ts",
+    "api-key:create": "npx tsx scripts/create-api-key.ts"
   },
   "dependencies": {
     "@genkit-ai/googleai": "^1.13.0",

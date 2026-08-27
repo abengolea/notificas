@@ -305,6 +305,17 @@ service cloud.firestore {
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
     }
 
+    // API pública v1: solo Admin SDK (API keys, notificaciones, webhooks, auditoría).
+    match /api_keys/{id} { allow read, write: if false; }
+    match /api_notifications/{id} { allow read, write: if false; }
+    match /api_batches/{id} { allow read, write: if false; }
+    match /api_idempotency/{id} { allow read, write: if false; }
+    match /api_audit_logs/{id} { allow read, write: if false; }
+    match /api_rate_limits/{id} { allow read, write: if false; }
+    match /webhook_endpoints/{id} { allow read, write: if false; }
+    match /webhook_events/{id} { allow read, write: if false; }
+    match /webhook_deliveries/{id} { allow read, write: if false; }
+
     match /{document=**} {
       allow read, write: if false;
     }

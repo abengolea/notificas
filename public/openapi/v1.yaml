@@ -1,0 +1,530 @@
+openapi: 3.0.3
+info:
+  title: Notificas Public API
+  version: 1.0.0
+  description: |
+    API REST v1 de notificaciones digitales certificadas y trazables.
+
+    Autenticación: `Authorization: Bearer ntf_live_…` o `ntf_test_…`.
+
+    Idempotencia: header `Idempotency-Key`.
+
+    Rate limits por API Key. 429 incluye `Retry-After`.
+
+    La constancia de envío documenta qué se envió, a quién y cuándo, con huellas SHA-256
+    y eventos de proveedor (Meta / transporte de correo). No es firma digital, documento
+    público, certificación notarial ni carta documento.
+  contact:
+    name: Notificas
+    url: https://notificas.com.ar
+servers:
+  - url: https://notificas.com.ar
+    description: Producción
+  - url: http://localhost:9006
+    description: Desarrollo
+tags:
+  - name: Notifications
+  - name: Batches
+  - name: Webhooks
+  - name: Account
+security:
+  - BearerAuth: []
+paths:
+  /api/v1/me:
+    get:
+      tags: [Account]
+      summary: Cuenta asociada a la API Key
+      operationId: getAccount
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  account:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      name: { type: string }
+                      environment: { type: string, enum: [live, test] }
+                      test_mode: { type: boolean }
+                      scopes:
+                        type: array
+                        items: { type: string }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/notifications:
+    get:
+      tags: [Notifications]
+      summary: Listar notificaciones
+      operationId: listNotifications
+      parameters:
+        - in: query
+          name: status
+          schema: { $ref: "#/components/schemas/NotificationStatus" }
+        - in: query
+          name: channel
+          schema: { type: string, enum: [whatsapp, email] }
+        - in: query
+          name: reference
+          schema: { type: string }
+        - in: query
+          name: created_from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: created_to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: recipient
+          schema: { type: string }
+          description: Email o teléfono a buscar
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        "200":
+          description: Página
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Notification" }
+                  has_more: { type: boolean }
+                  cursor: { type: string, nullable: true }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Notifications]
+      summary: Crear una notificación certificada
+      operationId: sendCertifiedNotification
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateNotificationRequest" }
+            example:
+              channel: whatsapp
+              recipient:
+                name: Juan Pérez
+                phone: "+5493364123456"
+                email: juan@email.com
+                document: "20123456789"
+              template: notificacion_deuda_180_dias
+              variables:
+                nombre: Juan Pérez
+                dni: "20123456"
+                fecha: "27/08/2026"
+                monto: "125000"
+                cuotas: "4"
+              reference: CLIENTE-12345
+              metadata:
+                crm_id: "78482"
+                account_id: ABC123
+      responses:
+        "201":
+          description: Creada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationCreated" }
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/notifications/{notification_id}:
+    get:
+      tags: [Notifications]
+      summary: Consultar una notificación
+      operationId: getNotification
+      parameters:
+        - in: path
+          name: notification_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Notification" }
+        "404":
+          $ref: "#/components/responses/Error"
+  /api/v1/notifications/{notification_id}/certificate:
+    get:
+      tags: [Notifications]
+      summary: Constancia de envío (URL firmada temporal)
+      operationId: getNotificationCertificate
+      parameters:
+        - in: path
+          name: notification_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: ready o processing
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Certificate" }
+  /api/v1/batches:
+    post:
+      tags: [Batches]
+      summary: Crear un envío masivo asíncrono
+      operationId: createBatch
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateBatchRequest" }
+      responses:
+        "201":
+          description: Lote encolado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BatchCreated" }
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/v1/batches/{batch_id}:
+    get:
+      tags: [Batches]
+      summary: Consultar un lote
+      operationId: getBatch
+      parameters:
+        - in: path
+          name: batch_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+  /api/v1/webhook-endpoints:
+    get:
+      tags: [Webhooks]
+      summary: Listar endpoints
+      operationId: listWebhookEndpoints
+      responses:
+        "200":
+          description: OK
+    post:
+      tags: [Webhooks]
+      summary: Registrar un endpoint (el secret se muestra una sola vez)
+      operationId: createWebhookEndpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateWebhookEndpointRequest" }
+            example:
+              url: https://crm.example.com/hooks/notificas
+              events:
+                - notification.delivered
+                - notification.read
+                - notification.failed
+                - notification.certificate_ready
+                - batch.completed
+      responses:
+        "201":
+          description: Creado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WebhookEndpointCreated" }
+  /api/v1/webhook-endpoints/{endpoint_id}:
+    get:
+      tags: [Webhooks]
+      operationId: getWebhookEndpoint
+      parameters:
+        - in: path
+          name: endpoint_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+    patch:
+      tags: [Webhooks]
+      operationId: updateWebhookEndpoint
+      parameters:
+        - in: path
+          name: endpoint_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+    delete:
+      tags: [Webhooks]
+      summary: Desactivar
+      operationId: disableWebhookEndpoint
+      parameters:
+        - in: path
+          name: endpoint_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Desactivado
+webhooks:
+  notificationEvent:
+    post:
+      tags: [Webhooks]
+      summary: Evento saliente firmado
+      description: |
+        Verificar HMAC-SHA256:
+
+        `signed_payload = notificas-id + "." + notificas-timestamp + "." + rawBody`
+
+        `notificas-signature` = `v1=<hex>`.
+
+        Rechazar si el timestamp difiere más de 300 segundos (anti-replay).
+        Los reintentos reutilizan el mismo `id` de evento.
+      parameters:
+        - in: header
+          name: notificas-id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: notificas-timestamp
+          required: true
+          schema: { type: string }
+        - in: header
+          name: notificas-signature
+          required: true
+          schema: { type: string, example: "v1=…" }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WebhookEvent" }
+            example:
+              id: evt_01J00000000000000000000000
+              type: notification.delivered
+              created_at: "2026-08-27T13:15:00Z"
+              data:
+                notification_id: ntf_01J00000000000000000000000
+                reference: CLIENTE-12345
+                status: delivered
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: ntf_live_… | ntf_test_…
+  parameters:
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: false
+      schema: { type: string, maxLength: 256 }
+      example: cobranza-982734
+  schemas:
+    NotificationStatus:
+      type: string
+      enum: [queued, processing, sent, delivered, read, failed]
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [type, code, message, request_id]
+          properties:
+            type:
+              type: string
+              enum:
+                - authentication_error
+                - authorization_error
+                - validation_error
+                - not_found
+                - conflict
+                - rate_limit_error
+                - idempotency_error
+                - api_error
+            code: { type: string }
+            message: { type: string }
+            request_id: { type: string }
+            param: { type: string }
+    CreateNotificationRequest:
+      type: object
+      additionalProperties: false
+      required: [channel, recipient]
+      properties:
+        channel: { type: string, enum: [whatsapp, email] }
+        recipient:
+          type: object
+          additionalProperties: false
+          properties:
+            name: { type: string }
+            phone: { type: string, example: "+5493364123456" }
+            email: { type: string, format: email }
+            document: { type: string }
+        template: { type: string }
+        variables:
+          type: object
+          additionalProperties: { type: string }
+        subject: { type: string }
+        body: { type: string }
+        reference: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+    NotificationCreated:
+      type: object
+      properties:
+        id: { type: string, example: ntf_01J00000000000000000000000 }
+        status: { $ref: "#/components/schemas/NotificationStatus" }
+        channel: { type: string }
+        recipient:
+          type: object
+          properties:
+            phone: { type: string, example: "+5493364******" }
+            email: { type: string }
+        reference: { type: string }
+        created_at: { type: string, format: date-time }
+        test_mode: { type: boolean }
+    Notification:
+      allOf:
+        - $ref: "#/components/schemas/NotificationCreated"
+        - type: object
+          properties:
+            sent_at: { type: string, format: date-time, nullable: true }
+            delivered_at: { type: string, format: date-time, nullable: true }
+            read_at: { type: string, format: date-time, nullable: true }
+            failed_at: { type: string, format: date-time, nullable: true }
+            certificate_status: { type: string, enum: [processing, ready, sandbox, unavailable] }
+    Certificate:
+      type: object
+      properties:
+        status: { type: string, enum: [processing, ready] }
+        kind: { type: string, example: constancia_envio }
+        download_url: { type: string, format: uri }
+        expires_at: { type: string, format: date-time }
+        test_mode: { type: boolean }
+        message: { type: string }
+    CreateBatchRequest:
+      type: object
+      additionalProperties: false
+      required: [channel, recipients]
+      properties:
+        channel: { type: string, enum: [whatsapp, email] }
+        template: { type: string }
+        subject: { type: string }
+        body: { type: string }
+        reference: { type: string }
+        metadata: { type: object }
+        recipients:
+          type: array
+          maxItems: 5000
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              phone: { type: string }
+              email: { type: string }
+              document: { type: string }
+              variables: { type: object }
+    BatchCreated:
+      type: object
+      properties:
+        id: { type: string, example: batch_01J00000000000000000000000 }
+        status: { type: string, example: queued }
+        total: { type: integer }
+        channel: { type: string }
+        test_mode: { type: boolean }
+    Batch:
+      type: object
+      properties:
+        id: { type: string }
+        status: { type: string, enum: [queued, processing, completed, paused, cancelled, failed] }
+        total: { type: integer }
+        queued: { type: integer }
+        sent: { type: integer }
+        delivered: { type: integer }
+        read: { type: integer }
+        failed: { type: integer }
+        channel: { type: string, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+        test_mode: { type: boolean }
+    CreateWebhookEndpointRequest:
+      type: object
+      required: [url, events]
+      properties:
+        url: { type: string, format: uri }
+        events:
+          type: array
+          items:
+            type: string
+            enum:
+              - notification.queued
+              - notification.sent
+              - notification.delivered
+              - notification.read
+              - notification.failed
+              - notification.certificate_ready
+              - batch.completed
+        description: { type: string }
+    WebhookEndpointCreated:
+      type: object
+      properties:
+        id: { type: string }
+        url: { type: string }
+        events:
+          type: array
+          items: { type: string }
+        status: { type: string }
+        secret: { type: string, example: whsec_… }
+        secret_prefix: { type: string }
+    WebhookEvent:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string }
+        created_at: { type: string, format: date-time }
+        data:
+          type: object
+          additionalProperties: true
+  responses:
+    Error:
+      description: Error normalizado
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error:
+              type: validation_error
+              code: invalid_phone
+              message: The recipient phone number is invalid.
+              request_id: req_01J00000000000000000000000
+              param: recipient.phone
+    Unauthorized:
+      description: API Key inválida o revocada
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Rate limit
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }

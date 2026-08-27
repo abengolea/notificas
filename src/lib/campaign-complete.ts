@@ -1,6 +1,7 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { closeOpenBatches } from '@/lib/campaign-integrity';
+import { emitBatchCompletedIfApi } from '@/lib/public-api/status-sync';
 
 /** Marca la campaña completada si ya no quedan pendientes (y cierra tandas Merkle). */
 export async function maybeCompleteCampaign(
@@ -45,5 +46,8 @@ export async function maybeCompleteCampaign(
 
   void closeOpenBatches(campRef.id, true).catch((e) =>
     console.warn('⚠️ No se pudieron cerrar tandas al completar:', e?.message)
+  );
+  void emitBatchCompletedIfApi(campRef.id).catch((e) =>
+    console.warn('public-api batch completed:', e instanceof Error ? e.message : e)
   );
 }

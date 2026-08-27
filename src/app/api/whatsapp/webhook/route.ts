@@ -5,6 +5,7 @@ import { recordEventLeaf } from "@/lib/campaign-integrity";
 import { certifyMailHitoIfNeeded } from "@/lib/certification-polygon";
 import { recordProviderEvent, sha256Utf8 } from "@/lib/provider-events";
 import { verifyWhatsAppHubSignature } from "@/lib/whatsapp-webhook-auth";
+import { syncPublicApiNotificationFromMail } from "@/lib/public-api/status-sync";
 
 // Callback URL canónica en Meta Developer Portal (app 1022568949756440):
 //   https://notificas.com.ar/api/whatsapp/webhook
@@ -319,6 +320,19 @@ async function processStatus(
     metaTimestamp: timestamp,
     rawPayloadHash: extra?.inbound?.payloadHash ?? undefined,
   });
+  const publicHint =
+    statusType === "read"
+      ? "read"
+      : statusType === "delivered"
+        ? "delivered"
+        : statusType === "failed"
+          ? "failed"
+          : statusType === "sent"
+            ? "sent"
+            : undefined;
+  if (publicHint) {
+    void syncPublicApiNotificationFromMail(mailDocId, publicHint).catch(() => undefined);
+  }
 }
 
 async function syncCampaignMessage(
@@ -386,7 +400,7 @@ async function syncCampaignMessage(
             });
           }
         }
-        t.update(ref, update);
+    t.update(ref, update);
       });
     }
     if (statusType === 'delivered' || statusType === 'read') {
