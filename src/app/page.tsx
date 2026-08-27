@@ -10,7 +10,6 @@ import {
   ArrowRight,
   Mail,
   Send,
-  Phone,
   Search,
   MessageCircle,
   FileText,
@@ -19,21 +18,24 @@ import {
   Inbox,
 } from 'lucide-react';
 import { FaqSection } from '@/components/faq-section';
-import { FooterContactForm, QuoteContactForm } from '@/components/footer-contact-form';
+import { QuoteContactForm } from '@/components/footer-contact-form';
 import { LandingHeader } from '@/components/landing-header';
 import { JsonLd } from '@/components/json-ld';
+import { PublicFooter } from '@/components/public-footer';
+import { GEO_LANDING_PAGES } from '@/lib/public-resources';
 import { createPageMetadata, SEO_GUIDE_PAGES } from '@/lib/seo';
 import {
   faqPageJsonLd,
   organizationJsonLd,
   serviceJsonLd,
+  softwareApplicationJsonLd,
   websiteJsonLd,
 } from '@/lib/structured-data';
 
 const HOME_TITLE =
-  'Notificas | Notificaciones fehacientes digitales certificadas en blockchain';
+  'Notificas | Comunicaciones digitales verificables por WhatsApp y email';
 const HOME_DESCRIPTION =
-  'Enviá un mensaje y dejá constancia de qué salió, a quién y cuándo. El certificado de lectura se emite una sola vez. Campañas de volumen por WhatsApp y correo, previa cotización.';
+  'Plataforma argentina para comunicaciones digitales verificables por WhatsApp y email. Evidencia técnica, trazabilidad de eventos y verificación pública de constancias.';
 
 export const metadata: Metadata = {
   ...createPageMetadata({
@@ -152,6 +154,7 @@ export default function LandingPage() {
     <div className="brand-canvas flex min-h-screen flex-col text-foreground">
       <JsonLd data={organizationJsonLd()} />
       <JsonLd data={websiteJsonLd()} />
+      <JsonLd data={softwareApplicationJsonLd()} />
       <JsonLd data={serviceJsonLd()} />
       <JsonLd data={faqPageJsonLd()} />
       <LandingHeader />
@@ -161,10 +164,10 @@ export default function LandingPage() {
           <div className="container grid items-start gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:gap-16">
             <div className="landing-hero-copy max-w-2xl">
               <h1 className="mb-5 text-balance text-3xl font-bold tracking-tight sm:text-4xl md:text-[2.75rem] md:leading-tight">
-                Notificas: notificaciones digitales con constancia de envío y lectura
+                Notificas: comunicaciones digitales verificables por WhatsApp y email
               </h1>
               <p className="landing-hero-muted mb-8 max-w-[65ch] text-pretty text-base leading-relaxed sm:text-lg">
-                Notificá por WhatsApp o correo y obtené un rastro comprobable. Más rápido y económico que una carta documento, con PDF para tu expediente.
+                Plataforma argentina para empresas y profesionales que necesitan generar y preservar evidencia técnica sobre las distintas etapas de una comunicación. Más rápido y económico que una carta documento en la operación cotidiana; no la reemplaza si la ley pide esa forma.
               </p>
               <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
                 <Button size="lg" className="w-full sm:w-auto" asChild>
@@ -195,6 +198,53 @@ export default function LandingPage() {
                 </li>
               ))}
             </ol>
+          </div>
+        </section>
+
+        <section id="que-es" className="px-4 py-16 sm:py-20 md:py-24">
+          <div className="container max-w-3xl space-y-8">
+            <div>
+              <h2 className="mb-4 text-3xl font-bold tracking-tight md:text-4xl">Qué es Notificas</h2>
+              <p className="max-w-[70ch] leading-relaxed text-muted-foreground">
+                Notificas es una plataforma de comunicaciones digitales verificables por WhatsApp y
+                email. Permite a empresas y profesionales generar y preservar evidencia técnica sobre
+                las distintas etapas de una comunicación: qué se envió, a quién, cuándo, y los eventos
+                posteriores que el canal informe.
+              </p>
+            </div>
+            <div className="grid gap-8 sm:grid-cols-2">
+              <article>
+                <h3 className="text-lg font-semibold">Qué hace</h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground sm:text-base">
+                  Envía el mensaje, conserva el contenido, registra estados (aceptación, rebote,
+                  entrega o lectura cuando el canal los informa) y deja una huella verificable.
+                </p>
+              </article>
+              <article>
+                <h3 className="text-lg font-semibold">Para quién</h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground sm:text-base">
+                  Profesionales que envían uno a uno, y empresas que necesitan campañas de volumen
+                  para cobranza, avisos de servicio, ecommerce, seguros o plataformas digitales.
+                </p>
+              </article>
+              <article>
+                <h3 className="text-lg font-semibold">Canales</h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground sm:text-base">
+                  WhatsApp Business Platform (plantillas aprobadas por Meta) y correo electrónico.
+                  Cada canal deja su propio rastro; no se fusionan en un solo hecho.
+                </p>
+              </article>
+              <article>
+                <h3 className="text-lg font-semibold">Cómo verificar</h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground sm:text-base">
+                  Cualquiera puede comprobar una constancia PDF o un identificador en{' '}
+                  <Link href="/verify" className="text-primary underline-offset-4 hover:underline">
+                    notificas.com.ar/verify
+                  </Link>
+                  , sin iniciar sesión.
+                </p>
+              </article>
+            </div>
           </div>
         </section>
 
@@ -336,10 +386,29 @@ export default function LandingPage() {
             </div>
         </section>
 
-        <section id="guias" className="px-4 pb-16 sm:pb-20">
+        <section id="guias" className="scroll-mt-24 px-4 pb-16 sm:pb-20">
           <div className="container max-w-4xl">
-            <h2 className="mb-6 text-2xl font-bold tracking-tight md:text-3xl">Guías</h2>
+            <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <h2 className="text-2xl font-bold tracking-tight md:text-3xl">Recursos</h2>
+              <Link
+                href="/recursos"
+                className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Ver todos los recursos
+              </Link>
+            </div>
             <ul className="grid gap-4 sm:grid-cols-2">
+              {GEO_LANDING_PAGES.map((guide) => (
+                <li key={guide.path}>
+                  <Link
+                    href={guide.path}
+                    className="block rounded-lg border border-border bg-background/60 p-4 transition-colors hover:bg-muted/60"
+                  >
+                    <span className="font-semibold leading-snug">{guide.title}</span>
+                    <span className="mt-1 block text-sm text-muted-foreground">{guide.blurb}</span>
+                  </Link>
+                </li>
+              ))}
               {SEO_GUIDE_PAGES.map((guide) => (
                 <li key={guide.path}>
                   <Link
@@ -357,56 +426,7 @@ export default function LandingPage() {
 
         <FaqSection />
       </main>
-
-      <footer className="bg-foreground text-background">
-        <div className="container grid grid-cols-1 gap-10 px-4 py-12 md:grid-cols-3 md:gap-8 md:px-6 md:py-14">
-            <div>
-                <h3 className="mb-4 text-lg font-bold">Notificas</h3>
-                <p className="text-sm text-background/80">Colon 12, primer piso - San Nicolás de los Arroyos</p>
-                <p className="text-sm text-background/80">Buenos Aires - Argentina</p>
-                <div className="mt-5 space-y-2 text-sm">
-                    <Link href="/notificacion-fehaciente-digital" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Notificación fehaciente digital</Link>
-                    <Link href="/carta-documento-digital" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Carta documento digital</Link>
-                    <Link href="/notificaciones-whatsapp-empresas" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">WhatsApp para empresas</Link>
-                    <Link href="/como-verificar-certificado" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Cómo verificar un certificado</Link>
-                    <Link href="/consumidores" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Defensa del Consumidor</Link>
-                    <Link href="/terminos" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Términos y Condiciones</Link>
-                    <Link href="/privacidad" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Política de Privacidad</Link>
-                    <Link href="/arrepentimiento" className="block text-background/80 underline-offset-4 hover:text-background hover:underline">Derecho de Arrepentimiento</Link>
-                </div>
-            </div>
-            <div id="contacto" className="scroll-mt-24">
-                <h3 className="mb-4 text-lg font-bold">Contáctenos</h3>
-                <FooterContactForm />
-            </div>
-             <div>
-                <h3 className="mb-4 text-lg font-bold">Contacto Directo</h3>
-                <div className="space-y-2 text-sm">
-                    <p className="flex items-center gap-2 text-background/80">
-                        <Mail className="h-4 w-4" aria-hidden />
-                        <span>contacto@notificas.com</span>
-                    </p>
-                    <p className="flex items-center gap-2 text-background/80">
-                        <Phone className="h-4 w-4" aria-hidden />
-                        <span>+54 93364645357</span>
-                    </p>
-                </div>
-            </div>
-        </div>
-        <div className="border-t border-background/20">
-            <div className="container space-y-2 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-center text-sm text-background/80 md:px-6">
-                <p>Copyright © 2026 | Notificas SRL</p>
-                <p>
-                  <Link
-                    href="/login?next=/empresa"
-                    className="text-xs leading-tight text-background/55 transition-colors hover:text-background/80"
-                  >
-                    Acceso empresas
-                  </Link>
-                </p>
-            </div>
-        </div>
-      </footer>
+      <PublicFooter variant="full" />
     </div>
   );
 }

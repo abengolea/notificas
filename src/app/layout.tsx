@@ -3,6 +3,7 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster"
 import { ThemeProvider } from "@/components/theme-provider"
 import { MetaMaskErrorHandler } from "@/components/metamask-error-handler"
+import { AiReferralTracker } from "@/components/ai-referral-tracker"
 import { Plus_Jakarta_Sans } from 'next/font/google'
 import {
   DEFAULT_DESCRIPTION,
@@ -97,6 +98,7 @@ export default function RootLayout({
       <body className="font-body antialiased">
         <ThemeProvider>
           <MetaMaskErrorHandler />
+          <AiReferralTracker />
           {children}
           <Toaster />
         </ThemeProvider>

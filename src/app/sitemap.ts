@@ -1,5 +1,11 @@
 import type { MetadataRoute } from "next";
-import { SEO_GUIDE_PAGES, SITE_URL, SITEMAP_LASTMOD } from "@/lib/seo";
+import {
+  GEO_LANDING_PAGES,
+  LEGAL_PUBLIC_PAGES,
+  RESOURCE_HUB,
+  SEO_GUIDE_PAGES,
+} from "@/lib/public-resources";
+import { SITE_URL, SITEMAP_LASTMOD } from "@/lib/seo";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const routes: Array<{
@@ -10,15 +16,26 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/", changeFrequency: "weekly", priority: 1 },
     { path: "/verify", changeFrequency: "monthly", priority: 0.9 },
     { path: "/signup", changeFrequency: "monthly", priority: 0.85 },
+    {
+      path: RESOURCE_HUB.path,
+      changeFrequency: "monthly",
+      priority: 0.75,
+    },
+    ...GEO_LANDING_PAGES.map((page) => ({
+      path: page.path,
+      changeFrequency: "monthly" as const,
+      priority: 0.85,
+    })),
     ...SEO_GUIDE_PAGES.map((page) => ({
       path: page.path,
       changeFrequency: "monthly" as const,
       priority: 0.8,
     })),
-    { path: "/consumidores", changeFrequency: "yearly", priority: 0.5 },
-    { path: "/terminos", changeFrequency: "yearly", priority: 0.4 },
-    { path: "/privacidad", changeFrequency: "yearly", priority: 0.4 },
-    { path: "/arrepentimiento", changeFrequency: "yearly", priority: 0.4 },
+    ...LEGAL_PUBLIC_PAGES.map((page) => ({
+      path: page.path,
+      changeFrequency: "yearly" as const,
+      priority: 0.4,
+    })),
   ];
 
   return routes.map((route) => ({

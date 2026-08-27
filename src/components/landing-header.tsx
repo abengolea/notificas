@@ -18,7 +18,7 @@ import {
 const navLinks = [
   { href: "/#ventajas", label: "Ventajas" },
   { href: "/#empresas", label: "Empresas" },
-  { href: "/#guias", label: "Guías" },
+  { href: "/recursos", label: "Recursos" },
   { href: "/verify", label: "Verificar certificado" },
   { href: "/#faq", label: "Preguntas frecuentes" },
 ];

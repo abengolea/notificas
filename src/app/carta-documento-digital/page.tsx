@@ -10,6 +10,7 @@ export const metadata: Metadata = createPageMetadata({
   title: page.title,
   description: page.description,
   path: page.path,
+  ogType: "article",
   keywords: [
     "carta documento digital",
     "alternativa carta documento Argentina",
@@ -48,6 +49,13 @@ export default function CartaDocumentoDigitalPage() {
 
       <p>
         Más detalle en{" "}
+        <Link
+          href="/notificacion-digital-vs-carta-documento"
+          className="text-primary underline-offset-4 hover:underline"
+        >
+          notificación digital y carta documento
+        </Link>
+        . El marco general está en{" "}
         <Link
           href="/notificacion-fehaciente-digital"
           className="text-primary underline-offset-4 hover:underline"

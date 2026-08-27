@@ -10,6 +10,7 @@ export const metadata: Metadata = createPageMetadata({
   title: page.title,
   description: page.description,
   path: page.path,
+  ogType: "article",
   keywords: [
     "verificar certificado Notificas",
     "autenticidad PDF Notificas",
