@@ -321,6 +321,14 @@ service cloud.firestore {
     match /webhook_events/{id} { allow read, write: if false; }
     match /webhook_deliveries/{id} { allow read, write: if false; }
 
+    // MCP / OAuth 2.1: solo Admin SDK. Nunca tokens, códigos ni clientes desde el cliente web.
+    match /oauth_clients/{id} { allow read, write: if false; }
+    match /oauth_authorization_codes/{id} { allow read, write: if false; }
+    match /oauth_access_tokens/{id} { allow read, write: if false; }
+    match /oauth_refresh_tokens/{id} { allow read, write: if false; }
+    match /mcp_audit_logs/{id} { allow read, write: if false; }
+    match /mcp_rate_limits/{id} { allow read, write: if false; }
+
     match /{document=**} {
       allow read, write: if false;
     }

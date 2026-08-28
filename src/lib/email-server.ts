@@ -57,6 +57,8 @@ export type CreateMailAdminParams = {
   apiBatchId?: string;
   testMode?: boolean;
   requestId?: string;
+  /** Cliente MCP (chatgpt/claude/otro). Solo metadato de evidencia. */
+  mcpClient?: string;
 };
 
 /** Crea un documento en `mail` con Admin SDK (equivalente a scheduleEmail sin auto-fetch). */
@@ -100,6 +102,7 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
     apiBatchId,
     testMode,
     requestId,
+    mcpClient,
   } = params;
 
   const db = getAdminDb();
@@ -183,6 +186,7 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
   if (apiBatchId) payload.apiBatchId = apiBatchId;
   if (testMode) payload.testMode = true;
   if (requestId) payload.requestId = requestId;
+  if (mcpClient) payload.mcpClient = mcpClient;
 
   await mailRef.set(payload);
   return mailId;

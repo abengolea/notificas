@@ -17,6 +17,8 @@ export type ApiKeyRecord = {
   createdBy: string;
 };
 
+export type PublicApiOrigin = "public_api" | "mcp";
+
 export type PublicApiAuthContext = {
   requestId: string;
   apiKeyId: string;
@@ -29,6 +31,10 @@ export type PublicApiAuthContext = {
   environment: ApiEnvironment;
   testMode: boolean;
   scopes: PublicApiScope[];
+  /** Origen de la operación. Default: API pública. No cambia el despacho. */
+  origin?: PublicApiOrigin;
+  /** Cliente MCP informado (metadato de evidencia, no de autorización). */
+  mcpClient?: string | null;
 };
 
 export type ApiNotificationRecord = {

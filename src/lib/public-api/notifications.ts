@@ -6,8 +6,7 @@ import { normalizeEnviosDisponibles } from "@/lib/envios";
 import { buildCampaignMailHtml, campaignBodyToHtmlFragment } from "@/lib/campaign-email-html";
 import { constanciaEnvioStoragePath } from "@/lib/constancia-envio-pdf";
 import { isSyntheticCampaignEmail, phoneDigits, presentRecipientValue } from "@/lib/parse-campaign-csv";
-import { usesNotificasDefaultTemplate, WA_DEFAULT_TEMPLATE_NAME } from "@/lib/wa-template-fields";
-import { mapSavedWaTemplate } from "@/lib/wa-saved-template";
+import { resolveOrgTemplate } from "@/lib/public-api/templates";
 import { decodeCursor, encodeCursor } from "@/lib/public-api/cursor";
 import { invalidRequest, notFound, unprocessable } from "@/lib/public-api/errors";
 import { newNotificationId } from "@/lib/public-api/ids";
@@ -57,61 +56,6 @@ function toIso(value: unknown): string | null {
   return null;
 }
 
-type ResolvedTemplate = {
-  templateName: string;
-  templateLang: string;
-  templateVariables: string[];
-  urlButton: boolean;
-  useDefault: boolean;
-};
-
-async function resolveOrgTemplate(orgId: string, template: string | undefined, channel: "whatsapp" | "email"): Promise<ResolvedTemplate> {
-  const name = (template || "").trim();
-  if (!name || usesNotificasDefaultTemplate(name) || name === WA_DEFAULT_TEMPLATE_NAME) {
-    return {
-      templateName: WA_DEFAULT_TEMPLATE_NAME,
-      templateLang: "es_AR",
-      templateVariables: ["nombre", "remitente", "url_lectura"],
-      urlButton: false,
-      useDefault: true,
-    };
-  }
-
-  const db = getAdminDb();
-  const snap = await db.collection("wa_templates").where("orgId", "==", orgId).get();
-  const match = snap.docs
-    .map((d) => mapSavedWaTemplate(d.id, d.data() as Record<string, unknown>))
-    .find(
-      (t) =>
-        t.id === name ||
-        t.templateName.toLowerCase() === name.toLowerCase() ||
-        t.label.toLowerCase() === name.toLowerCase()
-    );
-  if (!match) {
-    if (channel === "email") {
-      return {
-        templateName: name,
-        templateLang: "es_AR",
-        templateVariables: [],
-        urlButton: false,
-        useDefault: true,
-      };
-    }
-    throw unprocessable(
-      "unknown_template",
-      "The template is not available for this account. Save it first in the WhatsApp templates of the organization.",
-      "template"
-    );
-  }
-  return {
-    templateName: match.templateName,
-    templateLang: match.templateLang,
-    templateVariables: match.templateVariables,
-    urlButton: match.urlButton,
-    useDefault: false,
-  };
-}
-
 function recipientSearchTokens(phone?: string, email?: string, document?: string): string[] {
   const tokens = new Set<string>();
   const digits = phoneDigits(phone);
@@ -156,7 +100,14 @@ async function orgAllowlist(orgId: string): Promise<SandboxAllowlist> {
   });
 }
 
-async function consumeCredit(uid: string): Promise<void> {
+export { creditsRequiredForNotification } from "@/lib/envios";
+
+export async function peekAvailableCredits(uid: string): Promise<number> {
+  const snap = await getAdminDb().collection("users").doc(uid).get();
+  return normalizeEnviosDisponibles(snap.data()?.creditos);
+}
+
+async function consumeCredit(uid: string, origin: "public_api" | "mcp" = "public_api"): Promise<void> {
   const db = getAdminDb();
   const userRef = db.collection("users").doc(uid);
   await db.runTransaction(async (t) => {
@@ -173,11 +124,11 @@ async function consumeCredit(uid: string): Promise<void> {
   await db.collection("user_transactions").add({
     userId: uid,
     tipo: "envio",
-    descripcion: "Envío API pública",
+    descripcion: origin === "mcp" ? "Envío MCP" : "Envío API pública",
     creditos: -1,
     monto: 0,
     createdAt: FieldValue.serverTimestamp(),
-    source: "public_api",
+    source: origin,
   });
 }
 
@@ -192,7 +143,10 @@ export async function createPublicNotification(
   }
   const input: CreateNotificationInput = parsed.data;
   const variables = sanitizeVariables(input.variables);
-  const metadata = sanitizeMetadata(input.metadata as Record<string, string | number | boolean> | undefined);
+  const metadata = {
+    ...sanitizeMetadata(input.metadata as Record<string, string | number | boolean> | undefined),
+    ...(ctx.origin === "mcp" ? { source: "mcp", ...(ctx.mcpClient ? { client: ctx.mcpClient } : {}) } : {}),
+  };
   const reference = input.reference?.trim() || null;
 
   let phone: string | undefined;
@@ -253,7 +207,7 @@ export async function createPublicNotification(
   const waOnly = input.channel === "whatsapp";
 
   if (realSend) {
-    await consumeCredit(ctx.senderUid);
+    await consumeCredit(ctx.senderUid, ctx.origin === "mcp" ? "mcp" : "public_api");
   }
 
   const mailId = await createMailDocumentAdmin({
@@ -277,8 +231,9 @@ export async function createPublicNotification(
     simulated: simulate,
     orgId: ctx.orgId,
     publicApiId: publicId,
-    apiSource: "public_api",
+    apiSource: ctx.origin === "mcp" ? "mcp" : "public_api",
     apiKeyId: ctx.apiKeyId,
+    mcpClient: ctx.mcpClient || undefined,
     apiReference: reference || undefined,
     apiMetadata: metadata,
     apiChannel: input.channel,
