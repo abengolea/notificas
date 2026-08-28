@@ -46,6 +46,17 @@ export type CreateMailAdminParams = {
   /** Campaña admin simulada: la CF sendEmail no debe despachar Mailgun/Meta. */
   simulated?: boolean;
   waOnly?: boolean;
+  /** Campos de la API pública (opcional). No reemplazan createdBy/to/message. */
+  orgId?: string;
+  publicApiId?: string;
+  apiSource?: string;
+  apiKeyId?: string;
+  apiReference?: string;
+  apiMetadata?: Record<string, string>;
+  apiChannel?: string;
+  apiBatchId?: string;
+  testMode?: boolean;
+  requestId?: string;
 };
 
 /** Crea un documento en `mail` con Admin SDK (equivalente a scheduleEmail sin auto-fetch). */
@@ -79,6 +90,16 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
     waUrlButton,
     simulated,
     waOnly,
+    orgId,
+    publicApiId,
+    apiSource,
+    apiKeyId,
+    apiReference,
+    apiMetadata,
+    apiChannel,
+    apiBatchId,
+    testMode,
+    requestId,
   } = params;
 
   const db = getAdminDb();
@@ -152,6 +173,16 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
   if (contactRequest) payload.contactRequest = true;
   if (simulated) payload.simulated = true;
   if (waOnly) payload.waOnly = true;
+  if (orgId) payload.orgId = orgId;
+  if (publicApiId) payload.publicApiId = publicApiId;
+  if (apiSource) payload.apiSource = apiSource;
+  if (apiKeyId) payload.apiKeyId = apiKeyId;
+  if (apiReference) payload.apiReference = apiReference;
+  if (apiMetadata && Object.keys(apiMetadata).length) payload.apiMetadata = apiMetadata;
+  if (apiChannel) payload.apiChannel = apiChannel;
+  if (apiBatchId) payload.apiBatchId = apiBatchId;
+  if (testMode) payload.testMode = true;
+  if (requestId) payload.requestId = requestId;
 
   await mailRef.set(payload);
   return mailId;

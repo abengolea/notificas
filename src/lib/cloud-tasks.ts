@@ -229,6 +229,29 @@ export async function enqueueCampaignCsvExport(payload: {
   );
 }
 
+export async function enqueuePublicApiSend(payload: { mailId: string; notificationId: string }): Promise<void> {
+  await enqueueTask(
+    '/api/internal/public-api/send',
+    payload,
+    `papi-send-${payload.notificationId}`,
+    0,
+    { localDetach: true }
+  );
+}
+
+export async function enqueuePublicApiWebhookDeliver(
+  payload: { deliveryId: string },
+  delaySeconds = 0
+): Promise<void> {
+  await enqueueTask(
+    '/api/internal/public-api/webhook-deliver',
+    payload,
+    `papi-wh-${payload.deliveryId}-${delaySeconds}`,
+    delaySeconds,
+    { localDetach: delaySeconds > 0 }
+  );
+}
+
 /** Cierra (o intenta cerrar) una tanda Merkle. delaySeconds=0 = inmediato (lleno). idle = cierre por inactividad. */
 export async function enqueueIntegrityClose(
   campaignId: string,

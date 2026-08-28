@@ -51,6 +51,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     if (pathname?.startsWith("/admin/campanas")) return "Campañas masivas";
     if (pathname?.startsWith("/admin/verificacion-meta")) return "Verificación Meta";
     if (pathname?.startsWith("/admin/plans")) return "Gestión de Planes y Precios";
+    if (pathname?.startsWith("/admin/api-keys")) return "API Keys";
     if (pathname?.startsWith("/admin/settings")) return "Configuración";
     return "Panel de Administración";
   };

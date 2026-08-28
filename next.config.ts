@@ -18,6 +18,25 @@ const nextConfig: NextConfig = {
         destination: "https://notificas.com.ar/:path*",
         permanent: true,
       },
+      {
+        source: "/integrar",
+        destination: "/docs/api/embed",
+        permanent: false,
+      },
+    ];
+  },
+  async headers() {
+    return [
+      {
+        source: "/sdk/v1/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=3600, stale-while-revalidate=86400",
+          },
+          { key: "Access-Control-Allow-Origin", value: "*" },
+        ],
+      },
     ];
   },
   // ESLint en build: el adapter de App Hosting ejecuta `next build`; la deuda de lint no debe bloquear el deploy.

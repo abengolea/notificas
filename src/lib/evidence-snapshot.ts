@@ -264,6 +264,8 @@ export async function sealEvidenceSnapshot(mailId: string): Promise<EvidenceSnap
     await persistSealedArtifacts(mailId, sealed).catch((e) =>
       console.warn("⚠️ WORM / constancia:", e instanceof Error ? e.message : e)
     );
+    const { syncPublicApiNotificationFromMail } = await import("@/lib/public-api/status-sync");
+    void syncPublicApiNotificationFromMail(mailId).catch(() => undefined);
   }
   return sealed;
 }

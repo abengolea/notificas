@@ -11,6 +11,7 @@ import { sealCampaignWhatsAppTemplate } from '@/lib/wa-template-seal';
 import { RECIPIENT_CHUNK_SIZE } from '@/lib/campaign-recipients';
 import { isSyntheticCampaignEmail, phoneDigits, presentRecipientValue, recipientValueText } from '@/lib/parse-campaign-csv';
 import type { RecipientEntry } from '@/lib/types';
+import { newNotificationId } from '@/lib/public-api/ids';
 
 // Destinatarios que procesa cada invocación del fanout (un archivo de Storage).
 const FANOUT_PAGE = RECIPIENT_CHUNK_SIZE;
@@ -326,6 +327,10 @@ async function processFanoutPage(
       toProcess.push(existing.id);
     } else {
       const ref = db.collection('campaign_messages').doc();
+      const publicApiId =
+        typeof campaign.publicApiBatchId === 'string' && campaign.publicApiBatchId
+          ? newNotificationId(campaign.publicApiTestMode === true)
+          : undefined;
       batchOps.set(ref, {
         campaignId,
         orgId: campaign.orgId,
@@ -344,6 +349,13 @@ async function processFanoutPage(
         sendTandaIndex: tandaIndex,
         integritySendBatchId: integrityBatchId,
         createdAt: FieldValue.serverTimestamp(),
+        ...(publicApiId
+          ? {
+              publicApiId,
+              apiSource: 'public_api',
+              apiBatchId: campaign.publicApiBatchId,
+            }
+          : {}),
       });
       toProcess.push(ref.id);
       batchCount += 1;
