@@ -134,6 +134,10 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /email_unsubscribes/{email} {
+      allow read, write: if false;
+    }
+
     match /mail/{mailId} {
       allow get: if mailReadable();
 

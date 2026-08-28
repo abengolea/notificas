@@ -94,6 +94,16 @@ test('mailto:, tel:, javascript: y data: NO se reescriben', () => {
   assert.equal(stats.processedCount, 0);
 });
 
+test('List-Unsubscribe no pasa por linkRedirect', () => {
+  const unsub = `${URLS.appHostingUrl}/api/mail/list-unsubscribe?m=${DOC_ID}&k=${TOKEN}`;
+  const input = `<html><body><a href="${unsub}">darse de baja</a></body></html>`;
+  const { html, stats } = injectTrackingIntoHtml(input, DOC_ID, TOKEN, URLS);
+  const decoded = decodeHtmlEntities(html);
+  assert.ok(decoded.includes(`href="${unsub}"`), decoded);
+  assert.equal(stats.ignoredCount, 1);
+  assert.equal(stats.processedCount, 0);
+});
+
 test('un enlace que ya empieza con linkRedirectUrl NO se duplica: cae al reader (no se anida)', () => {
   const alreadyRedirect = `${URLS.linkRedirectUrl}?msg=${DOC_ID}&u=abc&k=${TOKEN}`;
   const input = `<html><body><a href="${alreadyRedirect}">Existente</a></body></html>`;

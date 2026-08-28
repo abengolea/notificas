@@ -22,6 +22,22 @@ test('modo inline no marca el cuerpo para ocultarlo al enviar', () => {
   assert.match(html, /Hola Ana, hay una deuda/);
   assert.match(html, /mismo mensaje enviado por WhatsApp/);
   assert.equal(/data-email-hide/.test(html), false);
+  assert.equal(/blockchain/i.test(html), false);
+  assert.equal(/fehaciente/i.test(html), false);
+  assert.equal(/Polygon/i.test(html), false);
+});
+
+test('modo inline usa el cuerpo como preheader de bandeja', () => {
+  const html = buildCampaignMailHtml({
+    recipientEmail: 'a@b.com',
+    recipientName: 'Ana',
+    sender: 'GOcuotas',
+    bodyHtml: campaignBodyToHtmlFragment('Deuda de prueba 180 días'),
+    attachments: [],
+    mode: 'inline',
+    previewText: 'Deuda de prueba 180 días',
+  });
+  assert.match(html, /Deuda de prueba 180 días/);
 });
 
 test('modo teaser oculta el cuerpo (el lector lo muestra)', () => {

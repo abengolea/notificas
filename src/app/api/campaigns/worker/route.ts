@@ -213,6 +213,9 @@ async function processMessage(
     bodyHtml,
     attachments: attachmentsFor(campaign, email),
     mode: mixedMeta ? 'inline' : 'teaser',
+    ...(mixedMeta && bodyPlain.trim()
+      ? { previewText: bodyPlain.replace(/\s+/g, ' ').trim().slice(0, 140) }
+      : {}),
   });
   const adjuntos = attachmentsFor(campaign, email);
 

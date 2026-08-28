@@ -68,20 +68,29 @@ export function buildCampaignMailHtml(params: {
   attachments: CampaignAttachment[];
   /** inline: el cuerpo viaja en el correo (mismo texto que el template de Meta). teaser: solo enlace al lector. */
   mode?: CampaignMailHtmlMode;
+  /** Vista previa en bandeja; si falta, se usa un texto genérico (sin jerga legal). */
+  previewText?: string;
 }): string {
   const { recipientEmail, recipientName, sender, bodyHtml, attachments } = params;
   const inline = params.mode === 'inline';
 
   const hasInlineBody = !!(bodyHtml?.trim());
   const leadSecondParagraph = inline && hasInlineBody
-    ? `Recibió una comunicación digital de <strong>${escapeHtmlText(sender)}</strong>.
+    ? `Recibió una comunicación de <strong>${escapeHtmlText(sender)}</strong>.
                 El texto siguiente es el mismo mensaje enviado por WhatsApp.
-                El enlace deja constancia técnica de apertura en la plataforma; no equivale por sí solo a notificación fehaciente.`
+                El enlace registra la apertura en Notificas.com.`
     : hasInlineBody
-    ? `Recibió una comunicación digital de <strong>${escapeHtmlText(sender)}</strong>.
-                Puede leer el texto en este mismo correo. El enlace siguiente deja constancia técnica de apertura en la plataforma; no equivale por sí solo a notificación fehaciente.`
-    : `Recibió una comunicación digital de <strong>${escapeHtmlText(sender)}</strong>.
-                <strong>Le recomendamos abrir el mensaje</strong> mediante el enlace para ver el contenido. La apertura deja constancia técnica en la plataforma; no prueba por sí sola identidad civil ni conocimiento jurídico.`;
+    ? `Recibió una comunicación de <strong>${escapeHtmlText(sender)}</strong>.
+                Puede leer el texto en este mismo correo. El enlace registra la apertura en Notificas.com.`
+    : `Recibió una comunicación de <strong>${escapeHtmlText(sender)}</strong>.
+                <strong>Le recomendamos abrir el mensaje</strong> mediante el enlace para ver el contenido.`;
+
+  const previewRaw = String(params.previewText || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 140);
+  const preview = previewRaw
+    || `Comunicación de ${sender} a través de Notificas.com`;
 
   const hideAttr = inline ? '' : ' data-email-hide';
   const contentSection = bodyHtml?.trim()
@@ -159,7 +168,7 @@ export function buildCampaignMailHtml(params: {
 </head>
 <body>
   <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-    Notificacion digital enviada por ${escapeHtmlText(sender)} a traves de Notificas.com
+    ${escapeHtmlText(preview)}
   </div>
   <table role="presentation" class="wrapper" width="100%" cellspacing="0" cellpadding="0">
     <tr>
@@ -191,9 +200,8 @@ export function buildCampaignMailHtml(params: {
               </p>
               <div class="divider"></div>
               <p class="muted">
-                La notificacion, sus metadatos de envio,
-                recepcion y lectura quedan <strong>certificados y registrados</strong> en la blockchain de Polygon a traves de Notificas.com.
-                Esta constancia tecnica no implica conformidad con el contenido.
+                El envío y la apertura quedan registrados en Notificas.com.
+                Esta constancia no implica conformidad con el contenido.
               </p>
             </td>
           </tr>

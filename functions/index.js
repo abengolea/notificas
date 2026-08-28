@@ -10,6 +10,11 @@ const crypto = require('crypto');
 const cheerio = require('cheerio');
 const { generateEmailWithTracking } = require('./email-template');
 const { injectTrackingIntoHtml: injectTrackingIntoHtmlImpl } = require('./tracking-html');
+const {
+  buildCampaignPlainText,
+  buildCampaignListHeaders,
+  appendCampaignUnsubscribeFooter,
+} = require('./campaign-mail-deliverability');
 const { processResendWebhook } = require('./resend-webhook');
 const {
   buildWhatsAppTemplateEvidence,
@@ -1020,7 +1025,20 @@ exports.sendEmail = onRequest(
 
 
       // Generar versión de texto plano completa con toda la información
-      const textVersion = `NOTIFICACION
+      const isCampaignMail = isCampaignEmailSend(emailData);
+      if (isCampaignMail) {
+        const unsubUrl = `${APP_HOSTING_URL.replace(/\/$/, '')}/api/mail/list-unsubscribe?m=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}`;
+        htmlWithTracking = appendCampaignUnsubscribeFooter(htmlWithTracking, unsubUrl);
+      }
+
+      const textVersion = isCampaignMail
+        ? buildCampaignPlainText({
+            html: htmlWithTracking,
+            readerUrl,
+            recipientEmail: emailData.recipientEmail || to,
+            year: new Date().getFullYear(),
+          })
+        : `NOTIFICACION
 Nueva comunicacion para usted
 Enviada por ${emailData.senderName || from} mediante Notificas.com
 
@@ -1049,6 +1067,18 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
       const envelope = emailProvider === 'resend'
         ? resendMailEnvelope(from, emailData.replyTo)
         : { from: formatSmtpFrom(from), replyTo: emailData.replyTo };
+      const mailHeaders = { 'X-Notificas-Mail-Id': docId };
+      if (isCampaignMail) {
+        Object.assign(
+          mailHeaders,
+          buildCampaignListHeaders({
+            appHostingUrl: APP_HOSTING_URL,
+            docId,
+            trackingToken,
+            campaignId: emailData.campaignId,
+          })
+        );
+      }
       const mailOptions = {
         from: envelope.from,
         to,
@@ -1058,7 +1088,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
         replyTo: envelope.replyTo,
         cc: emailData.cc,
         bcc: emailData.bcc,
-        headers: { 'X-Notificas-Mail-Id': docId },
+        headers: mailHeaders,
       };
 
       let result = { messageId: emailData.smtpMessageId || emailData.delivery?.info || '' };

@@ -48,6 +48,7 @@ function injectTrackingIntoHtml(html, docId, token, urls) {
     }
     const cleanHref = href.trim();
 
+    const isListUnsubscribe = /\/api\/mail\/list-unsubscribe(\?|$)/i.test(cleanHref);
     const isMailtoOrTel = cleanHref.startsWith('mailto:') || cleanHref.startsWith('tel:');
     const isScriptOrData = cleanHref.startsWith('javascript:') || cleanHref.startsWith('data:');
     /** Enlaces ya armados en sendEmail (adjunto desde correo); no tocar ni anidar otro linkRedirect. */
@@ -60,7 +61,7 @@ function injectTrackingIntoHtml(html, docId, token, urls) {
       cleanHref.match(/^https?:\/\//i) &&
       !cleanHref.startsWith(`${linkRedirectUrl}`);
 
-    if (isMailtoOrTel || isScriptOrData) {
+    if (isMailtoOrTel || isScriptOrData || isListUnsubscribe) {
       ignoredCount++;
       return;
     }
