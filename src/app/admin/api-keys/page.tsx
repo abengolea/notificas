@@ -124,11 +124,15 @@ export default function AdminApiKeysPage() {
           </CardTitle>
           <CardDescription>
             Generá o revocá claves para la API pública v1. El secret completo se muestra una sola vez.
-            Para pegar un widget en un sitio usá{" "}
+            Documentación (solo admin):{" "}
+            <a href="/docs/api" className="underline">
+              referencia REST
+            </a>
+            {" · "}
             <a href="/docs/api/embed" className="underline">
-              /docs/api/embed
-            </a>{" "}
-            (nunca pongas <code>ntf_live_</code> en el navegador).
+              widget / SDK
+            </a>
+            . Nunca pongas <code>ntf_live_</code> en el navegador.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

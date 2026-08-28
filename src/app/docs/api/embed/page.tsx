@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { LandingHeader } from "@/components/landing-header";
 
 const SNIPPET = `<div
   data-notificas-embed
@@ -88,20 +87,20 @@ export default function EmbedApiPage() {
 
   return (
     <div className="brand-canvas flex min-h-screen flex-col text-foreground">
-      <LandingHeader />
+      <header className="sticky top-0 z-50 border-b bg-background/95">
+        <div className="container flex h-14 items-center gap-4 px-4 text-sm">
+          <Link href="/admin/api-keys" className="text-primary underline-offset-4 hover:underline">
+            ← API Keys
+          </Link>
+          <span className="text-muted-foreground">/</span>
+          <Link href="/docs/api" className="text-muted-foreground underline-offset-4 hover:underline">
+            Referencia REST
+          </Link>
+          <span className="text-muted-foreground">/</span>
+          <span>Widget / SDK</span>
+        </div>
+      </header>
       <main className="container max-w-3xl flex-1 px-4 py-12 sm:py-16">
-        <nav className="mb-6 text-sm text-muted-foreground">
-          <Link href="/" className="text-primary underline-offset-4 hover:underline">
-            Inicio
-          </Link>
-          <span aria-hidden> / </span>
-          <Link href="/docs/api" className="text-primary underline-offset-4 hover:underline">
-            API
-          </Link>
-          <span aria-hidden> / </span>
-          <span className="text-foreground">Insertar en tu web</span>
-        </nav>
-
         <p className="text-sm font-medium text-primary">SDK web v1</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
           Insertá Notificas en tu web

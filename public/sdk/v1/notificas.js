@@ -350,7 +350,7 @@
         status,
         el("p", { className: "ntf-foot" }, [
           document.createTextNode("Instrumento "),
-          el("a", { href: "https://notificas.com.ar/docs/api/embed", text: "Notificas API" }),
+          el("a", { href: "https://notificas.com.ar", text: "Notificas" }),
         ]),
       ])
     );

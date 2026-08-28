@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 
 export default function PublicApiDocsPage() {
   useEffect(() => {
@@ -20,5 +21,16 @@ export default function PublicApiDocsPage() {
     };
   }, []);
 
-  return <div className="min-h-screen bg-background" />;
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="fixed left-3 top-3 z-[100]">
+        <Link
+          href="/admin/api-keys"
+          className="rounded-md border bg-background/95 px-3 py-1.5 text-sm shadow-sm hover:bg-muted"
+        >
+          ← API Keys
+        </Link>
+      </div>
+    </div>
+  );
 }

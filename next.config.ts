@@ -18,11 +18,6 @@ const nextConfig: NextConfig = {
         destination: "https://notificas.com.ar/:path*",
         permanent: true,
       },
-      {
-        source: "/integrar",
-        destination: "/docs/api/embed",
-        permanent: false,
-      },
     ];
   },
   async headers() {

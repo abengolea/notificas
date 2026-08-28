@@ -5,6 +5,7 @@ export const metadata = createPageMetadata({
   description:
     "SDK y widget para disparar notificaciones certificadas desde tu sitio. La API key queda en tu servidor; el navegador habla con un proxy.",
   path: "/docs/api/embed",
+  noIndex: true,
 });
 
 export default function EmbedApiLayout({ children }: { children: React.ReactNode }) {

@@ -20,7 +20,6 @@ const navLinks = [
   { href: "/#empresas", label: "Empresas" },
   { href: "/recursos", label: "Recursos" },
   { href: "/verify", label: "Verificar certificado" },
-  { href: "/docs/api/embed", label: "API" },
   { href: "/#faq", label: "Preguntas frecuentes" },
 ];
 

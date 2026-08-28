@@ -8,6 +8,7 @@
 /** Prefijos que no deben rastrearse ni indexarse. */
 export const PRIVATE_PATH_PREFIXES = [
   "/api/",
+  "/docs/api",
   "/admin/",
   "/dashboard/",
   "/empresa/",
@@ -34,6 +35,7 @@ export const PRIVATE_SITEMAP_PATHS = [
   "/process-payment",
   "/email-preview",
   "/api",
+  "/docs/api",
   "/linkRedirect",
 ] as const;
 
