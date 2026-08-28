@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -24,6 +25,9 @@ import {
   usesNotificasDefaultTemplate,
   waLiteralText,
 } from "@/lib/wa-template-fields";
+import { fetchMetaApprovedTemplateBody, type WaTemplatesAuthMode } from "@/lib/wa-templates-client";
+import { Loader2 } from "lucide-react";
+import { useState } from "react";
 
 const KNOWN_FIELDS: Set<string> = new Set(WA_TEMPLATE_VARIABLE_OPTIONS.map((o) => o.value));
 const CUSTOM_FIELD = "__custom__";
@@ -40,6 +44,7 @@ export type WaTemplateFieldsValue = {
   lang: string;
   variables: string[];
   urlButton: boolean;
+  templateBody?: string;
 };
 
 export function WaTemplateFields({
@@ -48,15 +53,39 @@ export function WaTemplateFields({
   disabled,
   idPrefix = "wa",
   namePlaceholder = "Vacío = notificaciones_notificas",
+  orgId,
+  authMode,
 }: {
   value: WaTemplateFieldsValue;
   onChange: (next: WaTemplateFieldsValue) => void;
   disabled?: boolean;
   idPrefix?: string;
   namePlaceholder?: string;
+  orgId?: string;
+  authMode?: WaTemplatesAuthMode;
 }) {
   const set = (patch: Partial<WaTemplateFieldsValue>) => onChange({ ...value, ...patch });
   const usingDefault = usesNotificasDefaultTemplate(value.name);
+  const [fetchingBody, setFetchingBody] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  async function pullFromMeta() {
+    if (!orgId || !authMode || !value.name.trim()) return;
+    setFetchingBody(true);
+    setFetchError(null);
+    try {
+      const fetched = await fetchMetaApprovedTemplateBody(authMode, {
+        orgId,
+        name: value.name.trim(),
+        lang: value.lang,
+      });
+      set({ templateBody: fetched.body });
+    } catch (e) {
+      setFetchError(e instanceof Error ? e.message : "No se pudo traer el template");
+    } finally {
+      setFetchingBody(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -217,6 +246,37 @@ export function WaTemplateFields({
             {value.urlButton ? ", botón URL=sí" : ""}
           </div>
         )}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs">Texto del BODY aprobado en Meta</Label>
+            {orgId && authMode && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8"
+                disabled={disabled || fetchingBody || !value.name.trim()}
+                onClick={() => void pullFromMeta()}
+              >
+                {fetchingBody ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                Traer de Meta
+              </Button>
+            )}
+          </div>
+          <Textarea
+            value={value.templateBody || ""}
+            onChange={(e) => set({ templateBody: e.target.value })}
+            rows={6}
+            disabled={disabled}
+            placeholder="Hola {{1}}, DNI {{2}}. Registramos una deuda…"
+            className="text-sm"
+          />
+          {fetchError ? <p className="text-xs text-destructive">{fetchError}</p> : null}
+          <p className="text-xs text-muted-foreground">
+            Copiá el texto tal como está aprobado en Meta, con {`{{1}}`}, {`{{2}}`}… En campañas mixtas el correo
+            muestra este mismo mensaje (no un aviso para hacer clic).
+          </p>
+        </div>
       </div>
       )}
     </div>

@@ -6,10 +6,11 @@ export function whatsappTemplateCampaignPatch(input: {
   waTemplateLang: string;
   waTemplateVariables: string[];
   waUrlButton: boolean;
+  waTemplateBody?: string | null;
 }): Record<string, unknown> {
   const name = input.waTemplateName.trim();
   const useDefault = usesNotificasDefaultTemplate(name);
-  return {
+  const patch: Record<string, unknown> = {
     waTemplateName: useDefault ? '' : name,
     waTemplateLang: input.waTemplateLang.trim() || 'es_AR',
     waTemplateVariables: useDefault ? [] : input.waTemplateVariables.map((v) => v.trim()).filter(Boolean),
@@ -17,4 +18,10 @@ export function whatsappTemplateCampaignPatch(input: {
     waTemplateSeal: FieldValue.delete(),
     updatedAt: FieldValue.serverTimestamp(),
   };
+  if (useDefault) {
+    patch.waTemplateBody = FieldValue.delete();
+  } else if (typeof input.waTemplateBody === 'string') {
+    patch.waTemplateBody = input.waTemplateBody.trim();
+  }
+  return patch;
 }

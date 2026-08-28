@@ -13,6 +13,7 @@ const postSchema = z.object({
   templateLang: z.string().max(16).optional(),
   templateVariables: z.array(z.string().max(200)).max(WA_TEMPLATE_MAX_VARS),
   urlButton: z.boolean().optional(),
+  templateBody: z.string().max(20000).optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -65,6 +66,7 @@ export async function POST(request: NextRequest) {
       templateLang: (parsed.data.templateLang || "es_AR").trim() || "es_AR",
       templateVariables: parsed.data.templateVariables.map((v) => v.trim()).filter(Boolean),
       urlButton: parsed.data.urlButton === true,
+      ...(parsed.data.templateBody?.trim() ? { templateBody: parsed.data.templateBody.trim() } : {}),
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });

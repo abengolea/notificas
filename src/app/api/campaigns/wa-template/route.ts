@@ -12,6 +12,7 @@ const bodySchema = z.object({
   waTemplateLang: z.string().max(16),
   waTemplateVariables: z.array(z.string().max(200)).max(10),
   waUrlButton: z.boolean(),
+  waTemplateBody: z.string().max(20000).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
         waTemplateLang: parsed.data.waTemplateLang,
         waTemplateVariables: parsed.data.waTemplateVariables,
         waUrlButton: parsed.data.waUrlButton,
+        waTemplateBody: parsed.data.waTemplateBody,
       })
     );
 

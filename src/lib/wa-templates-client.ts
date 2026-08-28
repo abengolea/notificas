@@ -50,6 +50,7 @@ export async function createSavedWaTemplate(
     templateLang: string;
     templateVariables: string[];
     urlButton: boolean;
+    templateBody?: string;
   }
 ): Promise<string> {
   const res = await waTemplatesFetch(mode, "/api/wa-templates", {
@@ -72,6 +73,7 @@ export async function updateSavedWaTemplate(
     templateLang?: string;
     templateVariables?: string[];
     urlButton?: boolean;
+    templateBody?: string;
   }
 ): Promise<void> {
   const res = await waTemplatesFetch(mode, `/api/wa-templates/${templateId}`, {
@@ -85,4 +87,21 @@ export async function updateSavedWaTemplate(
 export async function deleteSavedWaTemplate(mode: WaTemplatesAuthMode, templateId: string): Promise<void> {
   const res = await waTemplatesFetch(mode, `/api/wa-templates/${templateId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(await readError(res));
+}
+
+export async function fetchMetaApprovedTemplateBody(
+  mode: WaTemplatesAuthMode,
+  input: { orgId: string; name: string; lang?: string }
+): Promise<{ body: string; header?: string; footer?: string }> {
+  const qs = new URLSearchParams({
+    orgId: input.orgId,
+    name: input.name,
+  });
+  if (input.lang) qs.set("lang", input.lang);
+  const res = await waTemplatesFetch(mode, `/api/wa-templates/meta?${qs.toString()}`);
+  if (!res.ok) throw new Error(await readError(res));
+  const data = (await res.json()) as { body?: string; header?: string; footer?: string };
+  const body = String(data.body || "").trim();
+  if (!body) throw new Error("Meta no devolvió el texto del template");
+  return { body, header: data.header, footer: data.footer };
 }

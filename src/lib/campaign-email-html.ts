@@ -8,15 +8,41 @@ export function escapeHtmlText(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-/** Sustituye {{nombre}}, {{dni}}, {{legajo}} en texto (asunto o cuerpo). */
+export type CampaignPersonalizeRow = {
+  nombre?: string;
+  dni?: string;
+  legajo?: string;
+  email?: string;
+  telefono?: string;
+  dias?: string;
+  fecha?: string;
+  monto?: string;
+  cuotas?: string;
+  area?: string;
+};
+
+/** Sustituye {{nombre}}, {{dni}}, {{legajo}}, {{fecha}}, {{monto}}, … en texto (asunto o cuerpo). */
 export function personalizeCampaignText(
   template: string,
-  row: { nombre: string; dni?: string; legajo?: string }
+  row: CampaignPersonalizeRow
 ): string {
-  return template
-    .replace(/\{\{\s*nombre\s*\}\}/gi, row.nombre || '')
-    .replace(/\{\{\s*dni\s*\}\}/gi, row.dni ?? '')
-    .replace(/\{\{\s*legajo\s*\}\}/gi, row.legajo ?? '');
+  const vals: Record<string, string> = {
+    nombre: row.nombre || '',
+    dni: row.dni ?? '',
+    legajo: row.legajo ?? '',
+    email: row.email ?? '',
+    telefono: row.telefono ?? '',
+    dias: row.dias ?? '',
+    fecha: row.fecha ?? '',
+    monto: row.monto ?? '',
+    cuotas: row.cuotas ?? '',
+    area: row.area ?? '',
+  };
+  return template.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (full, raw: string) => {
+    const key = String(raw || '').toLowerCase();
+    const mapped = key === 'dias_atraso' ? 'dias' : key;
+    return Object.prototype.hasOwnProperty.call(vals, mapped) ? vals[mapped] : full;
+  });
 }
 
 /** Si el cuerpo no parece HTML, convierte saltos de línea en párrafos escapados. */
@@ -32,25 +58,35 @@ export function campaignBodyToHtmlFragment(body: string): string {
     .join('');
 }
 
+export type CampaignMailHtmlMode = 'teaser' | 'inline';
+
 export function buildCampaignMailHtml(params: {
   recipientEmail: string;
   recipientName: string;
   sender: string;
   bodyHtml: string;
   attachments: CampaignAttachment[];
+  /** inline: el cuerpo viaja en el correo (mismo texto que el template de Meta). teaser: solo enlace al lector. */
+  mode?: CampaignMailHtmlMode;
 }): string {
   const { recipientEmail, recipientName, sender, bodyHtml, attachments } = params;
+  const inline = params.mode === 'inline';
 
   const hasInlineBody = !!(bodyHtml?.trim());
-  const leadSecondParagraph = hasInlineBody
+  const leadSecondParagraph = inline && hasInlineBody
+    ? `Recibió una comunicación digital de <strong>${escapeHtmlText(sender)}</strong>.
+                El texto siguiente es el mismo mensaje enviado por WhatsApp.
+                El enlace deja constancia técnica de apertura en la plataforma; no equivale por sí solo a notificación fehaciente.`
+    : hasInlineBody
     ? `Recibió una comunicación digital de <strong>${escapeHtmlText(sender)}</strong>.
                 Puede leer el texto en este mismo correo. El enlace siguiente deja constancia técnica de apertura en la plataforma; no equivale por sí solo a notificación fehaciente.`
     : `Recibió una comunicación digital de <strong>${escapeHtmlText(sender)}</strong>.
                 <strong>Le recomendamos abrir el mensaje</strong> mediante el enlace para ver el contenido. La apertura deja constancia técnica en la plataforma; no prueba por sí sola identidad civil ni conocimiento jurídico.`;
 
+  const hideAttr = inline ? '' : ' data-email-hide';
   const contentSection = bodyHtml?.trim()
     ? `
-                <div class="message-content" data-email-hide style="margin: 20px 0;">
+                <div class="message-content"${hideAttr} style="margin: 20px 0;">
                   <h2 style="color: #1e293b; margin: 0 0 16px 0; font-size: 18px; font-weight: 600;">Contenido del mensaje</h2>
                   <div style="background: #f8fafc; padding: 16px; border-radius: 6px; border-left: 4px solid #0D9488;">
                     ${bodyHtml}

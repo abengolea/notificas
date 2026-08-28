@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
       ...(c.waTemplateLang       ? { waTemplateLang:       c.waTemplateLang }       : {}),
       ...(c.waTemplateVariables  ? { waTemplateVariables:  c.waTemplateVariables }  : {}),
       ...(c.waUrlButton === true ? { waUrlButton: true } : {}),
+      ...(c.waTemplateBody ? { waTemplateBody: c.waTemplateBody } : {}),
       recipientCount: c.recipientCount ?? 0,
       stats: {
         total:     c.recipientCount ?? 0,

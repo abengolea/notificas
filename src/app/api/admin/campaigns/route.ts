@@ -5,17 +5,20 @@ import { assertAdminSession } from '@/lib/assert-admin-session';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { normalizeEnviosDisponibles } from '@/lib/envios';
 import type { CanalCampaign } from '@/lib/types';
+import { usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
+import { usesMetaTemplateAsEmailBody } from '@/lib/campaign-mixed-message';
 
 const createSchema = z.object({
   orgId: z.string().min(1),
   nombre: z.string().min(2).max(200),
   asunto: z.string().min(1).max(300),
-  cuerpo: z.string().min(1).max(20000),
+  cuerpo: z.string().max(20000).optional(),
   canal: z.enum(['email', 'whatsapp', 'ambos']),
   waTemplateName: z.string().max(128).optional(),
   waTemplateLang: z.string().max(16).optional(),
   waTemplateVariables: z.array(z.string().max(200)).max(10).optional(),
   waUrlButton: z.boolean().optional(),
+  waTemplateBody: z.string().max(20000).optional(),
   tandaSize: z.number().int().min(0).optional(),
   simulated: z.boolean().optional(),
 });
@@ -41,6 +44,7 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     waTemplateLang: String(data.waTemplateLang || 'es_AR'),
     waTemplateVariables: Array.isArray(data.waTemplateVariables) ? data.waTemplateVariables : [],
     waUrlButton: data.waUrlButton === true,
+    waTemplateBody: String(data.waTemplateBody || ''),
     managedByAdmin: data.managedByAdmin === true,
     simulated: data.simulated === true,
     senderUid: String(data.senderUid || ''),
@@ -103,6 +107,21 @@ export async function POST(request: NextRequest) {
     }
 
     const canal = parsed.data.canal;
+    const waName = parsed.data.waTemplateName?.trim() || '';
+    const customWa = canal !== 'email' && !usesNotificasDefaultTemplate(waName);
+    const mixedMeta = usesMetaTemplateAsEmailBody(canal, waName);
+    const waTemplateBody = (parsed.data.waTemplateBody || '').trim();
+    const cuerpo =
+      (parsed.data.cuerpo || '').trim() ||
+      (mixedMeta ? waTemplateBody : '') ||
+      (canal === 'whatsapp' ? `Notificación por WhatsApp: ${parsed.data.nombre.trim()}` : '');
+    if ((canal === 'email' || (canal === 'ambos' && !mixedMeta)) && !cuerpo) {
+      return NextResponse.json({ error: 'Completá el cuerpo del correo' }, { status: 400 });
+    }
+    if (mixedMeta && !waTemplateBody && !cuerpo) {
+      return NextResponse.json({ error: 'Falta el texto del template de Meta' }, { status: 400 });
+    }
+
     const ref = await db.collection('campaigns').add({
       orgId: parsed.data.orgId,
       createdBy: adminUserId,
@@ -110,17 +129,18 @@ export async function POST(request: NextRequest) {
       canal,
       nombre: parsed.data.nombre.trim(),
       asunto: parsed.data.asunto.trim(),
-      cuerpo: parsed.data.cuerpo.trim(),
+      cuerpo,
       adjuntos: [],
       recipientCount: 0,
       tandaSize: parsed.data.tandaSize ?? 0,
       simulated: parsed.data.simulated === true,
-      ...(canal !== 'email' && parsed.data.waTemplateName?.trim()
+      ...(customWa
         ? {
-            waTemplateName: parsed.data.waTemplateName.trim(),
+            waTemplateName: waName,
             waTemplateLang: parsed.data.waTemplateLang?.trim() || 'es_AR',
             waTemplateVariables: parsed.data.waTemplateVariables?.filter(Boolean) || ['nombre'],
             waUrlButton: parsed.data.waUrlButton === true,
+            ...(waTemplateBody ? { waTemplateBody } : {}),
           }
         : {}),
       senderUid: adminUserId,

@@ -17,6 +17,7 @@ const patchSchema = z.object({
   waTemplateLang: z.string().max(16).optional(),
   waTemplateVariables: z.array(z.string().max(200)).max(10).optional(),
   waUrlButton: z.boolean().optional(),
+  waTemplateBody: z.string().max(20000).optional(),
   tandaSize: z.number().int().min(0).optional(),
 });
 
@@ -41,6 +42,7 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     waTemplateLang: String(data.waTemplateLang || 'es_AR'),
     waTemplateVariables: Array.isArray(data.waTemplateVariables) ? data.waTemplateVariables : [],
     waUrlButton: data.waUrlButton === true,
+    waTemplateBody: String(data.waTemplateBody || ''),
     managedByAdmin: data.managedByAdmin === true,
     simulated: data.simulated === true,
     autoPauseSource: typeof data.autoPauseSource === 'string' ? data.autoPauseSource : '',
@@ -139,7 +141,8 @@ export async function PATCH(
       d.waTemplateName != null ||
       d.waTemplateLang != null ||
       d.waTemplateVariables != null ||
-      d.waUrlButton != null;
+      d.waUrlButton != null ||
+      d.waTemplateBody != null;
     if (fullContentTouched && !unsent) {
       return NextResponse.json({ error: UNSENT_EDIT_ERROR }, { status: 409 });
     }
@@ -161,6 +164,7 @@ export async function PATCH(
           waTemplateLang: d.waTemplateLang ?? String(current.waTemplateLang || 'es_AR'),
           waTemplateVariables: d.waTemplateVariables ?? (Array.isArray(current.waTemplateVariables) ? current.waTemplateVariables : []),
           waUrlButton: d.waUrlButton ?? current.waUrlButton === true,
+          waTemplateBody: d.waTemplateBody ?? (typeof current.waTemplateBody === 'string' ? current.waTemplateBody : undefined),
         })
       );
     }

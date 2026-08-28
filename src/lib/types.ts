@@ -227,6 +227,8 @@ export interface Campaign {
   waTemplateVariables?: string[];
   /** El template de Meta tiene un botón URL; Notificas manda el link del lector ahí. */
   waUrlButton?: boolean;
+  /** BODY aprobado en Meta (con {{1}}, {{2}}…). En campañas mixtas es el texto del correo. */
+  waTemplateBody?: string;
   /** Huella única del formulario WA (una por campaña, no por destinatario). */
   waTemplateSeal?: {
     hash: string;
@@ -265,6 +267,8 @@ export interface SavedWaTemplate {
   templateLang: string;
   templateVariables: string[];
   urlButton: boolean;
+  /** BODY aprobado en Meta, para rellenar campañas mixtas. */
+  templateBody?: string;
 }
 
 export type CanalCampaign = 'email' | 'whatsapp' | 'ambos';

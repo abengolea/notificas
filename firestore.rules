@@ -267,6 +267,7 @@ service cloud.firestore {
         && r.get('waTemplateLang', '') == n.get('waTemplateLang', '')
         && r.get('waTemplateVariables', null) == n.get('waTemplateVariables', null)
         && r.get('waUrlButton', false) == n.get('waUrlButton', false)
+        && r.get('waTemplateBody', '') == n.get('waTemplateBody', '')
         && r.get('waTemplateSeal', null) == n.get('waTemplateSeal', null)
         && r.get('canal', '') == n.get('canal', '');
     }

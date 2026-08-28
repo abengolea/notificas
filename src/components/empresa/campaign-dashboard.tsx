@@ -48,6 +48,7 @@ import { canEditWhatsAppTemplate, isAdminManagedCampaign, isUnsentCampaign } fro
 import { DailyQuotaField } from "@/components/empresa/daily-quota-field";
 import { DEFAULT_TANDA_SIZE } from "@/lib/campaign-tanda";
 import { explainWhatsAppSendError, WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-template-fields";
+import { usesMetaTemplateAsEmailBody } from "@/lib/campaign-mixed-message";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 import { WaSavedTemplates } from "@/components/empresa/wa-saved-templates";
 import {
@@ -454,6 +455,7 @@ export const CampaignDashboard = forwardRef<
   const [tplLang, setTplLang] = useState("es_AR");
   const [tplVars, setTplVars] = useState<string[]>([...WA_TEMPLATE_DEFAULT_VARS]);
   const [tplUrlButton, setTplUrlButton] = useState(false);
+  const [tplBody, setTplBody] = useState("");
 
   const syncedTplId = useRef<string | null>(null);
   useEffect(() => {
@@ -468,6 +470,7 @@ export const CampaignDashboard = forwardRef<
         : [...WA_TEMPLATE_DEFAULT_VARS]
     );
     setTplUrlButton(campaign.waUrlButton === true);
+    setTplBody(String(campaign.waTemplateBody || ""));
   }, [campaign]);
   useEffect(() => {
     if (typeof campaign?.tandaSize === "number" && campaign.tandaSize > 0) {
@@ -820,6 +823,7 @@ export const CampaignDashboard = forwardRef<
           waTemplateLang: tplLang,
           waTemplateVariables: tplVars.filter(Boolean),
           waUrlButton: tplUrlButton,
+          waTemplateBody: tplBody,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -1384,8 +1388,9 @@ export const CampaignDashboard = forwardRef<
                 WhatsApp
               </p>
               <p className="text-xs text-muted-foreground">
-                El aviso de WhatsApp no es el cuerpo de email: Meta solo acepta el template aprobado,
-                con las mismas variables y en el mismo orden.
+                {usesMetaTemplateAsEmailBody(campaign.canal, campaign.waTemplateName)
+                  ? "Correo y WhatsApp usan el mismo texto: el BODY del template aprobado en Meta, con las variables de cada destinatario."
+                  : "El aviso de WhatsApp no es el cuerpo de email: Meta solo acepta el template aprobado, con las mismas variables y en el mismo orden."}
               </p>
               {canEditTpl ? (
                 <>
@@ -1397,27 +1402,33 @@ export const CampaignDashboard = forwardRef<
                       lang: tplLang,
                       variables: tplVars,
                       urlButton: tplUrlButton,
+                      templateBody: tplBody,
                     }}
                     onApply={(next) => {
                       setTplName(next.name);
                       setTplLang(next.lang);
                       setTplVars(next.variables);
                       setTplUrlButton(next.urlButton);
+                      if (typeof next.templateBody === "string") setTplBody(next.templateBody);
                     }}
                   />
                   <WaTemplateFields
                     idPrefix="dash-wa"
+                    orgId={orgId}
+                    authMode={mode}
                     value={{
                       name: tplName,
                       lang: tplLang,
                       variables: tplVars,
                       urlButton: tplUrlButton,
+                      templateBody: tplBody,
                     }}
                     onChange={(next) => {
                       setTplName(next.name);
                       setTplLang(next.lang);
                       setTplVars(next.variables);
                       setTplUrlButton(next.urlButton);
+                      setTplBody(next.templateBody || "");
                     }}
                   />
                   <Button onClick={() => void guardarTemplateWa()} disabled={savingTpl || busy} className="gap-2">
@@ -1451,9 +1462,12 @@ export const CampaignDashboard = forwardRef<
                   {campaign.waUrlButton ? (
                     <p className="text-muted-foreground">Botón URL: sí</p>
                   ) : null}
+                  {campaign.waTemplateBody ? (
+                    <p className="text-muted-foreground whitespace-pre-wrap border-t pt-2">{campaign.waTemplateBody}</p>
+                  ) : null}
                 </>
               )}
-              {campaign.cuerpo && (
+              {!canEditTpl && campaign.cuerpo && !campaign.waTemplateBody && (
                 <p className="text-muted-foreground whitespace-pre-wrap border-t pt-2">{campaign.cuerpo}</p>
               )}
             </div>

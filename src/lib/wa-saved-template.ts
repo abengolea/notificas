@@ -18,6 +18,7 @@ export function mapSavedWaTemplate(id: string, data: Record<string, unknown>): S
       ? data.templateVariables.map((v) => String(v || "").trim()).filter(Boolean)
       : [],
     urlButton: data.urlButton === true,
+    templateBody: String(data.templateBody || "").trim() || undefined,
   };
 }
 

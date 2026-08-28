@@ -102,6 +102,7 @@ export function WaSavedTemplates({
       lang: tpl.templateLang,
       variables: tpl.templateVariables,
       urlButton: tpl.urlButton,
+      templateBody: tpl.templateBody,
     });
     try {
       window.localStorage.setItem(lastUsedWaTemplateKey(orgId), tpl.id);
@@ -125,6 +126,7 @@ export function WaSavedTemplates({
         templateLang: current.lang,
         templateVariables: current.variables,
         urlButton: current.urlButton,
+        templateBody: current.templateBody?.trim() || undefined,
       };
       if (selectedId) {
         await updateSavedWaTemplate(mode, selectedId, payload);

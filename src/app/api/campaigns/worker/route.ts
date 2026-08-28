@@ -7,6 +7,7 @@ import {
   campaignBodyToHtmlFragment,
   personalizeCampaignText,
 } from '@/lib/campaign-email-html';
+import { renderCampaignMessageBody, usesMetaTemplateAsEmailBody } from '@/lib/campaign-mixed-message';
 import { normalizeEnviosDisponibles } from '@/lib/envios';
 import { invokeSendEmail } from '@/lib/send-mail-via-cf';
 import { computeContentHash } from '@/lib/certification';
@@ -190,7 +191,17 @@ async function processMessage(
   const senderEmail = String(campaign.senderEmail || campaign.createdBy || 'contacto@notificas.com');
   const uid = String(campaign.senderUid || campaign.createdBy || '');
   const subject = personalizeCampaignText(String(campaign.asunto || 'Notificación'), row);
-  const bodyPlain = personalizeCampaignText(String(campaign.cuerpo || ''), row);
+  const mixedMeta = usesMetaTemplateAsEmailBody(canal, campaign.waTemplateName);
+  const bodyPlain = renderCampaignMessageBody({
+    canal,
+    waTemplateName: campaign.waTemplateName,
+    waTemplateBody: campaign.waTemplateBody,
+    waTemplateVariables: Array.isArray(campaign.waTemplateVariables) ? campaign.waTemplateVariables : undefined,
+    waUrlButton: campaign.waUrlButton === true,
+    cuerpo: campaign.cuerpo,
+    row,
+    senderName: senderEmail,
+  });
   const bodyHtml = campaignBodyToHtmlFragment(bodyPlain);
   const contentHash = await computeContentHash(bodyPlain);
   const batchId = String(msg.integritySendBatchId || sendBatchId(0));
@@ -201,6 +212,7 @@ async function processMessage(
     sender: senderEmail,
     bodyHtml,
     attachments: attachmentsFor(campaign, email),
+    mode: mixedMeta ? 'inline' : 'teaser',
   });
   const adjuntos = attachmentsFor(campaign, email);
 

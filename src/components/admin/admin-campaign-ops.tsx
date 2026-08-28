@@ -59,6 +59,7 @@ type CampaignPayload = {
   waTemplateLang: string;
   waTemplateVariables: string[];
   waUrlButton?: boolean;
+  waTemplateBody?: string;
   stats: { total: number; enviados: number; leidos: number; pendientes: number; errores: number };
 };
 
@@ -103,6 +104,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
   const [templateLang, setTemplateLang] = useState("es_AR");
   const [templateVars, setTemplateVars] = useState<string[]>([...WA_TEMPLATE_DEFAULT_VARS]);
   const [templateUrlButton, setTemplateUrlButton] = useState(false);
+  const [templateBody, setTemplateBody] = useState("");
   const formReady = useRef(false);
   const [exportActionsHost, setExportActionsHost] = useState<HTMLDivElement | null>(null);
   const dashboardRef = useRef<CampaignDashboardHandle>(null);
@@ -123,6 +125,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
           : [...WA_TEMPLATE_DEFAULT_VARS]
       );
       setTemplateUrlButton(c.waUrlButton === true);
+      setTemplateBody(String(c.waTemplateBody || ""));
       if (typeof c.tandaSize === "number" && c.tandaSize > 0) setTandaSize(c.tandaSize);
       formReady.current = true;
     }
@@ -175,6 +178,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
       waTemplateLang: templateLang,
       waTemplateVariables: templateVars.filter(Boolean),
       waUrlButton: templateUrlButton,
+      waTemplateBody: templateBody,
     });
   }
 
@@ -686,16 +690,20 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
                       lang: templateLang,
                       variables: templateVars,
                       urlButton: templateUrlButton,
+                      templateBody,
                     }}
                     onApply={(next) => {
                       setTemplateName(next.name);
                       setTemplateLang(next.lang);
                       setTemplateVars(next.variables);
                       setTemplateUrlButton(next.urlButton);
+                      if (typeof next.templateBody === "string") setTemplateBody(next.templateBody);
                     }}
                   />
                   <WaTemplateFields
                     idPrefix="admin-wa"
+                    orgId={c.orgId}
+                    authMode="admin"
                     disabled={!canEditTpl}
                     namePlaceholder="Vacío = template por defecto de Notificas"
                     value={{
@@ -703,12 +711,14 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
                       lang: templateLang,
                       variables: templateVars,
                       urlButton: templateUrlButton,
+                      templateBody,
                     }}
                     onChange={(next) => {
                       setTemplateName(next.name);
                       setTemplateLang(next.lang);
                       setTemplateVars(next.variables);
                       setTemplateUrlButton(next.urlButton);
+                      setTemplateBody(next.templateBody || "");
                     }}
                   />
                   <Button variant="secondary" disabled={saving || !canEditTpl} onClick={() => void saveTemplate()}>

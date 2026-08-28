@@ -12,6 +12,7 @@ const putSchema = z.object({
   templateLang: z.string().max(16).optional(),
   templateVariables: z.array(z.string().max(200)).max(WA_TEMPLATE_MAX_VARS).optional(),
   urlButton: z.boolean().optional(),
+  templateBody: z.string().max(20000).optional(),
 });
 
 type RouteContext = { params: Promise<{ templateId: string }> };
@@ -47,6 +48,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       update.templateVariables = parsed.data.templateVariables.map((v) => v.trim()).filter(Boolean);
     }
     if (typeof parsed.data.urlButton === "boolean") update.urlButton = parsed.data.urlButton;
+    if (typeof parsed.data.templateBody === "string") update.templateBody = parsed.data.templateBody.trim();
 
     await ref.update(update);
     return NextResponse.json({ ok: true });
