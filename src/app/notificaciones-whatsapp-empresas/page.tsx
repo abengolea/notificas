@@ -10,6 +10,7 @@ export const metadata: Metadata = createPageMetadata({
   title: page.title,
   description: page.description,
   path: page.path,
+  ogType: "article",
   keywords: [
     "notificaciones WhatsApp empresas",
     "campañas WhatsApp Business",
@@ -53,6 +54,13 @@ export default function WhatsAppEmpresasPage() {
         Pedí una cotización desde el{" "}
         <Link href="/#empresas" className="text-primary underline-offset-4 hover:underline">
           formulario para empresas
+        </Link>
+        , leé{" "}
+        <Link
+          href="/notificaciones-masivas-empresas"
+          className="text-primary underline-offset-4 hover:underline"
+        >
+          notificaciones digitales masivas
         </Link>{" "}
         o creá una{" "}
         <Link href="/signup" className="text-primary underline-offset-4 hover:underline">

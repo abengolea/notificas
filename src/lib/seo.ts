@@ -1,5 +1,12 @@
 import type { Metadata } from "next";
 import { FAQ_CLAIMS } from "@/lib/honest-claims";
+import {
+  GEO_LANDING_PAGES,
+  LEGAL_PUBLIC_PAGES,
+  RESOURCE_HUB,
+  SEO_GUIDE_PAGES,
+  type SeoGuidePath,
+} from "@/lib/public-resources";
 
 /** Dominio canónico de producción (App Hosting). */
 export const SITE_URL = (
@@ -8,38 +15,38 @@ export const SITE_URL = (
 
 export const SITE_NAME = "Notificas";
 export const SITE_LEGAL_NAME = "Notificas SRL";
+
+/** Frase base de posicionamiento (variar la redacción en cada página). */
+export const SITE_POSITIONING =
+  "Notificas es una plataforma de comunicaciones digitales verificables por WhatsApp y email que permite a empresas y profesionales generar y preservar evidencia técnica sobre las distintas etapas de una comunicación.";
+
 export const SITE_TAGLINE =
-  "Notificaciones fehacientes digitales con certificación en blockchain";
+  "Comunicaciones digitales verificables por WhatsApp y email";
 
 export const DEFAULT_TITLE =
-  "Notificas | Notificaciones fehacientes digitales certificadas en blockchain";
+  "Notificas | Comunicaciones digitales verificables por WhatsApp y email";
 
 export const DEFAULT_DESCRIPTION =
-  "Enviá un mensaje y dejá constancia de qué salió, a quién y cuándo. El certificado de lectura se emite una sola vez. Campañas de volumen por WhatsApp y correo, previa cotización.";
+  "Plataforma argentina para comunicaciones digitales verificables por WhatsApp y email, con evidencia técnica, trazabilidad de eventos y verificación pública de constancias.";
 
 export const SITE_KEYWORDS = [
+  "comunicaciones digitales verificables",
+  "notificación WhatsApp",
+  "notificar por WhatsApp",
+  "WhatsApp como prueba",
+  "intimación de deuda WhatsApp",
+  "notificaciones masivas empresas",
+  "email verificable",
+  "notificación digital vs carta documento",
   "notificaciones fehacientes",
   "notificación fehaciente digital",
-  "carta documento digital",
-  "notificaciones certificadas",
-  "notificación certificada online",
-  "comunicación fehaciente",
-  "intimación digital",
-  "certificado blockchain",
-  "Polygon",
-  "prueba de envío",
-  "prueba de lectura",
-  "notificaciones legales Argentina",
+  "constancia de envío digital",
+  "trazabilidad de comunicaciones",
+  "evidencia de WhatsApp",
   "Notificas",
-  "notificaciones de alto volumen",
   "notificaciones WhatsApp empresas",
   "notificaciones por email",
-  "notificaciones digitales certificadas",
-  "notificaciones blockchain",
-  "notificaciones masivas para empresas",
-  "gestión de mora WhatsApp",
   "intimaciones digitales",
-  "comunicaciones empresariales certificadas",
 ] as const;
 
 export const SITE_CONTACT = {
@@ -55,45 +62,25 @@ export const SITE_CONTACT = {
   cuit: "33-71729868-9",
 } as const;
 
+export const CONTENT_EDITOR = SITE_LEGAL_NAME;
+
 /** Fecha real de la última revisión de URLs públicas (no “ahora” en cada build). */
-export const SITEMAP_LASTMOD = new Date("2026-08-25T00:00:00.000Z");
+export const SITEMAP_LASTMOD = new Date("2026-08-27T00:00:00.000Z");
+export const CONTENT_UPDATED_ON = "2026-08-27";
+export const CONTENT_UPDATED_LABEL = "27 de agosto de 2026";
 
-export const SEO_GUIDE_PAGES = [
-  {
-    path: "/notificacion-fehaciente-digital",
-    title: "Qué es una notificación fehaciente digital",
-    description:
-      "Qué deja constancia Notificas, qué no prueba un correo aceptado y cómo se usa un certificado de lectura en Argentina.",
-    blurb: "Qué se registra, qué no, y cómo usarlo.",
-  },
-  {
-    path: "/carta-documento-digital",
-    title: "Carta documento digital: qué cubre Notificas y qué no",
-    description:
-      "Notificas no reemplaza una carta documento si la ley pide esa forma. Compará costos, plazos y valor de la constancia técnica.",
-    blurb: "No reemplaza la carta documento. Sí deja rastro comprobable.",
-  },
-  {
-    path: "/notificaciones-whatsapp-empresas",
-    title: "Notificaciones por WhatsApp para empresas",
-    description:
-      "Campañas de volumen por WhatsApp Business: plantillas de Meta, qué se certifica y cómo se cotizan los envíos masivos.",
-    blurb: "Plantillas de Meta, trazabilidad y campañas de volumen.",
-  },
-  {
-    path: "/como-verificar-certificado",
-    title: "Cómo verificar un certificado de Notificas",
-    description:
-      "Subí el PDF o ingresá el ID en notificas.com.ar/verify. Comparamos la huella del archivo con el registro en Polygon.",
-    blurb: "Validá un PDF o un ID contra Polygon.",
-  },
-] as const;
-
-export type SeoGuidePath = (typeof SEO_GUIDE_PAGES)[number]["path"];
+export { GEO_LANDING_PAGES, LEGAL_PUBLIC_PAGES, RESOURCE_HUB, SEO_GUIDE_PAGES };
+export type { GeoLandingPath, SeoGuidePath } from "@/lib/public-resources";
 
 export function getSeoGuide(path: SeoGuidePath) {
   const page = SEO_GUIDE_PAGES.find((item) => item.path === path);
   if (!page) throw new Error(`SEO guide missing: ${path}`);
+  return page;
+}
+
+export function getGeoLanding(path: (typeof GEO_LANDING_PAGES)[number]["path"]) {
+  const page = GEO_LANDING_PAGES.find((item) => item.path === path);
+  if (!page) throw new Error(`GEO landing missing: ${path}`);
   return page;
 }
 
@@ -112,6 +99,8 @@ type PageMetadataOptions = {
   path: string;
   keywords?: string[];
   noIndex?: boolean;
+  ogType?: "website" | "article";
+  updatedAt?: string;
   /** Si se omite, Next usa `opengraph-image.tsx` / `twitter-image.tsx` del app router. */
   ogImage?: string;
 };
@@ -122,15 +111,52 @@ export function createPageMetadata({
   path,
   keywords,
   noIndex = false,
+  ogType = "website",
+  updatedAt,
   ogImage,
 }: PageMetadataOptions): Metadata {
   const url = absoluteUrl(path);
   const imageUrl = ogImage ? absoluteUrl(ogImage) : undefined;
+  const modified = updatedAt ?? CONTENT_UPDATED_ON;
+  const ogImages = imageUrl
+    ? [
+        {
+          url: imageUrl,
+          width: 1200,
+          height: 630,
+          alt: `${SITE_NAME} — ${SITE_TAGLINE}`,
+        },
+      ]
+    : undefined;
+  const openGraph =
+    ogType === "article"
+      ? {
+          title,
+          description,
+          url,
+          siteName: SITE_NAME,
+          locale: "es_AR" as const,
+          type: "article" as const,
+          publishedTime: `${modified}T00:00:00.000Z`,
+          modifiedTime: `${modified}T00:00:00.000Z`,
+          authors: [CONTENT_EDITOR],
+          ...(ogImages ? { images: ogImages } : {}),
+        }
+      : {
+          title,
+          description,
+          url,
+          siteName: SITE_NAME,
+          locale: "es_AR" as const,
+          type: "website" as const,
+          ...(ogImages ? { images: ogImages } : {}),
+        };
 
   return {
     title,
     description,
     keywords: keywords?.length ? [...keywords] : undefined,
+    authors: [{ name: CONTENT_EDITOR, url: SITE_URL }],
     alternates: {
       canonical: url,
       languages: {
@@ -139,26 +165,7 @@ export function createPageMetadata({
         "x-default": url,
       },
     },
-    openGraph: {
-      title,
-      description,
-      url,
-      siteName: SITE_NAME,
-      locale: "es_AR",
-      type: "website",
-      ...(imageUrl
-        ? {
-            images: [
-              {
-                url: imageUrl,
-                width: 1200,
-                height: 630,
-                alt: `${SITE_NAME} — ${SITE_TAGLINE}`,
-              },
-            ],
-          }
-        : {}),
-    },
+    openGraph,
     twitter: {
       card: "summary_large_image",
       title,
@@ -167,7 +174,17 @@ export function createPageMetadata({
     },
     robots: noIndex
       ? { index: false, follow: false, googleBot: { index: false, follow: false } }
-      : { index: true, follow: true },
+      : {
+          index: true,
+          follow: true,
+          googleBot: {
+            index: true,
+            follow: true,
+            "max-image-preview": "large",
+            "max-snippet": -1,
+            "max-video-preview": -1,
+          },
+        },
   };
 }
 

@@ -1,5 +1,12 @@
 import type { MetadataRoute } from "next";
+import {
+  PRIVATE_PATH_PREFIXES,
+  SEARCH_RETRIEVAL_USER_AGENTS,
+  TRAINING_USER_AGENTS,
+} from "@/lib/robots-policy";
 import { SITE_URL } from "@/lib/seo";
+
+const publicDisallow = [...PRIVATE_PATH_PREFIXES];
 
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -7,22 +14,17 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: [
-          "/api/",
-          "/admin/",
-          "/dashboard/",
-          "/empresa/",
-          "/cuenta/",
-          "/reader/",
-          "/pdf-viewer/",
-          "/process-payment/",
-          "/email-preview/",
-          "/test-firestore/",
-          "/test-polygon/",
-          "/test-reader/",
-          "/linkRedirect",
-        ],
+        disallow: publicDisallow,
       },
+      ...SEARCH_RETRIEVAL_USER_AGENTS.map((userAgent) => ({
+        userAgent,
+        allow: "/",
+        disallow: publicDisallow,
+      })),
+      ...TRAINING_USER_AGENTS.map((userAgent) => ({
+        userAgent,
+        disallow: "/",
+      })),
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,
     host: SITE_URL,

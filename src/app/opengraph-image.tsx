@@ -43,7 +43,7 @@ export default function OpenGraphImage() {
               maxWidth: 900,
             }}
           >
-            Notificaciones fehacientes digitales
+            Notificaciones digitales verificables
           </div>
           <div
             style={{
@@ -53,8 +53,7 @@ export default function OpenGraphImage() {
               lineHeight: 1.35,
             }}
           >
-            Certificá envío, recepción y lectura en blockchain Polygon. Valor
-            probatorio, más económico que una carta documento.
+            {SITE_TAGLINE}. Evidencia técnica y trazabilidad en Argentina.
           </div>
         </div>
         <div
