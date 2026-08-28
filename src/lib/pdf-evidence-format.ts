@@ -3,7 +3,7 @@ export const PDF_SCHEMA = {
   constanciaEnvio: 'constancia-envio/v2',
   certificadoLectura: 'certificado-lectura/v2',
   actaTanda: 'acta-tanda/v3',
-  actaIndividual: 'acta-individual/v6',
+  actaIndividual: 'acta-individual/v7',
   campaignReport: 'campaign-report/v2',
   metaVerification: 'meta-verification/v2',
 } as const;
