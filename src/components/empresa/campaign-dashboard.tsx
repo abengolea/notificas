@@ -280,7 +280,7 @@ function CampaignExportActions({
       {!hideCopy && (
         <Button variant="outline" onClick={onCopy} disabled={busy} className="gap-2">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
-          Copiar campaña
+          Copiar envío masivo
         </Button>
       )}
       {csvReady && !generating ? (
@@ -988,12 +988,12 @@ export const CampaignDashboard = forwardRef<
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <Link href={listHref || `/empresa/${orgId}/campanas`} className="text-sm text-muted-foreground hover:underline">
-            ← Campañas
+            ← Envíos masivos
           </Link>
           <h1 className="text-2xl font-bold mt-2">{campaign.nombre}</h1>
           {empresaReadOnly && (
             <p className="mt-2 text-sm text-muted-foreground max-w-xl">
-              Esta campaña la armó el administrador. Podés ver el avance y los destinatarios, pero no editarla, enviarla ni cancelarla. Las campañas que armes vos sí las podés editar y enviar.
+              Este envío masivo lo armó el administrador. Podés ver el avance y los destinatarios, pero no editarlo, enviarlo ni cancelarlo. Los envíos masivos que armes vos sí los podés editar y enviar.
             </p>
           )}
           <div className="flex flex-wrap items-center gap-2 mt-2 text-sm text-muted-foreground">
@@ -1014,7 +1014,7 @@ export const CampaignDashboard = forwardRef<
           {canOperate && campaign.estado === "enviando" && (
             <Button variant="outline" onClick={pausarCampana} disabled={busy} className="gap-2">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4" />}
-              Pausar campaña
+              Pausar envío masivo
             </Button>
           )}
           {canOperate && campaign.estado === "pausada" && (
@@ -1026,7 +1026,7 @@ export const CampaignDashboard = forwardRef<
           {canOperate && (campaign.estado === "enviando" || campaign.estado === "pausada") && (
             <Button variant="destructive" onClick={cancelarCampana} disabled={busy} className="gap-2">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
-              Cancelar campaña
+              Cancelar envío masivo
             </Button>
           )}
           {canOperate && campaign.estado === "completada" && stats && stats.errores > 0 && !isAdmin && (

@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
 import type { Organization } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, List, Megaphone, PlusCircle, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Megaphone, PenSquare, PlusCircle, Send, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 
@@ -49,11 +50,36 @@ export type OrgSidebarNavProps = {
 export function OrgSidebarNav({ orgId, org, onNavigate, className }: OrgSidebarNavProps) {
   const pathname = usePathname();
   const base = `/empresa/${orgId}`;
+  const [orgCount, setOrgCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      void (async () => {
+        if (!user) {
+          setOrgCount(null);
+          return;
+        }
+        try {
+          const token = await user.getIdToken();
+          const res = await fetch("/api/organizations", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) return;
+          const data = (await res.json()) as { organizations?: unknown };
+          const orgs = Array.isArray(data.organizations) ? data.organizations : [];
+          setOrgCount(orgs.length);
+        } catch {
+          /* ignorar */
+        }
+      })();
+    });
+    return () => unsub();
+  }, []);
 
   const links = [
     { href: `${base}/dashboard`, label: "Dashboard", icon: LayoutDashboard },
-    { href: `${base}/listas`, label: "Listas", icon: List },
-    { href: `${base}/campanas`, label: "Campañas", icon: Megaphone },
+    { href: `${base}/campanas`, label: "Envíos masivos", icon: Megaphone },
+    { href: `${base}/envios`, label: "Envíos individuales", icon: Send },
     { href: `${base}/verificacion-meta`, label: "Verificación Meta", icon: ShieldCheck },
   ];
 
@@ -86,14 +112,22 @@ export function OrgSidebarNav({ orgId, org, onNavigate, className }: OrgSidebarN
         <Button asChild className="w-full gap-2">
           <Link href={`${base}/campanas/nueva`} onClick={() => onNavigate?.()}>
             <PlusCircle className="h-4 w-4" />
-            Nueva campaña
+            Enviar nuevo envío masivo
           </Link>
         </Button>
-        <Button variant="ghost" className="mt-2 w-full" asChild>
-          <Link href="/empresa" onClick={() => onNavigate?.()}>
-            Cambiar organización
+        <Button variant="outline" asChild className="mt-2 w-full gap-2">
+          <Link href={`${base}/envios`} onClick={() => onNavigate?.()}>
+            <PenSquare className="h-4 w-4" />
+            Nuevo envío 1:1
           </Link>
         </Button>
+        {orgCount !== null && orgCount > 1 ? (
+          <Button variant="ghost" className="mt-2 w-full" asChild>
+            <Link href="/empresa" onClick={() => onNavigate?.()}>
+              Cambiar organización
+            </Link>
+          </Button>
+        ) : null}
       </div>
     </div>
   );

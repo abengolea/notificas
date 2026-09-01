@@ -25,9 +25,10 @@ export default function NuevaCampanaPage() {
       <Button variant="ghost" asChild className="mb-6 gap-2">
         <Link href={`/empresa/${orgId}/campanas`}>
           <ArrowLeft className="h-4 w-4" />
-          Volver
+          Volver a envíos masivos
         </Link>
       </Button>
+      <h1 className="mb-6 text-2xl font-bold">Enviar nuevo envío masivo</h1>
       <CampaignWizard orgId={orgId} orgPlan={plan} />
     </div>
   );

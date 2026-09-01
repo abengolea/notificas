@@ -1,18 +1,25 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { empresaHomeHrefFromOrgs } from "@/lib/resolve-post-login-href";
 
 /**
  * Si el usuario tiene organizaciones B2B pero entró al panel de particulares,
- * lo envía al módulo empresas (mismo criterio que post-login).
+ * lo envía al dashboard de su empresa (o al selector si tiene más de una).
+ * Billetera y cuenta siguen disponibles: los envíos 1:1 usan esos créditos.
  */
 export function EmpresaDashboardRedirect() {
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
+    if (pathname?.startsWith("/dashboard/billetera") || pathname?.startsWith("/dashboard/cuenta")) {
+      return;
+    }
+
     const unsub = onAuthStateChanged(auth, (user) => {
       void (async () => {
         if (!user) return;
@@ -24,16 +31,15 @@ export function EmpresaDashboardRedirect() {
           if (!res.ok) return;
           const data = (await res.json()) as { organizations?: unknown };
           const orgs = Array.isArray(data.organizations) ? data.organizations : [];
-          if (orgs.length > 0) {
-            router.replace("/empresa?aviso=modulo-empresas");
-          }
+          const dest = empresaHomeHrefFromOrgs(orgs);
+          if (dest) router.replace(dest);
         } catch {
           /* ignorar */
         }
       })();
     });
     return () => unsub();
-  }, [router]);
+  }, [router, pathname]);
 
   return null;
 }

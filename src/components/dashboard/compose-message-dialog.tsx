@@ -385,7 +385,7 @@ function RichTextEditor({ value, disabled, onChange, onBlur }: RichTextEditorPro
     );
 }
 
-export function ComposeMessageDialog({ children, open, onOpenChange, user, initialContact }: { children: React.ReactNode, open: boolean, onOpenChange: (open: boolean) => void, user: User, initialContact?: { email: string, nombre?: string, telefono?: string } }) {
+export function ComposeMessageDialog({ children, open, onOpenChange, user, initialContact, orgId }: { children: React.ReactNode, open: boolean, onOpenChange: (open: boolean) => void, user: User, initialContact?: { email: string, nombre?: string, telefono?: string }, orgId?: string }) {
     const [isSending, setIsSending] = useState(false);
     const [selectedFiles, setSelectedFiles] = useState<SelectedAttachment[]>([]);
     const isExecutingRef = useRef(false);
@@ -581,6 +581,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                     recipientDni: data.recipientDni?.replace(/\D/g, "") || undefined,
                     recipientCuit: data.recipientCuit?.replace(/\D/g, "") || undefined,
                     createdBy: user.uid,
+                    orgId,
                     skipAutoSend: true,
                 }),
                 new Promise<never>((_, reject) =>
@@ -730,7 +731,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                 setIsSending(false);
             }
         }
-    }, [isSuspended, toast, user, handleOpenChange, form, selectedFiles]);
+    }, [isSuspended, toast, user, handleOpenChange, form, selectedFiles, orgId]);
 
     const composeActions = (
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">

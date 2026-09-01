@@ -15,6 +15,7 @@ import {
   Scale,
   Gavel,
   AlertCircle,
+  PenSquare,
 } from 'lucide-react';
 
 import type { User as AppUser } from '@/lib/types';
@@ -42,6 +43,7 @@ import {
 
 import { DashboardShell, type MailFolderNavId } from './dashboard-shell';
 import { ComposeDraftPanel } from './compose-draft-panel';
+import { ComposeMessageDialog } from './compose-message-dialog';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -123,8 +125,12 @@ function docsToSortedDisplayMessages(
   docs: QueryDocumentSnapshot<DocumentData>[],
   folder: MailFolderNavId,
   userEmailNorm: string,
+  excludeCampaigns = false,
 ): DisplayMessage[] {
-  return docs
+  const source = excludeCampaigns
+    ? docs.filter((d) => !isCampaignMail(d.data() as Record<string, unknown>))
+    : docs;
+  return source
     .map((d) => {
       const data = d.data() as Record<string, unknown>;
 
@@ -187,7 +193,7 @@ function docsToSortedDisplayMessages(
     })
     .filter((message) => {
       if (folder === "inbox") {
-        const docMatch = docs.find((x) => x.id === message.id);
+        const docMatch = source.find((x) => x.id === message.id);
         const data = docMatch?.data() as { senderName?: string } | undefined;
         const senderName = data?.senderName;
         return senderName?.trim().toLowerCase() !== userEmailNorm;
@@ -197,11 +203,29 @@ function docsToSortedDisplayMessages(
     .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
 }
 
-export default function DashboardClient() {
+function isCampaignMail(data: Record<string, unknown>): boolean {
+  return Boolean(data.campaignId || data.campaignMessageId);
+}
+
+export type DashboardClientProps = {
+  /** Embebido en el módulo empresa: sin shell de particulares, con orgId. */
+  embed?: boolean;
+  orgId?: string;
+  messageBasePath?: string;
+  walletHref?: string;
+};
+
+export default function DashboardClient({
+  embed = false,
+  orgId,
+  messageBasePath = "/dashboard/mensaje",
+  walletHref = "/dashboard/billetera",
+}: DashboardClientProps = {}) {
   const [selectedFolder, setSelectedFolder] = useState<MailFolderNavId>("sent");
   const [activeFilter, setActiveFilter] = useState<MessageTypeFilter>("all");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [isComposeOpen, setComposeOpen] = useState(false);
 
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -369,7 +393,7 @@ export default function DashboardClient() {
               if (dataHash === lastProcessedData) return;
               lastProcessedData = dataHash;
               setMessages(
-                docsToSortedDisplayMessages(snap.docs, "inbox", userEmailNorm),
+                docsToSortedDisplayMessages(snap.docs, "inbox", userEmailNorm, Boolean(orgId)),
               );
             },
             onMailListError("inbox recipientEmail=="),
@@ -396,7 +420,7 @@ export default function DashboardClient() {
               lastProcessedData = dataHash;
 
               setMessages(
-                docsToSortedDisplayMessages(snap.docs, "sent", userEmailNorm),
+                docsToSortedDisplayMessages(snap.docs, "sent", userEmailNorm, Boolean(orgId)),
               );
             },
             onMailListError("sent createdBy=="),
@@ -413,7 +437,7 @@ export default function DashboardClient() {
       unsubMail?.();
       unsubMail = undefined;
     };
-  }, [selectedFolder, appUser?.uid]);
+  }, [selectedFolder, appUser?.uid, orgId]);
 
   const messageCountsByType = useMemo(() => {
     // Por ahora contamos todo como "Comunicación" para mantener UI
@@ -467,18 +491,10 @@ export default function DashboardClient() {
   const headerTitle = folders.find((f) => f.id === selectedFolder)?.label ?? 'Dashboard';
   const router = useRouter();
 
-  return (
-    <DashboardShell
-      headerTitle={headerTitle}
-      folderNavMode="client"
-      selectedMailFolder={selectedFolder}
-      onMailFolderSelect={setSelectedFolder}
-      syncAuthFromParent
-      parentAppUser={appUser}
-    >
+  const inbox = (
       <div className="space-y-6">
               {isSuspended && (
-                <div className="p-4 bg-warning/10 border-l-4 border-warning rounded-r-lg">
+                <div className="p-4 bg-warning/10 border border-warning/40 rounded-lg">
                   <div className="flex">
                     <div className="flex-shrink-0">
                       <AlertCircle className="h-5 w-5 text-warning" />
@@ -487,7 +503,7 @@ export default function DashboardClient() {
                       <p className="text-sm text-warning-foreground">
                         Tu cuenta está suspendida debido a un problema con el pago. Puedes ver tus mensajes, pero no podrás enviar nuevos hasta que se resuelva.
                         {' '}
-                        <Link href="/dashboard/billetera" className="font-medium underline hover:text-warning">
+                        <Link href={walletHref} className="font-medium underline hover:text-warning">
                           Ir a la billetera para solucionarlo.
                         </Link>
                       </p>
@@ -561,7 +577,7 @@ export default function DashboardClient() {
                         ? 'destructive'
                         : 'secondary';
               return (
-                <Link key={message.id} href={`/dashboard/mensaje/${message.id}`} className="block">
+                <Link key={message.id} href={`${messageBasePath}/${message.id}`} className="block">
                   <Card className="shadow-md transition-colors active:bg-muted/40">
                     <div className="space-y-3 p-4">
                       <div className="flex items-start justify-between gap-2">
@@ -622,7 +638,7 @@ export default function DashboardClient() {
                     <TableRow 
                       key={message.id} 
                       className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => router.push(`/dashboard/mensaje/${message.id}`)}
+                      onClick={() => router.push(`${messageBasePath}/${message.id}`)}
                     >
                       <TableCell>
                         <FormattedDateCell date={message.sentAt} />
@@ -681,7 +697,7 @@ export default function DashboardClient() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent>
                             <DropdownMenuItem asChild>
-                              <Link href={`/dashboard/mensaje/${message.id}`}>Ver Detalles</Link>
+                              <Link href={`${messageBasePath}/${message.id}`}>Ver Detalles</Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem>Archivar</DropdownMenuItem>
                             <DropdownMenuItem className="text-destructive">Eliminar</DropdownMenuItem>
@@ -697,6 +713,65 @@ export default function DashboardClient() {
           </>
           )}
       </div>
+  );
+
+  if (embed) {
+    const isSuspendedUser = appUser?.estado === "suspendido";
+    return (
+      <div className="space-y-6 p-4 sm:p-8 max-w-[88rem]">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Envíos individuales</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              El mismo envío certificado 1:1 que usan los particulares: email, WhatsApp opcional y constancia.
+              {appUser ? ` Te quedan ${appUser.creditos ?? 0} envíos.` : ""}
+            </p>
+          </div>
+          {appUser ? (
+            <ComposeMessageDialog
+              open={isComposeOpen}
+              onOpenChange={setComposeOpen}
+              user={appUser}
+              orgId={orgId}
+            >
+              <Button className="gap-2" onClick={() => setComposeOpen(true)} disabled={!!isSuspendedUser}>
+                <PenSquare className="h-4 w-4" />
+                Nuevo envío
+              </Button>
+            </ComposeMessageDialog>
+          ) : (
+            <Button disabled>Iniciá sesión para enviar</Button>
+          )}
+        </header>
+
+        <div className="-mx-1 flex max-w-full gap-2 overflow-x-auto px-1 pb-1 [-webkit-overflow-scrolling:touch]">
+          {folders.map((folder) => (
+            <Button
+              key={folder.id}
+              variant={selectedFolder === folder.id ? "default" : "outline"}
+              className="shrink-0"
+              onClick={() => setSelectedFolder(folder.id)}
+            >
+              {folder.label}
+            </Button>
+          ))}
+        </div>
+
+        {inbox}
+      </div>
+    );
+  }
+
+  return (
+    <DashboardShell
+      headerTitle={headerTitle}
+      folderNavMode="client"
+      selectedMailFolder={selectedFolder}
+      onMailFolderSelect={setSelectedFolder}
+      syncAuthFromParent
+      parentAppUser={appUser}
+    >
+      {inbox}
     </DashboardShell>
   );
 }

@@ -127,7 +127,7 @@ function printHowToLogin(email, password) {
   console.log(`  Email:  ${email}`);
   console.log(`  Clave:  ${password}`);
   console.log("---");
-  console.log("Tras iniciar sesión deberías ver el selector de organización en /empresa.\n");
+  console.log("Tras iniciar sesión deberías entrar al dashboard de esa organización.\n");
 }
 
 main().catch((e) => {

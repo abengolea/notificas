@@ -69,9 +69,9 @@ export default function CampanasListPage() {
   return (
     <div className="p-8 max-w-4xl space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Campañas</h1>
+        <h1 className="text-2xl font-bold">Envíos masivos</h1>
         <Button asChild>
-          <Link href={`/empresa/${orgId}/campanas/nueva`}>Nueva campaña</Link>
+          <Link href={`/empresa/${orgId}/campanas/nueva`}>Enviar nuevo envío masivo</Link>
         </Button>
       </div>
       <ul className="space-y-2">

@@ -18,6 +18,8 @@ export type ScheduleEmailParams = {
   recipientCuit?: string;
   senderName?: string;
   createdBy?: string; // UID del usuario que envía (para certificación Polygon)
+  /** Si el envío 1:1 se hace desde el módulo empresa, queda asociado a esa org. */
+  orgId?: string;
 };
 
 /** Lista de correos para `to`, `cc`, `bcc`: minúsculas + trim (alineado con queries y reglas). */
@@ -34,7 +36,7 @@ function normalizedEmailIdentity(value?: string): string | undefined {
 }
 
 export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend?: boolean }): Promise<string> {
-  const { to, subject, html, text, from, replyTo, cc, bcc, recipientName, recipientEmail, recipientPhone, recipientDni, recipientCuit, senderName, createdBy, skipAutoSend = false } = params;
+  const { to, subject, html, text, from, replyTo, cc, bcc, recipientName, recipientEmail, recipientPhone, recipientDni, recipientCuit, senderName, createdBy, orgId, skipAutoSend = false } = params;
 
   const payload: any = {
     to: normalizeEmailList(to),
@@ -60,6 +62,7 @@ export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend
   const sendNorm = normalizedEmailIdentity(senderName);
   if (sendNorm) payload.senderName = sendNorm;
   if (createdBy) payload.createdBy = createdBy;
+  if (orgId) payload.orgId = orgId;
 
   // 🚨 ID ÚNICO PARA EVITAR DUPLICADOS
   const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;

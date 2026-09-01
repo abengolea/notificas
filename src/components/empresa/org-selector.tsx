@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
@@ -26,6 +27,7 @@ function mapOrg(id: string, data: Record<string, unknown>): Organization {
 }
 
 export function OrgSelector() {
+  const router = useRouter();
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -97,7 +99,12 @@ export function OrgSelector() {
 
   const sorted = useMemo(() => [...orgs].sort((a, b) => a.nombre.localeCompare(b.nombre)), [orgs]);
 
-  if (loading) {
+  useEffect(() => {
+    if (loading || loadError || orgs.length !== 1) return;
+    router.replace(`/empresa/${orgs[0].id}/dashboard`);
+  }, [loading, loadError, orgs, router]);
+
+  if (loading || (!loadError && orgs.length === 1)) {
     return (
       <div className="max-w-5xl mx-auto p-8 space-y-4">
         <Skeleton className="h-10 w-64" />
@@ -118,7 +125,7 @@ export function OrgSelector() {
             Empresas
           </h1>
           <p className="text-muted-foreground mt-1">
-            Campañas masivas por WhatsApp o correo, con constancia técnica y ancla en Polygon.
+            Envíos masivos por WhatsApp o correo, con constancia técnica y ancla en Polygon.
           </p>
         </div>
         <Button variant="outline" asChild>
@@ -172,7 +179,7 @@ export function OrgSelector() {
                   <CardDescription>{o.cuit}</CardDescription>
                 </CardHeader>
                 <CardContent className="text-sm text-muted-foreground space-y-1">
-                  <div>Campañas: {counts[o.id] ?? "…"}</div>
+                  <div>Envíos masivos: {counts[o.id] ?? "…"}</div>
                   <div className="capitalize">Plan: {o.plan}</div>
                 </CardContent>
               </Card>

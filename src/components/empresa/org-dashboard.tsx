@@ -20,6 +20,11 @@ import {
   formatInt,
   parseCampaignInstant,
 } from "@/lib/empresa-dashboard-stats";
+import {
+  buildIndividualDashboardStats,
+  type IndividualSendStatus,
+  type IndividualSendSummary,
+} from "@/lib/empresa-individual-stats";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -94,38 +99,66 @@ export function OrgDashboardSkeleton() {
 export function OrgDashboard({
   orgId,
   campaigns,
+  individualSends = [],
 }: {
   orgId: string;
   campaigns: Campaign[];
+  individualSends?: IndividualSendSummary[];
 }) {
   const stats = useMemo(() => buildOrgDashboardStats(campaigns), [campaigns]);
+  const individual = useMemo(() => buildIndividualDashboardStats(individualSends), [individualSends]);
   const nuevaHref = `/empresa/${orgId}/campanas/nueva`;
   const listHref = `/empresa/${orgId}/campanas`;
+  const enviosHref = `/empresa/${orgId}/envios`;
+
+  const header = (
+    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          {formatInt(stats.campanas)} envíos masivos
+          {stats.omitidasSimuladas > 0
+            ? ` (${formatInt(stats.omitidasSimuladas)} simulado${stats.omitidasSimuladas === 1 ? "" : "s"} excluido${stats.omitidasSimuladas === 1 ? "" : "s"})`
+            : ""}
+          {" · "}
+          {formatInt(individual.total)} individuales.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" asChild>
+          <Link href={enviosHref}>Ver envíos individuales</Link>
+        </Button>
+        <Button variant="outline" asChild>
+          <Link href={listHref}>Ver envíos masivos</Link>
+        </Button>
+        <Button asChild>
+          <Link href={nuevaHref}>Enviar nuevo envío masivo</Link>
+        </Button>
+      </div>
+    </header>
+  );
+
+  const individualSection = (
+    <IndividualSendsSection orgId={orgId} stats={individual} />
+  );
 
   if (stats.campanas === 0) {
     return (
-      <div className="space-y-6 p-4 sm:space-y-8 sm:p-8 max-w-3xl">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+      <div className="space-y-8 p-4 sm:space-y-8 sm:p-8 max-w-[88rem]">
+        {header}
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-lg border bg-card p-6">
+            <p className="font-medium">Envíos masivos</p>
             <p className="mt-1 text-sm text-muted-foreground">
               {stats.omitidasSimuladas > 0
-                ? `Hay ${formatInt(stats.omitidasSimuladas)} campaña${stats.omitidasSimuladas === 1 ? "" : "s"} simulada${stats.omitidasSimuladas === 1 ? "" : "s"} que no se cuenta${stats.omitidasSimuladas === 1 ? "" : "n"} acá. El panel solo suma envíos reales.`
-                : "Todavía no hay campañas reales. El resumen de envíos, WhatsApp y pendientes aparece acá."}
+                ? `Hay ${formatInt(stats.omitidasSimuladas)} simulado${stats.omitidasSimuladas === 1 ? "" : "s"} que no se cuenta${stats.omitidasSimuladas === 1 ? "" : "n"} acá.`
+                : "Todavía no hay envíos masivos reales. El resumen de volumen aparece acá."}
             </p>
+            <Button asChild className="mt-4">
+              <Link href={nuevaHref}>Enviar nuevo envío masivo</Link>
+            </Button>
           </div>
-          <Button asChild>
-            <Link href={nuevaHref}>Nueva campaña</Link>
-          </Button>
-        </header>
-        <div className="rounded-lg border bg-card p-6">
-          <p className="font-medium">Creá una campaña de envío real</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Las simulaciones del panel admin no entran en estos totales.
-          </p>
-          <Button asChild className="mt-4">
-            <Link href={nuevaHref}>Crear campaña</Link>
-          </Button>
+          {individualSection}
         </div>
       </div>
     );
@@ -141,27 +174,11 @@ export function OrgDashboard({
 
   return (
     <div className="space-y-8 p-4 sm:p-8 max-w-[88rem]">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            {formatInt(stats.campanas)} campañas reales · {formatInt(stats.destinatarios)} destinatarios.
-            Solo se cuentan envíos reales
-            {stats.omitidasSimuladas > 0
-              ? ` (${formatInt(stats.omitidasSimuladas)} simulada${stats.omitidasSimuladas === 1 ? "" : "s"} excluida${stats.omitidasSimuladas === 1 ? "" : "s"})`
-              : ""}
-            . Los envíos se agrupan por el mes en que arrancó cada campaña.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" asChild>
-            <Link href={listHref}>Ver campañas</Link>
-          </Button>
-          <Button asChild>
-            <Link href={nuevaHref}>Nueva campaña</Link>
-          </Button>
-        </div>
-      </header>
+      {header}
+      <p className="-mt-4 max-w-2xl text-sm text-muted-foreground">
+        {formatInt(stats.destinatarios)} destinatarios en envíos masivos. Solo se cuentan envíos reales.
+        Los masivos se agrupan por el mes en que arrancó cada uno.
+      </p>
 
       <section
         aria-label="Indicadores de envío"
@@ -185,7 +202,7 @@ export function OrgDashboard({
             value={formatInt(stats.pendientes)}
             hint={
               stats.pendientesWa > 0
-                ? `${formatInt(stats.pendientesWa)} en campañas con WhatsApp`
+                ? `${formatInt(stats.pendientesWa)} en envíos masivos con WhatsApp`
                 : "En cola de envío"
             }
             warn={stats.pendientes > 0}
@@ -195,7 +212,7 @@ export function OrgDashboard({
             value={formatInt(stats.waEnviados)}
             hint={
               stats.mixtas > 0
-                ? `Incluye ${formatInt(stats.mixtas)} campañas mixtas (email + WhatsApp)`
+                ? `Incluye ${formatInt(stats.mixtas)} envíos masivos mixtos (email + WhatsApp)`
                 : `Email: ${formatInt(stats.emailEnviados)}`
             }
           />
@@ -207,7 +224,7 @@ export function OrgDashboard({
           <Metric
             label="Errores"
             value={formatInt(stats.errores)}
-            hint={stats.errores > 0 ? "Revisá las campañas con fallos de envío" : "Sin errores acumulados"}
+            hint={stats.errores > 0 ? "Revisá los envíos masivos con fallos" : "Sin errores acumulados"}
             warn={stats.errores > 0}
           />
         </div>
@@ -218,7 +235,7 @@ export function OrgDashboard({
           <div className="mb-4">
             <h2 className="text-base font-semibold">Envíos por mes</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Email y WhatsApp de los últimos 12 meses. En campañas mixtas el mismo destinatario cuenta en ambos canales.
+              Email y WhatsApp de los últimos 12 meses. En envíos mixtos el mismo destinatario cuenta en ambos canales.
             </p>
           </div>
           <ChartContainer config={chartConfig} className="aspect-[16/7] w-full min-h-[240px]">
@@ -241,7 +258,7 @@ export function OrgDashboard({
         </section>
 
         <section className="rounded-lg border bg-card p-4 sm:p-5">
-          <h2 className="text-base font-semibold">Estado de campañas</h2>
+          <h2 className="text-base font-semibold">Estado de envíos masivos</h2>
           <ul className="mt-4 space-y-3">
             {estadoRows.map(({ key, label }) => {
               const n = stats.porEstado[key];
@@ -280,14 +297,99 @@ export function OrgDashboard({
 
       <section>
         <div className="mb-3 flex items-end justify-between gap-3">
-          <h2 className="text-base font-semibold">Campañas recientes</h2>
+          <h2 className="text-base font-semibold">Envíos masivos recientes</h2>
           <Link href={listHref} className="text-sm font-medium text-primary hover:underline">
             Ver todas
           </Link>
         </div>
         <CampaignTable orgId={orgId} rows={stats.recientes} />
       </section>
+
+      {individualSection}
     </div>
+  );
+}
+
+function individualStatusBadge(status: IndividualSendStatus) {
+  const variant =
+    status === "Leído"
+      ? "default"
+      : status === "Abierto"
+        ? "secondary"
+        : status === "Rebotó"
+          ? "destructive"
+          : "outline";
+  return <Badge variant={variant}>{status}</Badge>;
+}
+
+function IndividualSendsSection({
+  orgId,
+  stats,
+}: {
+  orgId: string;
+  stats: ReturnType<typeof buildIndividualDashboardStats>;
+}) {
+  const enviosHref = `/empresa/${orgId}/envios`;
+  return (
+    <section className="rounded-lg border bg-card p-4 sm:p-6 space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-base font-semibold">Envíos individuales</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {stats.total === 0
+              ? "Los 1:1 de esta empresa aparecen acá, aparte de los envíos masivos."
+              : `${formatInt(stats.total)} envíos · ${formatInt(stats.esteMes)} este mes · ${formatInt(stats.leidos)} leídos.`}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" asChild>
+            <Link href={enviosHref}>Ver todos</Link>
+          </Button>
+          <Button asChild>
+            <Link href={enviosHref}>Nuevo envío 1:1</Link>
+          </Button>
+        </div>
+      </div>
+
+      {stats.total === 0 ? (
+        <p className="text-sm text-muted-foreground">Todavía no hay envíos individuales desde esta cuenta.</p>
+      ) : (
+        <>
+          <div className="grid gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-4">
+            <Metric label="Individuales" value={formatInt(stats.total)} hint={`${formatInt(stats.esteMes)} este mes`} />
+            <Metric label="Leídos" value={formatInt(stats.leidos)} hint={`${formatInt(stats.abiertos)} abiertos`} />
+            <Metric label="Rebotes" value={formatInt(stats.rebotes)} hint="Correo que no llegó" warn={stats.rebotes > 0} />
+            <Metric label="Pendientes" value={formatInt(stats.pendientes)} hint="Sin aceptación SMTP todavía" warn={stats.pendientes > 0} />
+          </div>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Para</TableHead>
+                  <TableHead>Asunto</TableHead>
+                  <TableHead>Estado</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stats.recientes.map((row) => (
+                  <TableRow key={row.id} className="hover:bg-muted/40">
+                    <TableCell className="whitespace-nowrap text-muted-foreground">{fmtDate(row.sentAt)}</TableCell>
+                    <TableCell>
+                      <Link href={`/empresa/${orgId}/envios/${row.id}`} className="font-medium text-foreground hover:underline">
+                        {row.to || "—"}
+                      </Link>
+                    </TableCell>
+                    <TableCell>{row.subject}</TableCell>
+                    <TableCell>{individualStatusBadge(row.lastStatus)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -329,7 +431,7 @@ function CampaignTable({ orgId, rows }: { orgId: string; rows: Campaign[] }) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Campaña</TableHead>
+            <TableHead>Envío masivo</TableHead>
             <TableHead>Canal</TableHead>
             <TableHead>Estado</TableHead>
             <TableHead className="text-right">Dest.</TableHead>

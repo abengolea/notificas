@@ -1086,9 +1086,9 @@ export function CampaignWizard({
     <div className="max-w-3xl space-y-8">
       {isEdit && (
         <div>
-          <h1 className="text-2xl font-bold">Editar campaña</h1>
+          <h1 className="text-2xl font-bold">{isAdmin ? "Editar campaña" : "Editar envío masivo"}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Los cambios se guardan sobre este borrador. Si la campaña ya se envió, no se puede modificar.
+            Los cambios se guardan sobre este borrador. Si el envío masivo ya se envió, no se puede modificar.
           </p>
         </div>
       )}
@@ -1608,7 +1608,7 @@ export function CampaignWizard({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Nombre interno de la campaña</Label>
+              <Label>Nombre interno del envío masivo</Label>
               <Input value={campaniaNombre} onChange={(e) => setCampaniaNombre(e.target.value)} />
             </div>
             <div className="space-y-2">
@@ -1722,7 +1722,7 @@ export function CampaignWizard({
           <CardContent className="space-y-4">
             {canal === "whatsapp" && (
               <div className="space-y-2">
-                <Label>Nombre interno de la campaña</Label>
+                <Label>Nombre interno del envío masivo</Label>
                 <Input value={campaniaNombre} onChange={(e) => setCampaniaNombre(e.target.value)} />
               </div>
             )}
@@ -1770,6 +1770,12 @@ export function CampaignWizard({
                   Hay un {"{{N}}"} sin campo. Un valor vacío hace fallar el envío (error 131008).
                 </p>
               )}
+            {mixedMeta && !waTemplateBody.trim() && (
+              <p className="text-sm text-destructive">
+                Falta el texto del BODY aprobado en Meta. Usá «Traer de Meta» o pegalo con {"{{1}}"}, {"{{2}}"}…
+                Sin eso no se puede seguir: el correo usa ese mismo mensaje.
+              </p>
+            )}
             {canal === "whatsapp" && !isAdmin && (
               <>
                 <div className="rounded-md border p-4 space-y-3">
