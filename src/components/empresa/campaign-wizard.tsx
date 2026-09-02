@@ -70,6 +70,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { CsvInspectResult } from "@/lib/parse-campaign-csv";
 import { ADMIN_CAMPAIGN_READONLY_ERROR, isUnsentCampaign, toDatetimeLocalValue, UNSENT_EDIT_ERROR } from "@/lib/campaign-edit";
+import { EmpresaEnviosSaldoBanner } from "@/components/empresa/empresa-envios-saldo-banner";
 import {
   WA_DEFAULT_TEMPLATE_NAME,
   WA_TEMPLATE_DEFAULT_VARS,
@@ -209,6 +210,7 @@ export function CampaignWizard({
   const [pairingSelections, setPairingSelections] = useState<Record<string, number | null>>({});
   const pairingSignatureRef = useRef("");
   const [creditos, setCreditos] = useState(0);
+  const [creditosReady, setCreditosReady] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [scheduleIso, setScheduleIso] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -285,9 +287,14 @@ export function CampaignWizard({
   useEffect(() => {
     if (isAdmin) return;
     const u = auth.currentUser;
-    if (!u) return;
+    if (!u) {
+      setCreditos(0);
+      setCreditosReady(true);
+      return;
+    }
     const unsub = onSnapshot(doc(db, "users", u.uid), (s) => {
       setCreditos(normalizeEnviosDisponibles(s.data()?.creditos));
+      setCreditosReady(true);
     });
     return () => unsub();
   }, [isAdmin]);
@@ -1084,6 +1091,9 @@ export function CampaignWizard({
 
   return (
     <div className="max-w-3xl space-y-8">
+      {!isAdmin && (
+        <EmpresaEnviosSaldoBanner creditos={creditos} loaded={creditosReady} />
+      )}
       {isEdit && (
         <div>
           <h1 className="text-2xl font-bold">{isAdmin ? "Editar campaña" : "Editar envío masivo"}</h1>

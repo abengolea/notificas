@@ -9,6 +9,7 @@ import type { Campaign } from "@/lib/types";
 import { isAdminManagedCampaign, isUnsentCampaign } from "@/lib/campaign-edit";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmpresaEnviosSaldoLiveBanner } from "@/components/empresa/empresa-envios-saldo-banner";
 
 export default function CampanasListPage() {
   const { orgId } = useParams<{ orgId: string }>();
@@ -68,6 +69,7 @@ export default function CampanasListPage() {
 
   return (
     <div className="p-8 max-w-4xl space-y-6">
+      <EmpresaEnviosSaldoLiveBanner />
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Envíos masivos</h1>
         <Button asChild>
