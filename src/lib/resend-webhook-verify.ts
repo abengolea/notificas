@@ -55,6 +55,8 @@ export function verifyResendSvixSignature(input: {
   svixSignature: string;
   nowSec?: number;
   toleranceSec?: number;
+  /** Recomputa HMAC de un webhook ya ingerido. No aplica la ventana de 5 minutos. */
+  skipTimestampCheck?: boolean;
 }): ResendSvixVerifyResult {
   const secret = secretBytes(input.secret);
   if (!secret) return { ok: false, reason: "missing_secret" };
@@ -67,7 +69,9 @@ export function verifyResendSvixSignature(input: {
   const now = input.nowSec ?? Math.floor(Date.now() / 1000);
   const ts = Number(timestamp);
   const tolerance = input.toleranceSec ?? DEFAULT_TOLERANCE_SEC;
-  if (Math.abs(now - ts) > tolerance) return { ok: false, reason: "timestamp_out_of_range" };
+  if (!input.skipTimestampCheck && Math.abs(now - ts) > tolerance) {
+    return { ok: false, reason: "timestamp_out_of_range" };
+  }
 
   const expected = createHmac("sha256", secret)
     .update(`${id}.${timestamp}.${input.rawBody}`)
@@ -76,4 +80,15 @@ export function verifyResendSvixSignature(input: {
   if (!candidates.length) return { ok: false, reason: "missing_v1_signature" };
   if (candidates.some((sig) => equalB64(sig, expected))) return { ok: true };
   return { ok: false, reason: "bad_signature" };
+}
+
+/** HMAC histórico: misma firma Svix, sin exigir que el timestamp sea reciente. */
+export function verifyResendSvixSignatureHistorical(input: {
+  secret: string;
+  rawBody: string;
+  svixId: string;
+  svixTimestamp: string;
+  svixSignature: string;
+}): ResendSvixVerifyResult {
+  return verifyResendSvixSignature({ ...input, skipTimestampCheck: true });
 }

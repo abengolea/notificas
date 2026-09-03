@@ -50,8 +50,14 @@ export function extractVerifyHints(source: ArrayBuffer | string, fileName?: stri
     hints.kind = asKind(ref[1]);
     hints.campaignId = ref[2];
     if (hints.kind === 'campaign_acta') hints.batchId = ref[3];
-    if (hints.kind === 'campaign_acta_recipient' || hints.kind === 'mail_certificate') {
+    if (hints.kind === 'campaign_acta_recipient') {
       hints.messageId = ref[3];
+    }
+    if (hints.kind === 'mail_certificate') {
+      hints.messageId = ref[3] || ref[2];
+      if (!ref[3] || ref[2] === 'mail') {
+        hints.campaignId = undefined;
+      }
     }
   }
 

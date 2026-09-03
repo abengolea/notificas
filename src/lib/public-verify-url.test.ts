@@ -37,3 +37,12 @@ test('parsea query del validador', () => {
   assert.equal(q.kind, 'campaign_acta_recipient');
   assert.equal(q.hash, 'b'.repeat(64));
 });
+
+test('verify-ref de certificado individual toma el messageId', () => {
+  const q = verifyQueryFromSearchParams(
+    new URLSearchParams('ref=ntf:mail_certificate:mail:abcMailId')
+  );
+  assert.equal(q.kind, 'mail_certificate');
+  assert.equal(q.id, 'abcMailId');
+  assert.equal(q.campaignId, undefined);
+});

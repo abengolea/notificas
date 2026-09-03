@@ -50,6 +50,32 @@ test("opened de Resend no usa tipo de lectura fehaciente", () => {
   assert.equal(m.type, "resend_opened_signal");
 });
 
+test("timestamp viejo falla en ingest y pasa en histórico", () => {
+  const bytes = randomBytes(32);
+  const secret = `whsec_${bytes.toString("base64")}`;
+  const id = "msg_hist";
+  const timestamp = String(Math.floor(Date.now() / 1000) - 900);
+  const body = '{"type":"email.delivered"}';
+  const header = sign(bytes, id, timestamp, body);
+  const live = verifyResendSvixSignature({
+    secret,
+    rawBody: body,
+    svixId: id,
+    svixTimestamp: timestamp,
+    svixSignature: header,
+  });
+  assert.equal(live.ok, false);
+  const historical = verifyResendSvixSignature({
+    secret,
+    rawBody: body,
+    svixId: id,
+    svixTimestamp: timestamp,
+    svixSignature: header,
+    skipTimestampCheck: true,
+  });
+  assert.equal(historical.ok, true);
+});
+
 test("body alterado falla", () => {
   const bytes = randomBytes(32);
   const secret = `whsec_${bytes.toString("base64")}`;

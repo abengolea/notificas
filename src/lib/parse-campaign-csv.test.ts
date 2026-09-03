@@ -39,3 +39,15 @@ test('cuotas 0 se conserva (no es vacío)', () => {
   assert.equal(presentRecipientValue(''), false);
   assert.equal(presentRecipientValue(undefined), false);
 });
+
+test('pegar solo datos sin encabezado explica que falta la primera fila', () => {
+  const parsed = parseCsvQuickResult(
+    '3364645357,Adrian Bengolea,abengolea@hotmail.com,12/2/26,18283,4',
+    'ambos',
+    ['fecha', 'monto', 'cuotas']
+  );
+  assert.match(String(parsed.error), /encabezado/i);
+  assert.match(String(parsed.error), /telefono/);
+  assert.match(String(parsed.error), /email/);
+  assert.match(String(parsed.error), /dni/);
+});

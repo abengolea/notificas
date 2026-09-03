@@ -7,7 +7,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import type { Organization } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Megaphone, PenSquare, PlusCircle, Send, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Mail, Megaphone, PenSquare, PlusCircle, Send, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 
@@ -81,6 +81,7 @@ export function OrgSidebarNav({ orgId, org, onNavigate, className }: OrgSidebarN
     { href: `${base}/campanas`, label: "Envíos masivos", icon: Megaphone },
     { href: `${base}/envios`, label: "Envíos individuales", icon: Send },
     { href: `${base}/verificacion-meta`, label: "Verificación Meta", icon: ShieldCheck },
+    { href: `${base}/verificacion-resend`, label: "Verificación Resend", icon: Mail },
   ];
 
   return (

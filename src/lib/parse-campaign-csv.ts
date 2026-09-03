@@ -341,10 +341,13 @@ export function parseCsvQuickResult(
   if (sepErr) return { rows: [], phoneDuplicates: 0, error: sepErr };
   const cols = parseCsvHeaderLine(lines[0], canal);
   if (!cols) {
+    const looksLikeData = !csvHeaderCells(lines[0]).includes('nombre');
     return {
       rows: [],
       phoneDuplicates: 0,
-      error: `CSV inválido. Campos requeridos: ${csvCamposRequeridos(canal, extraColumns)}`,
+      error: looksLikeData
+        ? `Falta la fila de encabezado. La primera línea tiene que ser: ${csvCamposRequeridos(canal, extraColumns)}`
+        : `CSV inválido. Campos requeridos: ${csvCamposRequeridos(canal, extraColumns)}`,
     };
   }
   const extrasErr = csvMissingExtrasError(lines[0], canal, extraColumns);

@@ -84,41 +84,39 @@ export function movementForResendEvent(
   const labels: Record<string, { type: string; description: string }> = {
     "email.sent": {
       type: "resend_sent",
-      description: "Resend aceptó el mensaje para entrega.",
+      description: "El servicio de correo aceptó el mensaje para enviarlo.",
     },
     "email.delivered": {
       type: "resend_delivered",
-      description:
-        "Resend informó que el servidor de correo del destinatario aceptó el mensaje.",
+      description: "El servidor de correo del destinatario aceptó el mensaje.",
     },
     "email.delivery_delayed": {
       type: "resend_delayed",
-      description: "Resend informó demora temporal de entrega.",
+      description: "La entrega del correo se demoró temporalmente.",
     },
     "email.bounced": {
       type: "resend_bounced",
-      description: "Resend informó rebote: el mensaje no llegó al buzón.",
+      description: "El correo rebotó: no llegó al buzón.",
     },
     "email.failed": {
       type: "resend_failed",
-      description: "Resend informó fallo de envío.",
+      description: "El correo no se pudo enviar.",
     },
     "email.suppressed": {
       type: "resend_suppressed",
-      description: "Resend no envió: dirección en lista de supresión.",
+      description: "El correo no se envió: la dirección está bloqueada.",
     },
     "email.complained": {
       type: "resend_complained",
-      description: "Resend informó marca de spam.",
+      description: "Marcaron el correo como spam.",
     },
     "email.opened": {
       type: "resend_opened_signal",
-      description:
-        "Señal técnica de apertura informada por Resend (pixel/proxy).",
+      description: "Señal técnica de apertura del correo. No es lectura fehaciente.",
     },
     "email.clicked": {
       type: "resend_clicked_signal",
-      description: "Señal técnica de clic informada por Resend.",
+      description: "Señal técnica de clic en el correo. No es lectura fehaciente.",
     },
   };
   const spec = labels[eventType];
@@ -130,7 +128,7 @@ export function movementForResendEvent(
     timestamp: occurredAt,
     userAgent: "Resend webhook",
     clientIP: "Resend",
-    browser: "Resend",
+    browser: "Servicio de correo",
     source: "resend_webhook",
     evidentiaryClass: evidentiaryClass(eventType),
     recipientEmail: recipient || undefined,
@@ -168,7 +166,7 @@ function recipientFromData(data: Record<string, unknown>): string | null {
   return str(data.recipient).toLowerCase() || null;
 }
 
-function messageIdVariants(messageId: string): string[] {
+export function messageIdVariants(messageId: string): string[] {
   const raw = messageId.trim();
   if (!raw) return [];
   const bare = raw.replace(/^<|>$/g, "");
@@ -290,6 +288,8 @@ export async function processResendWebhook(input: {
     },
   };
   const canonicalHash = sha256Utf8(JSON.stringify(canonicalPayload));
+  const rawBody = input.rawBody || "";
+  const httpBodyTruncated = rawBody.length > 80_000;
 
   const eventDoc: Record<string, unknown> = {
     provider: "resend",
@@ -315,6 +315,9 @@ export async function processResendWebhook(input: {
     campaignId,
     campaignMessageId,
     evidentiaryClass: evidentiaryClass(eventType),
+    httpBody: httpBodyTruncated ? null : rawBody,
+    httpBodyTruncated,
+    rawBodyLength: rawBody.length,
   };
 
   const incomingStatus = EVENT_STATUS[eventType];

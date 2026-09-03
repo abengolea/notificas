@@ -66,7 +66,16 @@ function equalB64(a, b) {
   }
 }
 
-function verifyResendSvixSignature({ secret, rawBody, svixId, svixTimestamp, svixSignature, nowSec, toleranceSec }) {
+function verifyResendSvixSignature({
+  secret,
+  rawBody,
+  svixId,
+  svixTimestamp,
+  svixSignature,
+  nowSec,
+  toleranceSec,
+  skipTimestampCheck,
+}) {
   const key = secretBytes(secret);
   if (!key) return { ok: false, reason: "missing_secret" };
   const id = str(svixId);
@@ -76,7 +85,9 @@ function verifyResendSvixSignature({ secret, rawBody, svixId, svixTimestamp, svi
   if (!/^\d+$/.test(timestamp)) return { ok: false, reason: "bad_timestamp" };
   const now = nowSec ?? Math.floor(Date.now() / 1000);
   const tolerance = toleranceSec ?? 300;
-  if (Math.abs(now - Number(timestamp)) > tolerance) return { ok: false, reason: "timestamp_out_of_range" };
+  if (!skipTimestampCheck && Math.abs(now - Number(timestamp)) > tolerance) {
+    return { ok: false, reason: "timestamp_out_of_range" };
+  }
   const expected = createHmac("sha256", key).update(`${id}.${timestamp}.${rawBody}`).digest("base64");
   const candidates = parseSignatures(header);
   if (!candidates.length) return { ok: false, reason: "missing_v1_signature" };
@@ -111,41 +122,39 @@ function movementForResendEvent(eventType, occurredAt, webhookEventId, recipient
   const labels = {
     "email.sent": {
       type: "resend_sent",
-      description: "Resend aceptó el mensaje para entrega.",
+      description: "El servicio de correo aceptó el mensaje para enviarlo.",
     },
     "email.delivered": {
       type: "resend_delivered",
-      description:
-        "Resend informó que el servidor de correo del destinatario aceptó el mensaje.",
+      description: "El servidor de correo del destinatario aceptó el mensaje.",
     },
     "email.delivery_delayed": {
       type: "resend_delayed",
-      description: "Resend informó demora temporal de entrega.",
+      description: "La entrega del correo se demoró temporalmente.",
     },
     "email.bounced": {
       type: "resend_bounced",
-      description: "Resend informó rebote: el mensaje no llegó al buzón.",
+      description: "El correo rebotó: no llegó al buzón.",
     },
     "email.failed": {
       type: "resend_failed",
-      description: "Resend informó fallo de envío.",
+      description: "El correo no se pudo enviar.",
     },
     "email.suppressed": {
       type: "resend_suppressed",
-      description: "Resend no envió: dirección en lista de supresión.",
+      description: "El correo no se envió: la dirección está bloqueada.",
     },
     "email.complained": {
       type: "resend_complained",
-      description: "Resend informó marca de spam.",
+      description: "Marcaron el correo como spam.",
     },
     "email.opened": {
       type: "resend_opened_signal",
-      description:
-        "Señal técnica de apertura informada por Resend (pixel/proxy).",
+      description: "Señal técnica de apertura del correo. No es lectura fehaciente.",
     },
     "email.clicked": {
       type: "resend_clicked_signal",
-      description: "Señal técnica de clic informada por Resend.",
+      description: "Señal técnica de clic en el correo. No es lectura fehaciente.",
     },
   };
   const spec = labels[eventType];
@@ -157,7 +166,7 @@ function movementForResendEvent(eventType, occurredAt, webhookEventId, recipient
     timestamp: occurredAt,
     userAgent: "Resend webhook",
     clientIP: "Resend",
-    browser: "Resend",
+    browser: "Servicio de correo",
     source: "resend_webhook",
     evidentiaryClass: evidentiaryClass(eventType),
     recipientEmail: recipient || undefined,
@@ -269,6 +278,8 @@ async function processResendWebhook({ rawBody, svixId, svixTimestamp, svixSignat
       click: data.click ?? null,
     },
   };
+  const rawExact = String(rawBody || "");
+  const httpBodyTruncated = rawExact.length > 80000;
   const eventDoc = {
     provider: "resend",
     eventType,
@@ -293,6 +304,9 @@ async function processResendWebhook({ rawBody, svixId, svixTimestamp, svixSignat
     campaignId,
     campaignMessageId,
     evidentiaryClass: evidentiaryClass(eventType),
+    httpBody: httpBodyTruncated ? null : rawExact,
+    httpBodyTruncated,
+    rawBodyLength: rawExact.length,
   };
 
   const incomingStatus = EVENT_STATUS[eventType];
@@ -355,7 +369,7 @@ async function processResendWebhook({ rawBody, svixId, svixTimestamp, svixSignat
       signatureHeader: svixSignature,
       signatureValid: true,
       payloadHash,
-      httpBody: String(rawBody || "").slice(0, 80000),
+      httpBody: httpBodyTruncated ? null : rawExact,
       contentType: contentType || null,
       signatureValidatedAt: receivedAtIso,
       receivedAt: FieldValue.serverTimestamp(),

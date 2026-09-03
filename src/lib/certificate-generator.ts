@@ -7,6 +7,8 @@ import { emailDeliveryLabel } from './email-delivery-label';
 import { formatEvidenceTimestamp, PDF_SCHEMA } from './pdf-evidence-format';
 import { loadNotificasLogoJpeg, PDF_BRAND } from './pdf-brand';
 import { publicCertificateVerifyUrl } from './public-verify-url';
+import { campaignVerifyRef, formatVerifyRefLine } from './verify-hints';
+import type { WhatsAppSentContent } from './whatsapp-evidence';
 
 interface MailMessageContent {
   html?: string;
@@ -49,6 +51,8 @@ interface MailData {
   recipientCuit?: string;
   recipientPhone?: string;
   recipientLegajo?: string;
+  campaignId?: string;
+  campaignMessageId?: string;
   whatsappMessageId?: string;
   smtpMessageId?: string;
   smtpAccepted?: unknown;
@@ -91,19 +95,41 @@ interface CertificateData {
   attachments: any[];
   /** Primera emisión. Si falta, el PDF cambia en cada descarga. */
   issuedAt?: Date;
+  /** True si identidad y texto salen de evidence_snapshots (WORM). */
+  evidenceSealed?: boolean;
+  whatsappSent?: WhatsAppSentContent | null;
+  waDeliveredWebhookPreserved?: boolean;
+  waReadWebhookPreserved?: boolean;
+}
+
+type MovementLike = {
+  type?: string;
+  timestamp?: unknown;
+  description?: string;
+  browser?: string;
+  browserVersion?: string;
+};
+
+function firstMovement(movements: MovementLike[], types: string[]): MovementLike | undefined {
+  const set = new Set(types.map((t) => t.toLowerCase()));
+  return movements.find((m) => set.has(String(m.type || '').toLowerCase()));
+}
+
+function hasMovement(movements: MovementLike[], types: string[]): boolean {
+  return Boolean(firstMovement(movements, types));
 }
 
 const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   email_sent: 'Correo enviado',
-  resend_sent: 'Resend aceptó el mensaje para entrega',
-  resend_delivered: 'Servidor del destinatario aceptó el correo (Resend)',
-  resend_delayed: 'Entrega demorada (Resend)',
-  resend_bounced: 'Correo rebotó (Resend)',
-  resend_failed: 'Fallo de envío (Resend)',
-  resend_suppressed: 'Correo suprimido (Resend)',
-  resend_complained: 'Marcado como spam (Resend)',
-  resend_opened_signal: 'Señal técnica de apertura Resend',
-  resend_clicked_signal: 'Señal técnica de clic Resend',
+  resend_sent: 'Correo aceptado para entrega',
+  resend_delivered: 'Servidor del destinatario aceptó el correo',
+  resend_delayed: 'Entrega de correo demorada',
+  resend_bounced: 'Correo rebotó',
+  resend_failed: 'El correo no se pudo enviar',
+  resend_suppressed: 'Correo bloqueado',
+  resend_complained: 'Correo marcado como spam',
+  resend_opened_signal: 'Señal técnica de apertura del correo',
+  resend_clicked_signal: 'Señal técnica de clic del correo',
   email_bounced: 'Correo rebotó (no llegó al buzón)',
   email_opened: 'Correo abierto (pixel)',
   reader_magic_open: 'Acceso al reader digital',
@@ -136,7 +162,11 @@ function getMovementBrowserLabel(browser?: string) {
     case 'Server':
       return 'Servidor';
     case 'WhatsApp Cloud API':
-      return 'Sistema (WhatsApp de Meta)';
+    case 'Sistema (WhatsApp de Meta)':
+      return 'WhatsApp';
+    case 'Resend':
+    case 'Resend webhook':
+      return 'Servicio de correo';
     default:
       return browser;
   }
@@ -163,7 +193,16 @@ function utcStamp(d: Date): string {
 }
 
 export async function generateCertificatePDF(data: CertificateData): Promise<Blob> {
-  const { messageId, mailData, movements = [], attachments = [] } = data;
+  const {
+    messageId,
+    mailData,
+    movements = [],
+    attachments = [],
+    evidenceSealed,
+    whatsappSent,
+    waDeliveredWebhookPreserved,
+    waReadWebhookPreserved,
+  } = data;
 
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -244,6 +283,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   const FOOTER_RESERVE_PT = 72;
   const contentBottom = pageHeight - margin - FOOTER_RESERVE_PT;
   let yPosition = margin + 70;
+  let headerPart: 'relato' | 'anexo' = 'relato';
 
   const ensureSpace = (space: number) => {
     if (yPosition + space > contentBottom) {
@@ -483,14 +523,23 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(16);
       setTextColor(COLORS.textMain);
-      doc.text('Certificado de lectura — constancia técnica', pageWidth / 2, yPosition, { align: 'center' });
+      doc.text(
+        headerPart === 'anexo'
+          ? 'Anexo técnico — para perito informático'
+          : 'Certificado de lectura — constancia técnica',
+        pageWidth / 2,
+        yPosition,
+        { align: 'center' }
+      );
 
       yPosition += 16;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       setTextColor(COLORS.textMuted);
       const freezeNotice = doc.splitTextToSize(
-        'Este documento es una foto de los hechos al emitirlo. No se vuelve a emitir. Una lectura o un rebote posteriores no aparecen acá. Podés descargar otra vez la misma copia.',
+        headerPart === 'anexo'
+          ? 'Parte II — Comprobaciones criptográficas, snapshot inalterable y transacciones en Polygon. La inmutabilidad la aportan esas huellas y TX, no este PDF.'
+          : 'Parte I — Relato de la comunicación. Destinado a jueces, abogados y funcionarios. El anexo técnico para perito consta al final. Foto de los hechos al emitir: no se vuelve a emitir.',
         contentWidth
       );
       doc.text(freezeNotice, pageWidth / 2, yPosition, { align: 'center' });
@@ -504,7 +553,11 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(13);
       setTextColor(COLORS.primaryDark);
-      doc.text('Certificado oficial de lectura', margin, continuationTitleY);
+      doc.text(
+        headerPart === 'anexo' ? 'Anexo técnico' : 'Certificado de lectura',
+        margin,
+        continuationTitleY
+      );
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9.5);
       setTextColor(COLORS.textMuted);
@@ -554,9 +607,15 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   );
   const openCount = mailData.tracking?.openCount ?? 0;
   const attachmentsCount = attachments.length;
-  const emailOpened = Boolean(mailData.tracking?.opened) || openCount > 0 || Boolean(mailData.tracking?.readConfirmed);
-  const waDelivered = Boolean((mailData.tracking as { whatsappDelivered?: boolean } | undefined)?.whatsappDelivered);
-  const hasWhatsApp = Boolean(mailData.recipientPhone || mailData.whatsappMessageId);
+  const emailOpenedPixel =
+    hasMovement(movements, ['email_opened']) || Boolean(mailData.tracking?.opened);
+  const emailOpenedReader = hasMovement(movements, ['reader_magic_open', 'read_confirmed']);
+  const waDelivered =
+    Boolean((mailData.tracking as { whatsappDelivered?: boolean } | undefined)?.whatsappDelivered) ||
+    hasMovement(movements, ['whatsapp_delivered']);
+  const hasWhatsApp = Boolean(
+    mailData.recipientPhone || mailData.whatsappMessageId || hasMovement(movements, ['whatsapp_sent', 'whatsapp_delivered', 'whatsapp_read'])
+  );
 
   // Datos clave en dos columnas - formato destacado para impresión B&N
   // Estados en mayúsculas para mejor legibilidad
@@ -567,7 +626,8 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   const summaryLeft = [
     { label: 'Fecha de emisión (UTC)', value: utcStamp(emissionDate) },
     { label: 'Correo — aceptación SMTP', value: formatState(deliveryState) },
-    { label: 'Correo — abierto (pixel / reader)', value: emailOpened ? 'SÍ' : 'NO CONSTA' }
+    { label: 'Correo — abierto (pixel)', value: emailOpenedPixel ? 'SÍ' : 'NO CONSTA' },
+    { label: 'Correo — acceso al reader', value: emailOpenedReader ? 'SÍ' : 'NO CONSTA' }
   ];
   
   const summaryRight = [
@@ -660,6 +720,21 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   
   yPosition += summaryBoxHeight + 16;
 
+  const sealed = evidenceSealed === true || Boolean(mailData.evidenceSnapshotHash);
+  const remitente =
+    mailData.orgNombre || mailData.senderName || mailData.from || 'el remitente';
+  const destinatario =
+    mailData.recipientName || mailData.recipientEmail || 'el destinatario';
+
+  drawSectionTitle('Objeto de esta constancia');
+  writeTextBlock(
+    sealed
+      ? `Notificas.com deja constancia de una comunicación digital enviada por ${remitente}${mailData.orgCuit ? ` (CUIT ${mailData.orgCuit})` : ''} a ${destinatario}. En el instante del envío el sistema guarda una copia inalterable de quién envió, a quién se dirigió y qué se envió. Lo transcrito en las páginas siguientes es esa copia, no una reconstrucción posterior. Los hechos posteriores (aceptación del correo, señales de Resend, o entrega y lectura que informe WhatsApp) se anotan aparte y no modifican el texto original. Este PDF se emite una sola vez: una lectura o un rebote posteriores no aparecen en esta copia.`
+      : `Notificas.com deja constancia técnica del mensaje "${messageId}" según sus registros de envío. No hay copia inalterable (snapshot) de este envío: el texto y las partes se transcriben de los registros del mensaje. El anexo técnico, si hay hashes o transacciones, permite confrontarlos.`,
+    10,
+    14
+  );
+
   // ========================================
   // SECCIÓN 2: IDENTIFICACIÓN DE LAS PARTES
   // ========================================
@@ -675,8 +750,19 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     ...(mailData.recipientCuit ? [{ label: 'CUIT', value: String(mailData.recipientCuit) }] : []),
     { label: 'Email del destinatario', value: mailData.recipientEmail || 'No especificado' },
     ...(mailData.recipientPhone ? [{ label: 'Teléfono', value: String(mailData.recipientPhone) }] : []),
+    ...(mailData.recipientLegajo ? [{ label: 'Legajo', value: String(mailData.recipientLegajo) }] : []),
     { label: 'Asunto', value: mailData.message?.subject || 'Sin asunto declarado' },
-    { label: 'Fecha de envío', value: formatDate(mailData.delivery?.time) }
+    { label: 'Fecha de envío', value: formatDate(mailData.delivery?.time) },
+    ...(mailData.campaignId ? [{ label: 'ID de campaña', value: String(mailData.campaignId) }] : []),
+    ...(mailData.campaignMessageId
+      ? [{ label: 'ID de destinatario de campaña', value: String(mailData.campaignMessageId) }]
+      : []),
+    {
+      label: 'Origen del texto y de las partes',
+      value: sealed
+        ? 'Copia inalterable tomada al enviar (snapshot)'
+        : 'Registros del mensaje (sin snapshot sellado)',
+    },
   ];
   
   // Calcular altura (padding inferior extra para que el último renglón no roce el borde)
@@ -717,110 +803,80 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
 
   yPosition += idBoxHeight + 14;
 
-  // Información técnica de verificación - bloque técnico/pericial
   const contentHashStored = (mailData as any).polygonCertifications?.contentHash;
   const contentHashComputed = await computeContentHash(mailData.message?.contentText || '');
   const contentHash = contentHashStored || contentHashComputed;
   const verifyUrl = publicCertificateVerifyUrl({
     id: messageId,
+    campaignId: mailData.campaignId,
     kind: 'mail_certificate',
     hash: contentHash,
   });
+  const verifyRef = campaignVerifyRef(
+    'mail_certificate',
+    mailData.campaignId || 'mail',
+    messageId
+  );
 
-  if (mailData.tracking?.token || mailData.readerUrl || mailData.delivery?.info || contentHash) {
-    drawSectionTitle('Datos técnicos de verificación', 2);
-
-    const techData = [];
-    if (mailData.tracking?.token) {
-      techData.push({ label: 'Token de verificación', value: mailData.tracking.token, monospace: true });
+  const techData: Array<{ label: string; value: string; monospace?: boolean }> = [];
+  if (mailData.tracking?.token) {
+    techData.push({ label: 'Token de verificación', value: mailData.tracking.token, monospace: true });
+  }
+  if (mailData.delivery?.info) {
+    techData.push({ label: 'Identificador SMTP (aceptación)', value: mailData.delivery.info, monospace: true });
+  }
+  const wamid = mailData.whatsappMessageId || (mailData as { tracking?: { whatsappMessageId?: string } }).tracking?.whatsappMessageId;
+  if (wamid) {
+    techData.push({ label: 'WhatsApp Message ID (wamid)', value: String(wamid), monospace: true });
+    if (mailData.whatsappPhoneNumberId) {
+      techData.push({ label: 'Phone Number ID (Meta)', value: String(mailData.whatsappPhoneNumberId), monospace: true });
     }
-    if (mailData.delivery?.info) {
-      techData.push({ label: 'Identificador SMTP (aceptación)', value: mailData.delivery.info, monospace: true });
-    }
-    const wamid = mailData.whatsappMessageId || (mailData as { tracking?: { whatsappMessageId?: string } }).tracking?.whatsappMessageId;
-    if (wamid) {
-      techData.push({ label: 'WhatsApp Message ID (wamid)', value: String(wamid), monospace: true });
-      if (mailData.whatsappPhoneNumberId) {
-        techData.push({ label: 'Phone Number ID (Meta)', value: String(mailData.whatsappPhoneNumberId), monospace: true });
-      }
-      if (mailData.whatsappWabaId) {
-        techData.push({ label: 'WABA ID (Meta)', value: String(mailData.whatsappWabaId), monospace: true });
-      }
-      techData.push({
-        label: 'Alcance de WhatsApp',
-        value: 'WhatsApp transportó un aviso (template de Meta) con enlace al lector. El texto intimado es el del correo y del lector, no el globo del chat.',
-        monospace: false,
-      });
-    }
-    const waBodyHash = (mailData as { polygonCertifications?: { waBodyHash?: string } }).polygonCertifications?.waBodyHash;
-    if (waBodyHash) {
-      techData.push({
-        label: 'Hash del aviso WhatsApp (SHA-256 del pedido a Meta)',
-        value: String(waBodyHash),
-        monospace: true,
-      });
-    }
-    if (mailData.evidenceSnapshotHash) {
-      techData.push({ label: 'Hash del snapshot inmutable', value: mailData.evidenceSnapshotHash, monospace: true });
+    if (mailData.whatsappWabaId) {
+      techData.push({ label: 'WABA ID (Meta)', value: String(mailData.whatsappWabaId), monospace: true });
     }
     techData.push({
-      label: 'Verificación pública',
-      value: verifyUrl,
+      label: 'Alcance de WhatsApp',
+      value: whatsappSent?.renderedBody
+        ? 'El globo de WhatsApp (template de Meta) se transcribe en la Parte I. El texto del correo/lector es el intimado en el hash de contenido, salvo que el envío sea solo WhatsApp.'
+        : 'WhatsApp transportó un aviso (template de Meta) con enlace al lector. El texto intimado en el hash es el del correo y del lector, no el globo del chat, salvo que el globo conste más abajo.',
+      monospace: false,
+    });
+  }
+  const waBodyHash = (mailData as { polygonCertifications?: { waBodyHash?: string } }).polygonCertifications?.waBodyHash;
+  if (waBodyHash) {
+    techData.push({
+      label: 'Hash del aviso WhatsApp (SHA-256 del pedido a Meta)',
+      value: String(waBodyHash),
       monospace: true,
     });
-    if (mailData.readerUrl) {
-      techData.push({ label: 'URL de acceso al lector certificado', value: mailData.readerUrl, monospace: true });
-    }
-    if (contentHash) {
-      techData.push({
-        label: 'Hash de integridad del texto intimado (SHA-256)',
-        value: contentHash,
-        monospace: true
-      });
-      techData.push({
-        label: 'Fórmula de reproducción del hash (para peritos)',
-        value: 'SHA-256( UTF-8( trim(texto_plano_del_mensaje) ) ) — Texto del correo/lector, no el globo de WhatsApp. Implementación: crypto.subtle.digest("SHA-256", new TextEncoder().encode(texto.trim())) — Web Crypto API estándar.',
-        monospace: false
-      });
-    }
-
-    if (techData.length > 0) {
-      // Calcular altura para bloque técnico (padding superior alineado con techY = yPosition + 20)
-      let techHeight = 20;
-      techData.forEach((item) => {
-        doc.setFont('courier', 'normal');
-        doc.setFontSize(9);
-        const valueLines = doc.splitTextToSize(item.value || 'No disponible', contentWidth - 28);
-        techHeight += 16 + (valueLines.length * 12) + 8;
-      });
-      techHeight += 16;
-      
-      ensureSpace(techHeight + 8);
-      drawBox(margin, yPosition, contentWidth, techHeight, false);
-      
-      let techY = yPosition + 20;
-      techData.forEach((item) => {
-        // Label
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        setTextColor(COLORS.textMuted);
-        doc.text(`${item.label}:`, margin + 14, techY);
-        techY += 16;
-
-        // Valor (monospace, tamaño más pequeño - aspecto técnico)
-        doc.setFont('courier', 'normal');
-        doc.setFontSize(9);
-        setTextColor(COLORS.textMain);
-        const valueLines = doc.splitTextToSize(item.value || 'No disponible', contentWidth - 28);
-        valueLines.forEach((line: string) => {
-          doc.text(line, margin + 14, techY);
-          techY += 12;
-        });
-        techY += 8;
-      });
-      
-      yPosition += techHeight + 12;
-    }
+  }
+  if (mailData.evidenceSnapshotHash) {
+    techData.push({ label: 'Hash del snapshot inmutable', value: mailData.evidenceSnapshotHash, monospace: true });
+  }
+  techData.push({
+    label: 'Verificación pública',
+    value: verifyUrl,
+    monospace: true,
+  });
+  techData.push({
+    label: 'Referencia de verificación',
+    value: formatVerifyRefLine(verifyRef),
+    monospace: true,
+  });
+  if (mailData.readerUrl) {
+    techData.push({ label: 'URL de acceso al lector certificado', value: mailData.readerUrl, monospace: true });
+  }
+  if (contentHash) {
+    techData.push({
+      label: 'Hash de integridad del texto intimado (SHA-256)',
+      value: contentHash,
+      monospace: true
+    });
+    techData.push({
+      label: 'Fórmula de reproducción del hash (para peritos)',
+      value: 'SHA-256( UTF-8( trim(texto_plano_del_mensaje) ) ) — Texto del correo/lector. Implementación: crypto.subtle.digest("SHA-256", new TextEncoder().encode(texto.trim())) — Web Crypto API estándar.',
+      monospace: false
+    });
   }
 
   try {
@@ -830,7 +886,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     setTextColor(COLORS.textMuted);
-    doc.text('Escanee para validar automáticamente si Notificas emitió este certificado.', margin, yPosition + 18);
+    doc.text('Escanee para validar si Notificas emitió este certificado.', margin, yPosition + 18);
     yPosition += 52;
   } catch {
     /* QR opcional */
@@ -850,6 +906,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
         .filter((e) => e.txHash && typeof e.txHash === 'string' && e.txHash.startsWith('0x'))
     : [];
 
+  const drawPolygonSection = () => {
   if (polygonEntries.length > 0) {
     drawSectionTitle('Certificación en Blockchain (Polygon)', 2);
 
@@ -942,18 +999,20 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     });
     yPosition += polygonHeight + 14;
   }
+  };
 
   // ========================================
   // SECCIÓN 3: CONTENIDO DEL MENSAJE CERTIFICADO
   // ========================================
   // Priorizar message.content (contenido real) sobre html/text (template completo del email)
   const rawContent = (mailData.message as { content?: string })?.content
+    || mailData.message?.contentText
     || mailData.message?.html
     || mailData.message?.text
     || '';
   const cleanedContent = rawContent ? sanitizeHtml(typeof rawContent === 'string' ? rawContent : '') : '';
   if (cleanedContent) {
-    drawSectionTitle('Contenido del mensaje certificado');
+    drawSectionTitle(hasWhatsApp ? 'Contenido enviado por correo (lector)' : 'Contenido del mensaje certificado');
     
     const padding = 14;
     doc.setFont('helvetica', 'normal');
@@ -980,6 +1039,66 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     });
     
     yPosition += contentHeight + 16;
+  }
+
+  if (whatsappSent) {
+    drawSectionTitle('Contenido enviado por WhatsApp');
+    if (whatsappSent.templateBodyMissing && !whatsappSent.renderedBody) {
+      writeTextBlock(
+        'No se pudo lacrar el texto fijo de Meta en este envío. Se certifican el nombre del template, el idioma y las variables. El WhatsApp sí se envió.',
+        9,
+        12,
+        { color: COLORS.textMuted }
+      );
+    } else if (!whatsappSent.renderedBody) {
+      writeTextBlock(
+        'No se almacena el texto fijo del template de Meta. Se transcriben las variables enviadas (ya sustituidas).',
+        9,
+        12,
+        { color: COLORS.textMuted }
+      );
+    }
+    if (whatsappSent.renderedHeader) {
+      writeTextBlock(`Encabezado: ${whatsappSent.renderedHeader}`, 10, 13, { bold: true });
+    }
+    if (whatsappSent.renderedBody) {
+      writeTextBlock(whatsappSent.renderedBody, 10, 14);
+    }
+    if (whatsappSent.renderedFooter) {
+      writeTextBlock(whatsappSent.renderedFooter, 9, 12, { italics: true, color: COLORS.textMuted });
+    }
+    writeTextBlock(
+      `Template: ${whatsappSent.templateName} · ${whatsappSent.templateLang}` +
+        (whatsappSent.templateHash ? ` · Template Hash: ${whatsappSent.templateHash}` : '') +
+        (whatsappSent.templateId ? ` · ID ${whatsappSent.templateId}` : ''),
+      8,
+      11,
+      { color: COLORS.textMuted }
+    );
+    if (whatsappSent.variables.length > 0) {
+      drawTable(
+        ['{{n}}', 'Campo', 'Valor enviado a Meta'],
+        whatsappSent.variables.map((v) => [`{{${v.n}}}`, v.field || '—', v.value || '—']),
+        [contentWidth * 0.14, contentWidth * 0.28, contentWidth * 0.58]
+      );
+    }
+    for (const btn of whatsappSent.buttons) {
+      const label = btn.text ? `Botón: ${btn.text}` : 'Botón URL';
+      const dest = btn.url
+        ? `Destino: ${btn.url}`
+        : btn.urlParameter
+          ? `Parámetro enviado a Meta: ${btn.urlParameter}`
+          : null;
+      writeTextBlock(dest ? `${label}. ${dest}` : label, 9, 12);
+    }
+  } else if (hasWhatsApp) {
+    drawSectionTitle('Contenido enviado por WhatsApp');
+    writeTextBlock(
+      'No hay pedido a Meta en el snapshot. No se reconstruye el globo desde datos vivos.',
+      9,
+      12,
+      { color: COLORS.textMuted }
+    );
   }
 
   // ========================================
@@ -1088,6 +1207,87 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     yPosition += accesoBoxH + 12;
   }
 
+  const stampOf = (m: MovementLike | undefined) =>
+    m ? formatDate(m.timestamp) : 'No consta a la fecha de esta constancia';
+  const showEmailChrono = Boolean(
+    mailData.recipientEmail ||
+      hasMovement(movements, ['email_sent', 'resend_sent', 'resend_delivered', 'email_opened', 'resend_opened_signal', 'reader_magic_open'])
+  );
+  const chronoRows: string[][] = [];
+  if (showEmailChrono) {
+    chronoRows.push([
+      'Correo aceptado por el proveedor',
+      stampOf(firstMovement(movements, ['email_sent', 'resend_sent'])),
+      'Registrado por el sistema',
+    ]);
+    const delivered = firstMovement(movements, ['resend_delivered']);
+    if (delivered || hasMovement(movements, ['resend_sent'])) {
+      chronoRows.push([
+        'Servidor del destinatario aceptó el correo (Resend)',
+        stampOf(delivered),
+        delivered ? 'Informado por Resend' : 'Pendiente de registro',
+      ]);
+    }
+    chronoRows.push([
+      'Señal técnica de apertura (Resend)',
+      stampOf(firstMovement(movements, ['resend_opened_signal'])),
+      firstMovement(movements, ['resend_opened_signal']) ? 'Pixel o proxy; no es acceso al reader' : 'Pendiente de registro',
+    ]);
+    chronoRows.push([
+      'Correo abierto (pixel)',
+      stampOf(firstMovement(movements, ['email_opened'])),
+      firstMovement(movements, ['email_opened']) ? 'Registrado por el sistema' : 'Pendiente de registro',
+    ]);
+    chronoRows.push([
+      'Acceso al reader digital',
+      stampOf(firstMovement(movements, ['reader_magic_open', 'read_confirmed'])),
+      firstMovement(movements, ['reader_magic_open', 'read_confirmed'])
+        ? 'Registrado por el sistema'
+        : 'Pendiente de registro',
+    ]);
+  }
+  if (hasWhatsApp) {
+    const waMetaNote = (preserved?: boolean) =>
+      preserved
+        ? 'Evento informado por Meta. Webhook autenticado y evidencia preservada'
+        : 'Evento informado por Meta y registrado por Notificas';
+    const sent = firstMovement(movements, ['whatsapp_sent']);
+    const deliv = firstMovement(movements, ['whatsapp_delivered']);
+    const read = firstMovement(movements, ['whatsapp_read']);
+    chronoRows.push([
+      'WhatsApp enviado (aceptado por Meta)',
+      stampOf(sent),
+      sent ? waMetaNote() : 'Pendiente de registro',
+    ]);
+    chronoRows.push([
+      'WhatsApp entregado al dispositivo (Meta)',
+      stampOf(deliv),
+      deliv ? waMetaNote(waDeliveredWebhookPreserved) : 'Pendiente de registro',
+    ]);
+    chronoRows.push([
+      'WhatsApp leído (Meta)',
+      stampOf(read),
+      read ? waMetaNote(waReadWebhookPreserved) : 'Pendiente de registro',
+    ]);
+  }
+
+  if (chronoRows.length > 0) {
+    drawSectionTitle('Cronología de los hechos');
+    writeTextBlock(
+      hasWhatsApp
+        ? 'Correo: la aceptación del proveedor no es entrega en la casilla. WhatsApp: enviado / entregado / leído se consignan por separado cuando Meta lo confirma. Un hecho pendiente no niega el envío.'
+        : 'La aceptación del proveedor de correo no significa que el mensaje haya llegado a la casilla. Pixel, señal Resend y acceso al reader son hechos distintos.',
+      9,
+      12,
+      { color: COLORS.textMuted }
+    );
+    drawTable(
+      ['Hecho', 'Fecha y hora', 'Estado'],
+      chronoRows,
+      [contentWidth * 0.34, contentWidth * 0.32, contentWidth * 0.34]
+    );
+  }
+
   // ========================================
   // SECCIÓN 5: BITÁCORA DE EVENTOS AUDITABLES
   // ========================================
@@ -1141,33 +1341,15 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   }
 
   // ========================================
-  // SECCIÓN 6: DECLARACIÓN DE AUTENTICIDAD
+  // SECCIÓN 6: ALCANCE
   // ========================================
-  drawSectionTitle('Declaración técnica');
-  
-  // Texto de declaración más formal y estructurado - más aire y líneas más cortas
-  ensureSpace(12);
-  const declarationText = `Notificas.com deja constancia técnica de que el mensaje "${messageId}" figura en sus registros de envío. La aceptación SMTP acredita que el proveedor de correo recibió el mensaje, no que llegó a la casilla. Los hechos de WhatsApp (aceptado, entregado al dispositivo, leído) se consignan solo si Meta los confirmó. Este documento no califica valor legal.`;
-  
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  setTextColor(COLORS.textMain);
-  // Líneas más cortas para mejor legibilidad
-  const declarationLines = doc.splitTextToSize(declarationText, contentWidth - 20);
-  declarationLines.forEach((line: string) => {
-    doc.text(line, margin + 10, yPosition);
-    yPosition += 16; // Más espacio entre líneas
-  });
-  
-  yPosition += 12; // Más aire después del párrafo introductorio
-  
-  // Puntos de la declaración - mejor espaciado
+  drawSectionTitle('Alcance de este documento');
   const statements = [
+    'Esta Parte I relata qué se pidió enviar, a qué destino técnico y qué informaron después los proveedores. No califica valor legal ni prueba por sí sola la identidad civil del receptor.',
     'Los eventos listados son los congelados al emitir este certificado. Hechos posteriores no aparecen en esta copia.',
-    'El contenido (asunto y cuerpo) se certifica con hash SHA-256. Cualquier alteración produce un hash distinto.',
-    'Los adjuntos, si existen, se identifican con hash SHA-256.',
-    'Este PDF reproduce hechos técnicos. No constituye por sí mismo prueba fehaciente; esa calificación corresponde a la autoridad competente.',
-    `Emisión: ${utcStamp(emissionDate)}. La lista de eventos queda fija en la primera generación; las descargas posteriores entregan el mismo PDF.`
+    'Que el servidor de correo haya aceptado el mensaje no significa que haya llegado a la casilla. “Entregado” o “leído” de WhatsApp se consignan solo si Meta los informó.',
+    'El contenido (asunto y cuerpo del correo/lector) se certifica con hash SHA-256. Los adjuntos, si existen, también. Cualquier alteración produce un hash distinto.',
+    `Emisión: ${utcStamp(emissionDate)}. Las descargas posteriores entregan el mismo PDF.`,
   ];
   
   statements.forEach((statement) => {
@@ -1185,6 +1367,53 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   });
   
   yPosition += 12;
+
+  headerPart = 'anexo';
+  doc.addPage();
+  drawPageHeader(true, doc.getNumberOfPages());
+
+  drawSectionTitle('Snapshot y recálculo');
+  writeTextBlock(
+    sealed
+      ? 'El evidence_snapshot es un registro de escritura única: se sella al enviar y no se modifica. Conserva identidad de las partes, texto o pedido a Meta, hashes de adjuntos, WAMID y Message-ID SMTP si existen. Este certificado transcribe esa copia. El recálculo del perito (SHA-256 del texto de la Parte I) debe coincidir con el contentHash. El recálculo no sustituye al snapshot: lo confronta.'
+      : 'No hay snapshot sellado de este envío. Las huellas y transacciones del anexo, si existen, se confrontan con el texto transcrito de los registros del mensaje.',
+    9,
+    13
+  );
+
+  if (techData.length > 0) {
+    drawSectionTitle('Datos técnicos de verificación', 2);
+    let techHeight = 20;
+    techData.forEach((item) => {
+      doc.setFont('courier', 'normal');
+      doc.setFontSize(9);
+      const valueLines = doc.splitTextToSize(item.value || 'No disponible', contentWidth - 28);
+      techHeight += 16 + (valueLines.length * 12) + 8;
+    });
+    techHeight += 16;
+    ensureSpace(techHeight + 8);
+    drawBox(margin, yPosition, contentWidth, techHeight, false);
+    let techY = yPosition + 20;
+    techData.forEach((item) => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      setTextColor(COLORS.textMuted);
+      doc.text(`${item.label}:`, margin + 14, techY);
+      techY += 16;
+      doc.setFont(item.monospace === false ? 'helvetica' : 'courier', 'normal');
+      doc.setFontSize(9);
+      setTextColor(COLORS.textMain);
+      const valueLines = doc.splitTextToSize(item.value || 'No disponible', contentWidth - 28);
+      valueLines.forEach((line: string) => {
+        doc.text(line, margin + 14, techY);
+        techY += 12;
+      });
+      techY += 8;
+    });
+    yPosition += techHeight + 12;
+  }
+
+  drawPolygonSection();
 
   // ========================================
   // SECCIÓN 7: CADENA DE INTEGRIDAD

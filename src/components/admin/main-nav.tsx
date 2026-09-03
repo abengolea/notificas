@@ -23,6 +23,7 @@ export const adminNavLinks = [
   { href: "/admin/empresas", label: "Empresa" },
   { href: "/admin/campanas", label: "Campañas" },
   { href: "/admin/verificacion-meta", label: "Verificación Meta" },
+  { href: "/admin/verificacion-resend", label: "Verificación Resend" },
   { href: "/admin/plans", label: "Planes" },
   { href: "/admin/email-test", label: "Test Emails" },
   { href: "/admin/api-keys", label: "API Keys" },

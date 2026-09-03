@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac, randomBytes } from "node:crypto";
-import { verifyResendSvixSignature } from "./resend-webhook-verify";
+import { verifyResendSvixSignature, verifyResendSvixSignatureHistorical } from "./resend-webhook-verify";
 
 function sign(secretBytes: Buffer, id: string, timestamp: string, body: string) {
   const sig = createHmac("sha256", secretBytes).update(`${id}.${timestamp}.${body}`).digest("base64");
@@ -55,4 +55,28 @@ test("Svix/Resend: timestamp viejo falla", () => {
   });
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.reason, "timestamp_out_of_range");
+});
+
+test("Svix/Resend: timestamp viejo pasa en verificación histórica", () => {
+  const bytes = randomBytes(32);
+  const secret = `whsec_${bytes.toString("base64")}`;
+  const id = "msg_test_hist";
+  const timestamp = String(Math.floor(Date.now() / 1000) - 900);
+  const body = '{"type":"email.delivered"}';
+  const live = verifyResendSvixSignature({
+    secret,
+    rawBody: body,
+    svixId: id,
+    svixTimestamp: timestamp,
+    svixSignature: sign(bytes, id, timestamp, body),
+  });
+  assert.equal(live.ok, false);
+  const historical = verifyResendSvixSignatureHistorical({
+    secret,
+    rawBody: body,
+    svixId: id,
+    svixTimestamp: timestamp,
+    svixSignature: sign(bytes, id, timestamp, body),
+  });
+  assert.equal(historical.ok, true);
 });

@@ -1,11 +1,12 @@
 /** Formato de PDFs de evidencia. El footer debe llevar esta etiqueta. */
 export const PDF_SCHEMA = {
   constanciaEnvio: 'constancia-envio/v2',
-  certificadoLectura: 'certificado-lectura/v2',
+  certificadoLectura: 'certificado-lectura/v3',
   actaTanda: 'acta-tanda/v3',
   actaIndividual: 'acta-individual/v7',
   campaignReport: 'campaign-report/v2',
   metaVerification: 'meta-verification/v2',
+  resendVerification: 'resend-verification/v1',
 } as const;
 
 const ART_TZ = 'America/Argentina/Buenos_Aires';

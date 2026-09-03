@@ -6,6 +6,8 @@ import { verifyAuthToken } from '@/lib/auth-helper';
 import { generateCertificatePDF } from '@/lib/certificate-generator';
 import { certificarDocumento } from '@/lib/certification-polygon';
 import { findEvidenceSnapshot, overlayMailWithSnapshot } from '@/lib/evidence-snapshot';
+import { listProviderEventsForMail } from '@/lib/provider-events';
+import { describeWhatsAppSentContent } from '@/lib/whatsapp-evidence';
 
 function certificateStoragePath(messageId: string) {
   return `certificates/${messageId}/certificado-lectura.pdf`;
@@ -183,13 +185,37 @@ export async function POST(request: NextRequest) {
 
     const sealedMail = snapshot ? overlayMailWithSnapshot(mailDataFresh, snapshot) : mailDataFresh;
 
+    const campaignMessageId =
+      typeof mailDataFresh.campaignMessageId === 'string' ? mailDataFresh.campaignMessageId : null;
+    const providerEvents = await listProviderEventsForMail(messageId);
+    const webhookPreserved = (type: string) =>
+      providerEvents.some((e) => {
+        const rec = e as Record<string, unknown>;
+        return (
+          rec.provider === 'meta' &&
+          rec.eventType === type &&
+          rec.signatureValid === true &&
+          Boolean(rec.httpBody || rec.payloadHash)
+        );
+      });
+
     const certificateData = {
       messageId,
       issuedAt: parseIssuedAt(mailDataFresh.certificateIssuedAt) || issuedAt,
+      evidenceSealed: Boolean(snapshot),
+      whatsappSent: describeWhatsAppSentContent(
+        snapshot?.whatsapp.requestSnapshot ?? sealedMail.waRequestSnapshot,
+        snapshot?.whatsapp.templateVariables ??
+          (Array.isArray(sealedMail.waTemplateVariables) ? sealedMail.waTemplateVariables : null)
+      ),
+      waDeliveredWebhookPreserved: webhookPreserved('delivered'),
+      waReadWebhookPreserved: webhookPreserved('read'),
       mailData: {
         ...sealedMail,
         orgNombre: orgNombre || sealedMail.orgNombre,
         orgCuit: orgCuit || sealedMail.orgCuit,
+        campaignId: sealedMail.campaignId || mailDataFresh.campaignId,
+        campaignMessageId: campaignMessageId || sealedMail.campaignMessageId,
         whatsappMessageId:
           sealedMail.whatsappMessageId || sealedMail.tracking?.whatsappMessageId,
       },
