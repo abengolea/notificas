@@ -1,6 +1,7 @@
 import { stripRichTextToPlainText } from '@/lib/rich-text';
 
 export type ComposeDraft = {
+  canal?: "email" | "whatsapp" | "ambos";
   recipient: string;
   recipientName?: string;
   recipientPhone: string;

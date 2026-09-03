@@ -830,8 +830,8 @@ exports.sendEmail = onRequest(
         waRequestSnapshot: waId.requestSnapshot || null,
         waGraphResponse: waId.graphResponse || null,
         waGraphHttp: waId.graphHttp || null,
-        source: 'whatsapp_campaign',
-        sourceLabel: 'Campaña WhatsApp',
+        source: emailData.campaignId ? 'whatsapp_campaign' : 'app_web',
+        sourceLabel: emailData.campaignId ? 'Campaña WhatsApp' : 'WhatsApp',
         sourceIcon: '📱',
       });
       try {

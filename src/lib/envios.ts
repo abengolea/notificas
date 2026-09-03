@@ -10,6 +10,14 @@ export function creditsRequiredForNotification(channel?: "whatsapp" | "email"): 
   return 1;
 }
 
+/** Canal de un envío individual (1:1). En masivos, `ambos` sigue valiendo 1 por destinatario. */
+export type CanalIndividual = "email" | "whatsapp" | "ambos";
+
+/** En individual, cada vía es un envío. Email+WhatsApp = 2. */
+export function creditsRequiredForIndividualSend(canal: CanalIndividual): number {
+  return canal === "ambos" ? 2 : 1;
+}
+
 export function canAffordCredits(available: unknown, needed: number): boolean {
   return normalizeEnviosDisponibles(available) >= Math.max(0, Math.floor(needed));
 }

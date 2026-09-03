@@ -15,14 +15,22 @@ import {
     Link as LinkIcon,
     List,
     ListOrdered,
+    Layers,
     Loader2,
+    Mail,
     MessageCircle,
     PenSquare,
     Quote,
     Underline,
 } from "lucide-react"
 
-import { normalizeEnviosDisponibles } from "@/lib/envios";
+import {
+    canAffordCredits,
+    creditsRequiredForIndividualSend,
+    normalizeEnviosDisponibles,
+    type CanalIndividual,
+} from "@/lib/envios";
+import { isSyntheticCampaignEmail, phoneDigits } from "@/lib/parse-campaign-csv";
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -218,12 +226,15 @@ type SelectedAttachment = {
   preview?: string;
 };
 
+const PHONE_RE = /^[\d\s\+\-\(\)]{8,25}$/;
+
 const messageSchema = z.object({
-  recipient: z.string().email({ message: "Dirección de correo electrónico inválida." }),
+  canal: z.enum(["email", "whatsapp", "ambos"]),
+  recipient: z.string().optional(),
   recipientName: z.string().optional().refine((v) => !v || v.trim().length >= 2, "Ingresá nombre y apellido"),
   recipientDni: z.string().optional().refine((v) => !v || /^\d{7,8}$/.test(v.replace(/\D/g, "")), "DNI de 7 u 8 dígitos"),
   recipientCuit: z.string().optional().refine((v) => !v || /^\d{11}$/.test(v.replace(/\D/g, "")), "CUIT de 11 dígitos"),
-  recipientPhone: z.string().optional().refine((v) => !v || /^[\d\s\+\-\(\)]{8,25}$/.test(v), "Número inválido. Ej: +54 11 1234-5678, 011 1234-5678, 9 11 1234-5678"),
+  recipientPhone: z.string().optional(),
   subject: z
     .string()
     .trim()
@@ -233,7 +244,34 @@ const messageSchema = z.object({
     message: "El mensaje debe tener al menos 10 caracteres.",
   }),
   attachments: z.array(z.custom<SelectedAttachment>()).optional(),
-})
+}).superRefine((data, ctx) => {
+  if (data.canal === "email" || data.canal === "ambos") {
+    const email = data.recipient?.trim() || "";
+    if (!email || !z.string().email().safeParse(email).success) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["recipient"],
+        message: "Dirección de correo electrónico inválida.",
+      });
+    }
+  }
+  if (data.canal === "whatsapp" || data.canal === "ambos") {
+    const phone = data.recipientPhone?.trim() || "";
+    if (!phone) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["recipientPhone"],
+        message: "El teléfono WhatsApp es obligatorio.",
+      });
+    } else if (!PHONE_RE.test(phone)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["recipientPhone"],
+        message: "Número inválido. Ej: +54 11 1234-5678",
+      });
+    }
+  }
+});
 
 type MessageFormValues = z.infer<typeof messageSchema>
 
@@ -397,6 +435,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
         resolver: zodResolver(messageSchema),
         mode: "onBlur", // Evita validar en cada tecla mientras el usuario escribe o busca contactos
         defaultValues: {
+            canal: "email",
             recipient: "",
             recipientName: "",
             recipientDni: "",
@@ -408,6 +447,12 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
         },
     });
 
+    const canal = (form.watch("canal") || "email") as CanalIndividual;
+    const creditsNeeded = creditsRequiredForIndividualSend(canal);
+    const saldo = normalizeEnviosDisponibles(user.creditos);
+    const canAfford = canAffordCredits(saldo, creditsNeeded);
+    const needsEmail = canal === "email" || canal === "ambos";
+    const needsPhone = canal === "whatsapp" || canal === "ambos";
     const isSuspended = user.estado === 'suspendido';
 
     const persistRecipientContact = useCallback(async () => {
@@ -415,6 +460,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
 
         const email = form.getValues('recipient')?.trim();
         const phone = form.getValues('recipientPhone')?.trim();
+        if (!email) return;
 
         const emailValid = await form.trigger('recipient');
         if (!emailValid || !email) return;
@@ -434,6 +480,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
 
         const values = form.getValues();
         const draft = {
+            canal: values.canal || "email",
             recipient: values.recipient || "",
             recipientName: values.recipientName || "",
             recipientDni: values.recipientDni || "",
@@ -473,6 +520,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
         if (!open || !user.uid) return;
 
         if (initialContact) {
+            form.setValue("canal", "email");
             form.setValue("recipient", initialContact.email);
             if (initialContact.telefono) form.setValue("recipientPhone", initialContact.telefono);
             return;
@@ -480,6 +528,9 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
 
         const draft = readComposeDraft(user.uid);
         if (draft && hasComposeDraftContent(draft)) {
+            const draftCanal: CanalIndividual = draft.canal
+                || (draft.recipientPhone?.trim() ? "ambos" : "email");
+            form.setValue("canal", draftCanal);
             form.setValue("recipient", draft.recipient || "");
             form.setValue("recipientName", draft.recipientName || "");
             form.setValue("recipientDni", draft.recipientDni || "");
@@ -490,6 +541,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             return;
         }
 
+        form.setValue("canal", "email");
         form.setValue("recipient", "");
         form.setValue("recipientPhone", "");
         form.setValue("subject", "");
@@ -501,6 +553,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
 
         const subscription = form.watch((values) => {
             const draft = {
+                canal: values.canal || "email",
                 recipient: values.recipient || "",
                 recipientName: values.recipientName || "",
                 recipientDni: values.recipientDni || "",
@@ -540,6 +593,18 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             return;
         }
 
+        const sendCredits = creditsRequiredForIndividualSend(data.canal);
+        if (!canAffordCredits(user.creditos, sendCredits)) {
+            toast({
+                title: sendCredits > 1 ? "Necesitás 2 envíos" : "Sin envíos",
+                description: sendCredits > 1
+                    ? "Email + WhatsApp se cobran como 2 envíos. Recargá tu saldo para enviar por las dos vías."
+                    : "No tenés envíos suficientes para enviar un mensaje certificado.",
+                variant: "destructive",
+            });
+            return;
+        }
+
         if (isExecutingRef.current) return;
 
         isExecutingRef.current = true;
@@ -548,22 +613,24 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
         setIsSending(true);
 
         try {
-            const recipientEmail = data.recipient.trim().toLowerCase();
             const subject = data.subject.trim();
-
-            if (normalizeEnviosDisponibles(user.creditos) < 1) {
-                toast({
-                    title: "Sin envíos",
-                    description: "No tenés envíos suficientes para enviar un mensaje certificado.",
-                    variant: "destructive",
-                });
-                return;
-            }
+            const sendCanal = data.canal;
+            const sendCredits = creditsRequiredForIndividualSend(sendCanal);
+            const phoneForWhatsApp = (sendCanal === "whatsapp" || sendCanal === "ambos")
+                ? (data.recipientPhone?.trim() || undefined)
+                : undefined;
+            const realEmail = data.recipient?.trim().toLowerCase() || "";
+            const recipientEmail = sendCanal === "whatsapp"
+                ? (realEmail && !isSyntheticCampaignEmail(realEmail)
+                    ? realEmail
+                    : `wa-${phoneDigits(phoneForWhatsApp)}@notificas.internal`)
+                : realEmail;
 
             const sender = auth.currentUser?.email || user.email;
-            const phoneForWhatsApp = data.recipientPhone?.trim() || undefined;
 
-            void persistirContactoDestinatario(user.uid, recipientEmail, phoneForWhatsApp);
+            if (realEmail && !isSyntheticCampaignEmail(realEmail)) {
+                void persistirContactoDestinatario(user.uid, realEmail, phoneForWhatsApp || data.recipientPhone?.trim());
+            }
 
             let uploadedAttachments: UploadedFile[] = [];
 
@@ -575,13 +642,17 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                     from: 'contacto@notificas.com',
                     replyTo: sender,
                     senderName: user.email,
-                    recipientName: data.recipientName?.trim() || recipientEmail.split('@')[0],
+                    recipientName: data.recipientName?.trim()
+                        || (realEmail && !isSyntheticCampaignEmail(realEmail) ? realEmail.split('@')[0] : undefined)
+                        || phoneForWhatsApp
+                        || recipientEmail.split('@')[0],
                     recipientEmail,
                     recipientPhone: phoneForWhatsApp,
                     recipientDni: data.recipientDni?.replace(/\D/g, "") || undefined,
                     recipientCuit: data.recipientCuit?.replace(/\D/g, "") || undefined,
                     createdBy: user.uid,
                     orgId,
+                    waOnly: sendCanal === "whatsapp",
                     skipAutoSend: true,
                 }),
                 new Promise<never>((_, reject) =>
@@ -619,8 +690,13 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             }
 
             const html = buildComposeMailHtml({
-                recipientEmail,
-                recipientName: data.recipientName?.trim() || recipientEmail.split("@")[0],
+                recipientEmail: realEmail && !isSyntheticCampaignEmail(realEmail)
+                    ? realEmail
+                    : (phoneForWhatsApp || recipientEmail),
+                recipientName: data.recipientName?.trim()
+                    || (realEmail && !isSyntheticCampaignEmail(realEmail) ? realEmail.split("@")[0] : undefined)
+                    || phoneForWhatsApp
+                    || recipientEmail.split("@")[0],
                 content: sanitizedContent,
                 sender,
                 uploadedAttachments,
@@ -674,15 +750,23 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                 const creditOps = async () => {
                     const userRef = doc(db, 'users', user.uid);
                     await updateDoc(userRef, {
-                        creditos: increment(-1),
+                        creditos: increment(-sendCredits),
                         updatedAt: new Date(),
                     });
+                    const destLabel = sendCanal === "whatsapp"
+                        ? (phoneForWhatsApp || recipientEmail)
+                        : recipientEmail;
+                    const viaLabel = sendCanal === "ambos"
+                        ? "por email y WhatsApp"
+                        : sendCanal === "whatsapp"
+                            ? "por WhatsApp"
+                            : "por email";
                     await addDoc(collection(db, 'user_transactions'), {
                         userId: user.uid,
                         tipo: 'envio',
-                        descripcion: `Envío de mensaje certificado a ${recipientEmail}`,
+                        descripcion: `Envío certificado ${viaLabel} a ${destLabel}`,
                         monto: 0,
-                        creditos: -1,
+                        creditos: -sendCredits,
                         metodoPago: 'Envíos',
                         fecha: new Date(),
                         mailId,
@@ -698,7 +782,9 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                 console.error('Error al descontar envío:', credErr);
             }
 
-            let toastDesc = 'Tu mensaje ha sido enviado y certificado en blockchain de Polygon.';
+            let toastDesc = sendCanal === "ambos"
+                ? 'Se enviaron 2 envíos certificados (email y WhatsApp) en blockchain de Polygon.'
+                : 'Tu mensaje ha sido enviado y certificado en blockchain de Polygon.';
             if (uploadedAttachments.length > 0) {
                 toastDesc += ` ${uploadedAttachments.length} archivo(s) adjunto(s) con hash de integridad.`;
             }
@@ -738,7 +824,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             <Button type="button" variant="ghost" size="sm" onClick={() => handleOpenChange(false)}>
                 Cancelar
             </Button>
-            <Button type="submit" size="sm" disabled={isSending || isSuspended}>
+            <Button type="submit" size="sm" disabled={isSending || isSuspended || !canAfford}>
                 {isSending ? (
                     <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -747,7 +833,11 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                 ) : (
                     <>
                         <PenSquare className="mr-2 h-4 w-4" />
-                        Enviar Mensaje Certificado
+                        {canal === "ambos"
+                            ? "Enviar (2 envíos)"
+                            : canal === "whatsapp"
+                                ? "Enviar por WhatsApp"
+                                : "Enviar por email"}
                     </>
                 )}
             </Button>
@@ -770,7 +860,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             <div className="space-y-1 text-left">
               <DialogTitle>Redactar Nuevo Mensaje Certificado</DialogTitle>
               <DialogDescription>
-                Este mensaje será encriptado y certificado en la blockchain de Polygon.
+                Elegí email, WhatsApp o ambos. Este mensaje se certifica en la blockchain de Polygon.
               </DialogDescription>
             </div>
             {composeActions}
@@ -780,11 +870,53 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
             <fieldset disabled={isSuspended} className="space-y-4">
                 <div className="grid gap-2">
+                    <Label>Canal de envío</Label>
+                    <div className="grid grid-cols-3 gap-2">
+                        {([
+                            { value: "email" as const, label: "Email", icon: Mail, desc: "1 envío" },
+                            { value: "whatsapp" as const, label: "WhatsApp", icon: MessageCircle, desc: "1 envío" },
+                            { value: "ambos" as const, label: "Ambos", icon: Layers, desc: "2 envíos" },
+                        ]).map(({ value, label, icon: Icon, desc }) => (
+                            <button
+                                key={value}
+                                type="button"
+                                onClick={() => {
+                                    form.setValue("canal", value, { shouldValidate: form.formState.isSubmitted });
+                                }}
+                                className={`flex flex-col items-start gap-1 rounded-md border p-3 text-left transition-colors ${
+                                    canal === value
+                                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                                        : "border-border hover:border-primary/50"
+                                }`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <Icon className="h-4 w-4 shrink-0" />
+                                    <span className="text-sm font-medium">{label}</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">{desc}</p>
+                            </button>
+                        ))}
+                    </div>
+                    {canal === "ambos" && (
+                        <div className="rounded-md border border-amber-500/40 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:bg-amber-950/40 dark:text-amber-50">
+                            <p className="font-medium">Email + WhatsApp se cobran como 2 envíos</p>
+                            <p className="mt-0.5 text-xs">
+                                Cada vía es un envío certificado. Te {saldo === 1 ? "queda 1 envío" : `quedan ${saldo.toLocaleString("es-AR")} envíos`}.
+                                {saldo < 2 ? " Recargá el saldo para enviar por las dos vías." : ""}
+                            </p>
+                        </div>
+                    )}
+                    {!canAfford && canal !== "ambos" && (
+                        <p className="text-sm text-destructive">No tenés envíos suficientes para enviar.</p>
+                    )}
+                </div>
+                {needsEmail && (
+                <div className="grid gap-2">
                     <Label htmlFor="email-input">Correo del destinatario</Label>
                     <EmailAutocomplete
                         label=""
                         userId={user.uid}
-                        value={form.watch('recipient')}
+                        value={form.watch('recipient') || ""}
                         onChange={(v) => form.setValue('recipient', v, { shouldValidate: true })}
                         onBlur={persistRecipientContact}
                         onContactSelect={(c) => {
@@ -795,6 +927,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                         placeholder="destinatario@ejemplo.com"
                     />
                 </div>
+                )}
                 <div className="grid gap-2">
                     <Label htmlFor="recipientName">Nombre y apellido</Label>
                     <Input
@@ -833,10 +966,11 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                         )}
                     </div>
                 </div>
+                {needsPhone && (
                 <div className="grid gap-2">
                     <Label htmlFor="recipientPhone">
                         <MessageCircle className="inline h-4 w-4 mr-2" />
-                        Teléfono WhatsApp (opcional)
+                        Teléfono WhatsApp
                     </Label>
                     <Input
                         id="recipientPhone"
@@ -844,14 +978,16 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                         {...form.register("recipientPhone", {
                             onBlur: () => { void persistRecipientContact(); },
                         })}
+                        placeholder="+54 11 1234-5678"
                     />
                     <p className="text-xs text-muted-foreground">
-                        Si indicas un número, se puede enviar un mensaje por WhatsApp además del correo.
+                        Incluí código de país. Este número es a quién le llega el WhatsApp.
                     </p>
                     {form.formState.errors.recipientPhone && (
                         <p className="text-sm text-destructive">{form.formState.errors.recipientPhone.message}</p>
                     )}
                 </div>
+                )}
                 <div className="grid gap-2">
                     <Label htmlFor="subject">Asunto</Label>
                     <Input
@@ -861,7 +997,9 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                         maxLength={200}
                     />
                     <p className="text-xs text-muted-foreground">
-                        Este texto aparece en el asunto del correo que recibe el destinatario.
+                        {canal === "whatsapp"
+                            ? "Identifica el envío en tu historial. El destinatario lo ve al abrir el enlace."
+                            : "Este texto aparece en el asunto del correo que recibe el destinatario."}
                     </p>
                     {form.formState.errors.subject && (
                         <p className="text-sm text-destructive">{form.formState.errors.subject.message}</p>

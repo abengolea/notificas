@@ -67,6 +67,11 @@ export function ComposeDraftPanel({ uid }: ComposeDraftPanelProps) {
           {draft.subject?.trim() && (
             <p className="text-sm font-medium">{draft.subject.trim()}</p>
           )}
+          {draft.canal && (
+            <p className="text-xs text-muted-foreground">
+              Canal: {draft.canal === "ambos" ? "Email + WhatsApp (2 envíos)" : draft.canal === "whatsapp" ? "WhatsApp" : "Email"}
+            </p>
+          )}
           {draft.recipient?.trim() && (
             <p className="text-sm">
               <span className="text-muted-foreground">Para: </span>

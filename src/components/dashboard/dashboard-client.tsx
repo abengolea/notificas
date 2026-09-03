@@ -20,6 +20,7 @@ import {
 
 import type { User as AppUser } from '@/lib/types';
 import { normalizeEnviosDisponibles } from '@/lib/envios';
+import { isSyntheticCampaignEmail } from '@/lib/parse-campaign-csv';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -113,6 +114,7 @@ type DisplayMessage = {
   from: string;
   to: string[];
   recipientEmail?: string;
+  recipientPhone?: string;
   subject: string;
   lastStatus: string;
   source?: string;
@@ -120,6 +122,15 @@ type DisplayMessage = {
   sourceIcon?: string;
   movements?: any[];
 };
+
+function displayMessageRecipient(message: Pick<DisplayMessage, "to" | "recipientEmail" | "recipientPhone">): string {
+  const emails = [...message.to, message.recipientEmail || ""].filter(
+    (email) => email && !isSyntheticCampaignEmail(email),
+  );
+  const unique = [...new Set(emails)];
+  if (unique.length) return unique.join(", ");
+  return message.recipientPhone?.trim() || "—";
+}
 
 function docsToSortedDisplayMessages(
   docs: QueryDocumentSnapshot<DocumentData>[],
@@ -152,6 +163,7 @@ function docsToSortedDisplayMessages(
           : to.length === 1
             ? to[0]
             : undefined;
+      const recipientPhone = typeof data?.recipientPhone === "string" ? data.recipientPhone : undefined;
       const msg = data?.message as { subject?: string } | undefined;
       const subject = msg?.subject || "Sin asunto";
 
@@ -162,9 +174,15 @@ function docsToSortedDisplayMessages(
         (m: unknown) => (m as { type?: string; viewerIsSender?: boolean }).type === "app_opened" && !(m as { viewerIsSender?: boolean }).viewerIsSender,
       ).length;
       const readConfirmedCount = movements.filter((m: unknown) => (m as { type?: string }).type === "read_confirmed").length;
+      const waReadCount = movements.filter((m: unknown) => (m as { type?: string }).type === "whatsapp_read").length;
+      const waSentCount = movements.filter((m: unknown) => {
+        const type = (m as { type?: string }).type;
+        return type === "whatsapp_sent" || type === "whatsapp_delivered";
+      }).length;
+      const waDelivered = (data?.delivery as { state?: string } | undefined)?.state === "DELIVERED";
 
       let lastStatus: string;
-      if (readConfirmedCount > 0) {
+      if (readConfirmedCount > 0 || waReadCount > 0) {
         lastStatus = "Leído";
       } else if (emailOpenedCount > 0 || appOpenedCount > 0) {
         lastStatus = "Abierto";
@@ -172,6 +190,8 @@ function docsToSortedDisplayMessages(
         lastStatus = "Rebotó";
       } else if (emailSentCount > 0) {
         lastStatus = "Aceptado por SMTP";
+      } else if (waSentCount > 0 || (data?.waOnly === true && waDelivered)) {
+        lastStatus = "Enviado";
       } else {
         lastStatus = "Pendiente";
       }
@@ -183,6 +203,7 @@ function docsToSortedDisplayMessages(
         from,
         to,
         recipientEmail,
+        recipientPhone,
         subject,
         lastStatus,
         source: typeof data?.source === "string" ? data.source : "app_web",
@@ -590,7 +611,7 @@ export default function DashboardClient({
                       </div>
                       <p className="line-clamp-2 font-medium leading-snug">{message.subject}</p>
                       <p className="text-sm text-primary">
-                        {selectedFolder === 'inbox' ? message.from : message.to.join(', ')}
+                        {selectedFolder === 'inbox' ? message.from : displayMessageRecipient(message)}
                       </p>
                       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         <span>{messageType}</span>
@@ -647,7 +668,7 @@ export default function DashboardClient({
                         {messageType}
                       </TableCell>
                       <TableCell className="font-medium text-primary">
-                        {selectedFolder === 'inbox' ? message.from : message.to.join(', ')}
+                        {selectedFolder === 'inbox' ? message.from : displayMessageRecipient(message)}
                       </TableCell>
                       <TableCell>
                         {message.subject}
