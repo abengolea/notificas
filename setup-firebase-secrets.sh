@@ -109,6 +109,24 @@ if [ -n "$MERCADOPAGO_ACCESS_TOKEN" ]; then
   echo "🔐 MERCADOPAGO_ACCESS_TOKEN subido a Secret Manager (opcional si ya lo cargás en la consola de App Hosting)"
 fi
 
+RESEND_API_KEY=$(get_env "RESEND_API_KEY")
+RESEND_WEBHOOK_SECRET=$(get_env "RESEND_WEBHOOK_SECRET")
+if [ -n "$RESEND_API_KEY" ]; then
+  echo "$RESEND_API_KEY" | firebase apphosting:secrets:set RESEND_API_KEY
+  echo "$RESEND_API_KEY" | firebase functions:secrets:set RESEND_API_KEY
+  APP_HOSTING_SECRETS="$APP_HOSTING_SECRETS,RESEND_API_KEY"
+  echo "🔐 RESEND_API_KEY configurado (App Hosting + Cloud Functions)"
+else
+  echo "ℹ️ RESEND_API_KEY vacío en .env.local — si el secreto ya existe en Secret Manager, otorgá acceso con:"
+  echo "    firebase apphosting:secrets:grantaccess RESEND_API_KEY --backend notificas"
+fi
+if [ -n "$RESEND_WEBHOOK_SECRET" ]; then
+  echo "$RESEND_WEBHOOK_SECRET" | firebase apphosting:secrets:set RESEND_WEBHOOK_SECRET
+  echo "$RESEND_WEBHOOK_SECRET" | firebase functions:secrets:set RESEND_WEBHOOK_SECRET
+  APP_HOSTING_SECRETS="$APP_HOSTING_SECRETS,RESEND_WEBHOOK_SECRET"
+  echo "🔐 RESEND_WEBHOOK_SECRET configurado (App Hosting + Cloud Functions)"
+fi
+
 # Opcional pero recomendado en prod: mismo valor en App Hosting y en Functions (linkRedirect, reader-open / certify-event)
 POLYGON_CERTIFY_SECRET=$(get_env "POLYGON_CERTIFY_SECRET")
 if [ -n "$POLYGON_CERTIFY_SECRET" ]; then
@@ -139,6 +157,7 @@ echo "   - FIREBASE_APP_ID, FIREBASE_MEASUREMENT_ID"
 echo "   - POLYGON_PRIVATE_KEY, POLYGON_WALLET_ADDRESS"
 echo "   - MERCADOPAGO_ACCESS_TOKEN (si estaba en .env.local → Secret Manager; si no, podés usar solo la consola App Hosting)"
 echo "   - POLYGON_CERTIFY_SECRET (si estaba en .env.local)"
+echo "   - RESEND_API_KEY, RESEND_WEBHOOK_SECRET (si estaban en .env.local)"
 echo "   - ADMIN_PANEL_EMAIL, ADMIN_PANEL_PASSWORD, ADMIN_SESSION_SECRET (si estaban en .env.local)"
 echo ""
 if [ -n "$NEXT_PUBLIC_APP_URL" ]; then
