@@ -18,6 +18,14 @@ import {
   MessageCircle
 } from 'lucide-react';
 import { filterRecipientVisibleMovements } from '@/lib/tracking-movements';
+import {
+  MOVEMENT_TYPE_LABELS,
+  movementChannel,
+  movementChannelLabel,
+  publicMovementBrowserLabel,
+  publicMovementDescription,
+  type MovementChannel,
+} from '@/lib/movement-display';
 
 interface Movement {
   id: string;
@@ -162,31 +170,14 @@ const formatIPs = (clientIP: string, forwardedIPs: string[], realIP: string) => 
   return [...new Set(ips)].join(', '); // Remove duplicates
 };
 
-const READER_MAGIC_OPEN_DESCRIPTION =
-  'El destinatario abrió el mensaje para leerlo (página web de la notificación)';
-
-const MOVEMENT_TYPE_LABELS: Record<string, string> = {
-  email_sent: 'CORREO ENVIADO',
-  resend_sent: 'RESEND ACEPTÓ EL ENVÍO',
-  resend_delivered: 'CORREO LLEGÓ AL SERVIDOR DESTINATARIO',
-  resend_delayed: 'ENTREGA DEMORADA (RESEND)',
-  resend_bounced: 'REBOTÓ (RESEND)',
-  resend_failed: 'FALLO DE ENVÍO (RESEND)',
-  resend_suppressed: 'SUPRIMIDO (RESEND)',
-  resend_complained: 'MARCADO COMO SPAM (RESEND)',
-  resend_opened_signal: 'SEÑAL TÉCNICA DE APERTURA',
-  resend_clicked_signal: 'SEÑAL TÉCNICA DE CLIC',
-  email_opened: 'CORREO ABIERTO',
-  read_confirmed: 'LECTURA CONFIRMADA',
-  attachment_opened: 'ARCHIVO ABIERTO',
-  link_clicked: 'ENLACE PULSADO (CORREO)',
-  whatsapp_link_clicked: 'CLIC EN WHATSAPP',
-  whatsapp_sent: 'WHATSAPP ENVIADO',
-  whatsapp_delivered: 'WHATSAPP ENTREGADO',
-  whatsapp_read: 'WHATSAPP LEÍDO',
-  whatsapp_failed: 'WHATSAPP NO ENTREGADO',
-  reader_magic_open: 'NOTIFICACIÓN LEÍDA',
+const CHANNEL_CHIP_CLASS: Record<MovementChannel, string> = {
+  correo: 'bg-blue-100 text-blue-800 border-blue-200',
+  whatsapp: 'bg-green-100 text-green-800 border-green-200',
+  lectura: 'bg-teal-100 text-teal-800 border-teal-200',
 };
+
+const READER_MAGIC_OPEN_DESCRIPTION =
+  'El destinatario abrió el mensaje para leerlo (página web de la notificación). Pudo llegar desde el correo o desde WhatsApp.';
 
 const MOVEMENT_TYPES_WITH_RECIPIENT_CONTEXT = new Set([
   'whatsapp_link_clicked',
@@ -208,12 +199,7 @@ const MOVEMENT_TYPES_WITH_RECIPIENT_CONTEXT = new Set([
 
 function getMovementDescription(movement: Movement): string {
   if (movement.type === 'reader_magic_open') return READER_MAGIC_OPEN_DESCRIPTION;
-  return String(movement.description || '')
-    .replace(/\s*No es lectura fehaciente\.?/gi, '')
-    .replace(/\s*No es lectura\.?/gi, '')
-    .replace(/\s*No equivale a lectura fehaciente\.?/gi, '')
-    .replace(/\s*No equivale a acceso al reader\.?/gi, '')
-    .trim();
+  return publicMovementDescription(String(movement.description || ''));
 }
 
 function getMovementLabel(movement: Movement): string {
@@ -226,14 +212,7 @@ function getMovementLabel(movement: Movement): string {
 }
 
 function getBrowserLabel(browser: string): string {
-  switch (browser) {
-    case 'Unknown':
-      return 'Desconocido';
-    case 'WhatsApp Cloud API':
-      return 'Sistema (WhatsApp de Meta)';
-    default:
-      return browser;
-  }
+  return publicMovementBrowserLabel(browser);
 }
 
 function getRecipientPhoneLabel(type: string): string {
@@ -286,10 +265,16 @@ export function MovementsTracking({ movements, recipientEmail }: MovementsTracki
               </div>
               
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
                   <span className="text-sm font-medium">
                     {formatTimestamp(movement.timestamp)}
                   </span>
+                  <Badge
+                    variant="outline"
+                    className={`text-xs ${CHANNEL_CHIP_CLASS[movementChannel(movement.type)]}`}
+                  >
+                    {movementChannelLabel(movementChannel(movement.type))}
+                  </Badge>
                   <Badge 
                     variant="outline" 
                     className={`text-xs ${getMovementColor(movement.type)}`}
@@ -356,7 +341,7 @@ export function MovementsTracking({ movements, recipientEmail }: MovementsTracki
                     <span className="font-mono">{movement.id}</span>
                   </div>
                   
-                  {movement.browser && movement.browser !== 'Server' && (
+                  {movement.browser && getBrowserLabel(movement.browser) && (
                     <div className="flex items-center gap-1">
                       <Monitor className="h-3 w-3" />
                       <span>
