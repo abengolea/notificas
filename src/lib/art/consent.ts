@@ -6,7 +6,7 @@ import { canAcceptAdhesion } from "@/lib/art/eligibility";
 import { identityIsAuditable } from "@/lib/art/identity-attestation";
 import { canonicalConsentPayload, hashTermsContent } from "@/lib/art/terms";
 import { appendArtAuditEvent, emitArtWebhook } from "@/lib/art/audit";
-import { createManageToken } from "@/lib/art/invite";
+import { createManageToken, sendAdhesionConfirmationEmail } from "@/lib/art/invite";
 import { getActiveTerms, getOrCreateArtConfig, getRecipient } from "@/lib/art/store";
 import { publicApiSha256 } from "@/lib/art/hash";
 import type { ArtRecipient } from "@/lib/art/types";
@@ -143,6 +143,14 @@ export async function acceptAdhesion(input: {
     type: "art.adhesion.created",
     data: { recipient_id: input.recipient.id, adhesion_id: adhesionId },
   });
+
+  await sendAdhesionConfirmationEmail({
+    orgId: input.orgId,
+    orgName: input.orgName,
+    recipient: input.recipient,
+    adhesionId,
+    manageToken,
+  }).catch((e) => console.warn("[art] confirmation email:", e instanceof Error ? e.message : e));
 
   return { adhesionId, manageToken, evidenceId: evidence.evidenceId, eventHash: audit.eventHash };
 }

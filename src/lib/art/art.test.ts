@@ -18,6 +18,7 @@ import { WEBHOOK_EVENT_TYPES } from "../public-api/validation";
 import { artModuleEnabled, artModuleUiHint } from "./enabled";
 import { isExplicitNotificationType, parseNotificationType } from "./notification-type";
 import { identityIsAuditable, parseIdentityAttestation } from "./identity-attestation";
+import { adhesionConfirmationEmail, adhesionInviteEmail } from "./invite";
 
 function recipient(over: Partial<ArtRecipient> = {}): ArtRecipient {
   return {
@@ -391,4 +392,39 @@ test("aceptación requiere acción positiva", () => {
     explicitAcceptAction: true,
   });
   assert.equal(gate.ok, false);
+});
+
+test("email de invitación usa la plantilla branded con el link de adhesión", () => {
+  const copy = adhesionInviteEmail({
+    orgName: "ART DEMO",
+    fullName: "Goyito",
+    inviteUrl: "https://notificas.com.ar/adherir/tok_inv",
+    expiresAt: "2026-09-14T12:00:00.000Z",
+    recipientEmail: "goyito@test.com",
+    logoUrl: "https://notificas.com.ar/notificasLogo.jpg",
+  });
+  assert.match(copy.subject, /adhesión a notificaciones electrónicas/);
+  assert.match(copy.text, /adherir\/tok_inv/);
+  assert.match(copy.html, /href="https:\/\/notificas.com.ar\/adherir\/tok_inv"/);
+  assert.match(copy.html, /notificasLogo\.jpg/);
+  assert.match(copy.html, /#0D9488/);
+  assert.match(copy.html, /Abrir invitación/);
+});
+
+test("email de confirmación incluye el link de administrar y revocar", () => {
+  const copy = adhesionConfirmationEmail({
+    orgName: "ART DEMO",
+    fullName: "Goyito",
+    adhesionId: "art_adh_1",
+    manageUrl: "https://notificas.com.ar/adhesion/manage/tok_abc",
+    recipientEmail: "goyito@test.com",
+    logoUrl: "https://notificas.com.ar/notificasLogo.jpg",
+  });
+  assert.match(copy.subject, /adhesión quedó registrada/);
+  assert.match(copy.text, /adhesion\/manage\/tok_abc/);
+  assert.match(copy.text, /revocar/);
+  assert.match(copy.html, /href="https:\/\/notificas.com.ar\/adhesion\/manage\/tok_abc"/);
+  assert.match(copy.html, /notificasLogo\.jpg/);
+  assert.match(copy.html, /#0D9488/);
+  assert.match(copy.html, /Administrar o revocar/);
 });
