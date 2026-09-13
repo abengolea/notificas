@@ -56,3 +56,15 @@ test("el SPA copiado usa base href /archivo y no apunta assets a la raíz", () =
   assert.doesNotMatch(html, /href="\.\.\/assets\//);
   assert.match(html, /src="runtime\.[0-9a-f]+\.js"/);
 });
+
+test("el aviso del archivo explica consulta histórica y no bloquea el acceso", () => {
+  const html = fs.readFileSync(archivoIndex, "utf8");
+  const mainMatch = html.match(/src="(main\.[0-9a-f]+\.js[^"]*)"/);
+  assert.ok(mainMatch, "falta el bundle main del SPA");
+  const mainFile = path.join(path.dirname(archivoIndex), mainMatch[1].split("?")[0]);
+  const bundle = fs.readFileSync(mainFile, "utf8");
+  assert.doesNotMatch(bundle, /Acceso no disponible/);
+  assert.match(bundle, /Archivo de consulta/);
+  assert.match(bundle, /env\\xedos nuevos se hacen desde notificas\.com\.ar/);
+  assert.match(bundle, /Consultar archivo/);
+});

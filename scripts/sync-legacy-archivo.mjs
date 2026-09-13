@@ -106,7 +106,21 @@ function patchLegacyContent(content) {
   out = out.replaceAll("/archivo/svg/", "__ARCHIVO_SVG__");
   out = out.replaceAll("/svg/", "__ARCHIVO_SVG__");
   out = out.replaceAll("__ARCHIVO_SVG__", `${BASE_PATH}/svg/`);
-  return out;
+  return patchArchiveNotice(out);
+}
+
+const BLOCKING_MAINTENANCE_ALERT =
+  'header:"Acceso no disponible",message:"La web est\\xe1 en mantenimiento: por ahora no es posible ingresar ni usar la aplicaci\\xf3n. El bot\\xf3n de abajo solo cierra este mensaje y no habilita el acceso hasta que volvamos a estar en l\\xednea. Gracias por tu paciencia.",backdropDismiss:!1,buttons:[{text:"Cerrar aviso",role:"cancel"}]';
+
+const ARCHIVE_NOTICE_ALERT =
+  'header:"Archivo de consulta",message:"Ac\\xe1 se conservan los env\\xedos ya realizados: historial, comprobantes y documentaci\\xf3n.\\n\\nLos env\\xedos nuevos se hacen desde notificas.com.ar.",backdropDismiss:!0,buttons:[{text:"Ir a notificas.com.ar",handler:()=>window.open("https://notificas.com.ar","_blank","noopener")},{text:"Consultar archivo",role:"cancel"}]';
+
+function patchArchiveNotice(content) {
+  if (!content.includes("Acceso no disponible")) return content;
+  if (!content.includes(BLOCKING_MAINTENANCE_ALERT)) {
+    throw new Error("No se encontró el aviso de mantenimiento bloqueante para reemplazar");
+  }
+  return content.replaceAll(BLOCKING_MAINTENANCE_ALERT, ARCHIVE_NOTICE_ALERT);
 }
 
 function patchIndexHtml(html) {
@@ -118,7 +132,11 @@ function patchIndexHtml(html) {
       `<title>Notificas — archivo</title>\n  <meta name="robots" content="noindex, follow">`
     );
   }
-  return patchLegacyContent(out);
+  return patchLegacyContent(out)
+    .replace(
+      /(<script src="main\.[0-9a-f]+\.js)(")/,
+      "$1?v=archivo-notice$2"
+    );
 }
 
 function walkFiles(dir, acc = []) {
