@@ -33,6 +33,7 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
     code: parsed.data.code,
     actor: "worker",
     ip,
+    bindEmailFromInvite: true,
   });
   if (!result.ok) return NextResponse.json({ error: result.reason }, { status: 400 });
   return NextResponse.json({ ok: true, purpose: result.purpose });

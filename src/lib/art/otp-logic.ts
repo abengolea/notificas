@@ -35,14 +35,17 @@ export function contactVerifiedByOtpChannel(
 }
 
 /**
- * Hoy el OTP productivo es solo email. WhatsApp AUTH queda preparado (channel whatsapp/sms)
- * pero no se envía sin template aprobado.
+ * Email verifica email. WhatsApp AUTH verifica teléfono. SMS no está habilitado.
+ * Un código de email nunca puede marcar el celular: son challenges distintos.
  */
 export function assertOtpPurposeForChannel(
   purpose: "phone" | "email",
   channel: OtpChallengeState["channel"]
 ): { ok: true } | { ok: false; reason: "phone_otp_unavailable" | "otp_channel_unavailable" } {
-  if (channel !== "email") return { ok: false, reason: "otp_channel_unavailable" };
-  if (purpose === "phone") return { ok: false, reason: "phone_otp_unavailable" };
-  return { ok: true };
+  if (channel === "sms") return { ok: false, reason: "otp_channel_unavailable" };
+  if (purpose === "email") {
+    return channel === "email" ? { ok: true } : { ok: false, reason: "otp_channel_unavailable" };
+  }
+  if (channel === "whatsapp") return { ok: true };
+  return { ok: false, reason: "phone_otp_unavailable" };
 }

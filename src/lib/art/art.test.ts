@@ -331,14 +331,16 @@ test("identityVerified=true sin attestation no es auditable ni elegible", () => 
   assert.equal(parsed.ok, false);
 });
 
-test("OTP email no marca teléfono; purpose phone no está disponible", () => {
+test("OTP email no marca teléfono; WhatsApp AUTH sí verifica el celular", () => {
   assert.equal(contactVerifiedByOtpChannel("email"), "email");
   assert.equal(contactVerifiedByOtpChannel("whatsapp"), "phone");
   const blocked = assertOtpPurposeForChannel("phone", "email");
   assert.equal(blocked.ok, false);
   if (!blocked.ok) assert.equal(blocked.reason, "phone_otp_unavailable");
-  const ok = assertOtpPurposeForChannel("email", "email");
-  assert.equal(ok.ok, true);
+  assert.equal(assertOtpPurposeForChannel("email", "email").ok, true);
+  assert.equal(assertOtpPurposeForChannel("phone", "whatsapp").ok, true);
+  assert.equal(assertOtpPurposeForChannel("email", "whatsapp").ok, false);
+  assert.equal(assertOtpPurposeForChannel("phone", "sms").ok, false);
 });
 
 test("estados blockchain no afirman anclaje si no hay tx", () => {

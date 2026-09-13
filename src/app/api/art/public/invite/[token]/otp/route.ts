@@ -3,13 +3,13 @@ import { z } from "zod";
 import { isExpired } from "@/lib/art/tokens";
 import { clientIp, consumeArtPublicRateLimit, requireArtModule, requireArtOrg, artCaughtErrorResponse, pilotRecipientNotAllowedResponse } from "@/lib/art/http";
 import { resolveInvitation } from "@/lib/art/invite";
-import { getOrCreateArtConfig, getRecipient } from "@/lib/art/store";
-import { sendOtp } from "@/lib/art/otp";
+import { getRecipient } from "@/lib/art/store";
+import { sendInviteWhatsAppOtp } from "@/lib/art/otp";
 import { digitsOnly, normalizeCuil } from "@/lib/art/ids";
 import { getAdminDb } from "@/lib/firebase-admin";
 
 const schema = z.object({
-  purpose: z.enum(["phone", "email"]).default("email"),
+  purpose: z.enum(["phone", "email"]).default("phone"),
   dni: z.string().optional(),
   cuil: z.string().optional(),
   fullName: z.string().optional(),
@@ -30,9 +30,6 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
   if (orgDenied) return orgDenied;
   if (isExpired(inv.expiresAt)) return NextResponse.json({ error: "expired" }, { status: 410 });
   const body = schema.parse(await request.json().catch(() => ({})));
-  if (body.purpose === "phone") {
-    return NextResponse.json({ error: "email_otp_only" }, { status: 400 });
-  }
   const recipient = await getRecipient(inv.orgId, inv.recipientId);
   if (!recipient) return NextResponse.json({ error: "not_found" }, { status: 404 });
   if (body.dni && digitsOnly(body.dni) !== recipient.dni) {
@@ -41,19 +38,22 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ token:
   if (body.cuil && normalizeCuil(body.cuil) !== recipient.cuil) {
     return NextResponse.json({ error: "identity_mismatch" }, { status: 400 });
   }
-  const config = await getOrCreateArtConfig(inv.orgId);
   const orgSnap = await getAdminDb().collection("organizations").doc(inv.orgId).get();
   try {
-    const sent = await sendOtp({
+    const sent = await sendInviteWhatsAppOtp({
       orgId: inv.orgId,
       orgName: String(orgSnap.data()?.nombre || "ART"),
       recipient,
-      purpose: body.purpose,
-      channel: config.otpChannel,
       actor: "worker",
       ip,
     });
-    return NextResponse.json(sent);
+    return NextResponse.json({
+      challengeId: sent.challengeId,
+      channel: sent.channel,
+      expiresAt: sent.expiresAt,
+      destinationMasked: sent.destinationMasked,
+      whatsapp: sent,
+    });
   } catch (e) {
     const mapped = artCaughtErrorResponse(e);
     if (mapped) return mapped;

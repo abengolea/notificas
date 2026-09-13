@@ -5,10 +5,18 @@ import { generateOtpCode, hashOtpCode, newArtSecret, otpTtlMs } from "@/lib/art/
 import { newArtChallengeId } from "@/lib/art/ids";
 import { assertOtpPurposeForChannel, contactVerifiedByOtpChannel, verifyOtpAttempt } from "@/lib/art/otp-logic";
 import { sendArtTransactionalEmail } from "@/lib/art/transactional-mail";
+import { sendWhatsAppAuthOtp } from "@/lib/art/whatsapp-auth-otp";
 import { appendArtAuditEvent } from "@/lib/art/audit";
 import type { ArtOtpChannel, ArtRecipient } from "@/lib/art/types";
-import { maskEmail } from "@/lib/art/mask";
+import { maskEmail, maskPhone } from "@/lib/art/mask";
 import { assertPilotRecipientAllowed, throwArtCode } from "@/lib/art/pilot";
+
+export type SentOtp = {
+  challengeId: string;
+  channel: ArtOtpChannel;
+  expiresAt: string;
+  destinationMasked: string;
+};
 
 export async function sendOtp(input: {
   orgId: string;
@@ -18,7 +26,7 @@ export async function sendOtp(input: {
   channel: ArtOtpChannel;
   actor: string;
   ip?: string | null;
-}): Promise<{ challengeId: string; channel: ArtOtpChannel; expiresAt: string; destinationMasked: string }> {
+}): Promise<SentOtp> {
   throwArtCode(
     assertPilotRecipientAllowed({
       orgId: input.orgId,
@@ -30,10 +38,24 @@ export async function sendOtp(input: {
   if (!purposeGate.ok) {
     throw Object.assign(new Error(purposeGate.reason), { code: purposeGate.reason });
   }
+
   const email = input.recipient.email;
-  if (!email) {
-    throw Object.assign(new Error("email_required_for_otp"), { code: "email_required_for_otp" });
+  const phone = input.recipient.phone;
+  let destinationMasked = "";
+  if (input.channel === "email") {
+    if (!email) {
+      throw Object.assign(new Error("email_required_for_otp"), { code: "email_required_for_otp" });
+    }
+    destinationMasked = maskEmail(email) || "";
+  } else if (input.channel === "whatsapp") {
+    if (!phone) {
+      throw Object.assign(new Error("phone_required_for_otp"), { code: "phone_required_for_otp" });
+    }
+    destinationMasked = maskPhone(phone) || "";
+  } else {
+    throw Object.assign(new Error("otp_channel_unavailable"), { code: "otp_channel_unavailable" });
   }
+
   const challengeId = newArtChallengeId();
   const code = generateOtpCode(6);
   const expiresAt = new Date(Date.now() + otpTtlMs()).toISOString();
@@ -50,16 +72,30 @@ export async function sendOtp(input: {
     replayNonce: newArtSecret(8),
     createdAt: FieldValue.serverTimestamp(),
   });
-  const sent = await sendArtTransactionalEmail({
-    to: email,
-    subject: `${input.orgName}: código de verificación`,
-    text: [
-      `Tu código para verificar el email es: ${code}`,
-      "",
-      `Vence a las ${expiresAt} (UTC).`,
-      "Si no solicitaste este código, ignorá este mensaje.",
-    ].join("\n"),
-  });
+
+  let skipped = false;
+  if (input.channel === "email") {
+    const sent = await sendArtTransactionalEmail({
+      to: email!,
+      subject: `${input.orgName}: código de verificación`,
+      text: [
+        `Tu código para verificar el email es: ${code}`,
+        "",
+        `Vence a las ${expiresAt} (UTC).`,
+        "Si no solicitaste este código, ignorá este mensaje.",
+      ].join("\n"),
+    });
+    skipped = sent.skipped === true;
+    if (!sent.ok) {
+      throw Object.assign(new Error(sent.error || "otp_failed"), { code: sent.error || "otp_failed" });
+    }
+  } else {
+    const sent = await sendWhatsAppAuthOtp({ toPhone: phone!, code });
+    if (!sent.ok) {
+      throw Object.assign(new Error(sent.error), { code: sent.error });
+    }
+  }
+
   await appendArtAuditEvent({
     orgId: input.orgId,
     recipientId: input.recipient.id,
@@ -71,15 +107,34 @@ export async function sendOtp(input: {
       challengeId,
       purpose: input.purpose,
       channel: input.channel,
-      skipped: sent.skipped === true,
+      skipped,
     },
   });
   return {
     challengeId,
     channel: input.channel,
     expiresAt,
-    destinationMasked: maskEmail(email) || "",
+    destinationMasked,
   };
+}
+
+/** OTP que se escribe en el enlace de adhesión del mail. */
+export async function sendInviteWhatsAppOtp(input: {
+  orgId: string;
+  orgName: string;
+  recipient: ArtRecipient;
+  actor: string;
+  ip?: string | null;
+}): Promise<SentOtp> {
+  return sendOtp({
+    orgId: input.orgId,
+    orgName: input.orgName,
+    recipient: input.recipient,
+    purpose: "phone",
+    channel: "whatsapp",
+    actor: input.actor,
+    ip: input.ip,
+  });
 }
 
 export async function verifyOtp(input: {
@@ -89,6 +144,8 @@ export async function verifyOtp(input: {
   code: string;
   actor: string;
   ip?: string | null;
+  /** El token del mail ya demostró el correo: el OTP de WhatsApp ata los dos canales. */
+  bindEmailFromInvite?: boolean;
 }): Promise<{ ok: true; purpose: "phone" | "email" } | { ok: false; reason: string }> {
   const db = getAdminDb();
   const ref = db.collection(ART_COLLECTIONS.otpChallenges).doc(input.challengeId);
@@ -122,6 +179,10 @@ export async function verifyOtp(input: {
   if (verifiedContact === "phone") {
     recUpdates.phoneVerified = true;
     recUpdates.phoneVerifiedAt = now;
+    if (input.bindEmailFromInvite) {
+      recUpdates.emailVerified = true;
+      recUpdates.emailVerifiedAt = now;
+    }
   } else {
     recUpdates.emailVerified = true;
     recUpdates.emailVerifiedAt = now;
@@ -134,7 +195,13 @@ export async function verifyOtp(input: {
     actor: input.actor,
     source: "art_public",
     ip: input.ip,
-    metadata: { challengeId: input.challengeId, purpose: d.purpose === "email" ? "email" : "phone", channel, verifiedContact },
+    metadata: {
+      challengeId: input.challengeId,
+      purpose: d.purpose === "email" ? "email" : "phone",
+      channel,
+      verifiedContact,
+      emailBoundViaInvite: input.bindEmailFromInvite === true && verifiedContact === "phone",
+    },
   });
   return { ok: true, purpose: verifiedContact };
 }

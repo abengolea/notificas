@@ -20,7 +20,14 @@ type InvitePayload = {
   copy: { intro: string };
 };
 
-const STEPS = ["Datos", "Email", "Identidad", "Adhesión", "Listo"];
+type SentOtp = {
+  challengeId: string;
+  channel: string;
+  expiresAt: string;
+  destinationMasked: string;
+};
+
+const STEPS = ["Datos", "WhatsApp", "Adhesión", "Listo"];
 
 export default function AdherirPage() {
   const params = useParams<{ token: string }>();
@@ -31,8 +38,8 @@ export default function AdherirPage() {
   const [dni, setDni] = useState("");
   const [cuil, setCuil] = useState("");
   const [fullName, setFullName] = useState("");
-  const [challengeId, setChallengeId] = useState<string | null>(null);
-  const [code, setCode] = useState("");
+  const [whatsappChallenge, setWhatsappChallenge] = useState<SentOtp | null>(null);
+  const [whatsappCode, setWhatsappCode] = useState("");
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<{ adhesionId: string; manageUrl: string; manageToken: string } | null>(null);
@@ -49,7 +56,16 @@ export default function AdherirPage() {
     })();
   }, [token]);
 
-  const progress = useMemo(() => Math.round(((done ? 4 : step) / 4) * 100), [step, done]);
+  const progress = useMemo(() => Math.round(((done ? 3 : step) / 3) * 100), [step, done]);
+
+  function otpErrorMessage(code: string | undefined): string {
+    if (code === "identity_mismatch") return "Los datos no coinciden.";
+    if (code === "invalid") return "Código incorrecto.";
+    if (code === "expired") return "El código venció. Pedí uno nuevo.";
+    if (code === "max_attempts") return "Demasiados intentos.";
+    if (code === "phone_required_for_otp") return "Falta el celular para enviar WhatsApp.";
+    return "No se pudo enviar o verificar el código de WhatsApp.";
+  }
 
   async function sendOtp() {
     setBusy(true);
@@ -58,11 +74,16 @@ export default function AdherirPage() {
       const res = await fetch(`/api/art/public/invite/${token}/otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ purpose: "email", dni, cuil, fullName }),
+        body: JSON.stringify({ purpose: "phone", dni, cuil, fullName }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error === "identity_mismatch" ? "Los datos no coinciden." : "No pudimos enviar el código.");
-      setChallengeId(json.challengeId);
+      if (!res.ok) throw new Error(otpErrorMessage(json.error));
+      const sent: SentOtp | null = json.whatsapp || (json.challengeId
+        ? { challengeId: json.challengeId, channel: json.channel, expiresAt: json.expiresAt, destinationMasked: json.destinationMasked }
+        : null);
+      if (!sent?.challengeId) throw new Error("No pudimos enviar el código de WhatsApp.");
+      setWhatsappChallenge(sent);
+      setWhatsappCode("");
       setStep(1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
@@ -72,31 +93,26 @@ export default function AdherirPage() {
   }
 
   async function verifyOtp() {
+    if (!whatsappChallenge) return;
     setBusy(true);
     setError(null);
     try {
       const res = await fetch(`/api/art/public/invite/${token}/otp/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ challengeId, code }),
+        body: JSON.stringify({ challengeId: whatsappChallenge.challengeId, code: whatsappCode }),
       });
       const json = await res.json();
-      if (!res.ok) {
-        throw new Error(
-          json.error === "invalid" ? "Código incorrecto." :
-          json.error === "expired" ? "El código venció." :
-          json.error === "max_attempts" ? "Demasiados intentos." :
-          "No se pudo verificar."
-        );
-      }
+      if (!res.ok) throw new Error(otpErrorMessage(json.error));
+      if (json.purpose !== "phone") throw new Error("Ese código no corresponde a WhatsApp.");
       const idRes = await fetch(`/api/art/public/invite/${token}/identity`, { method: "POST" });
       const idJson = await idRes.json().catch(() => ({}));
       if (idJson.identityStatus === "pending") {
-        setStep(3);
+        setStep(2);
         setError("Tu identidad quedó pendiente de un proveedor externo. La ART puede prevalidarla o se conectará RENAPER/Didit más adelante.");
         return;
       }
-      setStep(3);
+      setStep(2);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
     } finally {
@@ -112,12 +128,12 @@ export default function AdherirPage() {
       const res = await fetch(`/api/art/public/invite/${token}/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accepted: true, otpChallengeId: challengeId }),
+        body: JSON.stringify({ accepted: true, otpChallengeId: whatsappChallenge?.challengeId }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error("No se pudo registrar la adhesión. Revisá los pasos anteriores.");
       setDone({ adhesionId: json.adhesionId, manageUrl: json.manageUrl, manageToken: json.manageToken });
-      setStep(4);
+      setStep(3);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
     } finally {
@@ -157,7 +173,7 @@ export default function AdherirPage() {
       <ol className="mb-6 flex gap-1">
         {STEPS.map((label, i) => (
           <li key={label} className="flex-1">
-            <div className={cn("h-1 rounded-full", i <= (done ? 4 : step) ? "bg-primary" : "bg-muted")} />
+            <div className={cn("h-1 rounded-full", i <= (done ? 3 : step) ? "bg-primary" : "bg-muted")} />
             <p className="mt-1 hidden text-[10px] text-muted-foreground sm:block">{label}</p>
           </li>
         ))}
@@ -192,14 +208,30 @@ export default function AdherirPage() {
             <Label>CUIL</Label>
             <Input value={cuil} onChange={(e) => setCuil(e.target.value)} inputMode="numeric" placeholder={data.identity.cuil || "CUIL"} />
           </div>
-          <Button className="w-full" disabled={busy} onClick={() => void sendOtp()}>Continuar</Button>
+          <Button className="w-full" disabled={busy} onClick={() => void sendOtp()}>Enviar código por WhatsApp</Button>
         </section>
       ) : step === 1 ? (
         <section className="space-y-4">
-          <h2 className="text-xl font-semibold">Verificá tu email</h2>
-          <p className="text-sm text-muted-foreground">Te enviamos un código al email informado. El celular se valida por separado cuando exista OTP por WhatsApp.</p>
-          <Input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" maxLength={6} placeholder="Código de 6 dígitos" />
-          <Button className="w-full" disabled={busy || code.length < 4} onClick={() => void verifyOtp()}>Verificar</Button>
+          <h2 className="text-xl font-semibold">Código de WhatsApp</h2>
+          <p className="text-sm text-muted-foreground">
+            Este enlace te llegó por mail. El código de 6 dígitos te llega por WhatsApp
+            {whatsappChallenge?.destinationMasked ? ` a ${whatsappChallenge.destinationMasked}` : ""}.
+            Cargalo acá para validar el número. Vence en 10 minutos.
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="wa-otp">Código</Label>
+            <Input
+              id="wa-otp"
+              value={whatsappCode}
+              onChange={(e) => setWhatsappCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              inputMode="numeric"
+              maxLength={6}
+              autoComplete="one-time-code"
+              placeholder="6 dígitos"
+            />
+          </div>
+          <Button className="w-full" disabled={busy || whatsappCode.length < 4} onClick={() => void verifyOtp()}>Verificar y continuar</Button>
+          <Button variant="outline" className="w-full" disabled={busy} onClick={() => void sendOtp()}>Reenviar código</Button>
         </section>
       ) : (
         <section className="space-y-4">

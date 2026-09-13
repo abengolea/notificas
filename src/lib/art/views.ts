@@ -35,7 +35,7 @@ export function publicInviteView(input: {
     copy: {
       voluntary: true,
       canRevoke: true,
-      intro: `La adhesión es voluntaria. Podrás revocarla posteriormente. La aceptación habilita a ${input.orgName} a utilizar los canales electrónicos informados para las comunicaciones comprendidas en el sistema implementado por la ART.`,
+      intro: `La adhesión es voluntaria. Podrás revocarla posteriormente. Vas a confirmar tus datos y después te mandamos un código por WhatsApp: ese código se carga acá, en este enlace que te llegó por mail.`,
     },
   };
 }
