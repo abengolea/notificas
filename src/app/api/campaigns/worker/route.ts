@@ -22,7 +22,6 @@ import { usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
 import { maybeCompleteCampaign } from '@/lib/campaign-complete';
 import { campaignIsStopped } from '@/lib/campaign-daily';
 import { pauseCampaignIfLimit } from '@/lib/campaign-auto-pause';
-import { campaignEmailSendShouldPause } from '@/lib/campaign-limit';
 import { waitCampaignSendGap } from '@/lib/campaign-send-pace';
 import { completeSimulatedSend, isCampaignSimulated } from '@/lib/campaign-simulate';
 import { presentRecipientValue, recipientValueText } from '@/lib/parse-campaign-csv';
@@ -485,16 +484,11 @@ async function processMessage(
   if (cfResult.skipped) return 'skipped';
 
   if (!cfResult.ok) {
-    const emailPause = campaignEmailSendShouldPause({
-      canal,
-      error: cfResult.error,
-      limitHit: cfResult.limitHit,
-    });
     const limit = await pauseCampaignIfLimit(campaignId, cfResult.error, {
       httpStatus: cfResult.httpStatus,
       errorCode: cfResult.errorCode,
-      limitHit: emailPause || cfResult.limitHit === true,
-      limitSource: cfResult.limitSource || (emailPause ? 'resend' : undefined),
+      limitHit: cfResult.limitHit,
+      limitSource: cfResult.limitSource,
     });
     if (limit) return 'limit_paused';
 
