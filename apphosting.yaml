@@ -178,10 +178,10 @@ env:
     value: "2000"
     availability:
       - RUNTIME
-  # Módulo ART — Fase 1: código en producción, módulo apagado (fail-closed).
-  # No poner ART_MODULE_ENABLED=true ni ART_GENERAL_RELEASE_ENABLED=true sin autorización.
+  # Módulo ART — Fase 2: piloto fail-closed, únicamente ART DEMO NOTIFICAS.
+  # Rollback: ART_MODULE_ENABLED=false. Nunca ART_GENERAL_RELEASE_ENABLED=true en este piloto.
   - variable: ART_MODULE_ENABLED
-    value: "false"
+    value: "true"
     availability:
       - RUNTIME
   - variable: ART_PILOT_MODE
@@ -191,4 +191,29 @@ env:
   - variable: ART_GENERAL_RELEASE_ENABLED
     value: "false"
     availability:
+      - RUNTIME
+  - variable: ART_ALLOWED_ORGS
+    value: "FqNRpuT2Dzu2YmGrElbt"
+    availability:
+      - RUNTIME
+  - variable: ART_PILOT_EMAIL_ALLOWLIST
+    value: "abengolea1@gmail.com,adrianbengolea@notificas.com"
+    availability:
+      - RUNTIME
+  - variable: ART_PILOT_MAX_RECIPIENTS
+    value: "10"
+    availability:
+      - RUNTIME
+  - variable: ART_PILOT_MAX_CAMPAIGN_RECIPIENTS
+    value: "10"
+    availability:
+      - RUNTIME
+  - variable: EVIDENCE_RETENTION_YEARS
+    value: "5"
+    availability:
+      - RUNTIME
+  - variable: NEXT_PUBLIC_ART_MODULE_ENABLED
+    value: "true"
+    availability:
+      - BUILD
       - RUNTIME
