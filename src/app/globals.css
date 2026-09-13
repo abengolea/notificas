@@ -174,6 +174,37 @@
   }
 }
 
+.intl-gate ::selection {
+  background: hsl(186 35% 38%);
+  color: hsl(210 20% 98%);
+}
+
+.intl-flag {
+  display: block;
+  width: min(11.5rem, 72vw);
+  aspect-ratio: 3 / 2;
+}
+
+.intl-flag svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.intl-country {
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.intl-country-soon .intl-flag {
+  opacity: 0.82;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .intl-gate main {
+    animation: landing-rise 720ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
 /* Vista de mensaje certificado: diseño profesional sin bordes grises */
 .mensaje-html-view .wrapper {
   background: hsl(var(--card)) !important;
