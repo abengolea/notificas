@@ -1,9 +1,16 @@
 import path from 'path';
 import type {NextConfig} from 'next';
+import {
+  legacyArchivoHeaders,
+  legacyArchivoRewrites,
+} from './src/lib/legacy-archivo';
 
 const nextConfig: NextConfig = {
   /* config options here */
   outputFileTracingRoot: path.join(process.cwd()),
+  async rewrites() {
+    return legacyArchivoRewrites();
+  },
   async redirects() {
     return [
       {
@@ -32,6 +39,7 @@ const nextConfig: NextConfig = {
           { key: "Access-Control-Allow-Origin", value: "*" },
         ],
       },
+      ...legacyArchivoHeaders(),
     ];
   },
   // ESLint en build: el adapter de App Hosting ejecuta `next build`; la deuda de lint no debe bloquear el deploy.
