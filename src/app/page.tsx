@@ -20,6 +20,7 @@ import {
 import { FaqSection } from '@/components/faq-section';
 import { QuoteContactForm } from '@/components/footer-contact-form';
 import { LandingHeader } from '@/components/landing-header';
+import { LegacyArchiveCallout } from '@/components/legacy-archive-callout';
 import { JsonLd } from '@/components/json-ld';
 import { PublicFooter } from '@/components/public-footer';
 import { GEO_LANDING_PAGES } from '@/lib/public-resources';
@@ -382,6 +383,8 @@ export default function LandingPage() {
                             </Link>
                         </Button>
                     </div>
+
+                    <LegacyArchiveCallout />
                 </div>
             </div>
         </section>

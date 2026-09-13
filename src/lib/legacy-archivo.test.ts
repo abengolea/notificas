@@ -8,6 +8,7 @@ import sitemap from "../app/sitemap";
 import {
   LEGACY_ARCHIVO_API_ORIGIN,
   LEGACY_ARCHIVO_BASE_PATH,
+  LEGACY_ARCHIVO_LOGIN_HREF,
   LEGACY_ARCHIVO_SPA_ROUTES,
   legacyArchivoRewrites,
 } from "./legacy-archivo";
@@ -67,4 +68,20 @@ test("el aviso del archivo explica consulta histórica y no bloquea el acceso", 
   assert.match(bundle, /Archivo de consulta/);
   assert.match(bundle, /env\\xedos nuevos se hacen desde notificas\.com\.ar/);
   assert.match(bundle, /Consultar archivo/);
+});
+
+test("la web pública apunta al archivo histórico sin indexarlo", () => {
+  assert.equal(LEGACY_ARCHIVO_LOGIN_HREF, "/archivo/login");
+  const readSrc = (rel: string) => fs.readFileSync(path.join(here, "..", rel), "utf8");
+  assert.match(readSrc("app/page.tsx"), /LegacyArchiveCallout/);
+  for (const rel of [
+    "app/login/page.tsx",
+    "app/signup/page.tsx",
+    "app/cuenta/activar-migracion/page.tsx",
+    "components/public-footer.tsx",
+    "components/faq-section.tsx",
+    "components/legacy-archive-callout.tsx",
+  ]) {
+    assert.match(readSrc(rel), /LEGACY_ARCHIVO_/);
+  }
 });

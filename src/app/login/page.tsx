@@ -15,6 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { z } from "zod";
+import { LEGACY_ARCHIVO_LOGIN_HREF } from "@/lib/legacy-archivo";
 import { safeNextPath } from "@/lib/safe-next-path";
 import { resolvePostLoginHref } from "@/lib/resolve-post-login-href";
 
@@ -195,6 +196,11 @@ function LoginForm() {
             <Link href="/cuenta/activar-migracion" className="underline underline-offset-2" prefetch={false}>
               Venías de Notificas anterior: activá tu cuenta migrada
             </Link>
+          </p>
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            <a href={LEGACY_ARCHIVO_LOGIN_HREF} className="underline underline-offset-2">
+              Consultar envíos de la web anterior
+            </a>
           </p>
           <div className="mt-6 text-center text-sm">
             ¿No tienes una cuenta?{" "}

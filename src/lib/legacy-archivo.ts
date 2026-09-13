@@ -9,6 +9,11 @@
  */
 
 export const LEGACY_ARCHIVO_BASE_PATH = "/archivo";
+export const LEGACY_ARCHIVO_LOGIN_HREF = `${LEGACY_ARCHIVO_BASE_PATH}/login`;
+export const LEGACY_ARCHIVO_PUBLIC_LABEL = "Archivo de envíos anteriores";
+export const LEGACY_ARCHIVO_PUBLIC_HEADING = "¿Usabas notificas.com?";
+export const LEGACY_ARCHIVO_PUBLIC_BLURB =
+  "Los envíos hechos en la plataforma anterior se consultan en el archivo histórico. Los envíos nuevos se hacen en esta web.";
 
 /** Rutas reales del SPA Ionic (app-routing.module.ts), relativas al archivo. */
 export const LEGACY_ARCHIVO_SPA_ROUTES = [

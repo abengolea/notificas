@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/accordion";
 
 import { FAQ_CLAIMS } from "@/lib/honest-claims";
+import { LEGACY_ARCHIVO_LOGIN_HREF } from "@/lib/legacy-archivo";
 
 type FaqItem = {
   question: string;
@@ -83,6 +84,28 @@ const faqItems: FaqItem[] = [
           className="text-primary font-medium underline-offset-4 hover:underline"
         >
           Soluciones para empresas
+        </Link>
+        .
+      </>
+    ),
+  },
+  {
+    question: "Usaba notificas.com, ¿dónde están mis envíos anteriores?",
+    answer: (
+      <>
+        Los envíos de la plataforma anterior se consultan en el{" "}
+        <a
+          href={LEGACY_ARCHIVO_LOGIN_HREF}
+          className="text-primary font-medium underline-offset-4 hover:underline"
+        >
+          archivo histórico
+        </a>
+        . Los envíos nuevos se hacen en esta web. Si tu usuario fue migrado y querés usar esta plataforma,{" "}
+        <Link
+          href="/cuenta/activar-migracion"
+          className="text-primary font-medium underline-offset-4 hover:underline"
+        >
+          activá tu cuenta migrada
         </Link>
         .
       </>

@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { LEGACY_ARCHIVO_LOGIN_HREF } from "@/lib/legacy-archivo";
 
 function ActivarMigracionForm() {
   const searchParams = useSearchParams();
@@ -89,8 +90,8 @@ function ActivarMigracionForm() {
         </div>
         <CardTitle className="text-2xl font-bold">Activá tu cuenta migrada</CardTitle>
         <CardDescription>
-          Si tu usuario venía de Notificas anterior, ingresá tu email y te enviamos un enlace para definir una
-          contraseña nueva en este sistema.
+          Si tu usuario venía de Notificas anterior y querés usar esta plataforma, ingresá tu email y te enviamos un
+          enlace para definir una contraseña nueva.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -121,6 +122,13 @@ function ActivarMigracionForm() {
             )}
           </Button>
         </form>
+        <p className="mt-4 text-center text-sm text-muted-foreground">
+          Si solo necesitás consultar envíos viejos, entrá al{" "}
+          <a href={LEGACY_ARCHIVO_LOGIN_HREF} className="underline">
+            archivo histórico
+          </a>
+          . La activación es para usar esta plataforma.
+        </p>
         <p className="mt-4 text-center text-sm text-muted-foreground">
           <Link href="/login" className="underline" prefetch={false}>
             Volver al inicio de sesión

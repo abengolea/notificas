@@ -21,6 +21,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Logo } from '@/components/logo';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { LEGACY_ARCHIVO_LOGIN_HREF } from '@/lib/legacy-archivo';
 
 const signupSchema = z.object({
   accountType: z.enum(['individual', 'empresa']),
@@ -301,6 +302,10 @@ export default function SignupPage() {
             <Link href="/cuenta/activar-migracion" className="underline" prefetch={false}>
               Cuenta migrada
             </Link>
+            <span className="mx-1 text-muted-foreground">·</span>
+            <a href={LEGACY_ARCHIVO_LOGIN_HREF} className="underline">
+              Archivo anterior
+            </a>
           </div>
         </CardContent>
       </Card>

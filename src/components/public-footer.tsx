@@ -3,6 +3,10 @@ import Link from "next/link";
 import { Mail, Phone } from "lucide-react";
 
 import { FooterContactForm } from "@/components/footer-contact-form";
+import {
+  LEGACY_ARCHIVO_BASE_PATH,
+  LEGACY_ARCHIVO_PUBLIC_LABEL,
+} from "@/lib/legacy-archivo";
 import { LEGAL_PUBLIC_PAGES, RESOURCE_HUB } from "@/lib/public-resources";
 import { SITE_CONTACT } from "@/lib/seo";
 
@@ -45,6 +49,12 @@ export function PublicFooter({ variant = "compact" }: { variant?: "full" | "comp
             <FooterLink href="/notificaciones-whatsapp-empresas">WhatsApp para empresas</FooterLink>
             <FooterLink href="/como-verificar-certificado">Cómo verificar un certificado</FooterLink>
             <FooterLink href="/verify">Verificar una constancia</FooterLink>
+            <a
+              href={LEGACY_ARCHIVO_BASE_PATH}
+              className="block text-background/80 underline-offset-4 hover:text-background hover:underline"
+            >
+              {LEGACY_ARCHIVO_PUBLIC_LABEL}
+            </a>
             {LEGAL_PUBLIC_PAGES.map((page) => (
               <FooterLink key={page.path} href={page.path}>
                 {page.title}
