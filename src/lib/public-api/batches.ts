@@ -76,6 +76,26 @@ export async function createPublicBatch(ctx: PublicApiAuthContext, rawBody: unkn
     throw invalidRequest("too_many_recipients", `A batch cannot exceed ${MAX_BATCH_RECIPIENTS} recipients.`, "recipients");
   }
 
+  const { assertArtOutboundClassification, assertArtPilotCampaignSize, assertArtPilotOutboundRecipient } = await import("@/lib/art/outbound-guards");
+  const classified = assertArtOutboundClassification(ctx.orgId, input.notification_type);
+  if (!classified.ok) {
+    throw invalidRequest(classified.code, "Explicit notification_type is required for ART organizations.", "notification_type");
+  }
+  const size = assertArtPilotCampaignSize(ctx.orgId, input.recipients.length);
+  if (!size.ok) {
+    throw invalidRequest(size.code, "Pilot campaign recipient limit exceeded.", "recipients");
+  }
+  for (const row of input.recipients) {
+    const dest = assertArtPilotOutboundRecipient({
+      orgId: ctx.orgId,
+      email: row.email,
+      phone: row.phone,
+    });
+    if (!dest.ok) {
+      throw invalidRequest(dest.code, dest.code, "recipients");
+    }
+  }
+
   const orgSnap = await getAdminDb().collection("organizations").doc(ctx.orgId).get();
   const org = orgSnap.data() || {};
   const planMax = maxRecipientsForPlan(String(org.plan || "starter"));
@@ -163,6 +183,11 @@ export async function createPublicBatch(ctx: PublicApiAuthContext, rawBody: unkn
     apiReference: input.reference || null,
     apiMetadata: metadata,
     simulated: simulate,
+    ...(classified.value === "SRT_ART" || classified.value === "ORDINARY"
+      ? { notificationType: classified.value }
+      : input.notification_type === "SRT_ART"
+        ? { notificationType: "SRT_ART" }
+        : {}),
     ...(tpl.useDefault
       ? {}
       : {

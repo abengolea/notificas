@@ -59,6 +59,8 @@ export type CreateMailAdminParams = {
   requestId?: string;
   /** Cliente MCP (chatgpt/claude/otro). Solo metadato de evidencia. */
   mcpClient?: string;
+  /** Clasificación del acto: ordinaria vs notificación electrónica SRT. */
+  notificationType?: "ORDINARY" | "SRT_ART";
 };
 
 /** Crea un documento en `mail` con Admin SDK (equivalente a scheduleEmail sin auto-fetch). */
@@ -103,6 +105,7 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
     testMode,
     requestId,
     mcpClient,
+    notificationType,
   } = params;
 
   const db = getAdminDb();
@@ -187,6 +190,9 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
   if (testMode) payload.testMode = true;
   if (requestId) payload.requestId = requestId;
   if (mcpClient) payload.mcpClient = mcpClient;
+  if (notificationType === "SRT_ART" || notificationType === "ORDINARY") {
+    payload.notificationType = notificationType;
+  }
 
   await mailRef.set(payload);
   return mailId;

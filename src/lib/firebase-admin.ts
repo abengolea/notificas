@@ -119,7 +119,8 @@ export function isEvidenceObjectPath(path: string): boolean {
     path.startsWith('certificates/') ||
     path.startsWith('evidence-snapshots/') ||
     path.startsWith('campaign-source/') ||
-    path.startsWith('provider-webhooks/')
+    path.startsWith('provider-webhooks/') ||
+    path.startsWith('art-evidence/')
   );
 }
 

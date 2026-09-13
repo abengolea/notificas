@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/hooks/use-toast"
 import { User } from "@/lib/types"
 import { scheduleEmail, sendEmailManually, type SendEmailResult } from "@/lib/email";
@@ -244,6 +245,7 @@ const messageSchema = z.object({
     message: "El mensaje debe tener al menos 10 caracteres.",
   }),
   attachments: z.array(z.custom<SelectedAttachment>()).optional(),
+  notificationType: z.enum(["ORDINARY", "SRT_ART"]).optional(),
 }).superRefine((data, ctx) => {
   if (data.canal === "email" || data.canal === "ambos") {
     const email = data.recipient?.trim() || "";
@@ -425,6 +427,7 @@ function RichTextEditor({ value, disabled, onChange, onBlur }: RichTextEditorPro
 
 export function ComposeMessageDialog({ children, open, onOpenChange, user, initialContact, orgId }: { children: React.ReactNode, open: boolean, onOpenChange: (open: boolean) => void, user: User, initialContact?: { email: string, nombre?: string, telefono?: string }, orgId?: string }) {
     const [isSending, setIsSending] = useState(false);
+    const [artEnabled, setArtEnabled] = useState(false);
     const [selectedFiles, setSelectedFiles] = useState<SelectedAttachment[]>([]);
     const isExecutingRef = useRef(false);
     const currentExecutionIdRef = useRef<string | null>(null);
@@ -444,6 +447,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             subject: "",
             content: "",
             attachments: [],
+            notificationType: undefined,
         },
     });
 
@@ -454,6 +458,17 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
     const needsEmail = canal === "email" || canal === "ambos";
     const needsPhone = canal === "whatsapp" || canal === "ambos";
     const isSuspended = user.estado === 'suspendido';
+
+    useEffect(() => {
+        if (!orgId) {
+            setArtEnabled(false);
+            return;
+        }
+        void fetch(`/api/art/status?orgId=${encodeURIComponent(orgId)}`)
+            .then((r) => r.json())
+            .then((d) => setArtEnabled(d.enabled === true))
+            .catch(() => setArtEnabled(false));
+    }, [orgId]);
 
     const persistRecipientContact = useCallback(async () => {
         if (!user.uid) return;
@@ -593,6 +608,15 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             return;
         }
 
+        if (artEnabled && data.notificationType !== "ORDINARY" && data.notificationType !== "SRT_ART") {
+            toast({
+                title: "Clasificá el envío",
+                description: "Elegí comunicación ordinaria o notificación electrónica SRT.",
+                variant: "destructive",
+            });
+            return;
+        }
+
         const sendCredits = creditsRequiredForIndividualSend(data.canal);
         if (!canAffordCredits(user.creditos, sendCredits)) {
             toast({
@@ -654,6 +678,9 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                     orgId,
                     waOnly: sendCanal === "whatsapp",
                     skipAutoSend: true,
+                    ...(artEnabled && (data.notificationType === "ORDINARY" || data.notificationType === "SRT_ART")
+                        ? { notificationType: data.notificationType }
+                        : {}),
                 }),
                 new Promise<never>((_, reject) =>
                     setTimeout(() => reject(new Error('No se pudo crear el mensaje. Revisa tu conexión e intentá de nuevo.')), 30_000)
@@ -817,7 +844,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                 setIsSending(false);
             }
         }
-    }, [isSuspended, toast, user, handleOpenChange, form, selectedFiles, orgId]);
+    }, [isSuspended, toast, user, handleOpenChange, form, selectedFiles, orgId, artEnabled]);
 
     const composeActions = (
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
@@ -910,6 +937,34 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                         <p className="text-sm text-destructive">No tenés envíos suficientes para enviar.</p>
                     )}
                 </div>
+                {artEnabled ? (
+                    <div className="space-y-3 rounded-md border p-3">
+                        <p className="text-sm font-medium">Clasificación del envío</p>
+                        <p className="text-xs text-muted-foreground">
+                            Obligatorio. Las notificaciones electrónicas SRT siempre pasan el control de adhesión. Las comunicaciones ordinarias no.
+                        </p>
+                        <RadioGroup
+                            value={form.watch("notificationType") || ""}
+                            onValueChange={(v) => form.setValue("notificationType", v === "SRT_ART" ? "SRT_ART" : "ORDINARY")}
+                            className="gap-3"
+                        >
+                            <label className="flex items-start gap-3 text-sm">
+                                <RadioGroupItem value="ORDINARY" id="compose-nt-ordinary" />
+                                <span>
+                                    <span className="font-medium">Comunicación ordinaria</span>
+                                    <span className="block text-xs text-muted-foreground">No se trata como notificación electrónica SRT.</span>
+                                </span>
+                            </label>
+                            <label className="flex items-start gap-3 text-sm">
+                                <RadioGroupItem value="SRT_ART" id="compose-nt-srt" />
+                                <span>
+                                    <span className="font-medium">Notificación electrónica SRT</span>
+                                    <span className="block text-xs text-muted-foreground">Exige adhesión activa. Si no hay elegibilidad, no se envía.</span>
+                                </span>
+                            </label>
+                        </RadioGroup>
+                    </div>
+                ) : null}
                 {needsEmail && (
                 <div className="grid gap-2">
                     <Label htmlFor="email-input">Correo del destinatario</Label>

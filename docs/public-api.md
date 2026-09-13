@@ -117,7 +117,7 @@ Respuestas incluyen `test_mode: true`.
 
 ## Webhooks
 
-Eventos: `notification.queued|sent|delivered|read|failed`, `notification.certificate_ready`, `batch.completed`.
+Eventos: `notification.queued|sent|delivered|read|failed`, `notification.certificate_ready`, `batch.completed`, y si el módulo ART está activo: `art.adhesion.created|activated|revoked`, `art.identity.verified|failed`, `art.contact.changed`, `art.recipient.requires_conventional_channel`.
 
 Firma:
 
@@ -215,3 +215,5 @@ Demo sin API: `Notificas.embed("#el", { demo: true })` o `data-demo="true"`.
 ## Preparado para agentes / iPaaS
 
 El contrato de `POST /notifications` es deliberadamente plano (`channel`, `recipient`, `template`, `variables`, `reference`, `metadata`) para un tool tipo `send_certified_notification` en Meta Business Agents, OpenAI, MCP, Zapier, Make o n8n. No hay adaptadores de esos vendors en este cambio.
+
+Para adhesión ART / SRT (feature flag `ART_MODULE_ENABLED`): ver `docs/ART_SRT_MODULE.md`. Rutas `/api/v1/art/*`. `notification_type=SRT_ART` en `POST /notifications` exige adhesión activa; si no, no envía y responde `requires_conventional_channel`.

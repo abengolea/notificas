@@ -21,6 +21,7 @@ const createSchema = z.object({
   waTemplateBody: z.string().max(20000).optional(),
   tandaSize: z.number().int().min(0).optional(),
   simulated: z.boolean().optional(),
+  notificationType: z.enum(['ORDINARY', 'SRT_ART']).optional(),
 });
 
 function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
@@ -47,6 +48,7 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     waTemplateBody: String(data.waTemplateBody || ''),
     managedByAdmin: data.managedByAdmin === true,
     simulated: data.simulated === true,
+    notificationType: data.notificationType === 'SRT_ART' ? 'SRT_ART' : data.notificationType === 'ORDINARY' ? 'ORDINARY' : '',
     senderUid: String(data.senderUid || ''),
     senderEmail: String(data.senderEmail || ''),
     stats: {
@@ -146,6 +148,9 @@ export async function POST(request: NextRequest) {
       senderUid: adminUserId,
       senderEmail: adminUserEmail,
       estado: 'borrador',
+      ...(parsed.data.notificationType
+        ? { notificationType: parsed.data.notificationType }
+        : {}),
       stats: { total: 0, enviados: 0, leidos: 0, pendientes: 0, errores: 0 },
       createdAt: FieldValue.serverTimestamp(),
       startedAt: null,

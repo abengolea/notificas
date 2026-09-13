@@ -12,13 +12,15 @@ const cuitRegex = /^\d{2}-\d{8}-\d{1}$/;
 const postSchema = z.object({
   nombre: z.string().min(2).max(200),
   cuit: z.string().regex(cuitRegex, "CUIT con formato XX-XXXXXXXX-X"),
-  tipo: z.enum(["empresa", "estudio_juridico", "consumidores", "otro"]),
+  tipo: z.enum(["empresa", "estudio_juridico", "consumidores", "art", "otro"]),
   /** Email del responsable (se crea en Auth si no existe). */
   adminUserEmail: z.string().email(),
   plan: z.enum(["starter", "business", "enterprise"]).optional(),
   logoUrl: z.string().url().optional().nullable(),
   /** Emails adicionales (usuarios registrados) a incluir en `members`. */
   extraMemberEmails: z.array(z.string().email()).optional(),
+  isTestOrganization: z.boolean().optional(),
+  environment: z.string().max(64).optional(),
 });
 
 function randomAuthPassword() {
@@ -116,6 +118,8 @@ export async function POST(request: NextRequest) {
       logoUrl: parsed.data.logoUrl ?? null,
       createdAt: FieldValue.serverTimestamp(),
       createdByAdmin: true,
+      ...(parsed.data.isTestOrganization === true ? { isTestOrganization: true } : {}),
+      ...(parsed.data.environment ? { environment: parsed.data.environment } : {}),
     });
 
     const userRef = db.collection("users").doc(adminUser.uid);

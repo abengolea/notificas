@@ -22,6 +22,7 @@ import { usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
 import { maybeCompleteCampaign } from '@/lib/campaign-complete';
 import { campaignIsStopped } from '@/lib/campaign-daily';
 import { pauseCampaignIfLimit } from '@/lib/campaign-auto-pause';
+import { campaignEmailSendShouldPause } from '@/lib/campaign-limit';
 import { waitCampaignSendGap } from '@/lib/campaign-send-pace';
 import { completeSimulatedSend, isCampaignSimulated } from '@/lib/campaign-simulate';
 import { presentRecipientValue, recipientValueText } from '@/lib/parse-campaign-csv';
@@ -169,6 +170,54 @@ async function processMessage(
   const campNow = await db.collection('campaigns').doc(campaignId).get();
   if (campaignIsStopped(campNow.data() || {})) return 'skipped';
 
+  const orgIdForArt = String(msg.orgId || campaign.orgId || '');
+  const { assertArtOutboundClassification, assertArtPilotOutboundRecipient } = await import('@/lib/art/outbound-guards');
+  const classified = assertArtOutboundClassification(orgIdForArt, campaign.notificationType);
+  if (!classified.ok) {
+    await msgRef.update({
+      estado: 'error',
+      errorCode: classified.code,
+      errorMsg: classified.code,
+      notificationType: campaign.notificationType || null,
+    });
+    return 'skipped';
+  }
+  const dest = assertArtPilotOutboundRecipient({
+    orgId: orgIdForArt,
+    email: msg.recipientEmail,
+    phone: msg.recipientTelefono,
+  });
+  if (!dest.ok) {
+    await msgRef.update({
+      estado: 'error',
+      errorCode: dest.code,
+      errorMsg: dest.code,
+    });
+    return 'skipped';
+  }
+
+  if (String(campaign.notificationType || '') === 'SRT_ART') {
+    const { checkSrtArtEligibility } = await import('@/lib/art/srt-gate');
+    const gate = await checkSrtArtEligibility({
+      orgId: String(msg.orgId || campaign.orgId || ''),
+      notificationType: 'SRT_ART',
+      dni: String(msg.recipientDni || ''),
+      phone: String(msg.recipientTelefono || ''),
+      email: String(msg.recipientEmail || ''),
+    });
+    if (gate && !gate.eligibleForElectronicNotification) {
+      await msgRef.update({
+        estado: 'error',
+        errorCode: 'REQUIRES_CONVENTIONAL_CHANNEL',
+        errorMsg: gate.reason,
+        conventionalChannelRequired: true,
+        eligibleForElectronicNotification: false,
+        notificationType: 'SRT_ART',
+      });
+      return 'skipped';
+    }
+  }
+
   const canal: string = campaign.canal || 'email';
   const emailRaw = String(msg.recipientEmail || '').toLowerCase();
   // Tratar emails sintéticos (generados por CSV parser cuando no hay email real) como "sin email".
@@ -267,6 +316,7 @@ async function processMessage(
           } : {}),
           ...(waOnly ? { waOnly: true } : {}),
           ...(isCampaignSimulated(campaign) ? { simulated: true } : {}),
+          notificationType: String(campaign.notificationType || '') === 'SRT_ART' ? 'SRT_ART' : 'ORDINARY',
           ...(typeof campaign.publicApiBatchId === 'string' && campaign.publicApiBatchId
             ? {
                 orgId,
@@ -279,6 +329,31 @@ async function processMessage(
               }
             : {}),
         });
+        if (String(campaign.notificationType || '') === 'SRT_ART' && mailId) {
+          const { appendArtAuditEvent } = await import('@/lib/art/audit');
+          const { findRecipientForSrt } = await import('@/lib/art/store');
+          const rec = await findRecipientForSrt(orgId, {
+            dni: String(msg.recipientDni || ''),
+            phone: String(msg.recipientTelefono || ''),
+            email: String(msg.recipientEmail || ''),
+          });
+          if (rec) {
+            await appendArtAuditEvent({
+              orgId,
+              recipientId: rec.id,
+              type: 'NOTIFICATION_SENT',
+              actor: 'campaign_worker',
+              source: 'campaign',
+              metadata: {
+                notificationType: 'SRT_ART',
+                campaignId,
+                messageDocId,
+                mailId,
+                classification: 'Notificación electrónica SRT',
+              },
+            }).catch(() => undefined);
+          }
+        }
         await msgRef.update({
           mailId,
           mailClaimLock: FieldValue.delete(),
@@ -410,11 +485,16 @@ async function processMessage(
   if (cfResult.skipped) return 'skipped';
 
   if (!cfResult.ok) {
+    const emailPause = campaignEmailSendShouldPause({
+      canal,
+      error: cfResult.error,
+      limitHit: cfResult.limitHit,
+    });
     const limit = await pauseCampaignIfLimit(campaignId, cfResult.error, {
       httpStatus: cfResult.httpStatus,
       errorCode: cfResult.errorCode,
-      limitHit: cfResult.limitHit,
-      limitSource: cfResult.limitSource,
+      limitHit: emailPause || cfResult.limitHit === true,
+      limitSource: cfResult.limitSource || (emailPause ? 'resend' : undefined),
     });
     if (limit) return 'limit_paused';
 

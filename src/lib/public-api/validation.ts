@@ -46,6 +46,8 @@ export const createNotificationSchema = z
     body: z.string().trim().min(1).max(20000).optional(),
     reference: z.string().trim().max(128).optional(),
     metadata: metadataSchema,
+    notification_type: z.enum(["ORDINARY", "SRT_ART"]).optional(),
+    art_recipient_id: z.string().trim().max(80).optional(),
   })
   .strict();
 
@@ -71,6 +73,7 @@ export const createBatchSchema = z
     body: z.string().trim().max(20000).optional(),
     reference: z.string().trim().max(128).optional(),
     metadata: metadataSchema,
+    notification_type: z.enum(["ORDINARY", "SRT_ART"]).optional(),
     recipients: z.array(batchRecipientSchema).min(1).max(MAX_BATCH_RECIPIENTS),
   })
   .strict();
@@ -85,6 +88,13 @@ export const WEBHOOK_EVENT_TYPES = [
   "notification.failed",
   "notification.certificate_ready",
   "batch.completed",
+  "art.adhesion.created",
+  "art.adhesion.activated",
+  "art.adhesion.revoked",
+  "art.identity.verified",
+  "art.identity.failed",
+  "art.contact.changed",
+  "art.recipient.requires_conventional_channel",
 ] as const;
 
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];

@@ -32,7 +32,7 @@ const cuitRegex = /^\d{2}-\d{8}-\d{1}$/;
 const schema = z.object({
   nombre: z.string().min(2),
   cuit: z.string().regex(cuitRegex, "Formato XX-XXXXXXXX-X"),
-  tipo: z.enum(["empresa", "estudio_juridico", "consumidores", "otro"]),
+  tipo: z.enum(["empresa", "estudio_juridico", "consumidores", "art", "otro"]),
   adminUserEmail: z.string().email(),
   plan: z.enum(["starter", "business", "enterprise"]),
   extraMemberEmails: z.string().optional(),
@@ -201,6 +201,7 @@ export default function OrganizationsAdmin() {
                   <SelectItem value="empresa">Empresa</SelectItem>
                   <SelectItem value="estudio_juridico">Estudio jurídico</SelectItem>
                   <SelectItem value="consumidores">Consumidores</SelectItem>
+                  <SelectItem value="art">ART / autoasegurado</SelectItem>
                   <SelectItem value="otro">Otro</SelectItem>
                 </SelectContent>
               </Select>

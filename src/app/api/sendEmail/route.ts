@@ -63,6 +63,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No autorizado para enviar este mensaje' }, { status: 403 });
     }
 
+    const mailData = mailSnap.data() || {};
+    const orgId = typeof mailData.orgId === 'string' ? mailData.orgId : '';
+    if (orgId) {
+      const { assertArtOutboundClassification, assertArtPilotOutboundRecipient } = await import('@/lib/art/outbound-guards');
+      const classified = assertArtOutboundClassification(orgId, mailData.notificationType);
+      if (!classified.ok) {
+        return NextResponse.json({ error: classified.code, code: classified.code }, { status: classified.httpStatus });
+      }
+      const dest = assertArtPilotOutboundRecipient({
+        orgId,
+        email: Array.isArray(mailData.to) ? mailData.to[0] : mailData.recipientEmail || mailData.to,
+        phone: mailData.recipientPhone,
+      });
+      if (!dest.ok) {
+        return NextResponse.json({ error: dest.code, code: dest.code }, { status: dest.httpStatus });
+      }
+      if (classified.value === 'SRT_ART' || mailData.notificationType === 'SRT_ART') {
+        const { checkSrtArtEligibility } = await import('@/lib/art/srt-gate');
+        const gate = await checkSrtArtEligibility({
+          orgId,
+          notificationType: 'SRT_ART',
+          dni: mailData.recipientDni,
+          phone: mailData.recipientPhone,
+          email: Array.isArray(mailData.to) ? mailData.to[0] : mailData.recipientEmail || mailData.to,
+        });
+        if (gate && !gate.eligibleForElectronicNotification) {
+          return NextResponse.json(
+            {
+              error: 'REQUIRES_CONVENTIONAL_CHANNEL',
+              code: gate.reason,
+              eligibleForElectronicNotification: false,
+              conventionalChannelRequired: true,
+            },
+            { status: 422 }
+          );
+        }
+      }
+    }
+
     // Llamar a la Cloud Function para enviar email + WhatsApp
     const functionUrl = getFirebaseSendEmailUrl();
     const cfController = new AbortController();
@@ -92,6 +131,31 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await response.json();
+
+    if (orgId && (mailData.notificationType === 'SRT_ART' || mailData.notificationType === 'ORDINARY')) {
+      void (async () => {
+        const { artModuleAvailableForOrg } = await import('@/lib/art/pilot');
+        if (!artModuleAvailableForOrg(orgId)) return;
+        const { findRecipientForSrt } = await import('@/lib/art/store');
+        const { appendArtAuditEvent } = await import('@/lib/art/audit');
+        const rec = await findRecipientForSrt(orgId, {
+          dni: mailData.recipientDni,
+          phone: mailData.recipientPhone,
+          email: Array.isArray(mailData.to) ? mailData.to[0] : mailData.recipientEmail || mailData.to,
+        });
+        await appendArtAuditEvent({
+          orgId,
+          recipientId: rec?.id || null,
+          type: 'NOTIFICATION_SENT',
+          actor: decoded.uid,
+          source: 'individual_send',
+          metadata: {
+            notificationType: mailData.notificationType,
+            mailId: docId,
+          },
+        });
+      })().catch(() => undefined);
+    }
 
     // Guardar destinatario en libreta personal (no bloquea la respuesta).
     void guardarContactoDesdeMail(mailSnap.data()!);

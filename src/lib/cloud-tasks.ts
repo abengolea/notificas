@@ -252,6 +252,11 @@ export async function enqueuePublicApiWebhookDeliver(
   );
 }
 
+/** Tareas del módulo ART (alta masiva / invitaciones). Reusa la misma cola. */
+export async function enqueueArtTask(path: string, payload: unknown, taskId?: string): Promise<void> {
+  await enqueueTask(path, payload, taskId, 0, { localDetach: true });
+}
+
 /** Cierra (o intenta cerrar) una tanda Merkle. delaySeconds=0 = inmediato (lleno). idle = cierre por inactividad. */
 export async function enqueueIntegrityClose(
   campaignId: string,

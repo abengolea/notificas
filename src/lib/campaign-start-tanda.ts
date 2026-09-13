@@ -111,6 +111,26 @@ export async function startCampaignTanda(params: {
     throw Object.assign(new Error(`Máximo ${params.maxRecipients} destinatarios para este plan`), { status: 400 });
   }
 
+  const orgId = String(campaign.orgId || '');
+  if (orgId) {
+    const { assertArtOutboundClassification, assertArtPilotCampaignSize, assertArtPilotOutboundRecipient } = await import('@/lib/art/outbound-guards');
+    const classified = assertArtOutboundClassification(orgId, campaign.notificationType);
+    if (!classified.ok) {
+      throw Object.assign(new Error(classified.code), { status: classified.httpStatus, code: classified.code });
+    }
+    const size = assertArtPilotCampaignSize(orgId, total);
+    if (!size.ok) {
+      throw Object.assign(new Error(size.code), { status: size.httpStatus, code: size.code });
+    }
+    const inline = Array.isArray(campaign.recipientData) ? (campaign.recipientData as RecipientEntry[]) : [];
+    for (const row of inline) {
+      const dest = assertArtPilotOutboundRecipient({ orgId, email: row.email, phone: row.telefono });
+      if (!dest.ok) {
+        throw Object.assign(new Error(dest.code), { status: dest.httpStatus, code: dest.code });
+      }
+    }
+  }
+
   const alreadySent = await countCampaignSuccess(params.campaignId);
   const remaining = Math.max(0, total - alreadySent);
   const upcomingQuota =

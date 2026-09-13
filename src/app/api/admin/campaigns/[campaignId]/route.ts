@@ -19,6 +19,7 @@ const patchSchema = z.object({
   waUrlButton: z.boolean().optional(),
   waTemplateBody: z.string().max(20000).optional(),
   tandaSize: z.number().int().min(0).optional(),
+  notificationType: z.enum(['ORDINARY', 'SRT_ART']).optional(),
 });
 
 function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
@@ -45,6 +46,7 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     waTemplateBody: String(data.waTemplateBody || ''),
     managedByAdmin: data.managedByAdmin === true,
     simulated: data.simulated === true,
+    notificationType: data.notificationType === 'SRT_ART' ? 'SRT_ART' : data.notificationType === 'ORDINARY' ? 'ORDINARY' : '',
     autoPauseSource: typeof data.autoPauseSource === 'string' ? data.autoPauseSource : '',
     autoPauseReason: typeof data.autoPauseReason === 'string' ? data.autoPauseReason : '',
     autoPauseCode: typeof data.autoPauseCode === 'string' ? data.autoPauseCode : '',
@@ -169,6 +171,7 @@ export async function PATCH(
       );
     }
     if (d.tandaSize != null) patch.tandaSize = d.tandaSize;
+    if (d.notificationType != null) patch.notificationType = d.notificationType;
 
     await ref.update(patch);
     const updated = await ref.get();

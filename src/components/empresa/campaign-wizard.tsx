@@ -232,6 +232,8 @@ export function CampaignWizard({
   const [existingPaired, setExistingPaired] = useState<Record<string, CampaignAttachment[]> | null>(null);
   const [loadingCampaign, setLoadingCampaign] = useState(Boolean(editCampaignId));
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [artModuleOn, setArtModuleOn] = useState(false);
+  const [notificationType, setNotificationType] = useState<"" | "ORDINARY" | "SRT_ART">("");
   const orgPlan = isAdmin ? adminOrgPlan : orgPlanProp;
   const maxR = isAdmin ? 1_000_000 : maxRecipientsForPlan(orgPlan);
   const recipientTotal =
@@ -260,6 +262,13 @@ export function CampaignWizard({
   useEffect(() => {
     setStep((s) => Math.min(s, stepIds.length));
   }, [stepIds.length]);
+
+  useEffect(() => {
+    void fetch(`/api/art/status?orgId=${encodeURIComponent(orgId)}`)
+      .then((r) => r.json())
+      .then((d) => setArtModuleOn(d.enabled === true))
+      .catch(() => setArtModuleOn(false));
+  }, [orgId]);
 
   useEffect(() => {
     if (isAdmin) return;
@@ -351,6 +360,7 @@ export function CampaignWizard({
             waTemplateVariables?: string[];
             waUrlButton?: boolean;
             waTemplateBody?: string;
+            notificationType?: string;
           };
           if (!isUnsentCampaign(c)) throw new Error(UNSENT_EDIT_ERROR);
           if (cancelled) return;
@@ -372,6 +382,9 @@ export function CampaignWizard({
           }
           setWaUrlButton(c.waUrlButton === true);
           setWaTemplateBody(String(c.waTemplateBody || c.cuerpo || ""));
+          if (c.notificationType === "SRT_ART" || c.notificationType === "ORDINARY") {
+            setNotificationType(c.notificationType);
+          }
         } else {
           const snap = await getDoc(doc(db, "campaigns", editCampaignId));
           if (!snap.exists()) throw new Error("Campaña no encontrada");
@@ -397,6 +410,9 @@ export function CampaignWizard({
           }
           setWaUrlButton(x.waUrlButton === true);
           setWaTemplateBody(String(x.waTemplateBody || x.cuerpo || ""));
+          if (x.notificationType === "SRT_ART" || x.notificationType === "ORDINARY") {
+            setNotificationType(x.notificationType);
+          }
           setExistingAttachments(Array.isArray(x.adjuntos) ? x.adjuntos : []);
           const paired = x.adjuntosPorDestinatario;
           if (paired && typeof paired === "object" && !Array.isArray(paired)) {
@@ -625,11 +641,33 @@ export function CampaignWizard({
     toast({ title: `${next.length} destinatarios`, description: "Combinados con la lista actual" });
   }
 
+  function assertNotificationClassification(): boolean {
+    if (!artModuleOn) return true;
+    if (recipientTotal > 10) {
+      toast({
+        title: "Límite de piloto",
+        description: "En piloto no se pueden superar 10 destinatarios.",
+        variant: "destructive",
+      });
+      return false;
+    }
+    if (notificationType !== "ORDINARY" && notificationType !== "SRT_ART") {
+      toast({
+        title: "Clasificá el envío",
+        description: "Elegí comunicación ordinaria o notificación electrónica SRT.",
+        variant: "destructive",
+      });
+      return false;
+    }
+    return true;
+  }
+
   async function runSubmitAdmin(sendNow: boolean) {
     if (!orgId) {
       toast({ title: "Elegí la empresa", variant: "destructive" });
       return;
     }
+    if (!assertNotificationClassification()) return;
     const copy = campaignCopyFields(canal, campaniaNombre, asunto, cuerpo, {
       waTemplateName,
       waTemplateBody,
@@ -681,6 +719,7 @@ export function CampaignWizard({
             waUrlButton,
             waTemplateBody: waTemplateBody.trim(),
             tandaSize: simulated ? 0 : tandaSize,
+            ...(artModuleOn && notificationType ? { notificationType } : {}),
           }),
         });
         const patched = await patchRes.json();
@@ -703,6 +742,7 @@ export function CampaignWizard({
             waTemplateBody: waTemplateBody.trim() || undefined,
             tandaSize: simulated ? 0 : tandaSize,
             simulated,
+            ...(artModuleOn && notificationType ? { notificationType } : {}),
           }),
         });
         const created = await createRes.json();
@@ -791,6 +831,7 @@ export function CampaignWizard({
     }
     const user = auth.currentUser;
     if (!user) return;
+    if (!assertNotificationClassification()) return;
     const copy = campaignCopyFields(canal, campaniaNombre, asunto, cuerpo, {
       waTemplateName,
       waTemplateBody,
@@ -924,6 +965,9 @@ export function CampaignWizard({
         cuerpo: copy.cuerpo,
         adjuntos: adjuntosGlobales,
         recipientListId: listId || null,
+        ...(artModuleOn && (notificationType === "ORDINARY" || notificationType === "SRT_ART")
+          ? { notificationType }
+          : {}),
       };
 
       const token = await user.getIdToken();
@@ -1867,7 +1911,34 @@ export function CampaignWizard({
             <CardTitle>Revisión y confirmación</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Resumen */}
+            {artModuleOn ? (
+              <div className="space-y-3 rounded-md border p-3">
+                <p className="text-sm font-medium">Clasificación del envío</p>
+                <p className="text-xs text-muted-foreground">
+                  Obligatorio. Las notificaciones electrónicas SRT siempre pasan el control de adhesión. Las comunicaciones ordinarias no.
+                </p>
+                <RadioGroup
+                  value={notificationType}
+                  onValueChange={(v) => setNotificationType(v === "SRT_ART" ? "SRT_ART" : "ORDINARY")}
+                  className="gap-3"
+                >
+                  <label className="flex items-start gap-3 text-sm">
+                    <RadioGroupItem value="ORDINARY" id="nt-ordinary" />
+                    <span>
+                      <span className="font-medium">Comunicación ordinaria</span>
+                      <span className="block text-xs text-muted-foreground">No se trata como notificación electrónica SRT.</span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-3 text-sm">
+                    <RadioGroupItem value="SRT_ART" id="nt-srt" />
+                    <span>
+                      <span className="font-medium">Notificación electrónica SRT</span>
+                      <span className="block text-xs text-muted-foreground">Exige adhesión activa. Si no hay elegibilidad, no se envía.</span>
+                    </span>
+                  </label>
+                </RadioGroup>
+              </div>
+            ) : null}
             <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
               <div className="flex gap-4 flex-wrap">
                 <span><strong>Canal:</strong> {canal === "email" ? "Email" : canal === "whatsapp" ? "WhatsApp" : "Email + WhatsApp"}</span>

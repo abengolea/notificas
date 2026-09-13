@@ -30,6 +30,7 @@ tags:
   - name: Batches
   - name: Webhooks
   - name: Account
+  - name: ART
 security:
   - BearerAuth: []
 paths:
@@ -148,7 +149,10 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
         "422":
-          $ref: "#/components/responses/Error"
+          description: Créditos insuficientes, o SRT_ART no elegible (eligibleForElectronicNotification=false).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "429":
           $ref: "#/components/responses/RateLimited"
   /api/v1/notifications/{notification_id}:
@@ -287,6 +291,129 @@ paths:
       responses:
         "200":
           description: Desactivado
+  /api/v1/art/recipients:
+    get:
+      tags: [ART]
+      summary: Listar perfiles ART (requiere ART_MODULE_ENABLED)
+      operationId: listArtRecipients
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Módulo ART desactivado
+    post:
+      tags: [ART]
+      summary: Alta de trabajador / adhesión
+      operationId: createArtRecipient
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cuil, dni, phone]
+              properties:
+                cuil: { type: string }
+                dni: { type: string }
+                full_name: { type: string }
+                first_name: { type: string }
+                last_name: { type: string }
+                phone: { type: string }
+                email: { type: string }
+                external_id: { type: string }
+                identity_prevalidated: { type: boolean }
+                send_invite: { type: boolean }
+      responses:
+        "201":
+          description: Creado
+        "404":
+          description: Módulo ART desactivado
+  /api/v1/art/recipients/bulk:
+    post:
+      tags: [ART]
+      summary: Alta masiva CSV (asíncrona)
+      operationId: bulkCreateArtRecipients
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [csv]
+              properties:
+                csv: { type: string }
+                send_invites: { type: boolean }
+                identity_prevalidated: { type: boolean }
+      responses:
+        "202":
+          description: Lote encolado
+  /api/v1/art/recipients/{id}:
+    get:
+      tags: [ART]
+      summary: Obtener trabajador
+      operationId: getArtRecipient
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: No encontrado o módulo off
+  /api/v1/art/recipients/{id}/eligibility:
+    get:
+      tags: [ART]
+      summary: Elegibilidad para SRT_ART
+      operationId: getArtRecipientEligibility
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: eligibleForElectronicNotification / reason / conventionalChannelRequired
+  /api/v1/art/recipients/{id}/invite:
+    post:
+      tags: [ART]
+      summary: Reenviar invitación de adhesión
+      operationId: inviteArtRecipient
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: URL de adhesión
+  /api/v1/art/recipients/{id}/adhesion:
+    get:
+      tags: [ART]
+      summary: Estado de adhesión
+      operationId: getArtAdhesion
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+  /api/v1/art/recipients/{id}/evidence:
+    get:
+      tags: [ART]
+      summary: Evidencia JSON de adhesión
+      operationId: getArtEvidence
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: JSON técnico
 webhooks:
   notificationEvent:
     post:
@@ -390,6 +517,8 @@ components:
         metadata:
           type: object
           additionalProperties: true
+        notification_type: { type: string, enum: [ORDINARY, SRT_ART] }
+        art_recipient_id: { type: string }
     NotificationCreated:
       type: object
       properties:
@@ -434,6 +563,7 @@ components:
         body: { type: string }
         reference: { type: string }
         metadata: { type: object }
+        notification_type: { type: string, enum: [ORDINARY, SRT_ART] }
         recipients:
           type: array
           maxItems: 5000
@@ -484,6 +614,13 @@ components:
               - notification.failed
               - notification.certificate_ready
               - batch.completed
+              - art.adhesion.created
+              - art.adhesion.activated
+              - art.adhesion.revoked
+              - art.identity.verified
+              - art.identity.failed
+              - art.contact.changed
+              - art.recipient.requires_conventional_channel
         description: { type: string }
     WebhookEndpointCreated:
       type: object

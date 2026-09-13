@@ -142,6 +142,68 @@ export async function createPublicNotification(
     throw invalidRequest("invalid_request", issue?.message || "Invalid request.", issue?.path.join(".") || undefined);
   }
   const input: CreateNotificationInput = parsed.data;
+
+  const { assertArtOutboundClassification, assertArtPilotOutboundRecipient } = await import("@/lib/art/outbound-guards");
+  const classified = assertArtOutboundClassification(ctx.orgId, input.notification_type);
+  if (!classified.ok) {
+    throw invalidRequest(classified.code, "Explicit notification_type is required for ART organizations.", "notification_type");
+  }
+  const dest = assertArtPilotOutboundRecipient({
+    orgId: ctx.orgId,
+    email: input.recipient.email,
+    phone: input.recipient.phone,
+  });
+  if (!dest.ok) {
+    const { PublicApiError } = await import("@/lib/public-api/errors");
+    throw new PublicApiError({
+      httpStatus: dest.httpStatus,
+      type: "authorization_error",
+      code: dest.code,
+      message: dest.code,
+    });
+  }
+
+  if (input.notification_type === "SRT_ART") {
+    const { checkSrtArtEligibility } = await import("@/lib/art/srt-gate");
+    const gate = await checkSrtArtEligibility({
+      orgId: ctx.orgId,
+      notificationType: input.notification_type,
+      recipientId: input.art_recipient_id,
+      dni: input.recipient.document,
+      phone: input.recipient.phone,
+      email: input.recipient.email,
+    });
+    if (gate && !gate.eligibleForElectronicNotification) {
+      return {
+        httpStatus: 422,
+        body: {
+          eligibleForElectronicNotification: false,
+          reason: gate.reason,
+          conventionalChannelRequired: true,
+          error: {
+            type: "validation_error",
+            code: "requires_conventional_channel",
+            message: "Recipient is not eligible for SRT electronic notification.",
+          },
+        },
+      };
+    }
+    if (gate?.recipientId && gate.eligibleForElectronicNotification) {
+      const { appendArtAuditEvent } = await import("@/lib/art/audit");
+      await appendArtAuditEvent({
+        orgId: ctx.orgId,
+        recipientId: gate.recipientId,
+        type: "NOTIFICATION_SENT",
+        actor: ctx.apiKeyPrefix,
+        source: "public_api",
+        metadata: {
+          notificationType: "SRT_ART",
+          classification: "Notificación electrónica SRT",
+        },
+      }).catch(() => undefined);
+    }
+  }
+
   const variables = sanitizeVariables(input.variables);
   const metadata = {
     ...sanitizeMetadata(input.metadata as Record<string, string | number | boolean> | undefined),
@@ -239,6 +301,7 @@ export async function createPublicNotification(
     apiChannel: input.channel,
     testMode: ctx.testMode,
     requestId: ctx.requestId,
+    notificationType: classified.value === "SRT_ART" ? "SRT_ART" : classified.value === "ORDINARY" ? "ORDINARY" : input.notification_type === "SRT_ART" ? "SRT_ART" : "ORDINARY",
     ...(tpl.useDefault
       ? {}
       : {

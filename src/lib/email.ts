@@ -22,6 +22,8 @@ export type ScheduleEmailParams = {
   orgId?: string;
   /** Solo WhatsApp: no se despacha SMTP. */
   waOnly?: boolean;
+  /** Clasificación explícita para organizaciones ART. */
+  notificationType?: "ORDINARY" | "SRT_ART";
 };
 
 /** Lista de correos para `to`, `cc`, `bcc`: minúsculas + trim (alineado con queries y reglas). */
@@ -38,7 +40,7 @@ function normalizedEmailIdentity(value?: string): string | undefined {
 }
 
 export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend?: boolean }): Promise<string> {
-  const { to, subject, html, text, from, replyTo, cc, bcc, recipientName, recipientEmail, recipientPhone, recipientDni, recipientCuit, senderName, createdBy, orgId, waOnly, skipAutoSend = false } = params;
+  const { to, subject, html, text, from, replyTo, cc, bcc, recipientName, recipientEmail, recipientPhone, recipientDni, recipientCuit, senderName, createdBy, orgId, waOnly, notificationType, skipAutoSend = false } = params;
 
   const payload: any = {
     to: normalizeEmailList(to),
@@ -66,6 +68,9 @@ export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend
   if (createdBy) payload.createdBy = createdBy;
   if (orgId) payload.orgId = orgId;
   if (waOnly) payload.waOnly = true;
+  if (notificationType === "SRT_ART" || notificationType === "ORDINARY") {
+    payload.notificationType = notificationType;
+  }
 
   // 🚨 ID ÚNICO PARA EVITAR DUPLICADOS
   const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;

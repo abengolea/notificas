@@ -139,13 +139,17 @@ export interface Organization {
   id: string;
   nombre: string;
   cuit: string;
-  tipo: 'empresa' | 'estudio_juridico' | 'consumidores' | 'otro';
+  tipo: 'empresa' | 'estudio_juridico' | 'consumidores' | 'art' | 'otro';
   adminUserId: string;
   /** Denormalizado (alta vía admin) para listados en panel. */
   adminUserEmail?: string;
   members: string[];
   plan: 'starter' | 'business' | 'enterprise';
   logoUrl?: string;
+  /** Solo organizaciones de prueba controladas (p. ej. piloto ART). */
+  isTestOrganization?: boolean;
+  /** p. ej. production_pilot. No usar en orgs de clientes. */
+  environment?: string;
   createdAt: unknown;
 }
 
@@ -239,11 +243,13 @@ export interface Campaign {
     urlButton: boolean;
     sealedAt?: unknown;
   };
-  /** Pausa automática por límite de WhatsApp, Polygon o Google Cloud. */
-  autoPauseSource?: 'whatsapp' | 'polygon' | 'gcp';
+  /** Pausa automática por WhatsApp, Polygon, GCP, Resend/correo o créditos. */
+  autoPauseSource?: 'whatsapp' | 'polygon' | 'gcp' | 'resend' | 'credits';
   autoPauseReason?: string;
   autoPauseCode?: string;
   autoPausedAt?: unknown;
+  /** Clasificación explícita cuando el módulo ART está activo. Ausente = ordinaria (legado). */
+  notificationType?: 'ORDINARY' | 'SRT_ART';
   estado: 'borrador' | 'enviando' | 'pausada' | 'completada' | 'cancelada';
   stats: {
     total: number;

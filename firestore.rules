@@ -310,7 +310,7 @@ service cloud.firestore {
       allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
     }
 
-    // API pública v1: solo Admin SDK (API keys, notificaciones, webhooks, auditoría).
+    // API pública v1 + módulo ART: solo Admin SDK.
     match /api_keys/{id} { allow read, write: if false; }
     match /api_notifications/{id} { allow read, write: if false; }
     match /api_batches/{id} { allow read, write: if false; }
@@ -328,6 +328,20 @@ service cloud.firestore {
     match /oauth_refresh_tokens/{id} { allow read, write: if false; }
     match /mcp_audit_logs/{id} { allow read, write: if false; }
     match /mcp_rate_limits/{id} { allow read, write: if false; }
+
+    // Módulo ART / adhesión electrónica: solo Admin SDK (nunca el cliente web).
+    match /art_configs/{id} { allow read, write: if false; }
+    match /art_recipients/{id} { allow read, write: if false; }
+    match /art_invitations/{id} { allow read, write: if false; }
+    match /art_manage_tokens/{id} { allow read, write: if false; }
+    match /art_terms_versions/{id} { allow read, write: if false; }
+    match /art_audit_events/{id} { allow read, write: if false; }
+    match /art_otp_challenges/{id} { allow read, write: if false; }
+    match /art_contact_history/{id} { allow read, write: if false; }
+    match /art_bulk_jobs/{id} { allow read, write: if false; }
+    match /art_bulk_rows/{id} { allow read, write: if false; }
+    match /art_evidence/{id} { allow read, write: if false; }
+    match /art_rate_limits/{id} { allow read, write: if false; }
 
     match /{document=**} {
       allow read, write: if false;
