@@ -200,6 +200,10 @@ env:
     value: "abengolea1@gmail.com,adrianbengolea@notificas.com"
     availability:
       - RUNTIME
+  - variable: ART_PILOT_PHONE_ALLOWLIST
+    value: "+5493364645357"
+    availability:
+      - RUNTIME
   - variable: ART_PILOT_MAX_RECIPIENTS
     value: "10"
     availability:
