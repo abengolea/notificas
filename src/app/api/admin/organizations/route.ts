@@ -124,7 +124,6 @@ export async function POST(request: NextRequest) {
 
     const userRef = db.collection("users").doc(adminUser.uid);
     const userSnap = await userRef.get();
-    const userTipo = "empresa";
     const prev = userSnap.exists ? (userSnap.data() as Record<string, unknown>) : undefined;
     const needsPasswordOnboarding =
       authCreated || !userSnap.exists || hasPendingPasswordOnboarding(prev);
@@ -138,7 +137,7 @@ export async function POST(request: NextRequest) {
       await userRef.set({
         uid: adminUser.uid,
         email: adminEmail,
-        tipo: userTipo,
+        tipo: "empresa",
         perfil: {
           nombre: adminUser.displayName?.trim() || orgNombre,
           cuit: parsed.data.cuit.trim(),
@@ -153,9 +152,7 @@ export async function POST(request: NextRequest) {
         ...onboardingFields,
       });
     } else if (needsPasswordOnboarding) {
-      await userRef.set({ tipo: userTipo, ...onboardingFields }, { merge: true });
-    } else {
-      await userRef.set({ tipo: userTipo }, { merge: true });
+      await userRef.set({ ...onboardingFields }, { merge: true });
     }
 
     const mailResult = await sendEmpresaAdminOnboardingEmail({

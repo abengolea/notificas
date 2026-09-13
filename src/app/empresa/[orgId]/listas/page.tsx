@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { listenWhenSignedIn } from "@/lib/listen-when-signed-in";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -13,19 +14,28 @@ export default function ListasPage() {
   const [rows, setRows] = useState<{ id: string; nombre: string; count: number }[]>([]);
 
   useEffect(() => {
-    const q = query(collection(db, "recipient_lists"), where("orgId", "==", orgId), orderBy("updatedAt", "desc"));
-    return onSnapshot(q, (snap) => {
-      setRows(
-        snap.docs.map((d) => {
-          const x = d.data();
-          return {
-            id: d.id,
-            nombre: String(x.nombre || ""),
-            count: typeof x.count === "number" ? x.count : 0,
-          };
-        })
-      );
-    });
+    return listenWhenSignedIn(
+      () => {
+        const q = query(collection(db, "recipient_lists"), where("orgId", "==", orgId), orderBy("updatedAt", "desc"));
+        return onSnapshot(
+          q,
+          (snap) => {
+            setRows(
+              snap.docs.map((d) => {
+                const x = d.data();
+                return {
+                  id: d.id,
+                  nombre: String(x.nombre || ""),
+                  count: typeof x.count === "number" ? x.count : 0,
+                };
+              })
+            );
+          },
+          () => setRows([]),
+        );
+      },
+      () => setRows([]),
+    );
   }, [orgId]);
 
   return (

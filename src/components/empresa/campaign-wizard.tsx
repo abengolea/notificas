@@ -15,6 +15,7 @@ import {
   where,
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import { listenWhenSignedIn } from "@/lib/listen-when-signed-in";
 import { normalizeEnviosDisponibles } from "@/lib/envios";
 import type { CampaignAttachment, CanalCampaign, RecipientEntry, RecipientList as RecipientListType } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -273,39 +274,61 @@ export function CampaignWizard({
   useEffect(() => {
     if (isAdmin) return;
     if (!orgId) return;
-    const q = query(collection(db, "recipient_lists"), where("orgId", "==", orgId));
-    const unsub = onSnapshot(q, (snap) => {
-      setLists(
-        snap.docs.map((d) => {
-          const x = d.data();
-          return {
-            id: d.id,
-            orgId: String(x.orgId),
-            nombre: String(x.nombre),
-            recipients: Array.isArray(x.recipients) ? x.recipients : [],
-            count: typeof x.count === "number" ? x.count : 0,
-            createdAt: x.createdAt,
-            updatedAt: x.updatedAt,
-          };
-        })
-      );
-    });
-    return () => unsub();
+    return listenWhenSignedIn(
+      () => {
+        const q = query(collection(db, "recipient_lists"), where("orgId", "==", orgId));
+        return onSnapshot(
+          q,
+          (snap) => {
+            setLists(
+              snap.docs.map((d) => {
+                const x = d.data();
+                return {
+                  id: d.id,
+                  orgId: String(x.orgId),
+                  nombre: String(x.nombre),
+                  recipients: Array.isArray(x.recipients) ? x.recipients : [],
+                  count: typeof x.count === "number" ? x.count : 0,
+                  createdAt: x.createdAt,
+                  updatedAt: x.updatedAt,
+                };
+              })
+            );
+          },
+          () => setLists([]),
+        );
+      },
+      () => setLists([]),
+    );
   }, [orgId, isAdmin]);
 
   useEffect(() => {
     if (isAdmin) return;
-    const u = auth.currentUser;
-    if (!u) {
-      setCreditos(0);
-      setCreditosReady(true);
-      return;
-    }
-    const unsub = onSnapshot(doc(db, "users", u.uid), (s) => {
-      setCreditos(normalizeEnviosDisponibles(s.data()?.creditos));
-      setCreditosReady(true);
-    });
-    return () => unsub();
+    return listenWhenSignedIn(
+      () => {
+        const u = auth.currentUser;
+        if (!u) {
+          setCreditos(0);
+          setCreditosReady(true);
+          return () => undefined;
+        }
+        return onSnapshot(
+          doc(db, "users", u.uid),
+          (s) => {
+            setCreditos(normalizeEnviosDisponibles(s.data()?.creditos));
+            setCreditosReady(true);
+          },
+          () => {
+            setCreditos(0);
+            setCreditosReady(true);
+          },
+        );
+      },
+      () => {
+        setCreditos(0);
+        setCreditosReady(true);
+      },
+    );
   }, [isAdmin]);
 
   useEffect(() => {

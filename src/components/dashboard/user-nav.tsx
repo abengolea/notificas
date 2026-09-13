@@ -21,9 +21,11 @@ import {
 
 interface UserNavProps {
   user: User;
+  /** Omit to keep the particulares account link. Pass `null` to hide it. */
+  accountHref?: string | null;
 }
 
-export function UserNav({ user }: UserNavProps) {
+export function UserNav({ user, accountHref = "/dashboard/cuenta" }: UserNavProps) {
   const router = useRouter()
 
   const getInitials = (name: string) => {
@@ -37,7 +39,7 @@ export function UserNav({ user }: UserNavProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+        <Button variant="ghost" className="relative h-10 w-10 rounded-full" aria-label="Menú de usuario">
           <Avatar className="h-10 w-10">
             <AvatarImage src={user.avatarUrl} alt={user.perfil.nombre} />
             <AvatarFallback>{getInitials(user.perfil.nombre)}</AvatarFallback>
@@ -53,15 +55,19 @@ export function UserNav({ user }: UserNavProps) {
             </p>
           </div>
         </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuItem asChild>
-            <Link href="/dashboard/cuenta">
-              <UserIcon className="mr-2 h-4 w-4" />
-              <span>Mi cuenta</span>
-            </Link>
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
+        {accountHref ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem asChild>
+                <Link href={accountHref}>
+                  <UserIcon className="mr-2 h-4 w-4" />
+                  <span>Mi cuenta</span>
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={async () => {

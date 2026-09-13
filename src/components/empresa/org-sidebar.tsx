@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
+import { listenWhenSignedIn } from "@/lib/listen-when-signed-in";
 import type { Organization } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { LayoutDashboard, Mail, Megaphone, PenSquare, PlusCircle, Send, ShieldCheck, ClipboardCheck } from "lucide-react";
@@ -15,25 +16,32 @@ export function useOrganization(orgId: string) {
   const [org, setOrg] = useState<Organization | null>(null);
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "organizations", orgId), (s) => {
-      if (!s.exists()) {
-        setOrg(null);
-        return;
-      }
-      const d = s.data();
-      setOrg({
-        id: s.id,
-        nombre: String(d.nombre ?? ""),
-        cuit: String(d.cuit ?? ""),
-        tipo: d.tipo as Organization["tipo"],
-        adminUserId: String(d.adminUserId ?? ""),
-        members: Array.isArray(d.members) ? d.members : [],
-        plan: (d.plan as Organization["plan"]) || "starter",
-        logoUrl: d.logoUrl,
-        createdAt: d.createdAt,
-      });
-    });
-    return () => unsub();
+    return listenWhenSignedIn(
+      () =>
+        onSnapshot(
+          doc(db, "organizations", orgId),
+          (s) => {
+            if (!s.exists()) {
+              setOrg(null);
+              return;
+            }
+            const d = s.data();
+            setOrg({
+              id: s.id,
+              nombre: String(d.nombre ?? ""),
+              cuit: String(d.cuit ?? ""),
+              tipo: d.tipo as Organization["tipo"],
+              adminUserId: String(d.adminUserId ?? ""),
+              members: Array.isArray(d.members) ? d.members : [],
+              plan: (d.plan as Organization["plan"]) || "starter",
+              logoUrl: d.logoUrl,
+              createdAt: d.createdAt,
+            });
+          },
+          () => setOrg(null),
+        ),
+      () => setOrg(null),
+    );
   }, [orgId]);
 
   return org;
@@ -85,11 +93,13 @@ export function OrgSidebarNav({ orgId, org, onNavigate, className }: OrgSidebarN
       .catch(() => setArtEnabled(false));
   }, [orgId]);
 
+  const showArtNav = artEnabled || org?.tipo === "art";
+
   const links = [
     { href: `${base}/dashboard`, label: "Dashboard", icon: LayoutDashboard },
     { href: `${base}/campanas`, label: "Envíos masivos", icon: Megaphone },
     { href: `${base}/envios`, label: "Envíos individuales", icon: Send },
-    ...(artEnabled
+    ...(showArtNav
       ? [{ href: `${base}/adhesiones-electronicas`, label: "Adhesiones electrónicas", icon: ClipboardCheck }]
       : []),
     { href: `${base}/verificacion-meta`, label: "Verificación Meta", icon: ShieldCheck },

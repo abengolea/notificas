@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { listenWhenSignedIn } from "@/lib/listen-when-signed-in";
 import type { Campaign } from "@/lib/types";
 import { isAdminManagedCampaign, isUnsentCampaign } from "@/lib/campaign-edit";
 import { Button } from "@/components/ui/button";
@@ -17,9 +18,11 @@ export default function CampanasListPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const q = query(collection(db, "campaigns"), where("orgId", "==", orgId), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(
-      q,
+    return listenWhenSignedIn(
+      () => {
+        const q = query(collection(db, "campaigns"), where("orgId", "==", orgId), orderBy("createdAt", "desc"));
+        return onSnapshot(
+          q,
       (snap) => {
         setRows(
           snap.docs.map((d) => {
@@ -55,8 +58,13 @@ export default function CampanasListPage() {
         setLoading(false);
       },
       () => setLoading(false)
+        );
+      },
+      () => {
+        setRows([]);
+        setLoading(false);
+      },
     );
-    return () => unsub();
   }, [orgId]);
 
   if (loading) {

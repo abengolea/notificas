@@ -44,9 +44,13 @@ export function EmpresaEnviosSaldoLiveBanner() {
         setCreditos(0);
         return;
       }
-      unsubUser = onSnapshot(doc(db, "users", u.uid), (snap) => {
-        setCreditos(normalizeEnviosDisponibles(snap.data()?.creditos));
-      });
+      unsubUser = onSnapshot(
+        doc(db, "users", u.uid),
+        (snap) => {
+          setCreditos(normalizeEnviosDisponibles(snap.data()?.creditos));
+        },
+        () => setCreditos(0),
+      );
     });
     return () => {
       unsubAuth();

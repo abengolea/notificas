@@ -28,6 +28,46 @@ export function getAppPublicBaseUrl(): string | null {
   }
 }
 
+function originOrNull(raw: string | null | undefined): string | null {
+  if (!raw?.trim()) return null;
+  try {
+    const u = new URL(raw.trim());
+    if (u.hostname === "localhost" || u.hostname === "127.0.0.1") return null;
+    return u.origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Origen para ActionCodeSettings de Firebase. Nunca localhost: el mail se abre
+ * en otro dispositivo y `continueUrl` local hace fallar el formulario de clave.
+ */
+export function getEmailActionOrigin(): string {
+  return (
+    originOrNull(process.env.PASSWORD_RESET_CONTINUE_ORIGIN) ||
+    originOrNull(getAppPublicBaseUrl()) ||
+    "https://notificas.com.ar"
+  );
+}
+
+/** Firebase hosted UI: path `/login` without query string. */
+export function passwordResetContinueUrl(): string {
+  return `${getEmailActionOrigin()}/login`;
+}
+
+function sanitizePasswordContinueUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (u.hostname === "localhost" || u.hostname === "127.0.0.1") {
+      return passwordResetContinueUrl();
+    }
+    return `${u.origin}/login`;
+  } catch {
+    return passwordResetContinueUrl();
+  }
+}
+
 export type SendAccountSetupEmailResult =
   | { ok: true; mailDocId: string }
   | { ok: false; error: string; status?: number };
@@ -78,7 +118,7 @@ export async function sendAccountPasswordSetupEmail(options: {
   let link: string;
   try {
     link = await auth.generatePasswordResetLink(email, {
-      url: options.continueUrl,
+      url: sanitizePasswordContinueUrl(options.continueUrl),
       handleCodeInApp: false,
     });
   } catch (e) {
@@ -142,8 +182,7 @@ export async function sendPasswordLinkEmail(options: {
   createdBy: string;
 }): Promise<SendAccountSetupEmailResult> {
   const copy = passwordLinkCopy(options.kind);
-  const logoBase = getAppPublicBaseUrl() || originFromUrl(options.continueUrl);
-  const loginUrl = options.continueUrl;
+  const loginUrl = passwordResetContinueUrl();
 
   const html = buildSystemEmailHtml({
     badge: copy.badge,
@@ -151,7 +190,7 @@ export async function sendPasswordLinkEmail(options: {
     subtitle: copy.subtitle,
     preheader: copy.preheader,
     recipientEmail: options.email.trim().toLowerCase(),
-    logoUrl: logoBase ? `${logoBase}/notificasLogo.jpg` : null,
+    logoUrl: `${getEmailActionOrigin()}/notificasLogo.jpg`,
     bodyHtml: `
               ${copy.intro}
               <p class="lead">Después de este paso, ingresá desde:
@@ -171,7 +210,7 @@ Luego ingresá en: ${loginUrl}
 
   return sendAccountPasswordSetupEmail({
     email: options.email,
-    continueUrl: options.continueUrl,
+    continueUrl: loginUrl,
     subject: copy.subject,
     html,
     text,
@@ -193,7 +232,7 @@ export async function sendEmpresaAdminOnboardingEmail(options: {
     };
   }
 
-  const loginUrl = `${base}/login?next=${encodeURIComponent("/empresa")}`;
+  const loginUrl = passwordResetContinueUrl();
   const orgNombre = options.orgNombre.trim() || "tu organización";
   const intro = options.authCreated
     ? `<p class="lead">Se dio de alta tu acceso como responsable de <strong>${escapeHtml(orgNombre)}</strong> en Notificas.</p>
@@ -207,7 +246,7 @@ export async function sendEmpresaAdminOnboardingEmail(options: {
     subtitle: `Alta de <strong>${escapeHtml(orgNombre)}</strong> mediante <strong>Notificas.com</strong>`,
     preheader: `Activá tu cuenta de empresa en Notificas (${orgNombre})`,
     recipientEmail: options.email.trim().toLowerCase(),
-    logoUrl: `${base}/notificasLogo.jpg`,
+    logoUrl: `${getEmailActionOrigin()}/notificasLogo.jpg`,
     bodyHtml: `
               <p class="lead">Hola,</p>
               ${intro}

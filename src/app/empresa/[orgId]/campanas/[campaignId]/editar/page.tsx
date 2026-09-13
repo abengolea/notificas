@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { listenWhenSignedIn } from "@/lib/listen-when-signed-in";
 import { CampaignWizard } from "@/components/empresa/campaign-wizard";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
@@ -14,10 +15,16 @@ export default function EditarCampanaPage() {
   const [plan, setPlan] = useState<string>("starter");
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "organizations", orgId), (s) => {
-      if (s.exists()) setPlan(String(s.data()?.plan || "starter"));
-    });
-    return () => unsub();
+    return listenWhenSignedIn(
+      () =>
+        onSnapshot(
+          doc(db, "organizations", orgId),
+          (s) => {
+            if (s.exists()) setPlan(String(s.data()?.plan || "starter"));
+          },
+          () => undefined,
+        ),
+    );
   }, [orgId]);
 
   return (

@@ -3,8 +3,8 @@
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
+import { listenWhenSignedIn } from "@/lib/listen-when-signed-in";
 import type { Campaign } from "@/lib/types";
 import { mapCampaign } from "@/lib/campaign-sync";
 import { OrgDashboard, OrgDashboardSkeleton } from "@/components/empresa/org-dashboard";
@@ -23,56 +23,63 @@ export default function EmpresaOrgDashboardPage() {
   const [loadingIndividuals, setLoadingIndividuals] = useState(true);
 
   useEffect(() => {
-    const q = query(
-      collection(db, "campaigns"),
-      where("orgId", "==", orgId),
-      orderBy("createdAt", "desc"),
-    );
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setItems(snap.docs.map((d) => mapCampaign(d.id, d.data())));
+    return listenWhenSignedIn(
+      () => {
+        const q = query(
+          collection(db, "campaigns"),
+          where("orgId", "==", orgId),
+          orderBy("createdAt", "desc"),
+        );
+        return onSnapshot(
+          q,
+          (snap) => {
+            setItems(snap.docs.map((d) => mapCampaign(d.id, d.data())));
+            setLoadingCampaigns(false);
+          },
+          () => setLoadingCampaigns(false),
+        );
+      },
+      () => {
+        setItems([]);
         setLoadingCampaigns(false);
       },
-      () => setLoadingCampaigns(false),
     );
-    return () => unsub();
   }, [orgId]);
 
   useEffect(() => {
-    let unsubMail: (() => void) | undefined;
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
-      unsubMail?.();
-      unsubMail = undefined;
-      if (!user) {
-        setIndividualSends([]);
-        setLoadingIndividuals(false);
-        return;
-      }
-      const q = query(collection(db, "mail"), where("createdBy", "==", user.uid));
-      unsubMail = onSnapshot(
-        q,
-        (snap) => {
-          const rows = snap.docs
-            .map((d) => {
-              const data = d.data() as Record<string, unknown>;
-              if (isCampaignMailDoc(data) || !mailBelongsToOrg(data, orgId)) return null;
-              return mapMailToIndividualSend(d.id, data);
-            })
-            .filter((row): row is IndividualSendSummary => row !== null);
-          setIndividualSends(rows);
-          setLoadingIndividuals(false);
-        },
-        () => {
+    return listenWhenSignedIn(
+      () => {
+        const uid = auth.currentUser?.uid;
+        if (!uid) {
           setIndividualSends([]);
           setLoadingIndividuals(false);
-        },
-      );
-    });
-    return () => {
-      unsubMail?.();
-      unsubAuth();
-    };
+          return () => undefined;
+        }
+        const q = query(collection(db, "mail"), where("createdBy", "==", uid));
+        return onSnapshot(
+          q,
+          (snap) => {
+            const rows = snap.docs
+              .map((d) => {
+                const data = d.data() as Record<string, unknown>;
+                if (isCampaignMailDoc(data) || !mailBelongsToOrg(data, orgId)) return null;
+                return mapMailToIndividualSend(d.id, data);
+              })
+              .filter((row): row is IndividualSendSummary => row !== null);
+            setIndividualSends(rows);
+            setLoadingIndividuals(false);
+          },
+          () => {
+            setIndividualSends([]);
+            setLoadingIndividuals(false);
+          },
+        );
+      },
+      () => {
+        setIndividualSends([]);
+        setLoadingIndividuals(false);
+      },
+    );
   }, [orgId]);
 
   if (loadingCampaigns && loadingIndividuals) return <OrgDashboardSkeleton />;

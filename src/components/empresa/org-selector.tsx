@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Building2 } from "lucide-react";
+import { EmpresaUserMenu } from "@/components/empresa/empresa-user-menu";
 
 function mapOrg(id: string, data: Record<string, unknown>): Organization {
   return {
@@ -128,9 +129,12 @@ export function OrgSelector() {
             Envíos masivos por WhatsApp o correo, con constancia técnica y ancla en Polygon.
           </p>
         </div>
-        <Button variant="outline" asChild>
-          <Link href="/empresa/nueva">¿Cómo dar de alta una org.?</Link>
-        </Button>
+        <div className="flex shrink-0 items-center gap-3">
+          <Button variant="outline" asChild>
+            <Link href="/empresa/nueva">¿Cómo dar de alta una org.?</Link>
+          </Button>
+          <EmpresaUserMenu />
+        </div>
       </div>
 
       {loadError ? (

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Menu } from "lucide-react";
 
 import { OrgSidebarNav, useOrganization } from "@/components/empresa/org-sidebar";
+import { EmpresaUserMenu } from "@/components/empresa/empresa-user-menu";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -35,6 +36,7 @@ export default function EmpresaOrgLayout({ children }: { children: React.ReactNo
               <p className="truncate text-xs text-muted-foreground">{org.cuit}</p>
             ) : null}
           </div>
+          <EmpresaUserMenu compact />
         </header>
 
         <aside className="hidden w-64 shrink-0 flex-col border-r bg-card lg:flex lg:min-h-screen">
@@ -51,7 +53,12 @@ export default function EmpresaOrgLayout({ children }: { children: React.ReactNo
           <OrgSidebarNav orgId={orgId} org={org} onNavigate={() => setMobileNavOpen(false)} />
         </SheetContent>
 
-        <div className="min-w-0 flex-1 overflow-x-hidden">{children}</div>
+        <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+          <header className="sticky top-0 z-30 hidden h-14 shrink-0 items-center justify-end gap-3 border-b bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:flex">
+            <EmpresaUserMenu />
+          </header>
+          <div className="min-w-0 flex-1">{children}</div>
+        </div>
       </div>
     </Sheet>
   );

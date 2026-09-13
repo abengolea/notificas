@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Building2, Loader2, RefreshCw } from "lucide-react";
+import { Building2, ChevronRight, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -53,6 +55,7 @@ type OrgRow = {
 
 export default function OrganizationsAdmin() {
   const { toast } = useToast();
+  const router = useRouter();
   const [rows, setRows] = useState<OrgRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -255,7 +258,7 @@ export default function OrganizationsAdmin() {
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <div>
             <CardTitle>Organizaciones</CardTitle>
-            <CardDescription>Listado reciente</CardDescription>
+            <CardDescription>Listado reciente. Clic para ver ficha, mail y restablecer contraseña.</CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
@@ -271,28 +274,55 @@ export default function OrganizationsAdmin() {
                   <TableHead>CUIT</TableHead>
                   <TableHead>Admin email</TableHead>
                   <TableHead>Plan</TableHead>
+                  <TableHead className="w-10">
+                    <span className="sr-only">Abrir</span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-muted-foreground">
+                    <TableCell colSpan={5} className="text-muted-foreground">
                       Cargando…
                     </TableCell>
                   </TableRow>
                 ) : rows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-muted-foreground">
+                    <TableCell colSpan={5} className="text-muted-foreground">
                       No hay organizaciones.
                     </TableCell>
                   </TableRow>
                 ) : (
                   rows.map((r) => (
-                    <TableRow key={r.id}>
-                      <TableCell className="font-medium">{r.nombre}</TableCell>
+                    <TableRow
+                      key={r.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      role="link"
+                      tabIndex={0}
+                      aria-label={`Abrir ${r.nombre || "organización"}`}
+                      onClick={() => router.push(`/admin/empresas/${r.id}`)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          router.push(`/admin/empresas/${r.id}`);
+                        }
+                      }}
+                    >
+                      <TableCell className="font-medium">
+                        <Link
+                          href={`/admin/empresas/${r.id}`}
+                          className="hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {r.nombre}
+                        </Link>
+                      </TableCell>
                       <TableCell>{r.cuit}</TableCell>
                       <TableCell className="text-sm">{r.adminUserEmail || r.adminUserId || "—"}</TableCell>
                       <TableCell>{r.plan}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        <ChevronRight className="h-4 w-4" aria-hidden />
+                      </TableCell>
                     </TableRow>
                   ))
                 )}

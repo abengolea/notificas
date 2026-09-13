@@ -7,6 +7,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { listenWhenSignedIn } from '@/lib/listen-when-signed-in';
 import type { Campaign, CampaignMessage, CanalCampaign } from '@/lib/types';
 
 export function mapCampaign(id: string, data: DocumentData): Campaign {
@@ -170,20 +171,25 @@ export function useCampaignProgress(campaignId: string | null, opts?: { admin?: 
       };
     }
 
-    const unsub = onSnapshot(
-      doc(db, 'campaigns', campaignId),
-      (snap) => {
-        if (snap.exists()) setCampaign(mapCampaign(snap.id, snap.data()));
-        else setCampaign(null);
-        setLoading(false);
-      },
+    return listenWhenSignedIn(
+      () =>
+        onSnapshot(
+          doc(db, 'campaigns', campaignId),
+          (snap) => {
+            if (snap.exists()) setCampaign(mapCampaign(snap.id, snap.data()));
+            else setCampaign(null);
+            setLoading(false);
+          },
+          () => {
+            setCampaign(null);
+            setLoading(false);
+          }
+        ),
       () => {
         setCampaign(null);
         setLoading(false);
-      }
+      },
     );
-
-    return unsub;
   }, [campaignId, admin]);
 
   const stats = useMemo(() => campaign?.stats ?? null, [campaign]);

@@ -104,7 +104,15 @@ function LoginForm() {
                   <FormItem>
                     <div className="flex items-center">
                       <FormLabel>Contraseña</FormLabel>
-                      <Link href="#" className="ml-auto inline-block text-sm underline" prefetch={false}>
+                      <Link
+                        href={
+                          form.watch("email")?.trim()
+                            ? `/cuenta/activar-migracion?email=${encodeURIComponent(form.watch("email").trim())}`
+                            : "/cuenta/activar-migracion"
+                        }
+                        className="ml-auto inline-block text-sm underline"
+                        prefetch={false}
+                      >
                         ¿Olvidaste tu contraseña?
                       </Link>
                     </div>

@@ -14,22 +14,18 @@ export function empresaHomeHrefFromOrgs(orgs: unknown[]): string | null {
   return null;
 }
 
-function shouldResolveEmpresaHome(requested: string): boolean {
-  if (requested === "/dashboard") return true;
-  const path = requested.split("?")[0];
-  return path === "/empresa" || path === "/empresa/";
-}
-
 /**
- * Si el usuario pidió el panel de particulares o la raíz de empresas,
- * y tiene organizaciones en Firestore, lo enviamos al dashboard de esa org
- * (o al selector si tiene más de una).
+ * Si el usuario pidió el módulo empresas (`/empresa`), y tiene organizaciones,
+ * lo enviamos al dashboard de esa org (o al selector si tiene más de una).
+ * Entrar por particulares (`/dashboard` o login sin `next`) no se desvía a empresa.
  */
 export async function resolvePostLoginHref(
   user: User,
-  options: { requested: string; defaultConsumerEntry: boolean },
+  options: { requested: string; defaultConsumerEntry?: boolean },
 ): Promise<string> {
-  if (!shouldResolveEmpresaHome(options.requested)) return options.requested;
+  const path = options.requested.split("?")[0];
+  const wantsEmpresaRoot = path === "/empresa" || path === "/empresa/";
+  if (!wantsEmpresaRoot) return options.requested;
 
   const token = await user.getIdToken();
   const res = await fetch("/api/organizations", {
