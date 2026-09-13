@@ -46,6 +46,34 @@ async function authFetch(url: string, init?: RequestInit) {
   return fetch(url, { ...init, headers: { ...(init?.headers || {}), Authorization: `Bearer ${token}` } });
 }
 
+function digitsLen(value: string): number {
+  return value.replace(/\D/g, "").length;
+}
+
+function createRecipientErrorMessage(json: unknown): string {
+  if (!json || typeof json !== "object") return "No se pudo crear.";
+  const err = (json as { error?: unknown; code?: unknown }).error;
+  const code = (json as { code?: unknown }).code;
+  const token = typeof err === "string" ? err : typeof code === "string" ? code : "";
+  if (token === "PILOT_RECIPIENT_NOT_ALLOWED") {
+    return "Ese email o teléfono no está en la allowlist del piloto.";
+  }
+  if (token === "PILOT_BULK_LIMIT") return "El piloto admite como máximo 10 destinatarios.";
+  if (token === "identity_attestation_required" || token === "identity_verified_by_required") {
+    return "Falta completar la prevalidación de identidad.";
+  }
+  if (err && typeof err === "object" && "fieldErrors" in err) {
+    const fields = (err as { fieldErrors?: Record<string, unknown> }).fieldErrors || {};
+    if (fields.cuil) return "Completá el CUIL.";
+    if (fields.dni) return "Completá el DNI.";
+    if (fields.fullName) return "Completá nombre y apellido.";
+    if (fields.phone) return "Completá el teléfono.";
+    if (fields.email) return "El email no es válido.";
+  }
+  if (token) return token;
+  return "No se pudo crear.";
+}
+
 export default function AdhesionesElectronicasPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const { toast } = useToast();
@@ -106,6 +134,22 @@ export default function AdhesionesElectronicasPage() {
   }, [load]);
 
   async function createOne() {
+    if (form.fullName.trim().length < 2) {
+      toast({ title: "Completá nombre y apellido.", variant: "destructive" });
+      return;
+    }
+    if (digitsLen(form.cuil) < 8) {
+      toast({ title: "Completá el CUIL.", variant: "destructive" });
+      return;
+    }
+    if (digitsLen(form.dni) < 6) {
+      toast({ title: "Completá el DNI.", variant: "destructive" });
+      return;
+    }
+    if (digitsLen(form.phone) < 8) {
+      toast({ title: "Completá el teléfono.", variant: "destructive" });
+      return;
+    }
     const identityAttestation = form.identityPrevalidatedByArt
       ? {
           identityVerificationMethod: form.identityVerificationMethod,
@@ -122,7 +166,7 @@ export default function AdhesionesElectronicasPage() {
     });
     const json = await res.json();
     if (!res.ok) {
-      toast({ title: "No se pudo crear", variant: "destructive" });
+      toast({ title: createRecipientErrorMessage(json), variant: "destructive" });
       return;
     }
     setCreateOpen(false);
@@ -302,11 +346,26 @@ export default function AdhesionesElectronicasPage() {
         <DialogContent>
           <DialogHeader><DialogTitle>Alta de trabajador</DialogTitle></DialogHeader>
           <div className="grid gap-3">
-            <Input placeholder="Nombre y apellido" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} />
-            <Input placeholder="CUIL" value={form.cuil} onChange={(e) => setForm({ ...form, cuil: e.target.value })} />
-            <Input placeholder="DNI" value={form.dni} onChange={(e) => setForm({ ...form, dni: e.target.value })} />
-            <Input placeholder="Teléfono" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-            <Input placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <div className="grid gap-1.5">
+              <Label htmlFor="art-alta-nombre">Nombre y apellido</Label>
+              <Input id="art-alta-nombre" placeholder="Como figura en el DNI" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="art-alta-cuil">CUIL</Label>
+              <Input id="art-alta-cuil" inputMode="numeric" placeholder="Obligatorio" value={form.cuil} onChange={(e) => setForm({ ...form, cuil: e.target.value })} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="art-alta-dni">DNI</Label>
+              <Input id="art-alta-dni" inputMode="numeric" placeholder="Obligatorio" value={form.dni} onChange={(e) => setForm({ ...form, dni: e.target.value })} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="art-alta-phone">Teléfono</Label>
+              <Input id="art-alta-phone" inputMode="tel" placeholder="3364645357" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="art-alta-email">Email</Label>
+              <Input id="art-alta-email" type="email" placeholder="trabajador@correo.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            </div>
             <label className="text-sm"><input type="checkbox" checked={form.identityPrevalidatedByArt} onChange={(e) => setForm({ ...form, identityPrevalidatedByArt: e.target.checked })} className="mr-2" />Identidad prevalidada por la ART</label>
             {form.identityPrevalidatedByArt ? (
               <div className="grid gap-2 rounded-md border p-3">
