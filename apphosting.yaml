@@ -197,7 +197,7 @@ env:
     availability:
       - RUNTIME
   - variable: ART_PILOT_EMAIL_ALLOWLIST
-    value: "abengolea1@gmail.com,adrianbengolea@notificas.com"
+    value: "goyitobengolea@gmail.com"
     availability:
       - RUNTIME
   - variable: ART_PILOT_PHONE_ALLOWLIST
