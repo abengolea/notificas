@@ -149,7 +149,7 @@ export default function SignupPage() {
       <Card className="mx-auto w-full max-w-lg shadow-xl">
         <CardHeader className="text-center">
           <div className="mb-4 flex justify-center">
-              <Logo className="h-16 w-16" />
+              <Logo variant="lockup" className="h-12 w-auto max-w-[min(100%,18rem)] sm:h-14" />
           </div>
           <CardTitle className="text-3xl font-bold">Crear una Cuenta</CardTitle>
           <CardDescription>Enviá notificaciones fehacientes con respaldo en blockchain.</CardDescription>

@@ -19,7 +19,10 @@ import { cn } from "@/lib/utils";
 const CONTACT_EMAIL = "contacto@notificas.com";
 
 const footerInputClass =
-  "border-background/25 bg-background/10 text-background placeholder:text-background/55";
+  "border-white/25 bg-white/10 text-white placeholder:text-white/55 ring-offset-[hsl(208_38%_20%)]";
+
+const quoteInputClass =
+  "border-input bg-background dark:border-white/20 dark:bg-transparent";
 
 type ContactFormVariant = "footer" | "quote";
 type CanalCotizacion = "" | "whatsapp" | "email" | "ambos";
@@ -36,7 +39,7 @@ function ContactForm({ variant }: { variant: ContactFormVariant }) {
   const [mensaje, setMensaje] = useState("");
   const [sending, setSending] = useState(false);
 
-  const inputClass = isQuote ? undefined : footerInputClass;
+  const inputClass = isQuote ? quoteInputClass : footerInputClass;
   const labelClass = isQuote
     ? "mb-1.5 block text-sm font-medium text-foreground"
     : "sr-only";
@@ -193,6 +196,7 @@ function ContactForm({ variant }: { variant: ContactFormVariant }) {
               onChange={(ev) => setTelefono(ev.target.value)}
               disabled={sending}
               aria-label="Teléfono"
+              className={inputClass}
             />
           </div>
         ) : null}
@@ -211,6 +215,7 @@ function ContactForm({ variant }: { variant: ContactFormVariant }) {
               onChange={(ev) => setVolumenEstimado(ev.target.value)}
               disabled={sending}
               aria-label="Volumen estimado de notificaciones"
+              className={inputClass}
             />
           </div>
           <div>
@@ -222,7 +227,11 @@ function ContactForm({ variant }: { variant: ContactFormVariant }) {
               onValueChange={(v) => setCanal(v as CanalCotizacion)}
               disabled={sending}
             >
-              <SelectTrigger id={`${variant}-canal`} aria-label="Canal">
+              <SelectTrigger
+                id={`${variant}-canal`}
+                aria-label="Canal"
+                className={inputClass}
+              >
                 <SelectValue placeholder="Opcional" />
               </SelectTrigger>
               <SelectContent>
@@ -257,7 +266,11 @@ function ContactForm({ variant }: { variant: ContactFormVariant }) {
           aria-label={isQuote ? "Descripción de la necesidad" : "Mensaje opcional"}
         />
       </div>
-      <Button type="submit" className="w-full" disabled={sending}>
+      <Button
+        type="submit"
+        className={cn("w-full", !isQuote && "ring-offset-[hsl(208_38%_20%)]")}
+        disabled={sending}
+      >
         {sending ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />

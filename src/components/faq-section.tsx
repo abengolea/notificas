@@ -9,85 +9,133 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
-import { FAQ_CLAIMS } from "@/lib/honest-claims";
 import { LEGACY_ARCHIVO_LOGIN_HREF } from "@/lib/legacy-archivo";
+import { RESOURCE_HUB } from "@/lib/public-resources";
 
 type FaqItem = {
   question: string;
-  /** Texto completo (desktop / tablet) */
   answer: ReactNode;
-  /** Versión breve en móvil; si falta, se muestra `answer` en todos los tamaños */
-  answerShort?: ReactNode;
+  more?: { href: string; label: string };
 };
 
-const linkVerify = (
-  <Link
-    href="/verify"
-    className="text-primary font-medium underline-offset-4 hover:underline"
-  >
-    Verificar certificado
-  </Link>
-);
-
-const linkSignup = (
-  <Link
-    href="/signup"
-    className="text-primary font-medium underline-offset-4 hover:underline"
-  >
-    Registro
-  </Link>
-);
-
-const linkEmpresa = (
-  <Link
-    href="/login?next=/empresa"
-    className="text-primary font-medium underline-offset-4 hover:underline"
-  >
-    acceso empresas
-  </Link>
-);
-
 const faqItems: FaqItem[] = [
-  ...FAQ_CLAIMS.slice(0, 7).map((item) => ({
-    question: item.question,
-    answer: item.answer,
-  })),
   {
-    question: FAQ_CLAIMS[7].question,
-    answer: (
-      <>
-        Ingresá a {linkVerify} y subí el PDF o ingresá el ID del mensaje. Comparamos la huella del archivo con la que quedó en Polygon. También podés copiar el código de transacción del PDF y buscarlo en{" "}
-        <a href="https://polygonscan.com" target="_blank" rel="noopener noreferrer" className="text-primary font-medium underline-offset-4 hover:underline">polygonscan.com</a>
-        .
-      </>
-    ),
+    question: "¿Qué es Notificas?",
+    answer:
+      "Una plataforma para enviar un mensaje y dejar constancia de qué se envió, a quién y cuándo. La huella queda en Polygon; el expediente (texto, destinos, eventos) se conserva en Notificas.",
+    more: {
+      href: "/notificacion-fehaciente-digital",
+      label: "Qué se registra y qué no",
+    },
   },
   {
-    question: FAQ_CLAIMS[8].question,
-    answer: (
-      <>
-        Creá tu cuenta en {linkSignup}: lleva un par de minutos. Desde el dashboard cargás créditos y enviás. Para volumen, usá el {linkEmpresa}.
-      </>
-    ),
+    question: "¿Qué eventos se certifican en blockchain?",
+    answer:
+      "En la red pública no subimos el archivo entero: subimos huellas. Queda el envío, lo que Meta informa de WhatsApp, el primer click al enlace si ocurre, la lectura si la hay, y la huella del PDF.",
+    more: {
+      href: "/como-verificar-certificado",
+      label: "Cómo se comprueba esa huella",
+    },
   },
   {
-    question: FAQ_CLAIMS[9].question,
-    answer: FAQ_CLAIMS[9].answer,
+    question: "¿Qué pasa con el canal de WhatsApp?",
+    answer:
+      "Viaja la plantilla que Meta ya aprobó, con los datos de esa persona. No es la carta completa, salvo que la plantilla sea ese texto. Meta nos dice si llegó al celular o si lo abrieron.",
+    more: {
+      href: "/notificacion-whatsapp",
+      label: "Notificar por WhatsApp",
+    },
   },
   {
-    question: FAQ_CLAIMS[10].question,
+    question: "¿Equivale a una carta documento?",
+    answer:
+      "No. Es más rápido y más barato, y deja un rastro comprobable. Si una norma pide carta documento u otra forma puntual, hay que usar esa forma. Un juez decide qué valor le da a esta constancia.",
+    more: {
+      href: "/notificacion-digital-vs-carta-documento",
+      label: "Diferencia con la carta documento",
+    },
+  },
+  {
+    question: "¿Qué pasa si el destinatario no abre el correo?",
+    answer:
+      "Queda que nuestro servidor aceptó enviarlo. Eso no prueba que haya llegado a la bandeja ni que lo hayan leído. Si rebotó, lo anotamos. Si también mandás WhatsApp, se suma lo que Meta reporte.",
+    more: {
+      href: "/email-certificado",
+      label: "Evidencia de un correo",
+    },
+  },
+  {
+    question: "¿Por cuánto tiempo se conserva la documentación?",
+    answer:
+      "Adjuntos, PDFs y el texto sellado se guardan 5 años y no se borran a pedido en ese plazo. Lo que quedó en Polygon no se borra nunca.",
+  },
+  {
+    question: "¿Cómo se usa el certificado en un juicio o reclamo?",
+    answer:
+      "La constancia de envío se genera sola. El certificado de lectura lo emitís una sola vez, como una foto de ese instante. Después podés bajar la misma copia; no se le agregan hechos nuevos. Quien juzga decide si le sirve.",
+    more: {
+      href: "/whatsapp-como-prueba",
+      label: "Qué evidencia conviene conservar",
+    },
+  },
+  {
+    question: "¿Cómo verifico que un certificado es auténtico?",
     answer: (
       <>
-        WhatsApp usa plantillas que Meta tiene que haber aprobado, con sus reglas y cupos. En el correo anotamos si nuestro servidor lo aceptó, si nos llega un rebote, y si la persona abrió el enlace de lectura. Cada campaña se cotiza; no publicamos tarifas de Meta. Pedí una cotización en{" "}
+        En{" "}
         <Link
-          href="/#cotizacion"
-          className="text-primary font-medium underline-offset-4 hover:underline"
+          href="/verify"
+          className="font-medium text-primary underline-offset-4 hover:underline"
         >
-          Soluciones para empresas
+          Verificar certificado
+        </Link>{" "}
+        subí el PDF o ingresá el ID. Comparamos la huella del archivo con la que quedó en Polygon.
+      </>
+    ),
+    more: {
+      href: "/como-verificar-certificado",
+      label: "Paso a paso para verificar",
+    },
+  },
+  {
+    question: "¿Cómo empiezo a usar Notificas?",
+    answer: (
+      <>
+        Creá tu cuenta en{" "}
+        <Link
+          href="/signup"
+          className="font-medium text-primary underline-offset-4 hover:underline"
+        >
+          Registro
+        </Link>
+        . Desde el panel cargás créditos y enviás. Para volumen, usá el{" "}
+        <Link
+          href="/login?next=/empresa"
+          className="font-medium text-primary underline-offset-4 hover:underline"
+        >
+          acceso empresas
         </Link>
         .
       </>
     ),
+  },
+  {
+    question: "¿Notificas ofrece notificaciones de alto volumen para empresas?",
+    answer:
+      "Sí. Además de envíos uno a uno, hay campañas para cientos o miles de destinatarios por WhatsApp o correo, con seguimiento por fila. Se cotizan caso por caso.",
+    more: {
+      href: "/notificaciones-masivas-empresas",
+      label: "Notificaciones masivas para empresas",
+    },
+  },
+  {
+    question: "¿Cómo funcionan las campañas corporativas por WhatsApp y Email?",
+    answer:
+      "WhatsApp usa plantillas que Meta tiene que haber aprobado. En el correo anotamos si nuestro servidor lo aceptó, si rebotó, y si la persona abrió el enlace de lectura. No publicamos tarifas de Meta.",
+    more: {
+      href: "/notificaciones-whatsapp-empresas",
+      label: "WhatsApp para empresas",
+    },
   },
   {
     question: "Usaba notificas.com, ¿dónde están mis envíos anteriores?",
@@ -96,16 +144,16 @@ const faqItems: FaqItem[] = [
         Los envíos de la plataforma anterior se consultan en el{" "}
         <a
           href={LEGACY_ARCHIVO_LOGIN_HREF}
-          className="text-primary font-medium underline-offset-4 hover:underline"
+          className="font-medium text-primary underline-offset-4 hover:underline"
         >
           archivo histórico
         </a>
-        . Los envíos nuevos se hacen en esta web. Si tu usuario fue migrado y querés usar esta plataforma,{" "}
+        . Los envíos nuevos se hacen en esta web. Si tu usuario fue migrado,{" "}
         <Link
           href="/cuenta/activar-migracion"
-          className="text-primary font-medium underline-offset-4 hover:underline"
+          className="font-medium text-primary underline-offset-4 hover:underline"
         >
-          activá tu cuenta migrada
+          activá tu cuenta
         </Link>
         .
       </>
@@ -113,54 +161,50 @@ const faqItems: FaqItem[] = [
   },
 ];
 
-function FaqAnswer({ item }: { item: FaqItem }) {
-  if (item.answerShort != null) {
-    return (
-      <>
-        <div className="md:hidden text-sm text-muted-foreground leading-relaxed">
-          {item.answerShort}
-        </div>
-        <div className="hidden md:block text-muted-foreground leading-relaxed">
-          {item.answer}
-        </div>
-      </>
-    );
-  }
-  return (
-    <div className="text-sm md:text-base text-muted-foreground leading-relaxed">
-      {item.answer}
-    </div>
-  );
-}
-
 export function FaqSection() {
   return (
-    <section id="faq" className="px-4 py-16 sm:py-20 md:py-24">
+    <section id="faq" className="scroll-mt-24 px-4 pt-24 pb-16 sm:pt-28 sm:pb-20 md:pt-28 md:pb-24">
       <div className="container">
-        <div className="mb-8 max-w-3xl md:mb-10">
-          <h2 className="mb-3 text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl">
+        <div className="mb-8 md:mb-10">
+          <h2 className="section-title mb-3">
             Preguntas frecuentes
           </h2>
           <p className="max-w-[65ch] text-base leading-relaxed text-muted-foreground md:text-lg">
-            Qué queda registrado, qué no, y cómo usar el certificado.
+            Lo esencial acá. El detalle está en cada guía.
           </p>
         </div>
-        <Accordion
-          type="single"
-          collapsible
-          className="w-full max-w-3xl"
-        >
+        <Accordion type="single" collapsible className="w-full">
           {faqItems.map((item, index) => (
             <AccordionItem key={item.question} value={`faq-${index}`}>
               <AccordionTrigger className="py-4 text-left text-sm hover:no-underline data-[state=open]:underline sm:text-base">
                 {item.question}
               </AccordionTrigger>
               <AccordionContent className="pt-0">
-                <FaqAnswer item={item} />
+                <div className="max-w-[65ch] text-sm leading-relaxed text-muted-foreground md:text-base">
+                  {item.answer}
+                  {item.more ? (
+                    <p className="mt-3">
+                      <Link
+                        href={item.more.href}
+                        className="font-medium text-primary underline-offset-4 hover:underline"
+                      >
+                        {item.more.label}
+                      </Link>
+                    </p>
+                  ) : null}
+                </div>
               </AccordionContent>
             </AccordionItem>
           ))}
         </Accordion>
+        <p className="mt-8 text-sm leading-relaxed">
+          <Link
+            href={RESOURCE_HUB.path}
+            className="font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Ver todas las guías
+          </Link>
+        </p>
       </div>
     </section>
   );

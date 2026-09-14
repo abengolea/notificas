@@ -4,7 +4,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { ThemeProvider } from "@/components/theme-provider"
 import { MetaMaskErrorHandler } from "@/components/metamask-error-handler"
 import { AiReferralTracker } from "@/components/ai-referral-tracker"
-import { Plus_Jakarta_Sans } from 'next/font/google'
+import { IBM_Plex_Mono, Inter, Sora } from 'next/font/google'
 import {
   DEFAULT_DESCRIPTION,
   DEFAULT_TITLE,
@@ -13,9 +13,22 @@ import {
   SITE_URL,
 } from '@/lib/seo';
 
-const plusJakarta = Plus_Jakarta_Sans({
+const inter = Inter({
   subsets: ['latin'],
   variable: '--font-sans',
+  display: 'swap',
+})
+
+const sora = Sora({
+  subsets: ['latin'],
+  variable: '--font-headline',
+  display: 'swap',
+})
+
+const plexMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500'],
+  variable: '--font-mono',
   display: 'swap',
 })
 
@@ -96,7 +109,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es-AR" className={`${plusJakarta.variable}`} suppressHydrationWarning>
+    <html lang="es-AR" className={`${inter.variable} ${sora.variable} ${plexMono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: INLINE_SUPPRESS }} suppressHydrationWarning />
       </head>

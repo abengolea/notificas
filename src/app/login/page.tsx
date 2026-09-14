@@ -74,9 +74,9 @@ function LoginForm() {
       <Card className="mx-auto w-full max-w-md shadow-xl">
         <CardHeader className="text-center">
           <div className="mb-4 flex justify-center">
-            <Logo className="h-16 w-16" />
+            <Logo variant="lockup" className="h-12 w-auto max-w-[min(100%,18rem)] sm:h-14" />
           </div>
-          <CardTitle className="text-3xl font-bold">Notificas</CardTitle>
+          <CardTitle className="text-3xl font-bold">Iniciar sesión</CardTitle>
           <CardDescription>Accede de forma segura a tus mensajes certificados</CardDescription>
         </CardHeader>
         <CardContent>

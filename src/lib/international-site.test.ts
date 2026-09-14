@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 import sitemap from "../app/sitemap";
@@ -11,6 +14,8 @@ import {
   resolveInternationalGate,
 } from "./international-site";
 import { PRIVATE_PATH_PREFIXES, PRIVATE_SITEMAP_PATHS } from "./robots-policy";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 test("notificas.com.ar no se reescribe a la landing internacional", () => {
   assert.equal(isInternationalHost("notificas.com.ar"), false);
@@ -64,4 +69,16 @@ test("la preview /intl no entra al sitemap ni a robots públicos", () => {
     false,
     "el sitemap de .com.ar no debe listar /intl"
   );
+});
+
+test("las banderas oficiales del gate internacional existen", () => {
+  const flags = path.join(here, "../../public/intl/flags");
+  assert.equal(fs.existsSync(path.join(flags, "argentina.svg")), true);
+  assert.equal(fs.existsSync(path.join(flags, "brazil.svg")), true);
+  assert.equal(fs.existsSync(path.join(flags, "colombia.svg")), true);
+  assert.equal(fs.existsSync(path.join(here, "../../public/intl/paper.png")), true);
+  const argentina = fs.readFileSync(path.join(flags, "argentina.svg"), "utf8");
+  assert.match(argentina, /f6b40e/i);
+  const brazil = fs.readFileSync(path.join(flags, "brazil.svg"), "utf8");
+  assert.match(brazil, /#ffcb00|#009440/i);
 });

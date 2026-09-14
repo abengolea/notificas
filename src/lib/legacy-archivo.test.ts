@@ -73,7 +73,7 @@ test("el aviso del archivo explica consulta histórica y no bloquea el acceso", 
 test("la web pública apunta al archivo histórico sin indexarlo", () => {
   assert.equal(LEGACY_ARCHIVO_LOGIN_HREF, "/archivo/login");
   const readSrc = (rel: string) => fs.readFileSync(path.join(here, "..", rel), "utf8");
-  assert.match(readSrc("app/page.tsx"), /LegacyArchiveCallout/);
+  assert.match(readSrc("app/page.tsx"), /FaqSection/);
   for (const rel of [
     "app/login/page.tsx",
     "app/signup/page.tsx",

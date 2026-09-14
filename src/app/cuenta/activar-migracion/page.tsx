@@ -86,7 +86,7 @@ function ActivarMigracionForm() {
     <Card className="mx-auto w-full max-w-md shadow-xl">
       <CardHeader className="text-center">
         <div className="mb-4 flex justify-center">
-          <Logo className="h-16 w-16" />
+          <Logo variant="lockup" className="h-12 w-auto max-w-[min(100%,18rem)] sm:h-14" />
         </div>
         <CardTitle className="text-2xl font-bold">Activá tu cuenta migrada</CardTitle>
         <CardDescription>

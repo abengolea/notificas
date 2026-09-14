@@ -16,9 +16,10 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['var(--font-sans)', 'Plus Jakarta Sans', 'sans-serif'],
-        body: ['var(--font-sans)', 'Plus Jakarta Sans', 'sans-serif'],
-        headline: ['var(--font-sans)', 'Plus Jakarta Sans', 'sans-serif'],
+        sans: ['var(--font-sans)', 'Inter', 'sans-serif'],
+        body: ['var(--font-sans)', 'Inter', 'sans-serif'],
+        headline: ['var(--font-headline)', 'Sora', 'sans-serif'],
+        mono: ['var(--font-mono)', 'IBM Plex Mono', 'ui-monospace', 'monospace'],
       },
       colors: {
         border: "hsl(var(--border))",
