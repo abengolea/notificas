@@ -50,6 +50,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     if (pathname === "/admin/empresas") return "Empresa (B2B)";
     if (pathname?.startsWith("/admin/empresas/")) return "Ficha de empresa";
     if (pathname?.startsWith("/admin/campanas")) return "Campañas masivas";
+    if (pathname?.startsWith("/admin/marketing/contactos/")) return "Ficha comercial";
+    if (pathname?.startsWith("/admin/marketing/contactos")) return "Contactos de marketing";
+    if (pathname === "/admin/marketing/campanas/nueva") return "Nueva campaña de marketing";
+    if (pathname?.startsWith("/admin/marketing/campanas/")) return "Campaña de marketing";
+    if (pathname?.startsWith("/admin/marketing/campanas")) return "Campañas de marketing";
+    if (pathname?.startsWith("/admin/marketing")) return "Marketing";
     if (pathname?.startsWith("/admin/verificacion-meta")) return "Verificación Meta";
     if (pathname?.startsWith("/admin/verificacion-resend")) return "Verificación Resend";
     if (pathname?.startsWith("/admin/plans")) return "Gestión de Planes y Precios";

@@ -343,6 +343,13 @@ service cloud.firestore {
     match /art_evidence/{id} { allow read, write: if false; }
     match /art_rate_limits/{id} { allow read, write: if false; }
 
+    // CRM marketing admin: solo Admin SDK.
+    match /marketing_contacts/{id} { allow read, write: if false; }
+    match /marketing_campaigns/{id} { allow read, write: if false; }
+    match /marketing_sends/{id} { allow read, write: if false; }
+    match /marketing_events/{id} { allow read, write: if false; }
+    match /marketing_settings/{id} { allow read, write: if false; }
+
     match /{document=**} {
       allow read, write: if false;
     }

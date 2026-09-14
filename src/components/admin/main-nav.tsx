@@ -22,6 +22,7 @@ export const adminNavLinks = [
   { href: "/admin/users", label: "Usuarios" },
   { href: "/admin/empresas", label: "Empresa" },
   { href: "/admin/campanas", label: "Campañas" },
+  { href: "/admin/marketing", label: "Marketing" },
   { href: "/admin/verificacion-meta", label: "Verificación Meta" },
   { href: "/admin/verificacion-resend", label: "Verificación Resend" },
   { href: "/admin/plans", label: "Planes" },

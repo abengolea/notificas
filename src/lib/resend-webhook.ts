@@ -410,6 +410,20 @@ export async function processResendWebhook(input: {
     void syncPublicApiNotificationFromMail(mailId, hint).catch(() => undefined);
   }
 
+  try {
+    const { applyMarketingResendEvent } = await import("@/lib/marketing/events");
+    const click = asRecord(data.click);
+    await applyMarketingResendEvent({
+      eventType,
+      providerMessageId,
+      tags: data.tags,
+      clickUrl: click ? str(click.link) || str(click.url) : null,
+      occurredAt,
+    });
+  } catch (e) {
+    console.error("marketing resend event", e);
+  }
+
   return {
     httpStatus: 200,
     body: {

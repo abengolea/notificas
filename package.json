@@ -32,7 +32,7 @@
     "bounce:send": "node scripts/send-email-bounce.js",
     "deploy:functions": "node scripts/deploy-functions.js",
     "sync:archivo": "node scripts/sync-legacy-archivo.mjs",
-    "test": "npx tsx --tsconfig tsconfig.json --test src/lib/*.test.ts src/lib/public-api/*.test.ts src/lib/art/*.test.ts src/mcp/*.test.ts src/mcp/**/*.test.ts",
+    "test": "npx tsx --tsconfig tsconfig.json --test src/lib/*.test.ts src/lib/public-api/*.test.ts src/lib/art/*.test.ts src/lib/marketing/*.test.ts src/mcp/*.test.ts src/mcp/**/*.test.ts",
     "test:public-api": "npx tsx --tsconfig tsconfig.json --test src/lib/public-api/public-api.test.ts",
     "api-key:create": "npx tsx scripts/create-api-key.ts"
   },
