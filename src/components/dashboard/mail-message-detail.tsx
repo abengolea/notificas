@@ -17,6 +17,7 @@ import PolygonCertifications from "@/components/dashboard/polygon-certifications
 import { DownloadCertificate } from "@/components/dashboard/download-certificate";
 import { emailDeliveryLabel } from "@/lib/email-delivery-label";
 import { isSyntheticCampaignEmail } from "@/lib/parse-campaign-csv";
+import { displayMailSender } from "@/lib/mail-sender-display";
 
 function isAuthenticatedUserMailRecipient(mailData: Record<string, unknown>, userEmail: string | undefined) {
   if (!userEmail) return false;
@@ -55,7 +56,7 @@ function MailMessageView({ data }: { data: Record<string, unknown> }) {
   const message = data?.message as { subject?: string } | undefined;
   const sentAt = delivery?.time?.toDate?.() || tracking?.sentAt?.toDate?.() || null;
   const subject = message?.subject || "Sin asunto";
-  const from = (data?.from as string) || (data?.senderName as string) || "contacto@notificas.com";
+  const from = displayMailSender(data);
   const rawTo = Array.isArray(data?.to) ? (data.to as string[]) : data?.to ? [String(data.to)] : [];
   const visibleEmails = [...rawTo, String(data?.recipientEmail || "")].filter(
     (email) => email && !isSyntheticCampaignEmail(email),

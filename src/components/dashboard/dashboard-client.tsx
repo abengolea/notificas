@@ -50,6 +50,7 @@ import { es } from 'date-fns/locale';
 
 import { auth, db } from '@/lib/firebase';
 import { countRecipientOpenMovements, filterRecipientVisibleMovements } from '@/lib/tracking-movements';
+import { displayMailSender } from '@/lib/mail-sender-display';
 import {
   collection,
   query,
@@ -150,7 +151,7 @@ function docsToSortedDisplayMessages(
         (data?.tracking as { sentAt?: { toDate?: () => Date } } | undefined)?.sentAt?.toDate?.() ||
         (data?.createdAt as { toDate?: () => Date } | undefined)?.toDate?.() ||
         new Date();
-      const from = typeof data?.from === "string" ? data.from : "contacto@notificas.com";
+      const from = displayMailSender(data);
       const rawTo = data?.to;
       const to = Array.isArray(rawTo)
         ? (rawTo as string[])
