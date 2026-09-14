@@ -59,6 +59,7 @@ export function BrazilQuoteForm() {
   const [canal, setCanal] = useState<CanalBr>("");
   const [finalidade, setFinalidade] = useState<BrazilFinalidadeValue[]>([]);
   const [pedido, setPedido] = useState<PedidoBr>("cotizacion");
+  const [mensagem, setMensagem] = useState("");
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
@@ -139,7 +140,7 @@ export function BrazilQuoteForm() {
           cnpj: cnpj.trim(),
           cargo: cargo.trim(),
           finalidade,
-          mensaje: "",
+          mensagem: mensagem.trim(),
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -173,6 +174,7 @@ export function BrazilQuoteForm() {
       setVolume("");
       setCanal("");
       setFinalidade([]);
+      setMensagem("");
     } catch {
       toast({
         variant: "destructive",
@@ -366,6 +368,23 @@ export function BrazilQuoteForm() {
           </label>
         </div>
       </fieldset>
+
+      <div>
+        <FieldLabel htmlFor="br-mensagem">Contexto da operação (opcional)</FieldLabel>
+        <textarea
+          id="br-mensagem"
+          name="mensagem"
+          rows={4}
+          value={mensagem}
+          onChange={(ev) => setMensagem(ev.target.value)}
+          disabled={sending}
+          className={cn(
+            inputClass,
+            "min-h-[6rem] w-full rounded-md px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          )}
+          placeholder="Sistema interno, volume real, prazos ou o que a equipe precisa ver na demonstração."
+        />
+      </div>
 
       <Button type="submit" className={cn("w-full")} disabled={sending}>
         {sending ? (

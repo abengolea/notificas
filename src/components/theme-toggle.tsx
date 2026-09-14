@@ -12,7 +12,25 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-export function ThemeToggle({ ariaLabel = "Tema: claro, oscuro o sistema" }: { ariaLabel?: string }) {
+type ThemeToggleLabels = {
+  light: string;
+  dark: string;
+  system: string;
+};
+
+const DEFAULT_THEME_LABELS: ThemeToggleLabels = {
+  light: "Claro",
+  dark: "Oscuro",
+  system: "Sistema",
+};
+
+export function ThemeToggle({
+  ariaLabel = "Tema: claro, oscuro o sistema",
+  labels = DEFAULT_THEME_LABELS,
+}: {
+  ariaLabel?: string;
+  labels?: ThemeToggleLabels;
+}) {
   const { setTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
 
@@ -45,15 +63,15 @@ export function ThemeToggle({ ariaLabel = "Tema: claro, oscuro o sistema" }: { a
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => setTheme('light')}>
           <Sun className="mr-2 h-4 w-4" />
-          Claro
+          {labels.light}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme('dark')}>
           <Moon className="mr-2 h-4 w-4" />
-          Oscuro
+          {labels.dark}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme('system')}>
           <Monitor className="mr-2 h-4 w-4" />
-          Sistema
+          {labels.system}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -63,7 +63,19 @@ export async function POST(request: NextRequest) {
 
   const parsed = bodySchema.safeParse(json);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Revisá nombre y email." }, { status: 400 });
+    const mercado =
+      json && typeof json === "object" && "mercado" in json && (json as { mercado?: string }).mercado === "BR"
+        ? "BR"
+        : "AR";
+    return NextResponse.json(
+      {
+        error:
+          mercado === "BR"
+            ? "Revise nome e e-mail corporativo."
+            : "Revisá nombre y email.",
+      },
+      { status: 400 }
+    );
   }
 
   const {

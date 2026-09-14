@@ -111,11 +111,18 @@ export default async function RootLayout({
 }>) {
   const locale =
     (await headers()).get("x-notificas-locale") === "pt-BR" ? "pt-BR" : "es-AR";
+  const isBrazil = locale === "pt-BR";
 
   return (
-    <html lang={locale} className={`${inter.variable} ${sora.variable} ${plexMono.variable}`} suppressHydrationWarning>
+    <html
+      lang={locale}
+      translate={isBrazil ? "no" : undefined}
+      className={`${inter.variable} ${sora.variable} ${plexMono.variable}${isBrazil ? " notranslate" : ""}`}
+      suppressHydrationWarning
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: INLINE_SUPPRESS }} suppressHydrationWarning />
+        {isBrazil ? <meta name="google" content="notranslate" /> : null}
       </head>
       <body className="font-body antialiased">
         <ThemeProvider>

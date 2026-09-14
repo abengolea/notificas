@@ -134,7 +134,7 @@ test("notificas.com sirve la landing en / y manda el SPA viejo al archivo", () =
     type: "passthrough",
   });
   assert.deepEqual(
-    resolveInternationalGate({ host: "notificas.com", pathname: "/br/pre-negativacao" }),
+    resolveInternationalGate({ host: "notificas.com", pathname: "/br/verificar" }),
     { type: "passthrough" }
   );
   assert.equal(isLegacyComPath("/login"), true);
@@ -158,6 +158,7 @@ test("la preview /intl no entra al sitemap ni a robots públicos", () => {
     INTERNATIONAL_ORIGIN,
     `${INTERNATIONAL_ORIGIN}/br`,
     `${INTERNATIONAL_ORIGIN}/br/pre-negativacao`,
+    `${INTERNATIONAL_ORIGIN}/br/verificar`,
   ]);
 });
 

@@ -32,7 +32,8 @@ const SITE_LINKS = [
 const BRAZIL_SITE_LINKS = [
   { href: "/br#evidencias", label: "Evidências" },
   { href: "/br/pre-negativacao", label: "Pré-negativação" },
-  { href: "/verify", label: "Verificar evidência" },
+  { href: "/br/verificar", label: "Verificar evidência" },
+  { href: "/br#cotacao", label: "Cotação" },
 ] as const;
 
 type PublicFooterProps = {
@@ -66,7 +67,8 @@ export function PublicFooter({
           </address>
           {isBrazil ? (
             <p className="mt-3 max-w-[36ch] text-sm leading-relaxed text-white/70">
-              Empresa internacional. Operação societária em {SITE_LEGAL_NAME}, Argentina.
+              Empresa internacional. Operação societária em {SITE_LEGAL_NAME}, Argentina. Os
+              documentos societários de termos e privacidade estão em espanhol.
             </p>
           ) : null}
         </div>
@@ -149,7 +151,7 @@ export function PublicFooter({
 
       <div className="border-t border-white/20">
         <div className="container flex flex-col gap-3 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-sm text-white/80 md:flex-row md:items-center md:justify-between md:gap-6 md:px-6">
-          <p>Copyright © 2026 | {SITE_LEGAL_NAME}</p>
+          <p>{isBrazil ? "Direitos autorais © 2026" : "Copyright © 2026"} | {SITE_LEGAL_NAME}</p>
           <nav aria-label={isBrazil ? "Informação legal" : "Información legal"}>
             <ul className="flex flex-col gap-2 md:flex-row md:flex-wrap md:gap-x-4 md:gap-y-1">
               {(isBrazil
@@ -161,9 +163,9 @@ export function PublicFooter({
                 <li key={page.path}>
                   <FooterLink href={page.path}>
                     {isBrazil && page.path === "/privacidad"
-                      ? "Privacidade"
+                      ? "Privacidade (ES)"
                       : isBrazil && page.path === "/terminos"
-                        ? "Termos"
+                        ? "Termos (ES)"
                         : page.title}
                   </FooterLink>
                 </li>

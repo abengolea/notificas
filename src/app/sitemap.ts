@@ -5,6 +5,7 @@ import {
   BRAZIL_PATH,
   BRAZIL_PRE_NEGATIVACAO_PATH,
   BRAZIL_SITEMAP_LASTMOD,
+  BRAZIL_VERIFY_PATH,
 } from "@/lib/brazil-site";
 import {
   INTERNATIONAL_ORIGIN,
@@ -32,6 +33,12 @@ export function buildSitemap(origin: string = SITE_URL): MetadataRoute.Sitemap {
       lastModified: BRAZIL_SITEMAP_LASTMOD,
       changeFrequency: "monthly",
       priority: 0.85,
+    },
+    {
+      url: `${INTERNATIONAL_ORIGIN}${BRAZIL_VERIFY_PATH}`,
+      lastModified: BRAZIL_SITEMAP_LASTMOD,
+      changeFrequency: "monthly",
+      priority: 0.8,
     },
   ];
 

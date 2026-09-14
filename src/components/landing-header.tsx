@@ -45,6 +45,8 @@ type LandingHeaderProps = {
   menuLabel?: string;
   openMenuLabel?: string;
   themeLabel?: string;
+  themeLabels?: { light: string; dark: string; system: string };
+  localeBadge?: string;
 };
 
 export function LandingHeader({
@@ -59,15 +61,22 @@ export function LandingHeader({
   menuLabel = "Menú",
   openMenuLabel = "Abrir menú",
   themeLabel,
+  themeLabels,
+  localeBadge,
 }: LandingHeaderProps = {}) {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/70 bg-background/90 pt-[env(safe-area-inset-top,0px)] backdrop-blur-md supports-[backdrop-filter]:bg-background/75">
       <div className="container flex h-14 items-center justify-between gap-2 px-4 sm:h-16 md:px-6">
-        <Link href={homeHref} className="flex min-w-0 shrink items-center" aria-label="Notificas">
+        <Link href={homeHref} className="flex min-w-0 shrink items-center gap-2.5" aria-label="Notificas">
           <Logo
             variant="wordmark"
             className="h-9 w-auto max-w-[min(100%,14rem)] shrink-0 sm:h-11 sm:max-w-[18rem]"
           />
+          {localeBadge ? (
+            <span className="hidden shrink-0 text-[0.7rem] font-semibold tracking-wide text-foreground/70 sm:inline">
+              {localeBadge}
+            </span>
+          ) : null}
         </Link>
 
         <nav className="hidden items-center gap-6 text-[0.875rem] font-semibold leading-none lg:flex">
@@ -83,7 +92,7 @@ export function LandingHeader({
         </nav>
 
         <div className="flex items-center gap-1.5 sm:gap-2">
-          <ThemeToggle ariaLabel={themeLabel} />
+          <ThemeToggle ariaLabel={themeLabel} labels={themeLabels} />
           <div className="hidden items-center gap-2 sm:flex">
             {showAuthActions ? (
               <>

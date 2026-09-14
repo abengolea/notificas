@@ -9,10 +9,12 @@ import { SITE_CONTACT, SITE_LEGAL_NAME, SITE_NAME } from "@/lib/seo";
 
 export const BRAZIL_PATH = BRAZIL_PATH_PREFIX;
 export const BRAZIL_PRE_NEGATIVACAO_PATH = `${BRAZIL_PATH_PREFIX}/pre-negativacao`;
+export const BRAZIL_VERIFY_PATH = `${BRAZIL_PATH_PREFIX}/verificar`;
 
 export const BRAZIL_ORIGIN = INTERNATIONAL_ORIGIN;
 export const BRAZIL_HOME_URL = `${BRAZIL_ORIGIN}${BRAZIL_PATH}`;
 export const BRAZIL_PRE_NEGATIVACAO_URL = `${BRAZIL_ORIGIN}${BRAZIL_PRE_NEGATIVACAO_PATH}`;
+export const BRAZIL_VERIFY_URL = `${BRAZIL_ORIGIN}${BRAZIL_VERIFY_PATH}`;
 
 /** Página oficial do STJ para o Tema Repetitivo 1.315. */
 export const STJ_TEMA_1315_URL =
@@ -49,6 +51,20 @@ export const BRAZIL_KEYWORDS = [
 ] as const;
 
 export const BRAZIL_SITEMAP_LASTMOD = new Date("2026-09-14T00:00:00.000Z");
+
+export const BRAZIL_THEME_LABELS = {
+  light: "Claro",
+  dark: "Escuro",
+  system: "Sistema",
+} as const;
+
+export const BRAZIL_NAV_LINKS = [
+  { href: `${BRAZIL_PATH}#como-funciona`, label: "Como funciona" },
+  { href: `${BRAZIL_PATH}#evidencias`, label: "Evidências" },
+  { href: `${BRAZIL_PATH}#pre-negativacao`, label: "Pré-negativação" },
+  { href: `${BRAZIL_PATH}#cotacao`, label: "Cotação" },
+  { href: BRAZIL_VERIFY_PATH, label: "Verificar" },
+] as const;
 
 export const BRAZIL_VOLUME_OPTIONS = [
   { value: "ate-10000", label: "até 10.000" },
@@ -145,31 +161,84 @@ export function brazilPreNegativacaoMetadata(): Metadata {
   });
 }
 
+export const BRAZIL_VERIFY_TITLE = "Verificar evidência | Notificas Brasil";
+export const BRAZIL_VERIFY_DESCRIPTION =
+  "Confira se o comprovante PDF foi gerado pela Notificas e se o conteúdo coincide com o registro técnico original.";
+
+export function brazilVerifyMetadata(): Metadata {
+  return brazilPageMetadata({
+    title: BRAZIL_VERIFY_TITLE,
+    description: BRAZIL_VERIFY_DESCRIPTION,
+    path: BRAZIL_VERIFY_PATH,
+    keywords: [
+      "verificar evidência digital",
+      "comprovante de envio e entrega",
+      "hash notificação",
+      "PDF verificação Notificas",
+    ],
+  });
+}
+
 export const BRAZIL_FAQ_ITEMS = [
   {
-    question: "O que a Notificas registra em cada comunicação?",
+    question: "O que a Notificas faz no Brasil?",
     answer:
-      "O conteúdo enviado, o destinatário, a data e a hora, o canal utilizado, identificadores técnicos, o status de envio, a confirmação de entrega quando o canal informa, a leitura quando disponível, falhas e novas tentativas, o hash, o PDF individual e a verificação pública.",
+      "A Notificas é uma infraestrutura para enviar comunicações digitais por e-mail e WhatsApp e guardar evidência técnica do que aconteceu: conteúdo, destinatário, data, hora, envio, entrega, leitura quando o canal informa, falhas, tentativas, hash, PDF e consulta pública. Não é um escritório de cobrança nem uma certificadora.",
+  },
+  {
+    question: "O que fica registrado em cada comunicação?",
+    answer:
+      "O conteúdo enviado, o destinatário, a data e a hora, o canal utilizado, identificadores técnicos da mensagem, o status de envio, a confirmação de entrega quando o provedor ou a plataforma informa, a leitura quando disponível, falhas e novas tentativas, o hash, o PDF individual, o relatório de lote e o link público de verificação.",
   },
   {
     question: "Enviar é o mesmo que entregar?",
     answer:
-      "Não. O envio registra que a mensagem saiu do sistema. A entrega registra que o provedor ou a plataforma informou que a mensagem chegou ao destinatário. A Notificas documenta cada etapa disponível, com ênfase na evidência de entrega.",
+      "Não. O envio registra que a mensagem saiu do sistema ou foi aceita pelo provedor. A entrega registra que o canal informou que a mensagem chegou ao destino — caixa de entrada ou aparelho. A leitura, quando existe, é um terceiro fato. No Brasil, a evidência de entrega é especialmente relevante para cobrança, crédito e comunicações de pré-negativação.",
   },
   {
-    question: "A Notificas é uma autoridade certificadora?",
+    question: "A Notificas é uma autoridade certificadora ou certificadora ICP-Brasil?",
     answer:
-      "Não. A Notificas é uma plataforma de infraestrutura para comunicações digitais. Gera evidência digital, registro técnico e trilha de auditoria. Não é autoridade certificadora nem certificadora ICP-Brasil.",
+      "Não. A Notificas gera evidência digital, registro técnico e trilha de auditoria. Não é autoridade certificadora, não é certificadora ICP-Brasil e não emite certificado de assinatura digital. A camada criptográfica (hash e verificabilidade) complementa o dossiê; não substitui um carimbo do tempo de uma ACT acreditada.",
   },
   {
     question: "A Notificas cumpre automaticamente a obrigação de pré-negativação?",
     answer:
-      "Não. A Notificas pode ser usada como infraestrutura tecnológica para comunicações prévias relacionadas a cadastros de inadimplência. Cada cliente permanece responsável por sua operação, pela base legal e pelo cumprimento das normas aplicáveis.",
+      "Não. A plataforma pode ser usada como infraestrutura tecnológica para comunicações prévias relacionadas a cadastros de inadimplência. O credor, o órgão mantenedor do cadastro e a empresa contratante continuam responsáveis pela base legal, pelo conteúdo da mensagem e pelo cumprimento das normas aplicáveis, inclusive o CDC e a LGPD.",
+  },
+  {
+    question: "O Tema 1.315 do STJ significa que qualquer e-mail ou WhatsApp vale como notificação?",
+    answer:
+      "Não. Em 2026 o STJ consolidou que a comunicação eletrônica prevista no art. 43, §2º, do CDC pode ser válida quando comprovada a entrega ao destinatário. Isso não torna automático qualquer disparo. O ponto prático é documentar o ciclo da mensagem — em especial a entrega — com registro técnico verificável. O texto da landing é educativo e não constitui aconselhamento jurídico.",
+  },
+  {
+    question: "Como funcionam o WhatsApp e o e-mail?",
+    answer:
+      "No WhatsApp registramos a mensagem enviada, identificadores técnicos, a entrega ao aparelho quando a plataforma informa e a leitura quando disponível. No e-mail registramos o conteúdo, a aceitação do disparo, os eventos de entrega e a abertura quando houver sinal técnico. Cada canal deixa o próprio rastro. Você pode usar um ou os dois.",
+  },
+  {
+    question: "Dá para integrar com o sistema interno da empresa?",
+    answer:
+      "Sim. Operações em escala entram por API, upload de lotes, webhooks e relatórios. Cada destinatário continua com dossiê próprio: PDF, hash e verificação pública. Na cotação avaliamos volume, canal e o modo de integração.",
+  },
+  {
+    question: "Os dados pessoais ficam de acordo com a LGPD?",
+    answer:
+      "A LGPD prevê bases legais distintas, inclusive a proteção do crédito. Cada cliente define a base adequada à sua operação. A Notificas registra e processa apenas os dados necessários para executar e documentar as comunicações contratadas. Não afirmamos certificação da ANPD nem conformidade automática.",
   },
   {
     question: "Como funciona a cotação no Brasil?",
     answer:
-      "Os planos são personalizados conforme o canal e o volume. Não publicamos tabela de preços. Solicite uma cotação e avaliamos a operação.",
+      "Não publicamos tabela de preços. Os planos são personalizados conforme o canal, o volume mensal e a forma de envio (API ou lote). A conversa comercial pode ser feita em USD. Informe empresa, CNPJ, volume e finalidade e retornamos com uma proposta.",
+  },
+  {
+    question: "Como verifico um comprovante?",
+    answer:
+      "Abra a página de verificação, envie o PDF gerado ou informe o identificador da comunicação. Comparamos o arquivo e os identificadores com o registro técnico original. A consulta é pública: não é preciso ter conta na plataforma.",
+  },
+  {
+    question: "A empresa é brasileira?",
+    answer:
+      "A Notificas opera a oferta brasileira a partir da Notificas SRL, na Argentina. Não inventamos CNPJ nem endereço no Brasil. A landing, o idioma e os casos de uso são específicos do mercado brasileiro; a sociedade contratante permanece argentina.",
   },
 ] as const;
 

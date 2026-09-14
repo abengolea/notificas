@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Scale } from "lucide-react";
 
+import { BrazilHeader } from "@/components/br/brazil-header";
 import { JsonLd } from "@/components/json-ld";
-import { LandingHeader } from "@/components/landing-header";
 import { PublicFooter } from "@/components/public-footer";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,13 +17,6 @@ import {
 } from "@/lib/brazil-site";
 
 export const metadata: Metadata = brazilPreNegativacaoMetadata();
-
-const NAV_LINKS = [
-  { href: `${BRAZIL_PATH}#evidencias`, label: "Evidências" },
-  { href: BRAZIL_PRE_NEGATIVACAO_PATH, label: "Pré-negativação" },
-  { href: `${BRAZIL_PATH}#cotacao`, label: "Cotação" },
-  { href: "/verify", label: "Verificar" },
-];
 
 export default function BrazilPreNegativacaoPage() {
   return (
@@ -39,22 +32,14 @@ export default function BrazilPreNegativacaoPage() {
         data={{
           "@context": "https://schema.org",
           "@type": "Article",
-          headline: "Comunicações de pré-negativação com rastreabilidade",
+          headline: "Notificação eletrônica para pré-negativação, com evidência de entrega",
           description:
             "Infraestrutura tecnológica para comunicações prévias relacionadas a cadastros de inadimplência, com evidência de envio e entrega.",
           inLanguage: "pt-BR",
           mainEntityOfPage: BRAZIL_PRE_NEGATIVACAO_URL,
         }}
       />
-      <LandingHeader
-        homeHref={BRAZIL_PATH}
-        navLinks={NAV_LINKS}
-        showAuthActions={false}
-        primaryAction={{ href: `${BRAZIL_PATH}#cotacao`, label: "Solicitar cotação" }}
-        menuLabel="Menu"
-        openMenuLabel="Abrir menu"
-        themeLabel="Tema: claro, escuro ou sistema"
-      />
+      <BrazilHeader />
 
       <main className="flex-1">
         <section className="landing-hero px-4 py-16 sm:py-20">
@@ -78,7 +63,21 @@ export default function BrazilPreNegativacaoPage() {
         </section>
 
         <article className="container max-w-3xl space-y-6 px-4 py-16 text-[0.975rem] leading-relaxed text-foreground/90 sm:text-base sm:leading-relaxed">
-          <h2 className="section-title">O que mudou no Tema 1.315</h2>
+          <h2 className="section-title">O que é a comunicação de pré-negativação</h2>
+          <p>
+            Antes de incluir o nome de um consumidor em cadastro de inadimplência, a operação
+            brasileira precisa avisá-lo. Essa comunicação prévia — ligada a birôs e órgãos de
+            proteção ao crédito — não é um detalhe operacional: está no Código de Defesa do
+            Consumidor e na jurisprudência do Superior Tribunal de Justiça.
+          </p>
+          <p>
+            Na prática, credores, financeiras, varejo com carteira própria, telecom e áreas
+            jurídicas precisam enviar o aviso, em volume, e guardar o que aconteceu depois do
+            disparo. Mandar um e-mail ou um WhatsApp sem rastro técnico deixa a operação exposta
+            exatamente no ponto que o STJ passou a olhar: a entrega.
+          </p>
+
+          <h2 className="section-title pt-6">O que mudou no Tema 1.315</h2>
           <p>
             O art. 43, §2º, do Código de Defesa do Consumidor prevê a comunicação ao consumidor
             sobre a abertura de cadastro não solicitado. A Súmula 359 do STJ atribui ao órgão
@@ -87,12 +86,14 @@ export default function BrazilPreNegativacaoPage() {
           </p>
           <p>
             Em 2026, no Tema Repetitivo 1.315, o STJ reconheceu a validade da comunicação
-            eletrônica quando comprovada sua entrega ao destinatário.
+            eletrônica quando comprovada sua entrega ao destinatário. O tribunal consolidou o
+            entendimento de que a via eletrônica prevista no CDC pode ser válida — desde que a
+            entrega da notificação ao destinatário esteja comprovada.
           </p>
           <p>
-            O Superior Tribunal de Justiça consolidou o entendimento de que a comunicação
-            eletrônica prevista no art. 43, §2º, do CDC pode ser válida quando comprovada a
-            entrega da notificação ao destinatário.
+            Isso não transforma qualquer disparo em notificação automática. O recado operacional é
+            outro: se a empresa comunica por e-mail ou WhatsApp, precisa conseguir mostrar o
+            conteúdo, o destinatário, a data e a entrega quando o canal a informa.
           </p>
           <p>
             <a
@@ -101,30 +102,47 @@ export default function BrazilPreNegativacaoPage() {
               rel="noopener noreferrer"
               className="font-medium text-foreground underline-offset-4 hover:underline"
             >
-              Ver decisão do STJ
+              Ver decisão do STJ sobre o Tema Repetitivo 1.315
             </a>
           </p>
 
-          <h2 className="section-title pt-6">O que a Notificas documenta</h2>
+          <h2 className="section-title pt-6">Enviar não é entregar</h2>
           <p>
-            A Notificas registra os eventos técnicos necessários para documentar o ciclo da
+            Aceitar um envio no servidor de e-mail ou na plataforma de WhatsApp prova que a
+            mensagem saiu. Não prova, por si, que chegou à caixa de entrada ou ao aparelho. A
+            leitura, quando existe, é um terceiro fato. A evidência de entrega é o elo que o
+            mercado brasileiro passou a exigir com mais clareza depois do Tema 1.315.
+          </p>
+          <p>
+            A Notificas registra cada etapa disponível: criação, envio, aceitação pelo provedor,
+            entrega e leitura. O comprovante verificável reúne identificadores técnicos, trilha de
+            auditoria, hash e PDF individual para cada destinatário.
+          </p>
+
+          <h2 className="section-title pt-6">O que a Notificas documenta — e o que não assume</h2>
+          <p>
+            A plataforma registra os eventos técnicos necessários para documentar o ciclo da
             comunicação: conteúdo, envio, entrega, falhas, tentativas e leitura quando disponível.
+            Também gera hash, PDF e consulta pública do que estava registrado naquele instante.
           </p>
           <p>
-            Enviar não é o mesmo que entregar. O comprovante verificável reúne identificadores
-            técnicos, trilha de auditoria, hash e PDF individual para cada destinatário.
-          </p>
-          <p>
-            A plataforma não é autoridade certificadora, não é certificadora ICP-Brasil e não
-            cumpre, sozinha, toda obrigação legal de pré-negativação. Ela oferece o registro
-            técnico para a empresa documentar a comunicação.
+            A Notificas não é autoridade certificadora, não é certificadora ICP-Brasil e não
+            cumpre, sozinha, toda obrigação legal de pré-negativação. Não substitui o órgão
+            mantenedor do cadastro. Cada cliente permanece responsável pela base legal, pelo
+            conteúdo da mensagem e pelo cumprimento das normas aplicáveis, inclusive o CDC e a
+            LGPD.
           </p>
 
           <h2 className="section-title pt-6">Para quem faz sentido</h2>
           <p>
             Operações de cobrança, crédito, varejo com financiamento próprio, telecom, utilities e
             áreas jurídicas que precisam comunicar inadimplência em volume e guardar evidência de
-            envio e entrega.
+            envio e entrega. O encaixe típico é API ou lote, com dossiê por destinatário — não um
+            relatório genérico do disparo.
+          </p>
+          <p>
+            Planos são personalizados. Não publicamos tabela de preços. A cotação comercial pode
+            ser feita em USD, conforme volume e canal.
           </p>
 
           <p className="flex items-start gap-2 pt-2 text-sm text-muted-foreground">
@@ -138,7 +156,7 @@ export default function BrazilPreNegativacaoPage() {
             </Button>
             <Button size="lg" variant="outline" asChild>
               <Link href={BRAZIL_PATH}>
-                Ver a plataforma
+                Ver a plataforma no Brasil
                 <ArrowRight className="ml-2 h-4 w-4" aria-hidden />
               </Link>
             </Button>
