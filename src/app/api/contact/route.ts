@@ -9,6 +9,15 @@ import {
   getFirebaseSendEmailUrl,
 } from "@/lib/mail-defaults";
 
+const finalidadeSchema = z.enum([
+  "cobranca",
+  "pre-negativacao",
+  "notificacao-contratual",
+  "juridico",
+  "credito",
+  "outros",
+]);
+
 const bodySchema = z.object({
   nombre: z.string().trim().min(1).max(200),
   compania: z.string().trim().max(200).optional().default(""),
@@ -20,7 +29,14 @@ const bodySchema = z.object({
     .union([z.enum(["whatsapp", "email", "ambos"]), z.literal("")])
     .optional()
     .default(""),
-  tipoConsulta: z.enum(["general", "cotizacion"]).optional().default("general"),
+  tipoConsulta: z
+    .enum(["general", "cotizacion", "demostracion"])
+    .optional()
+    .default("general"),
+  mercado: z.enum(["AR", "BR"]).optional().default("AR"),
+  cnpj: z.string().trim().max(32).optional().default(""),
+  cargo: z.string().trim().max(120).optional().default(""),
+  finalidade: z.array(finalidadeSchema).max(6).optional().default([]),
 });
 
 const CANAL_LABEL: Record<"whatsapp" | "email" | "ambos", string> = {
@@ -59,19 +75,53 @@ export async function POST(request: NextRequest) {
     volumenEstimado,
     canal,
     tipoConsulta,
+    mercado,
+    cnpj,
+    cargo,
+    finalidade,
   } = parsed.data;
   const inbox = getContactInboxEmail();
-  const isQuote = tipoConsulta === "cotizacion";
+  const isQuote = tipoConsulta === "cotizacion" || tipoConsulta === "demostracion";
+  const isBrazil = mercado === "BR";
   const canalLabel = canal ? CANAL_LABEL[canal] : "";
+  const tipoLabel =
+    tipoConsulta === "demostracion"
+      ? isBrazil
+        ? "Solicitação de demonstração — Brasil"
+        : "Solicitud de demostración"
+      : tipoConsulta === "cotizacion"
+        ? isBrazil
+          ? "Solicitação de cotação — Brasil"
+          : "Solicitud de cotización corporativa"
+        : isBrazil
+          ? "Consulta web — Brasil"
+          : "Consulta web";
+  const finalidadeLabel: Record<z.infer<typeof finalidadeSchema>, string> = {
+    cobranca: "Cobrança",
+    "pre-negativacao": "Pré-negativação",
+    "notificacao-contratual": "Notificação contratual",
+    juridico: "Jurídico",
+    credito: "Crédito",
+    outros: "Outros",
+  };
 
   const htmlLines = [
-    `<p><strong>Tipo:</strong> ${isQuote ? "Solicitud de cotización corporativa" : "Consulta web"}</p>`,
+    `<p><strong>Tipo:</strong> ${escapeHtml(tipoLabel)}</p>`,
+    `<p><strong>Mercado:</strong> ${isBrazil ? "Brasil" : "Argentina"}</p>`,
     `<p><strong>Nombre:</strong> ${escapeHtml(nombre)}</p>`,
     `<p><strong>Empresa:</strong> ${escapeHtml(compania || "(no indicada)")}</p>`,
     `<p><strong>Email:</strong> <a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></p>`,
   ];
+  if (cargo) {
+    htmlLines.push(`<p><strong>Cargo:</strong> ${escapeHtml(cargo)}</p>`);
+  }
+  if (cnpj) {
+    htmlLines.push(`<p><strong>CNPJ:</strong> ${escapeHtml(cnpj)}</p>`);
+  }
   if (telefono) {
-    htmlLines.push(`<p><strong>Teléfono:</strong> ${escapeHtml(telefono)}</p>`);
+    htmlLines.push(
+      `<p><strong>${isBrazil ? "WhatsApp" : "Teléfono"}:</strong> ${escapeHtml(telefono)}</p>`
+    );
   }
   if (volumenEstimado) {
     htmlLines.push(
@@ -81,6 +131,13 @@ export async function POST(request: NextRequest) {
   if (canalLabel) {
     htmlLines.push(`<p><strong>Canal:</strong> ${escapeHtml(canalLabel)}</p>`);
   }
+  if (finalidade.length) {
+    htmlLines.push(
+      `<p><strong>Finalidade:</strong> ${escapeHtml(
+        finalidade.map((item) => finalidadeLabel[item]).join(", ")
+      )}</p>`
+    );
+  }
   if (mensaje) {
     htmlLines.push(
       `<p><strong>${isQuote ? "Descripción:" : "Mensaje:"}</strong></p><pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(mensaje)}</pre>`
@@ -88,18 +145,30 @@ export async function POST(request: NextRequest) {
   }
   htmlLines.push(
     `<p style="color:#666;font-size:12px">Origen: formulario ${
-      isQuote ? "cotización corporativa" : "Contáctenos"
+      isBrazil
+        ? tipoConsulta === "demostracion"
+          ? "demonstração Brasil"
+          : "cotação Brasil"
+        : isQuote
+          ? "cotización corporativa"
+          : "Contáctenos"
     } (${escapeHtml(process.env.NEXT_PUBLIC_APP_URL || "notificas")})</p>`
   );
   const html = htmlLines.join("\n");
   const text = [
-    `Tipo: ${isQuote ? "Solicitud de cotización corporativa" : "Consulta web"}`,
+    `Tipo: ${tipoLabel}`,
+    `Mercado: ${isBrazil ? "Brasil" : "Argentina"}`,
     `Nombre: ${nombre}`,
     `Empresa: ${compania || "(no indicada)"}`,
+    cargo ? `Cargo: ${cargo}` : "",
+    cnpj ? `CNPJ: ${cnpj}` : "",
     `Email: ${email}`,
-    telefono ? `Teléfono: ${telefono}` : "",
+    telefono ? `${isBrazil ? "WhatsApp" : "Teléfono"}: ${telefono}` : "",
     volumenEstimado ? `Volumen estimado: ${volumenEstimado}` : "",
     canalLabel ? `Canal: ${canalLabel}` : "",
+    finalidade.length
+      ? `Finalidade: ${finalidade.map((item) => finalidadeLabel[item]).join(", ")}`
+      : "",
     mensaje ? `\n${isQuote ? "Descripción" : "Mensaje"}:\n${mensaje}` : "",
   ]
     .filter(Boolean)
@@ -112,9 +181,13 @@ export async function POST(request: NextRequest) {
       to: inbox,
       from: DEFAULT_CONTACT_FROM_EMAIL,
       replyTo: email,
-      subject: isQuote
-        ? `Cotización corporativa — ${nombre}`
-        : `Consulta web — ${nombre}`,
+      subject: isBrazil
+        ? tipoConsulta === "demostracion"
+          ? `Demonstração Brasil — ${nombre}`
+          : `Cotação Brasil — ${nombre}`
+        : isQuote
+          ? `Cotización corporativa — ${nombre}`
+          : `Consulta web — ${nombre}`,
       html,
       text,
       senderName: nombre,

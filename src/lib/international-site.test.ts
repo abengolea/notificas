@@ -8,6 +8,7 @@ import { buildSitemap } from "../app/sitemap";
 import {
   ARGENTINA_ORIGIN,
   INTL_PREVIEW_PATH,
+  INTERNATIONAL_COUNTRIES,
   INTERNATIONAL_ORIGIN,
   hostnameFromRequestHeaders,
   isInternationalHost,
@@ -42,16 +43,7 @@ test("notificas.com.ar no se reescribe a la landing internacional", () => {
   );
 });
 
-test("detección de host ignora x-forwarded-host si Host ya es un dominio propio", () => {
-  assert.equal(
-    hostnameFromRequestHeaders(
-      headersOf({
-        host: "notificas.com.ar",
-        "x-forwarded-host": "notificas.com",
-      })
-    ),
-    "notificas.com.ar"
-  );
+test("App Hosting: el dominio pedido va en x-forwarded-host", () => {
   assert.equal(
     hostnameFromRequestHeaders(
       headersOf({
@@ -60,6 +52,42 @@ test("detección de host ignora x-forwarded-host si Host ya es un dominio propio
       })
     ),
     "notificas.com"
+  );
+  assert.equal(
+    hostnameFromRequestHeaders(
+      headersOf({
+        host: "notificas.com.ar",
+        "x-forwarded-host": "notificas.com",
+      })
+    ),
+    "notificas.com"
+  );
+  assert.equal(
+    hostnameFromRequestHeaders(
+      headersOf({
+        host: "notificas.com.ar",
+        "x-forwarded-host": "https://notificas.com",
+      })
+    ),
+    "notificas.com"
+  );
+  assert.equal(
+    hostnameFromRequestHeaders(
+      headersOf({
+        host: "notificas--notificas-f9953.us-central1.hosted.app",
+        forwarded: "for=1.2.3.4;host=notificas.com;proto=https",
+      })
+    ),
+    "notificas.com"
+  );
+  assert.equal(
+    hostnameFromRequestHeaders(
+      headersOf({
+        host: "notificas.com.ar",
+        "x-forwarded-host": "evil.example",
+      })
+    ),
+    "notificas.com.ar"
   );
   assert.equal(
     hostnameFromRequestHeaders(headersOf({ host: "localhost:9006" })),
@@ -102,8 +130,18 @@ test("notificas.com sirve la landing en / y manda el SPA viejo al archivo", () =
     resolveInternationalGate({ host: "notificas.com", pathname: "/_next/static/chunk.js" }),
     { type: "passthrough" }
   );
+  assert.deepEqual(resolveInternationalGate({ host: "notificas.com", pathname: "/br" }), {
+    type: "passthrough",
+  });
+  assert.deepEqual(
+    resolveInternationalGate({ host: "notificas.com", pathname: "/br/pre-negativacao" }),
+    { type: "passthrough" }
+  );
   assert.equal(isLegacyComPath("/login"), true);
-  assert.equal(isLegacyComPath("/signup"), false);
+  assert.equal(
+    INTERNATIONAL_COUNTRIES.find((country) => country.id === "BR")?.href,
+    "/br"
+  );
 });
 
 test("la preview /intl no entra al sitemap ni a robots públicos", () => {
@@ -116,7 +154,11 @@ test("la preview /intl no entra al sitemap ni a robots públicos", () => {
     "el sitemap de .com.ar no debe listar /intl"
   );
   const internationalUrls = buildSitemap(INTERNATIONAL_ORIGIN).map((entry) => entry.url);
-  assert.deepEqual(internationalUrls, [INTERNATIONAL_ORIGIN]);
+  assert.deepEqual(internationalUrls, [
+    INTERNATIONAL_ORIGIN,
+    `${INTERNATIONAL_ORIGIN}/br`,
+    `${INTERNATIONAL_ORIGIN}/br/pre-negativacao`,
+  ]);
 });
 
 test("las banderas oficiales del gate internacional existen", () => {

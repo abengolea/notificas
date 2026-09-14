@@ -4,11 +4,16 @@ import { LEGACY_ARCHIVO_BASE_PATH } from "@/lib/legacy-archivo";
 export const INTERNATIONAL_ORIGIN = "https://notificas.com";
 export const ARGENTINA_ORIGIN = "https://notificas.com.ar";
 export const INTL_PREVIEW_PATH = "/intl";
+export const BRAZIL_PATH_PREFIX = "/br";
+
+export function isBrazilPublicPath(pathname: string): boolean {
+  return pathname === BRAZIL_PATH_PREFIX || pathname.startsWith(`${BRAZIL_PATH_PREFIX}/`);
+}
 
 export const INTERNATIONAL_TITLE =
   "Notificas | Comunicaciones digitales verificables";
 export const INTERNATIONAL_DESCRIPTION =
-  "Comunicaciones digitales verificables por WhatsApp y email. Argentina está online. Brasil y Colombia, pronto.";
+  "Comunicaciones digitales verificables por WhatsApp y email. Argentina y Brasil están online. Colombia, próximamente.";
 
 export const INTERNATIONAL_HOSTS = ["notificas.com", "www.notificas.com"] as const;
 export const ARGENTINA_HOSTS = ["notificas.com.ar", "www.notificas.com.ar"] as const;
@@ -47,7 +52,7 @@ export const INTERNATIONAL_COUNTRIES: ReadonlyArray<{
   href: string | null;
 }> = [
   { id: "AR", name: "Argentina", status: "Entrar", href: `${ARGENTINA_ORIGIN}/` },
-  { id: "BR", name: "Brasil", status: "Em breve", href: null },
+  { id: "BR", name: "Brasil", status: "Acessar", href: "/br" },
   { id: "CO", name: "Colombia", status: "Próximamente", href: null },
 ];
 
@@ -61,27 +66,89 @@ type HeaderReader = {
 };
 
 export function hostnameOf(hostHeader: string): string {
-  return hostHeader.split(":")[0]?.toLowerCase().trim() ?? "";
+  let value = hostHeader.trim().toLowerCase();
+  if (!value) return "";
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    try {
+      return new URL(value).hostname.toLowerCase();
+    } catch {
+      value = value.replace(/^https?:\/\//, "");
+    }
+  }
+  return (value.split("/")[0] ?? "").split(":")[0]?.trim() ?? "";
 }
 
 export function isKnownPublicHost(hostHeader: string): boolean {
   return (KNOWN_PUBLIC_HOSTS as readonly string[]).includes(hostnameOf(hostHeader));
 }
 
+function hostnamesFromListHeader(value: string | null): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((part) => hostnameOf(part))
+    .filter(Boolean);
+}
+
+function hostnamesFromForwarded(value: string | null): string[] {
+  if (!value) return [];
+  const hosts: string[] = [];
+  for (const element of value.split(",")) {
+    const match = /(?:^|;)\s*host\s*=\s*"?([^;";]+)"?/i.exec(element);
+    if (match?.[1]) hosts.push(hostnameOf(match[1]));
+  }
+  return hosts.filter(Boolean);
+}
+
 /**
  * Hostname público de la request.
- * Si `Host` ya es un dominio nuestro, se ignora `x-forwarded-host` (anti-spoof).
- * Si `Host` es el default de App Hosting / Cloud Run, se usa el forwarded host conocido.
+ * En App Hosting el `Host` interno suele ser el *.hosted.app o el canónico
+ * `.com.ar`; el dominio que pidió el usuario viene en `x-forwarded-host`.
+ * Un forwarded host desconocido se ignora (anti-spoof).
  */
 export function hostnameFromRequestHeaders(headers: HeaderReader): string {
-  const host = hostnameOf(headers.get("host") ?? "");
-  const forwarded = hostnameOf(
-    (headers.get("x-forwarded-host") ?? "").split(",")[0] ?? ""
-  );
+  const forwardedKnown = [
+    ...hostnamesFromListHeader(headers.get("x-forwarded-host")),
+    ...hostnamesFromListHeader(headers.get("x-original-host")),
+    ...hostnamesFromForwarded(headers.get("forwarded")),
+  ].find((item) => isKnownPublicHost(item));
 
-  if (isKnownPublicHost(host)) return host;
-  if (isKnownPublicHost(forwarded)) return forwarded;
-  return host;
+  if (forwardedKnown) return forwardedKnown;
+
+  return hostnameOf(headers.get("host") ?? "");
+}
+
+export function internationalLandingMetadata(indexable: boolean) {
+  return {
+    metadataBase: new URL(INTERNATIONAL_ORIGIN),
+    title: { absolute: INTERNATIONAL_TITLE },
+    description: INTERNATIONAL_DESCRIPTION,
+    applicationName: "Notificas",
+    alternates: {
+      canonical: INTERNATIONAL_ORIGIN,
+      languages: {
+        es: INTERNATIONAL_ORIGIN,
+        "pt-BR": `${INTERNATIONAL_ORIGIN}/br`,
+        "x-default": INTERNATIONAL_ORIGIN,
+      },
+    },
+    openGraph: {
+      type: "website" as const,
+      locale: "es_LA",
+      url: INTERNATIONAL_ORIGIN,
+      siteName: "Notificas",
+      title: INTERNATIONAL_TITLE,
+      description: INTERNATIONAL_DESCRIPTION,
+    },
+    twitter: {
+      card: "summary_large_image" as const,
+      title: INTERNATIONAL_TITLE,
+      description: INTERNATIONAL_DESCRIPTION,
+    },
+    robots: indexable
+      ? { index: true, follow: true }
+      : { index: false, follow: true },
+  };
 }
 
 export function isInternationalHost(hostHeader: string): boolean {
@@ -147,6 +214,8 @@ export function resolveInternationalGate(opts: {
   if (pathname === "/" || pathname === INTL_PREVIEW_PATH) {
     return { type: "rewrite", pathname: INTL_PREVIEW_PATH };
   }
+
+  if (isBrazilPublicPath(pathname)) return { type: "passthrough" };
 
   if (isInternalAsset(pathname)) return { type: "passthrough" };
 

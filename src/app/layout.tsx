@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { headers } from 'next/headers';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster"
 import { ThemeProvider } from "@/components/theme-provider"
@@ -103,13 +104,16 @@ export const viewport: Viewport = {
 // Suprime errores de wallets de browser (MetaMask, etc.) que no son relevantes para esta app.
 const INLINE_SUPPRESS = `(function(){var m=["eth_requestAccounts","wallet_requestPermissions","eth_accounts"];function w(e){if(!e||e._n)return;if(e.request){var o=e.request.bind(e);e.request=function(a){if(a&&m.indexOf(a.method)>=0)return Promise.resolve([]);return o(a)};}if(typeof e.connect==="function")e.connect=function(){return Promise.resolve([])};e._n=1}try{if(typeof window!=="undefined"&&window.ethereum)w(window.ethereum)}catch(e){}window.addEventListener("unhandledrejection",function(e){var x=(e.reason&&e.reason.message)||"";if(typeof x==="string"&&(/metamask|ethereum|failed.*connect/i).test(x)){e.preventDefault();e.stopPropagation()}},true)})();`;
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale =
+    (await headers()).get("x-notificas-locale") === "pt-BR" ? "pt-BR" : "es-AR";
+
   return (
-    <html lang="es-AR" className={`${inter.variable} ${sora.variable} ${plexMono.variable}`} suppressHydrationWarning>
+    <html lang={locale} className={`${inter.variable} ${sora.variable} ${plexMono.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: INLINE_SUPPRESS }} suppressHydrationWarning />
       </head>

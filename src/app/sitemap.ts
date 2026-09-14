@@ -2,6 +2,11 @@ import type { MetadataRoute } from "next";
 import { headers } from "next/headers";
 
 import {
+  BRAZIL_PATH,
+  BRAZIL_PRE_NEGATIVACAO_PATH,
+  BRAZIL_SITEMAP_LASTMOD,
+} from "@/lib/brazil-site";
+import {
   INTERNATIONAL_ORIGIN,
   hostnameFromRequestHeaders,
   isInternationalHost,
@@ -15,6 +20,21 @@ import {
 import { SITE_URL, SITEMAP_LASTMOD } from "@/lib/seo";
 
 export function buildSitemap(origin: string = SITE_URL): MetadataRoute.Sitemap {
+  const brazilPages: MetadataRoute.Sitemap = [
+    {
+      url: `${INTERNATIONAL_ORIGIN}${BRAZIL_PATH}`,
+      lastModified: BRAZIL_SITEMAP_LASTMOD,
+      changeFrequency: "weekly",
+      priority: 0.95,
+    },
+    {
+      url: `${INTERNATIONAL_ORIGIN}${BRAZIL_PRE_NEGATIVACAO_PATH}`,
+      lastModified: BRAZIL_SITEMAP_LASTMOD,
+      changeFrequency: "monthly",
+      priority: 0.85,
+    },
+  ];
+
   if (origin === INTERNATIONAL_ORIGIN) {
     return [
       {
@@ -23,6 +43,7 @@ export function buildSitemap(origin: string = SITE_URL): MetadataRoute.Sitemap {
         changeFrequency: "weekly",
         priority: 1,
       },
+      ...brazilPages,
     ];
   }
 

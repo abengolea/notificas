@@ -4,12 +4,13 @@ import { Mail, Phone } from "lucide-react";
 
 import { FooterContactForm } from "@/components/footer-contact-form";
 import { Logo } from "@/components/logo";
+import { ARGENTINA_ORIGIN } from "@/lib/international-site";
 import {
   LEGACY_ARCHIVO_BASE_PATH,
   LEGACY_ARCHIVO_PUBLIC_LABEL,
 } from "@/lib/legacy-archivo";
 import { LEGAL_PUBLIC_PAGES, RESOURCE_HUB } from "@/lib/public-resources";
-import { SITE_CONTACT } from "@/lib/seo";
+import { SITE_CONTACT, SITE_LEGAL_NAME } from "@/lib/seo";
 
 function FooterLink({ href, children }: { href: string; children: ReactNode }) {
   return (
@@ -28,7 +29,24 @@ const SITE_LINKS = [
   { href: LEGACY_ARCHIVO_BASE_PATH, label: LEGACY_ARCHIVO_PUBLIC_LABEL, external: true },
 ] as const;
 
-export function PublicFooter({ variant = "compact" }: { variant?: "full" | "compact" }) {
+const BRAZIL_SITE_LINKS = [
+  { href: "/br#evidencias", label: "Evidências" },
+  { href: "/br/pre-negativacao", label: "Pré-negativação" },
+  { href: "/verify", label: "Verificar evidência" },
+] as const;
+
+type PublicFooterProps = {
+  variant?: "full" | "compact";
+  locale?: "es-AR" | "pt-BR";
+};
+
+export function PublicFooter({
+  variant = "compact",
+  locale = "es-AR",
+}: PublicFooterProps) {
+  const isBrazil = locale === "pt-BR";
+  const links = isBrazil ? BRAZIL_SITE_LINKS : SITE_LINKS;
+
   return (
     <footer className="footer-band selection:bg-primary/45 selection:text-white">
       <div className="container grid grid-cols-1 gap-10 px-4 py-10 md:grid-cols-12 md:gap-8 md:px-6 md:py-12">
@@ -46,12 +64,19 @@ export function PublicFooter({ variant = "compact" }: { variant?: "full" | "comp
             <br />
             Argentina
           </address>
+          {isBrazil ? (
+            <p className="mt-3 max-w-[36ch] text-sm leading-relaxed text-white/70">
+              Empresa internacional. Operação societária em {SITE_LEGAL_NAME}, Argentina.
+            </p>
+          ) : null}
         </div>
 
-        <nav className="md:col-span-3" aria-label="Páginas">
-          <h2 className="text-lg font-bold tracking-tight">Páginas</h2>
+        <nav className="md:col-span-3" aria-label={isBrazil ? "Páginas" : "Páginas"}>
+          <h2 className="text-lg font-bold tracking-tight">
+            {isBrazil ? "Páginas" : "Páginas"}
+          </h2>
           <ul className="mt-3 space-y-2 text-sm">
-            {SITE_LINKS.map((item) => (
+            {links.map((item) => (
               <li key={item.href}>
                 {"external" in item ? (
                   <a
@@ -69,8 +94,10 @@ export function PublicFooter({ variant = "compact" }: { variant?: "full" | "comp
         </nav>
 
         <div id="contacto" className="scroll-mt-24 md:col-span-5">
-          <h2 className="text-lg font-bold tracking-tight">Contacto</h2>
-          {variant === "full" ? (
+          <h2 className="text-lg font-bold tracking-tight">
+            {isBrazil ? "Contato" : "Contacto"}
+          </h2>
+          {variant === "full" && !isBrazil ? (
             <div className="mt-3">
               <FooterContactForm />
               <p className="mt-4 text-sm leading-relaxed text-white/80">
@@ -111,7 +138,9 @@ export function PublicFooter({ variant = "compact" }: { variant?: "full" | "comp
                 </a>
               </p>
               <p className="text-white/80">
-                <FooterLink href="/#contacto">Ir al formulario de contacto</FooterLink>
+                <FooterLink href={isBrazil ? "/br#cotacao" : "/#contacto"}>
+                  {isBrazil ? "Ir ao formulário de cotação" : "Ir al formulario de contacto"}
+                </FooterLink>
               </p>
             </div>
           )}
@@ -120,22 +149,33 @@ export function PublicFooter({ variant = "compact" }: { variant?: "full" | "comp
 
       <div className="border-t border-white/20">
         <div className="container flex flex-col gap-3 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-sm text-white/80 md:flex-row md:items-center md:justify-between md:gap-6 md:px-6">
-          <p>Copyright © 2026 | Notificas SRL</p>
-          <nav aria-label="Información legal">
+          <p>Copyright © 2026 | {SITE_LEGAL_NAME}</p>
+          <nav aria-label={isBrazil ? "Informação legal" : "Información legal"}>
             <ul className="flex flex-col gap-2 md:flex-row md:flex-wrap md:gap-x-4 md:gap-y-1">
-              {LEGAL_PUBLIC_PAGES.map((page) => (
+              {(isBrazil
+                ? LEGAL_PUBLIC_PAGES.filter(
+                    (page) => page.path === "/privacidad" || page.path === "/terminos"
+                  )
+                : LEGAL_PUBLIC_PAGES
+              ).map((page) => (
                 <li key={page.path}>
-                  <FooterLink href={page.path}>{page.title}</FooterLink>
+                  <FooterLink href={page.path}>
+                    {isBrazil && page.path === "/privacidad"
+                      ? "Privacidade"
+                      : isBrazil && page.path === "/terminos"
+                        ? "Termos"
+                        : page.title}
+                  </FooterLink>
                 </li>
               ))}
             </ul>
           </nav>
           <p>
             <Link
-              href="/login?next=/empresa"
+              href={isBrazil ? `${ARGENTINA_ORIGIN}/login?next=/empresa` : "/login?next=/empresa"}
               className="text-sm leading-tight text-white/80 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
             >
-              Acceso empresas
+              {isBrazil ? "Acesso à plataforma" : "Acceso empresas"}
             </Link>
           </p>
         </div>

@@ -75,7 +75,7 @@ export function InternationalLanding() {
           Elegí tu país. Escolha seu país.
         </p>
         <p className="landing-hero-muted mt-2 max-w-[44ch] text-pretty text-center text-sm leading-relaxed sm:text-base">
-          Hoy operamos en Argentina. Brasil y Colombia, pronto.
+          Argentina y Brasil están online. Colombia, próximamente.
         </p>
 
         <ul className="mt-14 flex w-full max-w-4xl flex-col items-center gap-12 sm:mt-16 sm:flex-row sm:items-end sm:justify-center sm:gap-10">
