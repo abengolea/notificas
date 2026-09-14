@@ -23,9 +23,11 @@ interface UserNavProps {
   user: User;
   /** Omit to keep the particulares account link. Pass `null` to hide it. */
   accountHref?: string | null;
+  /** Avatar plus name as the trigger (ART / empresa shell). */
+  showName?: boolean;
 }
 
-export function UserNav({ user, accountHref = "/dashboard/cuenta" }: UserNavProps) {
+export function UserNav({ user, accountHref = "/dashboard/cuenta", showName = false }: UserNavProps) {
   const router = useRouter()
 
   const getInitials = (name: string) => {
@@ -39,11 +41,20 @@ export function UserNav({ user, accountHref = "/dashboard/cuenta" }: UserNavProp
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-10 w-10 rounded-full" aria-label="Menú de usuario">
-          <Avatar className="h-10 w-10">
+        <Button
+          variant="ghost"
+          className={showName ? "h-9 max-w-[16rem] gap-2 rounded-md px-1.5" : "relative h-10 w-10 rounded-full"}
+          aria-label="Menú de usuario"
+        >
+          <Avatar className={showName ? "h-8 w-8" : "h-10 w-10"}>
             <AvatarImage src={user.avatarUrl} alt={user.perfil.nombre} />
             <AvatarFallback>{getInitials(user.perfil.nombre)}</AvatarFallback>
           </Avatar>
+          {showName ? (
+            <span className="hidden min-w-0 flex-col items-start sm:flex">
+              <span className="max-w-[10rem] truncate text-[13px] font-medium leading-4">{user.perfil.nombre}</span>
+            </span>
+          ) : null}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-56" align="end" forceMount>

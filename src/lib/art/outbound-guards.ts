@@ -8,6 +8,7 @@ import {
   assertPilotCampaignLimit,
   assertPilotRecipientAllowed,
 } from "@/lib/art/pilot";
+import { isExplicitNotificationType, parseNotificationType } from "@/lib/art/notification-type";
 import type { SrtNotificationType } from "@/lib/art/types";
 
 export function assertArtOutboundClassification(
@@ -19,7 +20,13 @@ export function assertArtOutboundClassification(
   if (!artModuleAvailableForOrg(orgId)) {
     return { ok: true, value: null };
   }
-  return assertExplicitNotificationType(notificationType, { required: true });
+  if (artPilotControlsApply(orgId)) {
+    return assertExplicitNotificationType(notificationType, { required: true });
+  }
+  if (!isExplicitNotificationType(notificationType)) {
+    return { ok: true, value: "ORDINARY" };
+  }
+  return { ok: true, value: parseNotificationType(notificationType) };
 }
 
 export function assertArtPilotOutboundRecipient(input: {

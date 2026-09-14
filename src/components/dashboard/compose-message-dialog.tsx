@@ -447,7 +447,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             subject: "",
             content: "",
             attachments: [],
-            notificationType: undefined,
+            notificationType: "ORDINARY",
         },
     });
 
@@ -941,7 +941,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                     <div className="space-y-3 rounded-md border p-3">
                         <p className="text-sm font-medium">Clasificación del envío</p>
                         <p className="text-xs text-muted-foreground">
-                            Obligatorio. Las notificaciones electrónicas SRT siempre pasan el control de adhesión. Las comunicaciones ordinarias no.
+                            Las notificaciones electrónicas exigen adhesión activa. Las comunicaciones ordinarias no.
                         </p>
                         <RadioGroup
                             value={form.watch("notificationType") || ""}
@@ -952,13 +952,13 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                                 <RadioGroupItem value="ORDINARY" id="compose-nt-ordinary" />
                                 <span>
                                     <span className="font-medium">Comunicación ordinaria</span>
-                                    <span className="block text-xs text-muted-foreground">No se trata como notificación electrónica SRT.</span>
+                                    <span className="block text-xs text-muted-foreground">No exige adhesión.</span>
                                 </span>
                             </label>
                             <label className="flex items-start gap-3 text-sm">
                                 <RadioGroupItem value="SRT_ART" id="compose-nt-srt" />
                                 <span>
-                                    <span className="font-medium">Notificación electrónica SRT</span>
+                                    <span className="font-medium">Notificación electrónica</span>
                                     <span className="block text-xs text-muted-foreground">Exige adhesión activa. Si no hay elegibilidad, no se envía.</span>
                                 </span>
                             </label>

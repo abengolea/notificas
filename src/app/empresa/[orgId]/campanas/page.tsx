@@ -11,6 +11,24 @@ import { isAdminManagedCampaign, isUnsentCampaign } from "@/lib/campaign-edit";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmpresaEnviosSaldoLiveBanner } from "@/components/empresa/empresa-envios-saldo-banner";
+import { EmpresaPage } from "@/components/empresa/empresa-page";
+
+function campaignEstadoLabel(estado: Campaign["estado"]): string {
+  switch (estado) {
+    case "borrador":
+      return "Borrador";
+    case "enviando":
+      return "Enviando";
+    case "completada":
+      return "Completada";
+    case "pausada":
+      return "Pausada";
+    case "cancelada":
+      return "Cancelada";
+    default:
+      return estado;
+  }
+}
 
 export default function CampanasListPage() {
   const { orgId } = useParams<{ orgId: string }>();
@@ -69,41 +87,54 @@ export default function CampanasListPage() {
 
   if (loading) {
     return (
-      <div className="p-8">
-        <Skeleton className="h-10 w-48" />
+      <div className="space-y-5 p-5 lg:p-8">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-24 w-full" />
       </div>
     );
   }
 
   return (
-    <div className="p-8 max-w-4xl space-y-6">
-      <EmpresaEnviosSaldoLiveBanner />
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Envíos masivos</h1>
-        <Button asChild>
+    <EmpresaPage
+      title="Envíos masivos"
+      description="Armá un envío a muchas personas. Podés usar el padrón de adhesiones o un CSV."
+      actions={
+        <Button size="sm" asChild>
           <Link href={`/empresa/${orgId}/campanas/nueva`}>Enviar nuevo envío masivo</Link>
         </Button>
+      }
+    >
+      <EmpresaEnviosSaldoLiveBanner />
+      <div className="overflow-hidden rounded-lg border border-border/80 bg-card">
+        {rows.length === 0 ? (
+          <p className="px-4 py-10 text-center text-[14px] leading-6 text-muted-foreground">
+            Todavía no hay envíos masivos.
+          </p>
+        ) : (
+          <ul>
+            {rows.map((c) => (
+              <li key={c.id} className="border-b border-border/70 last:border-0">
+                <Link
+                  href={`/empresa/${orgId}/campanas/${c.id}`}
+                  className="block px-4 py-3 hover:bg-muted/40"
+                >
+                  <div className="truncate text-[14px] font-medium leading-5 text-foreground">{c.nombre}</div>
+                  <div className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
+                    {campaignEstadoLabel(c.estado)}
+                    <span className="px-1.5 text-border">·</span>
+                    <span className="tabular-nums">{c.recipientCount}</span> dest.
+                    {isAdminManagedCampaign(c)
+                      ? " · solo consulta"
+                      : isUnsentCampaign(c)
+                        ? " · se puede editar"
+                        : ""}
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
-      <ul className="space-y-2">
-        {rows.map((c) => (
-          <li key={c.id}>
-            <Link
-              href={`/empresa/${orgId}/campanas/${c.id}`}
-              className="block rounded-lg border p-4 hover:bg-muted/40"
-            >
-              <div className="font-medium">{c.nombre}</div>
-              <div className="text-sm text-muted-foreground">
-                {c.estado} · {c.recipientCount} dest.
-                {isAdminManagedCampaign(c)
-                  ? " · solo consulta"
-                  : isUnsentCampaign(c)
-                    ? " · se puede editar"
-                    : ""}
-              </div>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
+    </EmpresaPage>
   );
 }

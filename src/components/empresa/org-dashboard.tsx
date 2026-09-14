@@ -84,7 +84,7 @@ function deltaCopy(pct: number | null, prev: number, current: number): string {
 
 export function OrgDashboardSkeleton() {
   return (
-    <div className="space-y-6 p-4 sm:space-y-8 sm:p-8">
+    <div className="space-y-6 p-5 lg:p-8">
       <Skeleton className="h-10 w-56" />
       <Skeleton className="h-36 w-full" />
       <div className="grid gap-4 lg:grid-cols-3">
@@ -114,8 +114,8 @@ export function OrgDashboard({
   const header = (
     <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+        <h1 className="app-page-title">Inicio</h1>
+        <p className="mt-1.5 max-w-2xl text-[13px] leading-5 text-muted-foreground">
           {formatInt(stats.campanas)} envíos masivos
           {stats.omitidasSimuladas > 0
             ? ` (${formatInt(stats.omitidasSimuladas)} simulado${stats.omitidasSimuladas === 1 ? "" : "s"} excluido${stats.omitidasSimuladas === 1 ? "" : "s"})`
@@ -125,13 +125,13 @@ export function OrgDashboard({
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" asChild>
+        <Button variant="outline" size="sm" asChild>
           <Link href={enviosHref}>Ver envíos individuales</Link>
         </Button>
-        <Button variant="outline" asChild>
+        <Button variant="outline" size="sm" asChild>
           <Link href={listHref}>Ver envíos masivos</Link>
         </Button>
-        <Button asChild>
+        <Button size="sm" asChild>
           <Link href={nuevaHref}>Enviar nuevo envío masivo</Link>
         </Button>
       </div>
@@ -144,7 +144,7 @@ export function OrgDashboard({
 
   if (stats.campanas === 0) {
     return (
-      <div className="space-y-8 p-4 sm:space-y-8 sm:p-8 max-w-[88rem]">
+      <div className="space-y-8 p-5 lg:p-8 max-w-[88rem]">
         {header}
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-lg border bg-card p-6">
@@ -173,7 +173,7 @@ export function OrgDashboard({
   ];
 
   return (
-    <div className="space-y-8 p-4 sm:p-8 max-w-[88rem]">
+    <div className="space-y-8 p-5 lg:p-8 max-w-[88rem]">
       {header}
       <p className="-mt-4 max-w-2xl text-sm text-muted-foreground">
         {formatInt(stats.destinatarios)} destinatarios en envíos masivos. Solo se cuentan envíos reales.

@@ -119,6 +119,22 @@ export const DEFAULT_ART_CONFIG: Omit<ArtConfig, "orgId"> = {
   otpChannel: "email",
 };
 
+export const ART_PERSON_RELATIONS = ["trabajador", "cliente", "otro"] as const;
+export type ArtPersonRelation = (typeof ART_PERSON_RELATIONS)[number];
+
+export function parseArtPersonRelation(raw: unknown): ArtPersonRelation {
+  const v = String(raw || "").trim().toLowerCase();
+  if (v === "cliente" || v === "otro") return v;
+  return "trabajador";
+}
+
+export function artPersonRelationLabel(raw: unknown): string {
+  const v = parseArtPersonRelation(raw);
+  if (v === "cliente") return "Cliente";
+  if (v === "otro") return "Otro";
+  return "Trabajador";
+}
+
 export type ArtRecipient = {
   id: string;
   orgId: string;
@@ -130,6 +146,8 @@ export type ArtRecipient = {
   lastName: string;
   phone: string;
   email: string;
+  /** Vínculo con la empresa. No cambia el régimen de adhesión. */
+  relation: ArtPersonRelation;
   status: ArtRecipientStatus;
   identityProvider: ArtIdentityProviderId | null;
   identityVerificationId: string | null;

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { artRecipientStatusLabel } from "@/lib/art/status-labels";
 
 export default function ManageAdhesionPage() {
   const { token } = useParams<{ token: string }>();
@@ -47,7 +48,7 @@ export default function ManageAdhesionPage() {
     <main className="mx-auto min-h-dvh max-w-md space-y-5 px-5 py-10">
       <p className="text-xs uppercase tracking-wide text-muted-foreground">Notificaciones electrónicas</p>
       <h1 className="text-2xl font-semibold">{data.art}</h1>
-      <p>Estado: <strong>{data.status}</strong></p>
+      <p>Estado: <strong>{artRecipientStatusLabel(data.status)}</strong></p>
       <p className="text-sm text-muted-foreground">Celular {data.phone} · Email {data.email || "—"}</p>
       {data.activatedAt ? <p className="text-sm">Adhesión: {new Date(data.activatedAt).toLocaleString("es-AR")}</p> : null}
       {data.adhesionId ? (

@@ -16,7 +16,7 @@ export function placeholderTermsContent(artName: string): string {
       "TERMINOS DE ADHESIÓN - PRUEBA INTERNA NOTIFICAS",
       "",
       `Estos términos se usan únicamente para probar el funcionamiento técnico del módulo de adhesión de ${name} en un entorno de producción controlado.`,
-      "No generan efectos frente a terceros. No constituyen notificación jurídica ni habilitación operativa hacia trabajadores reales.",
+      "No generan efectos frente a terceros. No constituyen notificación jurídica ni habilitación operativa hacia personas reales.",
       "",
       "La adhesión de prueba es voluntaria y se puede revocar. El objetivo es validar invitaciones, OTP por email, evidencia, hash y anclaje técnico.",
     ].join("\n");

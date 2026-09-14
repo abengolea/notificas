@@ -38,8 +38,8 @@ export function MetaVerificationWorkspace({
     <div className="space-y-6 max-w-4xl">
       {showHeading && (
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Verificación Meta</h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-prose">
+          <h1 className="app-page-title">Verificación Meta</h1>
+          <p className="mt-1.5 max-w-prose text-[13px] leading-5 text-muted-foreground">
             Comprobá identificadores de WhatsApp Business contra Meta Graph API y la evidencia histórica
             de webhooks conservada por Notificas. No afirma una certificación actual de lectura o entrega.
           </p>

@@ -10,7 +10,7 @@ import { blockchainStatusLabel, canonicalAuditPayload, hashAuditEvent, resolveBl
 import { ManualOrPrevalidatedIdentityProvider } from "./identity/prevalidated";
 import { getIdentityProvider } from "./identity/registry";
 import { IdentityProviderNotConfiguredError } from "./identity/types";
-import { DEFAULT_ART_CONFIG, type ArtRecipient } from "./types";
+import { DEFAULT_ART_CONFIG, parseArtPersonRelation, type ArtRecipient } from "./types";
 import { assertTenant } from "../public-api/tenant";
 import { PublicApiError } from "../public-api/errors";
 import { hasScope } from "../public-api/scopes";
@@ -32,6 +32,7 @@ function recipient(over: Partial<ArtRecipient> = {}): ArtRecipient {
     lastName: "Perez",
     phone: "+5491112345678",
     email: "ana@test.com",
+    relation: "trabajador",
     status: "active",
     identityProvider: "ART_PREVALIDATED",
     identityVerificationId: "idp_1",
@@ -67,6 +68,12 @@ function recipient(over: Partial<ArtRecipient> = {}): ArtRecipient {
     ...over,
   };
 }
+
+test("vínculo persona default trabajador y acepta cliente", () => {
+  assert.equal(parseArtPersonRelation(undefined), "trabajador");
+  assert.equal(parseArtPersonRelation("cliente"), "cliente");
+  assert.equal(parseArtPersonRelation("OTRO"), "otro");
+});
 
 test("adhesión válida habilita SRT_ART", () => {
   const r = evaluateEligibility({ moduleEnabled: true, recipient: recipient(), config: { ...DEFAULT_ART_CONFIG, orgId: "org_a" } });

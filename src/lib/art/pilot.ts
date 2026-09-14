@@ -30,9 +30,9 @@ export function artGeneralReleaseEnabled(): boolean {
   return envFlag("ART_GENERAL_RELEASE_ENABLED");
 }
 
-/** El módulo está técnicamente on y hay un modo de acceso (piloto o release general). */
+/** El módulo está técnicamente on. Toda org puede usarlo; el piloto solo suma caps y evidencia TEST. */
 export function artModuleReleased(): boolean {
-  return artModuleEnabled() && (artPilotMode() || artGeneralReleaseEnabled());
+  return artModuleEnabled();
 }
 
 export function artAllowedOrgIds(env = process.env): string[] {
@@ -76,15 +76,15 @@ export const PILOT_IDENTITY_ASSURANCE = "TEST_DECLARED";
 export function artModuleAvailableForOrg(orgId: string | null | undefined, env = process.env): boolean {
   if (!artModuleEnabled()) return false;
   const id = String(orgId || "").trim();
-  if (!id) return false;
-  if (artPilotMode()) return artAllowedOrgIds(env).includes(id);
-  if (artGeneralReleaseEnabled()) return true;
-  return false;
+  return Boolean(id);
 }
 
-/** Allowlist, cupos y marcas TEST solo para orgs ART habilitadas en piloto. Otras orgs no se tocan. */
+/** Allowlist y cupos de piloto: solo orgs listadas. El resto opera el módulo sin esos tope. */
 export function artPilotControlsApply(orgId: string | null | undefined, env = process.env): boolean {
-  return artPilotMode() && artModuleAvailableForOrg(orgId, env);
+  if (!artPilotMode()) return false;
+  const id = String(orgId || "").trim();
+  if (!id) return false;
+  return artAllowedOrgIds(env).includes(id);
 }
 
 export function throwArtCode(

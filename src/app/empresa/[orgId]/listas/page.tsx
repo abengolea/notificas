@@ -7,7 +7,7 @@ import { collection, onSnapshot, orderBy, query, where } from "firebase/firestor
 import { db } from "@/lib/firebase";
 import { listenWhenSignedIn } from "@/lib/listen-when-signed-in";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmpresaPage } from "@/components/empresa/empresa-page";
 
 export default function ListasPage() {
   const { orgId } = useParams<{ orgId: string }>();
@@ -39,35 +39,39 @@ export default function ListasPage() {
   }, [orgId]);
 
   return (
-    <div className="p-8 max-w-3xl space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Listas de destinatarios</h1>
-        <Button asChild>
+    <EmpresaPage
+      className="max-w-3xl"
+      title="Listas de destinatarios"
+      description="Listas reutilizables para envíos masivos. El padrón de adhesiones vive en Personas."
+      actions={
+        <Button size="sm" asChild>
           <Link href={`/empresa/${orgId}/listas/nueva`}>Nueva lista</Link>
         </Button>
-      </div>
+      }
+    >
       {rows.length === 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>No hay listas</CardTitle>
-            <CardDescription>Importá un CSV o cargá destinatarios manualmente.</CardDescription>
-          </CardHeader>
-        </Card>
+        <p className="rounded-lg border border-border/80 bg-card px-4 py-10 text-center text-[14px] leading-6 text-muted-foreground">
+          No hay listas. Importá un CSV o cargá destinatarios manualmente.
+        </p>
       ) : (
-        <ul className="space-y-2">
-          {rows.map((r) => (
-            <li key={r.id}>
-              <Link
-                href={`/empresa/${orgId}/listas/${r.id}`}
-                className="block rounded-lg border p-4 hover:bg-muted/40"
-              >
-                <div className="font-medium">{r.nombre}</div>
-                <div className="text-sm text-muted-foreground">{r.count} destinatarios</div>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <div className="overflow-hidden rounded-lg border border-border/80 bg-card">
+          <ul>
+            {rows.map((r) => (
+              <li key={r.id} className="border-b border-border/70 last:border-0">
+                <Link
+                  href={`/empresa/${orgId}/listas/${r.id}`}
+                  className="block px-4 py-3 hover:bg-muted/40"
+                >
+                  <div className="truncate text-[14px] font-medium leading-5">{r.nombre}</div>
+                  <div className="mt-0.5 text-[13px] leading-5 text-muted-foreground">
+                    <span className="tabular-nums">{r.count}</span> destinatarios
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
-    </div>
+    </EmpresaPage>
   );
 }

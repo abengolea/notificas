@@ -22,6 +22,7 @@ const postSchema = z.object({
   identityPrevalidatedByArt: z.boolean().optional(),
   identityAttestation: z.record(z.string(), z.unknown()).optional(),
   sendInvite: z.boolean().optional(),
+  relation: z.enum(["trabajador", "cliente", "otro"]).optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
     externalId: parsed.data.externalId,
     identityPrevalidatedByArt: parsed.data.identityPrevalidatedByArt,
     identityAttestation: attestation,
+    relation: parsed.data.relation,
   });
   if (attestation) {
     await startOrApplyIdentity({
@@ -73,7 +75,7 @@ export async function POST(request: NextRequest) {
   if (parsed.data.sendInvite !== false) {
     const inv = await createInvitation({
       orgId: parsed.data.orgId,
-      orgName: String(gate.org!.data.nombre || "ART"),
+      orgName: String(gate.org!.data.nombre || "tu organización"),
       recipient,
       actor: gate.decoded!.email || gate.decoded!.uid,
       send: true,

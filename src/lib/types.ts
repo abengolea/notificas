@@ -156,6 +156,8 @@ export interface Organization {
 export interface RecipientEntry {
   email: string;
   nombre: string;
+  /** Persona del padrón de adhesiones, si el envío se armó desde ahí. */
+  artRecipientId?: string;
   dni?: string;
   legajo?: string;
   telefono?: string;

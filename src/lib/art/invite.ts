@@ -53,7 +53,7 @@ export function adhesionConfirmationEmail(input: {
   const name = String(input.fullName || "").trim();
   const greeting = name ? `Hola ${name},` : "Hola,";
   const subject = `${input.orgName}: tu adhesión quedó registrada`;
-  const org = String(input.orgName || "la ART").trim();
+  const org = String(input.orgName || "tu organización").trim();
   const text = [
     greeting,
     "",
@@ -96,7 +96,7 @@ export function adhesionInviteEmail(input: {
 }): { subject: string; text: string; html: string } {
   const name = String(input.fullName || "").trim();
   const greeting = name ? `Hola ${name},` : "Hola,";
-  const org = String(input.orgName || "la ART").trim();
+  const org = String(input.orgName || "tu organización").trim();
   const expiresLabel = formatInviteExpiry(input.expiresAt);
   const subject = `${org}: adhesión a notificaciones electrónicas`;
   const text = [

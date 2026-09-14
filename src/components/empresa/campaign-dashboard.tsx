@@ -982,7 +982,7 @@ export const CampaignDashboard = forwardRef<
   );
 
   return (
-    <div className={embedded ? "space-y-6" : "p-6 md:p-8 max-w-6xl space-y-6"}>
+    <div className={embedded ? "space-y-6" : "space-y-5 p-5 lg:p-8 max-w-6xl"}>
       {!embedded && (
       <>
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -990,9 +990,9 @@ export const CampaignDashboard = forwardRef<
           <Link href={listHref || `/empresa/${orgId}/campanas`} className="text-sm text-muted-foreground hover:underline">
             ← Envíos masivos
           </Link>
-          <h1 className="text-2xl font-bold mt-2">{campaign.nombre}</h1>
+          <h1 className="app-page-title mt-2">{campaign.nombre}</h1>
           {empresaReadOnly && (
-            <p className="mt-2 text-sm text-muted-foreground max-w-xl">
+            <p className="mt-1.5 max-w-xl text-[13px] leading-5 text-muted-foreground">
               Este envío masivo lo armó el administrador. Podés ver el avance y los destinatarios, pero no editarlo, enviarlo ni cancelarlo. Los envíos masivos que armes vos sí los podés editar y enviar.
             </p>
           )}
@@ -1064,7 +1064,7 @@ export const CampaignDashboard = forwardRef<
           <p className="font-medium">Campaña pausada automáticamente</p>
           <p className="mt-1 text-muted-foreground">{campaign.autoPauseReason}</p>
           <p className="mt-2 text-muted-foreground">
-            Los destinatarios que no se enviaron siguen pendientes. Reanudá cuando el límite se haya despejado.
+            Los destinatarios que no se enviaron siguen pendientes. Reanudá cuando el problema se haya resuelto.
           </p>
         </div>
       ) : null}

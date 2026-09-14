@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { artModuleUiHint } from "@/lib/art/enabled";
-import { artModuleAvailableForOrg, evidenceRetentionUiCopy } from "@/lib/art/pilot";
+import { artModuleAvailableForOrg, artPilotControlsApply, artPilotMode, evidenceRetentionUiCopy } from "@/lib/art/pilot";
 
 export async function GET(request: NextRequest) {
   const orgId = request.nextUrl.searchParams.get("orgId") || "";
@@ -9,5 +9,7 @@ export async function GET(request: NextRequest) {
     enabled,
     uiHint: artModuleUiHint() && enabled,
     retentionCopy: enabled ? evidenceRetentionUiCopy() : null,
+    pilotMode: artPilotMode(),
+    pilotControls: artPilotControlsApply(orgId),
   });
 }

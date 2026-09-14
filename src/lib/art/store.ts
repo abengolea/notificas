@@ -1,7 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { ART_COLLECTIONS } from "@/lib/art/collections";
-import { DEFAULT_ART_CONFIG, type ArtConfig, type ArtRecipient, type ArtRecipientStatus } from "@/lib/art/types";
+import { DEFAULT_ART_CONFIG, parseArtPersonRelation, type ArtConfig, type ArtPersonRelation, type ArtRecipient, type ArtRecipientStatus } from "@/lib/art/types";
 import { attestationToRecipientFields, type IdentityAttestation } from "@/lib/art/identity-attestation";
 import { newArtRecipientId, newArtTermsId, normalizeCuil, normalizeDni, normalizeEmail } from "@/lib/art/ids";
 import { hashTermsContent, placeholderTermsContent, PLACEHOLDER_TERMS_TITLE } from "@/lib/art/terms";
@@ -44,7 +44,7 @@ export async function getOrCreateArtConfig(orgId: string, orgName?: string): Pro
   }
 
   const termsId = newArtTermsId();
-  const content = placeholderTermsContent(orgName || "la ART");
+  const content = placeholderTermsContent(orgName || "la organización");
   await db.collection(ART_COLLECTIONS.terms).doc(termsId).set({
     id: termsId,
     version: "draft-1",
@@ -141,6 +141,7 @@ export function mapRecipient(id: string, d: FirebaseFirestore.DocumentData): Art
     lastName: str(d.lastName),
     phone: str(d.phone),
     email: str(d.email),
+    relation: parseArtPersonRelation(d.relation),
     status: (d.status as ArtRecipientStatus) || "pending",
     identityProvider: d.identityProvider || null,
     identityVerificationId: d.identityVerificationId || null,
@@ -237,6 +238,7 @@ export async function upsertRecipient(input: {
   externalId?: string | null;
   identityPrevalidatedByArt?: boolean;
   identityAttestation?: IdentityAttestation | null;
+  relation?: ArtPersonRelation;
 }): Promise<{ recipient: ArtRecipient; created: boolean }> {
   throwArtCode(assertPilotRecipientAllowed({ orgId: input.orgId, email: input.email, phone: input.phone }));
   const cuil = normalizeCuil(input.cuil);
@@ -275,6 +277,7 @@ export async function upsertRecipient(input: {
       updates.phone = phone;
     }
     if (email) updates.email = email;
+    if (input.relation) updates.relation = parseArtPersonRelation(input.relation);
     await db.collection(ART_COLLECTIONS.recipients).doc(existing.id).update(updates);
     const fresh = await getRecipient(input.orgId, existing.id);
     return { recipient: fresh!, created: false };
@@ -301,6 +304,7 @@ export async function upsertRecipient(input: {
     lastName: (input.lastName || "").trim(),
     phone,
     email,
+    relation: parseArtPersonRelation(input.relation),
     lookupKey: lookupKey(input.orgId, cuil),
     status,
     identityProvider: pre ? attestationFields.identityProvider || "ART_PREVALIDATED" : null,

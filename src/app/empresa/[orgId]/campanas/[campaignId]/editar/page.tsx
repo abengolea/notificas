@@ -1,14 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { listenWhenSignedIn } from "@/lib/listen-when-signed-in";
 import { CampaignWizard } from "@/components/empresa/campaign-wizard";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { EmpresaPage } from "@/components/empresa/empresa-page";
 
 export default function EditarCampanaPage() {
   const { orgId, campaignId } = useParams<{ orgId: string; campaignId: string }>();
@@ -28,14 +26,11 @@ export default function EditarCampanaPage() {
   }, [orgId]);
 
   return (
-    <div className="p-8">
-      <Button variant="ghost" asChild className="mb-6 gap-2">
-        <Link href={`/empresa/${orgId}/campanas/${campaignId}`}>
-          <ArrowLeft className="h-4 w-4" />
-          Volver
-        </Link>
-      </Button>
+    <EmpresaPage
+      title="Editar envío masivo"
+      description="Los cambios se guardan sobre este borrador. Si el envío masivo ya se envió, no se puede modificar."
+    >
       <CampaignWizard orgId={orgId} orgPlan={plan} campaignId={campaignId} />
-    </div>
+    </EmpresaPage>
   );
 }

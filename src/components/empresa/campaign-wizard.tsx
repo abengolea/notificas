@@ -82,6 +82,7 @@ import {
 import { usesMetaTemplateAsEmailBody, renderCampaignMessageBody } from "@/lib/campaign-mixed-message";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 import { WaSavedTemplates } from "@/components/empresa/wa-saved-templates";
+import { CampaignPadronPicker, padronRowToRecipient, type PadronRow } from "@/components/empresa/campaign-padron-picker";
 
 type WizardStepId = "canal" | "destinatarios" | "mensaje" | "whatsapp" | "confirmacion";
 
@@ -135,6 +136,7 @@ function campaignCopyFields(
 
 function cleanRecipientForUpload(r: RecipientEntry): RecipientEntry {
   const clean: RecipientEntry = { nombre: r.nombre || "", email: r.email || "" };
+  if (r.artRecipientId) clean.artRecipientId = r.artRecipientId;
   if (r.telefono) clean.telefono = r.telefono;
   if (r.dni) clean.dni = r.dni;
   if (r.legajo) clean.legajo = r.legajo;
@@ -155,6 +157,7 @@ function parseEmailsBlock(text: string): RecipientEntry[] {
 }
 
 function recipientMergeKey(r: RecipientEntry, canal: CanalCampaign): string {
+  if (r.artRecipientId) return `art:${r.artRecipientId}`;
   if (canal === "whatsapp" || canal === "ambos") {
     const digits = phoneDigits(r.telefono);
     if (digits) return `wa:${digits}`;
@@ -234,11 +237,15 @@ export function CampaignWizard({
   const [loadingCampaign, setLoadingCampaign] = useState(Boolean(editCampaignId));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [artModuleOn, setArtModuleOn] = useState(false);
+  const [artPilotCaps, setArtPilotCaps] = useState(false);
   const [notificationType, setNotificationType] = useState<"" | "ORDINARY" | "SRT_ART">("");
+  const [destTab, setDestTab] = useState<string | null>(null);
+  const [padronSelected, setPadronSelected] = useState<Set<string>>(() => new Set());
+  const prevOrgIdRef = useRef(orgId);
   const orgPlan = isAdmin ? adminOrgPlan : orgPlanProp;
   const maxR = isAdmin ? 1_000_000 : maxRecipientsForPlan(orgPlan);
   const recipientTotal =
-    csvInspect?.count ||
+    (csvInspect && padronSelected.size === 0 ? csvInspect.count : 0) ||
     recipients.length ||
     existingRecipientCount ||
     (isAdmin && simulated ? simRecipientCount : 0);
@@ -267,8 +274,24 @@ export function CampaignWizard({
   useEffect(() => {
     void fetch(`/api/art/status?orgId=${encodeURIComponent(orgId)}`)
       .then((r) => r.json())
-      .then((d) => setArtModuleOn(d.enabled === true))
-      .catch(() => setArtModuleOn(false));
+      .then((d) => {
+        setArtModuleOn(d.enabled === true);
+        setArtPilotCaps(d.pilotControls === true);
+        if (d.enabled === true) {
+          setNotificationType((cur) => (cur === "SRT_ART" || cur === "ORDINARY" ? cur : "ORDINARY"));
+        }
+      })
+      .catch(() => {
+        setArtModuleOn(false);
+        setArtPilotCaps(false);
+      });
+  }, [orgId]);
+
+  useEffect(() => {
+    if (prevOrgIdRef.current === orgId) return;
+    prevOrgIdRef.current = orgId;
+    setPadronSelected(new Set());
+    setDestTab(null);
   }, [orgId]);
 
   useEffect(() => {
@@ -423,7 +446,10 @@ export function CampaignWizard({
           setCuerpo(String(x.cuerpo || ""));
           setCanal((x.canal as CanalCampaign) || "email");
           const inline = Array.isArray(x.recipientData) ? (x.recipientData as RecipientEntry[]) : [];
-          if (inline.length > 0) setRecipients(inline);
+          if (inline.length > 0) {
+            setRecipients(inline);
+            setPadronSelected(new Set(inline.map((r) => r.artRecipientId).filter((id): id is string => Boolean(id))));
+          }
           setExistingRecipientCount(typeof x.recipientCount === "number" ? x.recipientCount : inline.length);
           if (typeof x.tandaSize === "number") setTandaSize(x.tandaSize);
           setWaTemplateName(String(x.waTemplateName || ""));
@@ -597,17 +623,17 @@ export function CampaignWizard({
       setCsvFileName(file.name);
       csvFileRef.current = file;
       setCsvInspect(inspected);
-      if (isAdmin || inspected.count > WIZARD_INLINE_LIST_MAX) {
-        setRecipients([]);
+          if (isAdmin || inspected.count > WIZARD_INLINE_LIST_MAX) {
+        setRecipients((cur) => cur.filter((r) => r.artRecipientId));
         if (pairByRecipient) setPairByRecipient(false);
       } else {
         void file.text().then((text) => {
           const parsed = parseCsvQuickResult(text, canal, waCsvExtraColumns);
           if (parsed.error || parsed.rows.length === 0) {
-            setRecipients([]);
+            setRecipients((cur) => cur.filter((r) => r.artRecipientId));
             return;
           }
-          setRecipients(parsed.rows);
+          setRecipients((cur) => mergeRecipientList(cur.filter((r) => r.artRecipientId), parsed.rows, canal));
         });
       }
       toast({
@@ -664,9 +690,15 @@ export function CampaignWizard({
     toast({ title: `${next.length} destinatarios`, description: "Combinados con la lista actual" });
   }
 
+  function applyPadronSelection(rows: PadronRow[], selected: Set<string>) {
+    setPadronSelected(selected);
+    const fromPadron = rows.filter((r) => selected.has(r.id)).map(padronRowToRecipient);
+    setRecipients((cur) => mergeRecipientList(cur.filter((r) => !r.artRecipientId), fromPadron, canal));
+  }
+
   function assertNotificationClassification(): boolean {
     if (!artModuleOn) return true;
-    if (recipientTotal > 10) {
+    if (artPilotCaps && recipientTotal > 10) {
       toast({
         title: "Límite de piloto",
         description: "En piloto no se pueden superar 10 destinatarios.",
@@ -685,12 +717,25 @@ export function CampaignWizard({
     return true;
   }
 
+  function assertRecipientSources(): boolean {
+    if (padronSelected.size > 0 && csvFileRef.current && !csvListInline) {
+      toast({
+        title: "No se puede combinar",
+        description: "Un CSV grande no se mezcla con el padrón. Usá uno u otro.",
+        variant: "destructive",
+      });
+      return false;
+    }
+    return true;
+  }
+
   async function runSubmitAdmin(sendNow: boolean) {
     if (!orgId) {
       toast({ title: "Elegí la empresa", variant: "destructive" });
       return;
     }
     if (!assertNotificationClassification()) return;
+    if (!assertRecipientSources()) return;
     const copy = campaignCopyFields(canal, campaniaNombre, asunto, cuerpo, {
       waTemplateName,
       waTemplateBody,
@@ -773,8 +818,8 @@ export function CampaignWizard({
         campaignId = String(created.id);
       }
 
-      const shouldUploadFile = Boolean(file);
-      const shouldUploadList = !file && recipients.length > 0;
+      const shouldUploadFile = Boolean(file) && padronSelected.size === 0;
+      const shouldUploadList = !shouldUploadFile && recipients.length > 0;
       const shouldGenerate =
         simulated &&
         !shouldUploadFile &&
@@ -855,6 +900,7 @@ export function CampaignWizard({
     const user = auth.currentUser;
     if (!user) return;
     if (!assertNotificationClassification()) return;
+    if (!assertRecipientSources()) return;
     const copy = campaignCopyFields(canal, campaniaNombre, asunto, cuerpo, {
       waTemplateName,
       waTemplateBody,
@@ -875,7 +921,10 @@ export function CampaignWizard({
       toast({ title: "Agregá destinatarios", variant: "destructive" });
       return;
     }
-    const recipientSaveCount = csvInspect?.count || recipients.length || existingRecipientCount;
+    const recipientSaveCount =
+      file && padronSelected.size === 0
+        ? csvInspect?.count || recipients.length || existingRecipientCount
+        : recipients.length || existingRecipientCount;
     if (recipientSaveCount > maxR) {
       toast({
         title: "Límite de plan",
@@ -1025,7 +1074,7 @@ export function CampaignWizard({
         });
         campaignId = editCampaignId;
         if (replaceRecipients) {
-          if (file) {
+          if (file && padronSelected.size === 0) {
             await uploadCampaignCsvInChunks({
               campaignId,
               orgId,
@@ -1075,7 +1124,7 @@ export function CampaignWizard({
         });
         campaignId = refDoc.id;
         try {
-          if (file) {
+          if (file && padronSelected.size === 0) {
             await uploadCampaignCsvInChunks({
               campaignId,
               orgId,
@@ -1161,10 +1210,10 @@ export function CampaignWizard({
       {!isAdmin && (
         <EmpresaEnviosSaldoBanner creditos={creditos} loaded={creditosReady} />
       )}
-      {isEdit && (
+      {isEdit && isAdmin && (
         <div>
-          <h1 className="text-2xl font-bold">{isAdmin ? "Editar campaña" : "Editar envío masivo"}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1 className="app-page-title">Editar campaña</h1>
+          <p className="mt-1.5 text-[13px] leading-5 text-muted-foreground">
             Los cambios se guardan sobre este borrador. Si el envío masivo ya se envió, no se puede modificar.
           </p>
         </div>
@@ -1291,6 +1340,8 @@ export function CampaignWizard({
                   onClick={() => {
                     setCanal(value);
                     setRecipients([]);
+                    setPadronSelected(new Set());
+                    setDestTab(null);
                     setCsvFileName(null);
                     setCsvFileError(null);
                     csvFileRef.current = null;
@@ -1540,11 +1591,25 @@ export function CampaignWizard({
                 </Select>
               </div>
             )}
-            <Tabs defaultValue={canal === "whatsapp" ? "csv" : "paste"}>
+            <Tabs
+              value={destTab ?? (artModuleOn ? "padron" : canal === "whatsapp" ? "csv" : "paste")}
+              onValueChange={setDestTab}
+            >
               <TabsList>
+                {artModuleOn ? <TabsTrigger value="padron">Personas adheridas</TabsTrigger> : null}
                 {canal === "email" && <TabsTrigger value="paste">Emails pegados</TabsTrigger>}
                 <TabsTrigger value="csv">CSV</TabsTrigger>
               </TabsList>
+              {artModuleOn ? (
+                <TabsContent value="padron" className="space-y-2">
+                  <CampaignPadronPicker
+                    orgId={orgId}
+                    canal={canal}
+                    selectedIds={padronSelected}
+                    onChange={applyPadronSelection}
+                  />
+                </TabsContent>
+              ) : null}
               {canal === "email" && (
                 <TabsContent value="paste" className="space-y-2">
                   <Textarea
@@ -1600,7 +1665,7 @@ export function CampaignWizard({
                           setCsvFileError(null);
                           csvFileRef.current = null;
                           setCsvInspect(null);
-                          setRecipients([]);
+                          setRecipients((cur) => cur.filter((r) => r.artRecipientId));
                         }}
                         aria-label="Quitar archivo"
                       >
@@ -1938,7 +2003,7 @@ export function CampaignWizard({
               <div className="space-y-3 rounded-md border p-3">
                 <p className="text-sm font-medium">Clasificación del envío</p>
                 <p className="text-xs text-muted-foreground">
-                  Obligatorio. Las notificaciones electrónicas SRT siempre pasan el control de adhesión. Las comunicaciones ordinarias no.
+                  Las notificaciones electrónicas exigen adhesión activa. Las comunicaciones ordinarias no.
                 </p>
                 <RadioGroup
                   value={notificationType}
@@ -1949,13 +2014,13 @@ export function CampaignWizard({
                     <RadioGroupItem value="ORDINARY" id="nt-ordinary" />
                     <span>
                       <span className="font-medium">Comunicación ordinaria</span>
-                      <span className="block text-xs text-muted-foreground">No se trata como notificación electrónica SRT.</span>
+                      <span className="block text-xs text-muted-foreground">No exige adhesión. CSV, emails o padrón.</span>
                     </span>
                   </label>
                   <label className="flex items-start gap-3 text-sm">
                     <RadioGroupItem value="SRT_ART" id="nt-srt" />
                     <span>
-                      <span className="font-medium">Notificación electrónica SRT</span>
+                      <span className="font-medium">Notificación electrónica</span>
                       <span className="block text-xs text-muted-foreground">Exige adhesión activa. Si no hay elegibilidad, no se envía.</span>
                     </span>
                   </label>

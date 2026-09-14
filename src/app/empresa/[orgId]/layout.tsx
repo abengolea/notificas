@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Menu } from "lucide-react";
 
 import { OrgSidebarNav, useOrganization } from "@/components/empresa/org-sidebar";
+import { OrgBreadcrumb } from "@/components/empresa/org-breadcrumb";
 import { EmpresaUserMenu } from "@/components/empresa/empresa-user-menu";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,23 +24,18 @@ export default function EmpresaOrgLayout({ children }: { children: React.ReactNo
 
   return (
     <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-      <div className="flex min-h-dvh w-full flex-col bg-background lg:min-h-screen lg:flex-row">
-        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b bg-card/95 px-3 pt-[env(safe-area-inset-top,0px)] backdrop-blur supports-[backdrop-filter]:bg-card/80 lg:hidden">
+      <div className="app-shell flex min-h-dvh w-full flex-col bg-background lg:min-h-screen lg:flex-row">
+        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-border/70 bg-card/95 px-3 pt-[env(safe-area-inset-top,0px)] backdrop-blur supports-[backdrop-filter]:bg-card/80 lg:hidden">
           <SheetTrigger asChild>
             <Button variant="outline" size="icon" aria-label="Abrir menú de navegación">
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{org?.nombre || "Cargando…"}</p>
-            {org?.cuit ? (
-              <p className="truncate text-xs text-muted-foreground">{org.cuit}</p>
-            ) : null}
-          </div>
-          <EmpresaUserMenu compact />
+          <OrgBreadcrumb orgId={orgId} />
+          <EmpresaUserMenu />
         </header>
 
-        <aside className="hidden w-64 shrink-0 flex-col border-r bg-card lg:flex lg:min-h-screen">
+        <aside className="hidden w-60 shrink-0 flex-col border-r border-border/70 bg-card lg:flex lg:min-h-screen">
           <OrgSidebarNav orgId={orgId} org={org} />
         </aside>
 
@@ -54,7 +50,8 @@ export default function EmpresaOrgLayout({ children }: { children: React.ReactNo
         </SheetContent>
 
         <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
-          <header className="sticky top-0 z-30 hidden h-14 shrink-0 items-center justify-end gap-3 border-b bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:flex">
+          <header className="sticky top-0 z-30 hidden h-14 shrink-0 items-center gap-3 border-b border-border/70 bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:flex">
+            <OrgBreadcrumb orgId={orgId} />
             <EmpresaUserMenu />
           </header>
           <div className="min-w-0 flex-1">{children}</div>

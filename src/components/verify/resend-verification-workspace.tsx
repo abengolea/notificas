@@ -43,8 +43,8 @@ export function ResendVerificationWorkspace({
     <div className="space-y-6 max-w-4xl">
       {showHeading && (
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Verificación Resend</h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-prose">
+          <h1 className="app-page-title">Verificación Resend</h1>
+          <p className="mt-1.5 max-w-prose text-[13px] leading-5 text-muted-foreground">
             Comprobá el email_id contra la API de Resend y la evidencia histórica de webhooks
             conservada por Notificas. delivered no afirma bandeja de entrada; open/click no es
             lectura fehaciente.

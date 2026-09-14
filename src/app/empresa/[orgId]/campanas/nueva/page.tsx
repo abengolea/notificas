@@ -1,14 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { listenWhenSignedIn } from "@/lib/listen-when-signed-in";
 import { CampaignWizard } from "@/components/empresa/campaign-wizard";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { EmpresaPage } from "@/components/empresa/empresa-page";
 
 export default function NuevaCampanaPage() {
   const { orgId } = useParams<{ orgId: string }>();
@@ -28,15 +26,11 @@ export default function NuevaCampanaPage() {
   }, [orgId]);
 
   return (
-    <div className="p-8">
-      <Button variant="ghost" asChild className="mb-6 gap-2">
-        <Link href={`/empresa/${orgId}/campanas`}>
-          <ArrowLeft className="h-4 w-4" />
-          Volver a envíos masivos
-        </Link>
-      </Button>
-      <h1 className="mb-6 text-2xl font-bold">Enviar nuevo envío masivo</h1>
+    <EmpresaPage
+      title="Enviar nuevo envío masivo"
+      description="Elegí canal, destinatarios (padrón o CSV) y el mensaje."
+    >
       <CampaignWizard orgId={orgId} orgPlan={plan} />
-    </div>
+    </EmpresaPage>
   );
 }

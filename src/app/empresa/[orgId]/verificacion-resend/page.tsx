@@ -5,7 +5,7 @@ import { ResendVerificationWorkspace } from "@/components/verify/resend-verifica
 
 export default function EmpresaVerificacionResendPage() {
   return (
-    <div className="p-4 sm:p-8">
+    <div className="p-5 lg:p-8">
       <Suspense fallback={<p className="text-sm text-muted-foreground">Cargando…</p>}>
         <ResendVerificationWorkspace />
       </Suspense>

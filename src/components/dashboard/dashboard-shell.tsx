@@ -2,13 +2,12 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { onAuthStateChanged, signOut, type User as FirebaseUser } from "firebase/auth";
+import { usePathname } from "next/navigation";
+import { onAuthStateChanged, type User as FirebaseUser } from "firebase/auth";
 import {
   Archive,
   FileEdit,
   Inbox,
-  LogOut,
   Menu,
   PenSquare,
   Send,
@@ -108,7 +107,6 @@ export function DashboardShell({
   syncAuthFromParent = false,
   parentAppUser = null,
 }: DashboardShellProps) {
-  const router = useRouter();
   const pathname = usePathname();
   const onContactosRoute = pathname?.startsWith("/dashboard/contactos") ?? false;
   const onCuentaRoute = pathname?.startsWith("/dashboard/cuenta") ?? false;
@@ -240,20 +238,6 @@ export function DashboardShell({
             Mi cuenta
           </Link>
         </Button>
-        <div>
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-base font-medium text-card-foreground/80 hover:text-primary"
-            onClick={async () => {
-              await signOut(auth);
-              router.push("/");
-            }}
-            aria-label="Cerrar sesión"
-          >
-            <LogOut className="mr-3 h-5 w-5" />
-            Cerrar sesión
-          </Button>
-        </div>
 
         <Separator />
 

@@ -5,7 +5,6 @@ import { DEFAULT_ART_CONFIG, type ArtRecipient } from "./types";
 import { artModuleEnabled, artModuleUiHint } from "./enabled";
 import { parseNotificationType } from "./notification-type";
 import {
-  ART_MODULE_NOT_AVAILABLE,
   NOTIFICATION_TYPE_REQUIRED,
   PILOT_BULK_LIMIT,
   PILOT_CAMPAIGN_LIMIT,
@@ -38,6 +37,7 @@ function recipient(over: Partial<ArtRecipient> = {}): ArtRecipient {
     lastName: "TRABAJADOR",
     phone: "+5491111111111",
     email: "pilot@notificas.test",
+    relation: "trabajador",
     status: "active",
     identityProvider: "ART_PREVALIDATED",
     identityVerificationId: "idp_1",
@@ -121,7 +121,7 @@ test("fail-closed 1. MODULE=false → ART cerrado (404 lógico)", () => {
   );
 });
 
-test("fail-closed 2. MODULE=true + PILOT=true → solo allowlist", () => {
+test("fail-closed 2. MODULE=true + PILOT=true → módulo para todas; caps solo allowlist", () => {
   withEnv(
     {
       ART_MODULE_ENABLED: "true",
@@ -132,18 +132,15 @@ test("fail-closed 2. MODULE=true + PILOT=true → solo allowlist", () => {
     () => {
       assert.equal(artModuleReleased(), true);
       assert.equal(artModuleAvailableForOrg("org_pilot"), true);
-      assert.equal(artModuleAvailableForOrg("org_cliente"), false);
-      const denied = assertArtOrgAccess("org_cliente");
-      assert.equal(denied.ok, false);
-      if (!denied.ok) {
-        assert.equal(denied.code, ART_MODULE_NOT_AVAILABLE);
-        assert.equal(denied.httpStatus, 403);
-      }
+      assert.equal(artModuleAvailableForOrg("org_cliente"), true);
+      assert.equal(assertArtOrgAccess("org_cliente").ok, true);
+      assert.equal(artPilotControlsApply("org_pilot"), true);
+      assert.equal(artPilotControlsApply("org_cliente"), false);
     }
   );
 });
 
-test("fail-closed 3. MODULE=true + PILOT=false + GENERAL_RELEASE=false → cerrado para todos", () => {
+test("fail-closed 3. MODULE=true + PILOT=false → adhesiones para todas las orgs", () => {
   withEnv(
     {
       ART_MODULE_ENABLED: "true",
@@ -156,15 +153,10 @@ test("fail-closed 3. MODULE=true + PILOT=false + GENERAL_RELEASE=false → cerra
       assert.equal(artModuleEnabled(), true);
       assert.equal(artModuleUiHint(), true);
       assert.equal(artGeneralReleaseEnabled(), false);
-      assert.equal(artModuleReleased(), false);
-      assert.equal(artModuleAvailableForOrg("org_pilot"), false);
-      assert.equal(artModuleAvailableForOrg("org_cliente"), false);
-      const denied = assertArtOrgAccess("org_pilot");
-      assert.equal(denied.ok, false);
-      if (!denied.ok) {
-        assert.equal(denied.code, ART_MODULE_NOT_AVAILABLE);
-        assert.equal(denied.httpStatus, 403);
-      }
+      assert.equal(artModuleReleased(), true);
+      assert.equal(artModuleAvailableForOrg("org_pilot"), true);
+      assert.equal(artModuleAvailableForOrg("org_cliente"), true);
+      assert.equal(assertArtOrgAccess("org_pilot").ok, true);
     }
   );
 });
@@ -198,7 +190,7 @@ test("A. org permitida puede acceder ART", () => {
   );
 });
 
-test("B. org no incluida recibe 403 ART_MODULE_NOT_AVAILABLE", () => {
+test("B. org fuera de allowlist usa el módulo sin caps de piloto", () => {
   withEnv(
     {
       ART_MODULE_ENABLED: "true",
@@ -206,13 +198,9 @@ test("B. org no incluida recibe 403 ART_MODULE_NOT_AVAILABLE", () => {
       ART_ALLOWED_ORGS: "org_pilot",
     },
     () => {
-      const denied = assertArtOrgAccess("org_cliente");
-      assert.equal(denied.ok, false);
-      if (!denied.ok) {
-        assert.equal(denied.code, ART_MODULE_NOT_AVAILABLE);
-        assert.equal(denied.httpStatus, 403);
-      }
-      assert.equal(artModuleAvailableForOrg("org_cliente"), false);
+      assert.equal(assertArtOrgAccess("org_cliente").ok, true);
+      assert.equal(artModuleAvailableForOrg("org_cliente"), true);
+      assert.equal(artPilotControlsApply("org_cliente"), false);
     }
   );
 });
@@ -366,6 +354,7 @@ test("K. SRT individual sin clasificación explícita exige selección", () => {
       if (!missing.ok) assert.equal(missing.code, NOTIFICATION_TYPE_REQUIRED);
       const otherOrg = assertArtOutboundClassification("org_cliente", undefined);
       assert.equal(otherOrg.ok, true);
+      if (otherOrg.ok) assert.equal(otherOrg.value, "ORDINARY");
       assert.equal(assertExplicitNotificationType("SRT_ART", { required: true }).ok, true);
     }
   );
@@ -395,7 +384,7 @@ test("M. retención mostrada = 5 años", () => {
   });
 });
 
-test("piloto vacío fail-closed y otras orgs no reciben allowlist", () => {
+test("piloto vacío: caps no aplican; el módulo sí si MODULE=true", () => {
   withEnv(
     {
       ART_MODULE_ENABLED: "true",
@@ -403,8 +392,9 @@ test("piloto vacío fail-closed y otras orgs no reciben allowlist", () => {
       ART_ALLOWED_ORGS: "",
     },
     () => {
-      assert.equal(artModuleAvailableForOrg("org_pilot"), false);
+      assert.equal(artModuleAvailableForOrg("org_pilot"), true);
       assert.equal(artPilotControlsApply("org_real"), false);
+      assert.equal(artPilotControlsApply("org_pilot"), false);
     }
   );
 });
