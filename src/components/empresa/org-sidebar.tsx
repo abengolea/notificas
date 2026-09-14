@@ -156,18 +156,6 @@ export function OrgSidebarNav({ orgId, org, onNavigate, className }: OrgSidebarN
           onNavigate={onNavigate}
         />
 
-        {artEnabled ? (
-          <NavSection title="Personas">
-            <NavLink
-              href={`${base}/adhesiones-electronicas`}
-              label="Adhesiones"
-              icon={ClipboardCheck}
-              active={isActive(`${base}/adhesiones-electronicas`)}
-              onNavigate={onNavigate}
-            />
-          </NavSection>
-        ) : null}
-
         <NavSection title="Comunicaciones">
           <NavLink
             href={`${base}/campanas`}
@@ -186,6 +174,15 @@ export function OrgSidebarNav({ orgId, org, onNavigate, className }: OrgSidebarN
         </NavSection>
 
         <NavSection title="Configuración">
+          {artEnabled ? (
+            <NavLink
+              href={`${base}/adhesiones-electronicas`}
+              label="Adhesiones"
+              icon={ClipboardCheck}
+              active={isActive(`${base}/adhesiones-electronicas`)}
+              onNavigate={onNavigate}
+            />
+          ) : null}
           <p className="px-2.5 pb-0.5 pt-1 text-[12px] leading-4 text-muted-foreground/90">Canales</p>
           <NavLink
             href={`${base}/verificacion-meta`}

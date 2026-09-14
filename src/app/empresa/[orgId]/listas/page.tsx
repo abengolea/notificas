@@ -42,7 +42,7 @@ export default function ListasPage() {
     <EmpresaPage
       className="max-w-3xl"
       title="Listas de destinatarios"
-      description="Listas reutilizables para envíos masivos. El padrón de adhesiones vive en Personas."
+      description="Listas reutilizables para envíos masivos. El padrón de adhesiones está en Configuración."
       actions={
         <Button size="sm" asChild>
           <Link href={`/empresa/${orgId}/listas/nueva`}>Nueva lista</Link>

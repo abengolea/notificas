@@ -9,7 +9,7 @@ type Crumb = { label: string; href?: string };
 export function empresaCrumbs(pathname: string, orgId: string): Crumb[] {
   const base = `/empresa/${orgId}`;
   if (pathname.startsWith(`${base}/adhesiones-electronicas`)) {
-    return [{ label: "Personas" }, { label: "Adhesiones electrónicas" }];
+    return [{ label: "Configuración" }, { label: "Adhesiones electrónicas" }];
   }
   if (pathname.startsWith(`${base}/campanas`)) {
     return [{ label: "Comunicaciones" }, { label: "Envíos masivos" }];
