@@ -9,19 +9,42 @@ const nextConfig: NextConfig = {
   /* config options here */
   outputFileTracingRoot: path.join(process.cwd()),
   async rewrites() {
-    return legacyArchivoRewrites();
+    const archivo = legacyArchivoRewrites();
+    return {
+      beforeFiles: [
+        {
+          source: "/",
+          has: [{ type: "host", value: "notificas\\.com" }],
+          destination: "/intl",
+        },
+      ],
+      afterFiles: archivo.afterFiles,
+      fallback: archivo.fallback,
+    };
   },
   async redirects() {
     return [
       {
         source: "/",
-        has: [{ type: "host", value: "www.notificas.com.ar" }],
+        has: [{ type: "host", value: "www\\.notificas\\.com" }],
+        destination: "https://notificas.com/",
+        statusCode: 301,
+      },
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "www\\.notificas\\.com" }],
+        destination: "https://notificas.com/:path*",
+        statusCode: 301,
+      },
+      {
+        source: "/",
+        has: [{ type: "host", value: "www\\.notificas\\.com\\.ar" }],
         destination: "https://notificas.com.ar/",
         permanent: true,
       },
       {
         source: "/:path*",
-        has: [{ type: "host", value: "www.notificas.com.ar" }],
+        has: [{ type: "host", value: "www\\.notificas\\.com\\.ar" }],
         destination: "https://notificas.com.ar/:path*",
         permanent: true,
       },

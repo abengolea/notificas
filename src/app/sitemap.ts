@@ -1,4 +1,11 @@
 import type { MetadataRoute } from "next";
+import { headers } from "next/headers";
+
+import {
+  INTERNATIONAL_ORIGIN,
+  hostnameFromRequestHeaders,
+  isInternationalHost,
+} from "@/lib/international-site";
 import {
   GEO_LANDING_PAGES,
   LEGAL_PUBLIC_PAGES,
@@ -7,7 +14,18 @@ import {
 } from "@/lib/public-resources";
 import { SITE_URL, SITEMAP_LASTMOD } from "@/lib/seo";
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export function buildSitemap(origin: string = SITE_URL): MetadataRoute.Sitemap {
+  if (origin === INTERNATIONAL_ORIGIN) {
+    return [
+      {
+        url: INTERNATIONAL_ORIGIN,
+        lastModified: SITEMAP_LASTMOD,
+        changeFrequency: "weekly",
+        priority: 1,
+      },
+    ];
+  }
+
   const routes: Array<{
     path: string;
     changeFrequency: MetadataRoute.Sitemap[number]["changeFrequency"];
@@ -39,9 +57,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
   ];
 
   return routes.map((route) => ({
-    url: `${SITE_URL}${route.path === "/" ? "" : route.path}`,
+    url: `${origin}${route.path === "/" ? "" : route.path}`,
     lastModified: SITEMAP_LASTMOD,
     changeFrequency: route.changeFrequency,
     priority: route.priority,
   }));
+}
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const host = hostnameFromRequestHeaders(await headers());
+  if (isInternationalHost(host)) return buildSitemap(INTERNATIONAL_ORIGIN);
+  return buildSitemap(SITE_URL);
 }

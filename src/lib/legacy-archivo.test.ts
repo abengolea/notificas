@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-import sitemap from "../app/sitemap";
+import { buildSitemap } from "../app/sitemap";
 import {
   LEGACY_ARCHIVO_API_ORIGIN,
   LEGACY_ARCHIVO_BASE_PATH,
@@ -23,7 +23,7 @@ test("el archivo legado queda aislado bajo /archivo y no entra al sitemap", () =
   assert.ok(LEGACY_ARCHIVO_SPA_ROUTES.includes("/reader/:uuid"));
   assert.ok(LEGACY_ARCHIVO_API_ORIGIN.includes("notificas-api-backup"));
 
-  const urls = sitemap().map((entry) => entry.url);
+  const urls = buildSitemap().map((entry) => entry.url);
   assert.equal(
     urls.some((url) => url.includes("/archivo")),
     false,

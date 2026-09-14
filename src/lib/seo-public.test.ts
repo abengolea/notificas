@@ -4,8 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-import robots from "../app/robots";
-import sitemap from "../app/sitemap";
+import { buildRobots } from "../app/robots";
+import { buildSitemap } from "../app/sitemap";
 import { GET as llmsTxtGet } from "../app/llms.txt/route";
 import { matchAiReferrerHost, utmParamsFromSearch } from "./ai-referrers";
 import {
@@ -45,7 +45,7 @@ const INDEXABLE_PATHS = [
 ];
 
 test("robots.txt incluye Allow para crawlers de búsqueda de ChatGPT y Claude", () => {
-  const policy = robots();
+  const policy = buildRobots();
   const rules = Array.isArray(policy.rules) ? policy.rules : [policy.rules];
   for (const agent of SEARCH_RETRIEVAL_USER_AGENTS) {
     const rule = rules.find((item) => item.userAgent === agent);
@@ -60,7 +60,7 @@ test("robots.txt incluye Allow para crawlers de búsqueda de ChatGPT y Claude", 
 });
 
 test("robots.txt no habilita entrenamiento: GPTBot y ClaudeBot quedan en Disallow", () => {
-  const policy = robots();
+  const policy = buildRobots();
   const rules = Array.isArray(policy.rules) ? policy.rules : [policy.rules];
   for (const agent of TRAINING_USER_AGENTS) {
     const rule = rules.find((item) => item.userAgent === agent);
@@ -70,7 +70,7 @@ test("robots.txt no habilita entrenamiento: GPTBot y ClaudeBot quedan en Disallo
 });
 
 test("robots.txt conserva bloqueo de rutas privadas para *", () => {
-  const policy = robots();
+  const policy = buildRobots();
   const rules = Array.isArray(policy.rules) ? policy.rules : [policy.rules];
   const star = rules.find((item) => item.userAgent === "*");
   assert.ok(star);
@@ -83,7 +83,7 @@ test("robots.txt conserva bloqueo de rutas privadas para *", () => {
 });
 
 test("sitemap incluye las nuevas URLs públicas y omite rutas privadas", () => {
-  const entries = sitemap();
+  const entries = buildSitemap();
   const urls = entries.map((entry) => entry.url);
   for (const publicPath of INDEXABLE_PATHS) {
     const expected = publicPath === "/" ? SITE_URL : `${SITE_URL}${publicPath}`;

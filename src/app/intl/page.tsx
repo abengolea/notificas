@@ -3,18 +3,22 @@ import { headers } from "next/headers";
 
 import { InternationalLanding } from "@/components/international-landing";
 import {
+  INTERNATIONAL_DESCRIPTION,
   INTERNATIONAL_ORIGIN,
+  INTERNATIONAL_TITLE,
+  hostnameFromRequestHeaders,
   isInternationalHost,
 } from "@/lib/international-site";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const host = (await headers()).get("host") ?? "";
+  const host = hostnameFromRequestHeaders(await headers());
   const onCom = isInternationalHost(host);
 
   return {
-    title: { absolute: "Notificas | Comunicaciones digitales verificables" },
-    description:
-      "Comunicaciones digitales verificables por WhatsApp y email. Argentina está online. Brasil y Colombia, pronto.",
+    metadataBase: new URL(INTERNATIONAL_ORIGIN),
+    title: { absolute: INTERNATIONAL_TITLE },
+    description: INTERNATIONAL_DESCRIPTION,
+    applicationName: "Notificas",
     alternates: {
       canonical: INTERNATIONAL_ORIGIN,
       languages: {
@@ -24,12 +28,17 @@ export async function generateMetadata(): Promise<Metadata> {
       },
     },
     openGraph: {
+      type: "website",
       locale: "es_LA",
       url: INTERNATIONAL_ORIGIN,
       siteName: "Notificas",
-      title: "Notificas | Comunicaciones digitales verificables",
-      description:
-        "Comunicaciones digitales verificables por WhatsApp y email. Argentina está online. Brasil y Colombia, pronto.",
+      title: INTERNATIONAL_TITLE,
+      description: INTERNATIONAL_DESCRIPTION,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: INTERNATIONAL_TITLE,
+      description: INTERNATIONAL_DESCRIPTION,
     },
     robots: onCom
       ? { index: true, follow: true }
