@@ -47,6 +47,8 @@ type LandingHeaderProps = {
   themeLabel?: string;
   themeLabels?: { light: string; dark: string; system: string };
   localeBadge?: string;
+  /** Show desktop nav from this breakpoint. Default `lg` keeps Argentina/Brazil unchanged. */
+  navBreakpoint?: "lg" | "xl";
 };
 
 export function LandingHeader({
@@ -63,7 +65,10 @@ export function LandingHeader({
   themeLabel,
   themeLabels,
   localeBadge,
+  navBreakpoint = "lg",
 }: LandingHeaderProps = {}) {
+  const desktopNavClass = navBreakpoint === "xl" ? "xl:flex" : "lg:flex";
+  const menuButtonClass = navBreakpoint === "xl" ? "xl:hidden" : "lg:hidden";
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/70 bg-background/90 pt-[env(safe-area-inset-top,0px)] backdrop-blur-md supports-[backdrop-filter]:bg-background/75">
       <div className="container flex h-14 items-center justify-between gap-2 px-4 sm:h-16 md:px-6">
@@ -79,7 +84,7 @@ export function LandingHeader({
           ) : null}
         </Link>
 
-        <nav className="hidden items-center gap-6 text-[0.875rem] font-semibold leading-none lg:flex">
+        <nav className={`hidden items-center gap-6 text-[0.875rem] font-semibold leading-none ${desktopNavClass}`}>
           {navLinks.map(({ href, label }) => (
             <Link
               key={href}
@@ -116,7 +121,7 @@ export function LandingHeader({
               <Button
                 variant="outline"
                 size="icon"
-                className="lg:hidden"
+                className={menuButtonClass}
                 aria-label={openMenuLabel}
               >
                 <Menu className="h-5 w-5" />

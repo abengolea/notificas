@@ -18,8 +18,20 @@ const finalidadeSchema = z.enum([
   "outros",
 ]);
 
+const tipoOrganizacionSchema = z.enum([
+  "cobranza",
+  "financiera",
+  "fintech",
+  "cooperativa",
+  "aseguradora",
+  "retail",
+  "servicios",
+  "otra",
+]);
+
 const bodySchema = z.object({
   nombre: z.string().trim().min(1).max(200),
+  apellido: z.string().trim().max(200).optional().default(""),
   compania: z.string().trim().max(200).optional().default(""),
   email: z.string().trim().email().max(320),
   mensaje: z.string().trim().max(8000).optional().default(""),
@@ -33,10 +45,12 @@ const bodySchema = z.object({
     .enum(["general", "cotizacion", "demostracion"])
     .optional()
     .default("general"),
-  mercado: z.enum(["AR", "BR"]).optional().default("AR"),
+  mercado: z.enum(["AR", "BR", "CO"]).optional().default("AR"),
   cnpj: z.string().trim().max(32).optional().default(""),
   cargo: z.string().trim().max(120).optional().default(""),
+  tipoOrganizacion: tipoOrganizacionSchema.optional(),
   finalidade: z.array(finalidadeSchema).max(6).optional().default([]),
+  aceptoPrivacidad: z.boolean().optional().default(false),
 });
 
 const CANAL_LABEL: Record<"whatsapp" | "email" | "ambos", string> = {
@@ -64,22 +78,21 @@ export async function POST(request: NextRequest) {
   const parsed = bodySchema.safeParse(json);
   if (!parsed.success) {
     const mercado =
-      json && typeof json === "object" && "mercado" in json && (json as { mercado?: string }).mercado === "BR"
-        ? "BR"
+      json && typeof json === "object" && "mercado" in json
+        ? (json as { mercado?: string }).mercado
         : "AR";
-    return NextResponse.json(
-      {
-        error:
-          mercado === "BR"
-            ? "Revise nome e e-mail corporativo."
-            : "Revisá nombre y email.",
-      },
-      { status: 400 }
-    );
+    const error =
+      mercado === "BR"
+        ? "Revise nome e e-mail corporativo."
+        : mercado === "CO"
+          ? "Revise nombre, apellido y correo electrónico corporativo."
+          : "Revisá nombre y email.";
+    return NextResponse.json({ error }, { status: 400 });
   }
 
   const {
     nombre,
+    apellido,
     compania,
     email,
     mensaje,
@@ -90,24 +103,41 @@ export async function POST(request: NextRequest) {
     mercado,
     cnpj,
     cargo,
+    tipoOrganizacion,
     finalidade,
+    aceptoPrivacidad,
   } = parsed.data;
+
+  if (mercado === "CO" && !aceptoPrivacidad) {
+    return NextResponse.json(
+      { error: "Debe aceptar la Política de Tratamiento de Datos Personales." },
+      { status: 400 }
+    );
+  }
+
   const inbox = getContactInboxEmail();
   const isQuote = tipoConsulta === "cotizacion" || tipoConsulta === "demostracion";
   const isBrazil = mercado === "BR";
+  const isColombia = mercado === "CO";
   const canalLabel = canal ? CANAL_LABEL[canal] : "";
   const tipoLabel =
     tipoConsulta === "demostracion"
       ? isBrazil
         ? "Solicitação de demonstração — Brasil"
-        : "Solicitud de demostración"
+        : isColombia
+          ? "Solicitud de demostración — Colombia"
+          : "Solicitud de demostración"
       : tipoConsulta === "cotizacion"
         ? isBrazil
           ? "Solicitação de cotação — Brasil"
-          : "Solicitud de cotización corporativa"
+          : isColombia
+            ? "Solicitud de propuesta — Colombia"
+            : "Solicitud de cotización corporativa"
         : isBrazil
           ? "Consulta web — Brasil"
-          : "Consulta web";
+          : isColombia
+            ? "Consulta web — Colombia"
+            : "Consulta web";
   const finalidadeLabel: Record<z.infer<typeof finalidadeSchema>, string> = {
     cobranca: "Cobrança",
     "pre-negativacao": "Pré-negativação",
@@ -116,23 +146,40 @@ export async function POST(request: NextRequest) {
     credito: "Crédito",
     outros: "Outros",
   };
+  const orgLabel: Record<z.infer<typeof tipoOrganizacionSchema>, string> = {
+    cobranza: "Empresa de cobranza",
+    financiera: "Entidad financiera",
+    fintech: "Fintech",
+    cooperativa: "Cooperativa",
+    aseguradora: "Aseguradora",
+    retail: "Retail / crédito propio",
+    servicios: "Servicios",
+    otra: "Otra",
+  };
+  const mercadoLabel = isBrazil ? "Brasil" : isColombia ? "Colombia" : "Argentina";
+  const fullName = apellido ? `${nombre} ${apellido}` : nombre;
 
   const htmlLines = [
     `<p><strong>Tipo:</strong> ${escapeHtml(tipoLabel)}</p>`,
-    `<p><strong>Mercado:</strong> ${isBrazil ? "Brasil" : "Argentina"}</p>`,
-    `<p><strong>Nombre:</strong> ${escapeHtml(nombre)}</p>`,
+    `<p><strong>Mercado:</strong> ${escapeHtml(mercadoLabel)}</p>`,
+    `<p><strong>Nombre:</strong> ${escapeHtml(fullName)}</p>`,
     `<p><strong>Empresa:</strong> ${escapeHtml(compania || "(no indicada)")}</p>`,
     `<p><strong>Email:</strong> <a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></p>`,
   ];
   if (cargo) {
     htmlLines.push(`<p><strong>Cargo:</strong> ${escapeHtml(cargo)}</p>`);
   }
+  if (tipoOrganizacion) {
+    htmlLines.push(
+      `<p><strong>Tipo de organización:</strong> ${escapeHtml(orgLabel[tipoOrganizacion])}</p>`
+    );
+  }
   if (cnpj) {
     htmlLines.push(`<p><strong>CNPJ:</strong> ${escapeHtml(cnpj)}</p>`);
   }
   if (telefono) {
     htmlLines.push(
-      `<p><strong>${isBrazil ? "WhatsApp" : "Teléfono"}:</strong> ${escapeHtml(telefono)}</p>`
+      `<p><strong>${isBrazil ? "WhatsApp" : "Teléfono / WhatsApp"}:</strong> ${escapeHtml(telefono)}</p>`
     );
   }
   if (volumenEstimado) {
@@ -150,6 +197,11 @@ export async function POST(request: NextRequest) {
       )}</p>`
     );
   }
+  if (isColombia) {
+    htmlLines.push(
+      `<p><strong>Política de datos:</strong> ${aceptoPrivacidad ? "Aceptada" : "No aceptada"}</p>`
+    );
+  }
   if (mensaje) {
     htmlLines.push(
       `<p><strong>${isQuote ? "Descripción:" : "Mensaje:"}</strong></p><pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(mensaje)}</pre>`
@@ -157,30 +209,34 @@ export async function POST(request: NextRequest) {
   }
   htmlLines.push(
     `<p style="color:#666;font-size:12px">Origen: formulario ${
-      isBrazil
-        ? tipoConsulta === "demostracion"
-          ? "demonstração Brasil"
-          : "cotação Brasil"
-        : isQuote
-          ? "cotización corporativa"
-          : "Contáctenos"
+      isColombia
+        ? "demostración Colombia"
+        : isBrazil
+          ? tipoConsulta === "demostracion"
+            ? "demonstração Brasil"
+            : "cotação Brasil"
+          : isQuote
+            ? "cotización corporativa"
+            : "Contáctenos"
     } (${escapeHtml(process.env.NEXT_PUBLIC_APP_URL || "notificas")})</p>`
   );
   const html = htmlLines.join("\n");
   const text = [
     `Tipo: ${tipoLabel}`,
-    `Mercado: ${isBrazil ? "Brasil" : "Argentina"}`,
-    `Nombre: ${nombre}`,
+    `Mercado: ${mercadoLabel}`,
+    `Nombre: ${fullName}`,
     `Empresa: ${compania || "(no indicada)"}`,
     cargo ? `Cargo: ${cargo}` : "",
+    tipoOrganizacion ? `Tipo de organización: ${orgLabel[tipoOrganizacion]}` : "",
     cnpj ? `CNPJ: ${cnpj}` : "",
     `Email: ${email}`,
-    telefono ? `${isBrazil ? "WhatsApp" : "Teléfono"}: ${telefono}` : "",
+    telefono ? `${isBrazil ? "WhatsApp" : "Teléfono / WhatsApp"}: ${telefono}` : "",
     volumenEstimado ? `Volumen estimado: ${volumenEstimado}` : "",
     canalLabel ? `Canal: ${canalLabel}` : "",
     finalidade.length
       ? `Finalidade: ${finalidade.map((item) => finalidadeLabel[item]).join(", ")}`
       : "",
+    isColombia ? `Política de datos: ${aceptoPrivacidad ? "Aceptada" : "No aceptada"}` : "",
     mensaje ? `\n${isQuote ? "Descripción" : "Mensaje"}:\n${mensaje}` : "",
   ]
     .filter(Boolean)
@@ -193,7 +249,11 @@ export async function POST(request: NextRequest) {
       to: inbox,
       from: DEFAULT_CONTACT_FROM_EMAIL,
       replyTo: email,
-      subject: isBrazil
+      subject: isColombia
+        ? tipoConsulta === "demostracion"
+          ? `Demostración Colombia — ${fullName}`
+          : `Propuesta Colombia — ${fullName}`
+        : isBrazil
         ? tipoConsulta === "demostracion"
           ? `Demonstração Brasil — ${nombre}`
           : `Cotação Brasil — ${nombre}`
@@ -202,8 +262,8 @@ export async function POST(request: NextRequest) {
           : `Consulta web — ${nombre}`,
       html,
       text,
-      senderName: nombre,
-      recipientName: nombre,
+      senderName: fullName,
+      recipientName: fullName,
       recipientEmail: email,
       createdBy,
       contactRequest: true,
@@ -227,7 +287,9 @@ export async function POST(request: NextRequest) {
         {
           error:
             cfBody.error ||
-            "No se pudo enviar el mensaje. Intentá más tarde o escribinos por correo.",
+            (isColombia
+              ? "No se pudo enviar el mensaje. Intente más tarde o escríbanos por correo."
+              : "No se pudo enviar el mensaje. Intentá más tarde o escribinos por correo."),
         },
         { status: 502 }
       );
@@ -237,7 +299,7 @@ export async function POST(request: NextRequest) {
   } catch (e) {
     console.error("POST /api/contact:", e);
     return NextResponse.json(
-      { error: "Error al procesar el envío. Intentá más tarde." },
+      { error: isColombia ? "Error al procesar el envío. Intente más tarde." : "Error al procesar el envío. Intentá más tarde." },
       { status: 500 }
     );
   }

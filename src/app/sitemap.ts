@@ -8,6 +8,14 @@ import {
   BRAZIL_VERIFY_PATH,
 } from "@/lib/brazil-site";
 import {
+  COLOMBIA_COOKIES_PATH,
+  COLOMBIA_FRAMEWORK_PATH,
+  COLOMBIA_PATH,
+  COLOMBIA_PRIVACY_PATH,
+  COLOMBIA_SITEMAP_LASTMOD,
+  COLOMBIA_TERMS_PATH,
+} from "@/lib/colombia-site";
+import {
   INTERNATIONAL_ORIGIN,
   hostnameFromRequestHeaders,
   isInternationalHost,
@@ -42,6 +50,39 @@ export function buildSitemap(origin: string = SITE_URL): MetadataRoute.Sitemap {
     },
   ];
 
+  const colombiaPages: MetadataRoute.Sitemap = [
+    {
+      url: `${INTERNATIONAL_ORIGIN}${COLOMBIA_PATH}`,
+      lastModified: COLOMBIA_SITEMAP_LASTMOD,
+      changeFrequency: "weekly",
+      priority: 0.95,
+    },
+    {
+      url: `${INTERNATIONAL_ORIGIN}${COLOMBIA_PRIVACY_PATH}`,
+      lastModified: COLOMBIA_SITEMAP_LASTMOD,
+      changeFrequency: "yearly",
+      priority: 0.4,
+    },
+    {
+      url: `${INTERNATIONAL_ORIGIN}${COLOMBIA_COOKIES_PATH}`,
+      lastModified: COLOMBIA_SITEMAP_LASTMOD,
+      changeFrequency: "yearly",
+      priority: 0.3,
+    },
+    {
+      url: `${INTERNATIONAL_ORIGIN}${COLOMBIA_TERMS_PATH}`,
+      lastModified: COLOMBIA_SITEMAP_LASTMOD,
+      changeFrequency: "yearly",
+      priority: 0.4,
+    },
+    {
+      url: `${INTERNATIONAL_ORIGIN}${COLOMBIA_FRAMEWORK_PATH}`,
+      lastModified: COLOMBIA_SITEMAP_LASTMOD,
+      changeFrequency: "monthly",
+      priority: 0.7,
+    },
+  ];
+
   if (origin === INTERNATIONAL_ORIGIN) {
     return [
       {
@@ -51,6 +92,7 @@ export function buildSitemap(origin: string = SITE_URL): MetadataRoute.Sitemap {
         priority: 1,
       },
       ...brazilPages,
+      ...colombiaPages,
     ];
   }
 

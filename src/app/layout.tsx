@@ -109,8 +109,9 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const headerLocale = (await headers()).get("x-notificas-locale");
   const locale =
-    (await headers()).get("x-notificas-locale") === "pt-BR" ? "pt-BR" : "es-AR";
+    headerLocale === "pt-BR" || headerLocale === "es-CO" ? headerLocale : "es-AR";
   const isBrazil = locale === "pt-BR";
 
   return (

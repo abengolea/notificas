@@ -5,15 +5,26 @@ export const INTERNATIONAL_ORIGIN = "https://notificas.com";
 export const ARGENTINA_ORIGIN = "https://notificas.com.ar";
 export const INTL_PREVIEW_PATH = "/intl";
 export const BRAZIL_PATH_PREFIX = "/br";
+export const COLOMBIA_PATH_PREFIX = "/co";
 
 export function isBrazilPublicPath(pathname: string): boolean {
   return pathname === BRAZIL_PATH_PREFIX || pathname.startsWith(`${BRAZIL_PATH_PREFIX}/`);
 }
 
+export function isColombiaPublicPath(pathname: string): boolean {
+  return pathname === COLOMBIA_PATH_PREFIX || pathname.startsWith(`${COLOMBIA_PATH_PREFIX}/`);
+}
+
+export function localeForPublicPath(pathname: string): "pt-BR" | "es-CO" | "es-AR" {
+  if (isBrazilPublicPath(pathname)) return "pt-BR";
+  if (isColombiaPublicPath(pathname)) return "es-CO";
+  return "es-AR";
+}
+
 export const INTERNATIONAL_TITLE =
   "Notificas | Comunicaciones digitales verificables";
 export const INTERNATIONAL_DESCRIPTION =
-  "Comunicaciones digitales verificables por WhatsApp y email. Argentina y Brasil están online. Colombia, próximamente.";
+  "Comunicaciones digitales verificables por WhatsApp y email. Argentina, Brasil y Colombia están online.";
 
 export const INTERNATIONAL_HOSTS = ["notificas.com", "www.notificas.com"] as const;
 export const ARGENTINA_HOSTS = ["notificas.com.ar", "www.notificas.com.ar"] as const;
@@ -53,7 +64,7 @@ export const INTERNATIONAL_COUNTRIES: ReadonlyArray<{
 }> = [
   { id: "AR", name: "Argentina", status: "Entrar", href: `${ARGENTINA_ORIGIN}/` },
   { id: "BR", name: "Brasil", status: "Acessar", href: "/br" },
-  { id: "CO", name: "Colombia", status: "Próximamente", href: null },
+  { id: "CO", name: "Colombia", status: "Ingresar", href: "/co" },
 ];
 
 export type InternationalGate =
@@ -129,6 +140,7 @@ export function internationalLandingMetadata(indexable: boolean) {
       languages: {
         es: INTERNATIONAL_ORIGIN,
         "pt-BR": `${INTERNATIONAL_ORIGIN}/br`,
+        "es-CO": `${INTERNATIONAL_ORIGIN}/co`,
         "x-default": INTERNATIONAL_ORIGIN,
       },
     },
@@ -215,7 +227,9 @@ export function resolveInternationalGate(opts: {
     return { type: "rewrite", pathname: INTL_PREVIEW_PATH };
   }
 
-  if (isBrazilPublicPath(pathname)) return { type: "passthrough" };
+  if (isBrazilPublicPath(pathname) || isColombiaPublicPath(pathname)) {
+    return { type: "passthrough" };
+  }
 
   if (isInternalAsset(pathname)) return { type: "passthrough" };
 

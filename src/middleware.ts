@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import {
   hostnameFromRequestHeaders,
-  isBrazilPublicPath,
+  localeForPublicPath,
   resolveInternationalGate,
 } from "@/lib/international-site";
 
@@ -14,7 +14,7 @@ function withHostVary(response: NextResponse) {
 
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
-  const locale = isBrazilPublicPath(pathname) ? "pt-BR" : "es-AR";
+  const locale = localeForPublicPath(pathname);
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-notificas-locale", locale);
 

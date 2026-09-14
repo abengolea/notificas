@@ -13,6 +13,7 @@ import {
   hostnameFromRequestHeaders,
   isInternationalHost,
   isLegacyComPath,
+  localeForPublicPath,
   publicOriginFromHost,
   resolveInternationalGate,
 } from "./international-site";
@@ -137,10 +138,21 @@ test("notificas.com sirve la landing en / y manda el SPA viejo al archivo", () =
     resolveInternationalGate({ host: "notificas.com", pathname: "/br/verificar" }),
     { type: "passthrough" }
   );
+  assert.deepEqual(resolveInternationalGate({ host: "notificas.com", pathname: "/co" }), {
+    type: "passthrough",
+  });
+  assert.deepEqual(
+    resolveInternationalGate({ host: "notificas.com", pathname: "/co/privacidad" }),
+    { type: "passthrough" }
+  );
   assert.equal(isLegacyComPath("/login"), true);
   assert.equal(
     INTERNATIONAL_COUNTRIES.find((country) => country.id === "BR")?.href,
     "/br"
+  );
+  assert.equal(
+    INTERNATIONAL_COUNTRIES.find((country) => country.id === "CO")?.href,
+    "/co"
   );
 });
 
@@ -159,7 +171,20 @@ test("la preview /intl no entra al sitemap ni a robots públicos", () => {
     `${INTERNATIONAL_ORIGIN}/br`,
     `${INTERNATIONAL_ORIGIN}/br/pre-negativacao`,
     `${INTERNATIONAL_ORIGIN}/br/verificar`,
+    `${INTERNATIONAL_ORIGIN}/co`,
+    `${INTERNATIONAL_ORIGIN}/co/privacidad`,
+    `${INTERNATIONAL_ORIGIN}/co/cookies`,
+    `${INTERNATIONAL_ORIGIN}/co/terminos`,
+    `${INTERNATIONAL_ORIGIN}/co/marco-normativo`,
   ]);
+});
+
+test("el locale público distingue Brasil, Colombia y Argentina", () => {
+  assert.equal(localeForPublicPath("/br"), "pt-BR");
+  assert.equal(localeForPublicPath("/br/verificar"), "pt-BR");
+  assert.equal(localeForPublicPath("/co"), "es-CO");
+  assert.equal(localeForPublicPath("/co/privacidad"), "es-CO");
+  assert.equal(localeForPublicPath("/"), "es-AR");
 });
 
 test("las banderas oficiales del gate internacional existen", () => {
