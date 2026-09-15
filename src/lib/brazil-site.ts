@@ -10,11 +10,13 @@ import { SITE_CONTACT, SITE_LEGAL_NAME, SITE_NAME } from "@/lib/seo";
 export const BRAZIL_PATH = BRAZIL_PATH_PREFIX;
 export const BRAZIL_PRE_NEGATIVACAO_PATH = `${BRAZIL_PATH_PREFIX}/pre-negativacao`;
 export const BRAZIL_VERIFY_PATH = `${BRAZIL_PATH_PREFIX}/verificar`;
+export const BRAZIL_TERMS_PATH = `${BRAZIL_PATH_PREFIX}/termos`;
 
 export const BRAZIL_ORIGIN = INTERNATIONAL_ORIGIN;
 export const BRAZIL_HOME_URL = `${BRAZIL_ORIGIN}${BRAZIL_PATH}`;
 export const BRAZIL_PRE_NEGATIVACAO_URL = `${BRAZIL_ORIGIN}${BRAZIL_PRE_NEGATIVACAO_PATH}`;
 export const BRAZIL_VERIFY_URL = `${BRAZIL_ORIGIN}${BRAZIL_VERIFY_PATH}`;
+export const BRAZIL_TERMS_URL = `${BRAZIL_ORIGIN}${BRAZIL_TERMS_PATH}`;
 
 /** Página oficial do STJ para o Tema Repetitivo 1.315. */
 export const STJ_TEMA_1315_URL =
@@ -179,6 +181,25 @@ export function brazilVerifyMetadata(): Metadata {
   });
 }
 
+export const BRAZIL_TERMS_TITLE =
+  "Termos e Condições de Uso | Notificas Brasil";
+export const BRAZIL_TERMS_DESCRIPTION =
+  "Termos e condições de contratação empresarial internacional da Notificas SRL para empresas e organizações que atuam no Brasil.";
+
+export function brazilTermsMetadata(): Metadata {
+  return brazilPageMetadata({
+    title: BRAZIL_TERMS_TITLE,
+    description: BRAZIL_TERMS_DESCRIPTION,
+    path: BRAZIL_TERMS_PATH,
+    keywords: [
+      "termos de uso Notificas",
+      "contratação empresarial",
+      "LGPD",
+      "evidência digital",
+    ],
+  });
+}
+
 export const BRAZIL_FAQ_ITEMS = [
   {
     question: "O que a Notificas faz no Brasil?",
@@ -253,6 +274,8 @@ export function brazilOrganizationJsonLd() {
     logo: `${ARGENTINA_ORIGIN}/notificasLogo.jpg`,
     email: SITE_CONTACT.email,
     telephone: SITE_CONTACT.phone,
+    taxID: SITE_CONTACT.cuit,
+    termsOfService: BRAZIL_TERMS_URL,
     address: {
       "@type": "PostalAddress",
       streetAddress: SITE_CONTACT.address.streetAddress,

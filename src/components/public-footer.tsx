@@ -4,6 +4,7 @@ import { Mail, Phone } from "lucide-react";
 
 import { FooterContactForm } from "@/components/footer-contact-form";
 import { Logo } from "@/components/logo";
+import { BRAZIL_TERMS_PATH } from "@/lib/brazil-site";
 import { ARGENTINA_ORIGIN } from "@/lib/international-site";
 import {
   LEGACY_ARCHIVO_BASE_PATH,
@@ -68,7 +69,8 @@ export function PublicFooter({
           {isBrazil ? (
             <p className="mt-3 max-w-[36ch] text-sm leading-relaxed text-white/70">
               Empresa internacional. Operação societária em {SITE_LEGAL_NAME}, Argentina. Os
-              documentos societários de termos e privacidade estão em espanhol.
+              termos de uso para o Brasil estão em português. A política de privacidade societária
+              permanece em espanhol.
             </p>
           ) : null}
         </div>
@@ -155,19 +157,14 @@ export function PublicFooter({
           <nav aria-label={isBrazil ? "Informação legal" : "Información legal"}>
             <ul className="flex flex-col gap-2 md:flex-row md:flex-wrap md:gap-x-4 md:gap-y-1">
               {(isBrazil
-                ? LEGAL_PUBLIC_PAGES.filter(
-                    (page) => page.path === "/privacidad" || page.path === "/terminos"
-                  )
+                ? [
+                    { path: BRAZIL_TERMS_PATH, title: "Termos" },
+                    { path: "/privacidad", title: "Privacidade (ES)" },
+                  ]
                 : LEGAL_PUBLIC_PAGES
               ).map((page) => (
                 <li key={page.path}>
-                  <FooterLink href={page.path}>
-                    {isBrazil && page.path === "/privacidad"
-                      ? "Privacidade (ES)"
-                      : isBrazil && page.path === "/terminos"
-                        ? "Termos (ES)"
-                        : page.title}
-                  </FooterLink>
+                  <FooterLink href={page.path}>{page.title}</FooterLink>
                 </li>
               ))}
             </ul>

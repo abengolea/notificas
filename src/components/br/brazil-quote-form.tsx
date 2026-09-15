@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   BRAZIL_FINALIDADE_OPTIONS,
+  BRAZIL_TERMS_PATH,
   BRAZIL_VOLUME_OPTIONS,
   type BrazilFinalidadeValue,
   type BrazilVolumeValue,
@@ -398,6 +400,18 @@ export function BrazilQuoteForm() {
           "Receber cotação"
         )}
       </Button>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Ao enviar, você declara ter lido os{" "}
+        <Link
+          href={BRAZIL_TERMS_PATH}
+          className="font-medium text-foreground underline-offset-4 hover:underline"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Termos e Condições de Uso
+        </Link>
+        .
+      </p>
     </form>
   );
 }

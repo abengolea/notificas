@@ -138,6 +138,10 @@ test("notificas.com sirve la landing en / y manda el SPA viejo al archivo", () =
     resolveInternationalGate({ host: "notificas.com", pathname: "/br/verificar" }),
     { type: "passthrough" }
   );
+  assert.deepEqual(
+    resolveInternationalGate({ host: "notificas.com", pathname: "/br/termos" }),
+    { type: "passthrough" }
+  );
   assert.deepEqual(resolveInternationalGate({ host: "notificas.com", pathname: "/co" }), {
     type: "passthrough",
   });
@@ -171,6 +175,7 @@ test("la preview /intl no entra al sitemap ni a robots públicos", () => {
     `${INTERNATIONAL_ORIGIN}/br`,
     `${INTERNATIONAL_ORIGIN}/br/pre-negativacao`,
     `${INTERNATIONAL_ORIGIN}/br/verificar`,
+    `${INTERNATIONAL_ORIGIN}/br/termos`,
     `${INTERNATIONAL_ORIGIN}/co`,
     `${INTERNATIONAL_ORIGIN}/co/privacidad`,
     `${INTERNATIONAL_ORIGIN}/co/cookies`,
@@ -182,6 +187,7 @@ test("la preview /intl no entra al sitemap ni a robots públicos", () => {
 test("el locale público distingue Brasil, Colombia y Argentina", () => {
   assert.equal(localeForPublicPath("/br"), "pt-BR");
   assert.equal(localeForPublicPath("/br/verificar"), "pt-BR");
+  assert.equal(localeForPublicPath("/br/termos"), "pt-BR");
   assert.equal(localeForPublicPath("/co"), "es-CO");
   assert.equal(localeForPublicPath("/co/privacidad"), "es-CO");
   assert.equal(localeForPublicPath("/"), "es-AR");
