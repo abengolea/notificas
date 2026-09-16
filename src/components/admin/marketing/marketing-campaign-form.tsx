@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { MarketingSubnav } from "./marketing-subnav";
+import { MarketingListUpload } from "./marketing-list-upload";
 import { MarketingRecipientPreview, type PreviewContact } from "./marketing-recipient-preview";
-import { PIPELINE_STAGES, STAGE_LABEL } from "@/lib/marketing/stages";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,18 +13,11 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-
-const SAMPLE = `<p>Hola {{nombre}},</p>
-<p>Te escribo desde Notificas. Ayudamos a empresas en {{pais}} a dejar constancia fehaciente de correos y WhatsApp.</p>
-<p>¿Tenés 15 minutos esta semana para ver si les sirve?</p>
-<p>Adrian Bengolea</p>`;
 
 type ListOption = {
   id: string;
@@ -45,7 +37,6 @@ export function MarketingCampaignForm() {
   const router = useRouter();
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
-  const [include, setInclude] = useState<string[]>(["new"]);
   const [listId, setListId] = useState("");
   const [lists, setLists] = useState<ListOption[] | null>(null);
   const [audience, setAudience] = useState<Audience | null>(null);
@@ -53,20 +44,23 @@ export function MarketingCampaignForm() {
   const [form, setForm] = useState({
     name: "",
     subject: "",
-    htmlBody: SAMPLE,
+    htmlBody: "",
   });
 
   const namedLists = useMemo(() => (lists || []).filter((l) => !l.virtual), [lists]);
-  const virtualLists = useMemo(() => (lists || []).filter((l) => l.virtual), [lists]);
+
+  async function refreshLists() {
+    const res = await fetch("/api/admin/marketing/lists", { credentials: "include" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "No se pudieron cargar las listas");
+    setLists(data.lists || []);
+  }
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/admin/marketing/lists", { credentials: "include" });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "No se pudieron cargar las listas");
-        if (!cancelled) setLists(data.lists || []);
+        await refreshLists();
       } catch (e) {
         if (!cancelled) {
           setLists([]);
@@ -85,13 +79,12 @@ export function MarketingCampaignForm() {
       return;
     }
     const controller = new AbortController();
-    const stages = include.join(",");
     const timer = window.setTimeout(() => {
       setLoadingAudience(true);
       void (async () => {
         try {
           const res = await fetch(
-            `/api/admin/marketing/recipients?listId=${encodeURIComponent(listId)}&stages=${encodeURIComponent(stages)}`,
+            `/api/admin/marketing/recipients?listId=${encodeURIComponent(listId)}&stages=new,sent,opened,clicked,replied`,
             { credentials: "include", signal: controller.signal },
           );
           const data = await res.json();
@@ -109,16 +102,16 @@ export function MarketingCampaignForm() {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [listId, include, toast]);
-
-  function toggleStage(stage: string) {
-    setInclude((prev) => (prev.includes(stage) ? prev.filter((s) => s !== stage) : [...prev, stage]));
-  }
+  }, [listId, toast]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!listId) {
-      toast({ title: "Elegí a quién se lo mandamos", variant: "destructive" });
+      toast({ title: "Cargá un CSV de destinatarios o elegí una lista", variant: "destructive" });
+      return;
+    }
+    if (!form.htmlBody.trim()) {
+      toast({ title: "Escribí el texto del correo", variant: "destructive" });
       return;
     }
     setSaving(true);
@@ -127,7 +120,11 @@ export function MarketingCampaignForm() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, listId, includeStages: include }),
+        body: JSON.stringify({
+          ...form,
+          listId,
+          includeStages: ["new", "sent", "opened", "clicked", "replied"],
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "No se pudo crear");
@@ -141,74 +138,42 @@ export function MarketingCampaignForm() {
   return (
     <div className="space-y-6">
       <MarketingSubnav />
-      <form onSubmit={onSubmit} className="max-w-3xl space-y-4 rounded-lg border bg-background p-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label htmlFor="camp-name">Nombre interno</Label>
-            <Input id="camp-name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Chile — intro marzo" />
-          </div>
-          <div className="space-y-1">
-            <Label>Lista de destinatarios</Label>
-            <Select value={listId || undefined} onValueChange={setListId}>
-              <SelectTrigger><SelectValue placeholder="Elegí una lista precargada" /></SelectTrigger>
-              <SelectContent>
-                {namedLists.length ? (
-                  <SelectGroup>
-                    <SelectLabel>Listas cargadas</SelectLabel>
-                    {namedLists.map((l) => (
-                      <SelectItem key={l.id} value={l.id}>
-                        {l.name} ({l.contactCount})
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                ) : null}
-                {virtualLists.length ? (
-                  <SelectGroup>
-                    <SelectLabel>Por país</SelectLabel>
-                    {virtualLists.map((l) => (
-                      <SelectItem key={l.id} value={l.id}>
-                        {l.name} ({l.contactCount})
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                ) : null}
-              </SelectContent>
-            </Select>
-            {lists && lists.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Todavía no hay contactos.{" "}
-                <Link href="/admin/marketing/contactos" className="underline underline-offset-2">
-                  Cargá un CSV y nombrá la lista
-                </Link>
-                .
-              </p>
-            ) : null}
-          </div>
-        </div>
+      <form onSubmit={onSubmit} className="max-w-3xl space-y-5 rounded-lg border bg-background p-4">
         <div className="space-y-1">
-          <Label htmlFor="camp-subj">Asunto</Label>
-          <Input id="camp-subj" required value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="{{empresa}} y las notificaciones fehacientes" />
+          <Label htmlFor="camp-name">Nombre interno</Label>
+          <Input id="camp-name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Chile — intro marzo" />
         </div>
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">A quién incluir de esa lista</legend>
-          <div className="flex flex-wrap gap-3">
-            {PIPELINE_STAGES.filter((s) => s !== "queued").map((s) => (
-              <label key={s} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={include.includes(s)}
-                  onChange={() => toggleStage(s)}
-                />
-                {STAGE_LABEL[s]}
-              </label>
-            ))}
+
+        <div className="space-y-3">
+          <div>
+            <p className="text-sm font-medium">Destinatarios</p>
+            <p className="text-sm text-muted-foreground">Subí el CSV acá. No se mandan contactos viejos del CRM si no están en esta lista.</p>
           </div>
-        </fieldset>
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Destinatarios de este envío</p>
+          <MarketingListUpload
+            defaultName={form.name}
+            onImported={(list) => {
+              setListId(list.listId);
+              void refreshLists().catch(() => undefined);
+            }}
+          />
+          {namedLists.length ? (
+            <div className="space-y-1">
+              <Label>O usar una lista ya cargada</Label>
+              <Select value={listId || undefined} onValueChange={setListId}>
+                <SelectTrigger><SelectValue placeholder="Ninguna todavía" /></SelectTrigger>
+                <SelectContent>
+                  {namedLists.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name} ({l.contactCount})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
           {loadingAudience ? (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Armando la lista…
+              <Loader2 className="h-4 w-4 animate-spin" /> Leyendo destinatarios…
             </p>
           ) : listId && audience ? (
             <MarketingRecipientPreview
@@ -216,15 +181,29 @@ export function MarketingCampaignForm() {
               total={audience.total}
               eligible={audience.eligible}
               skipped={audience.skipped}
-              emptyHint="Esa lista no tiene contactos enviables con las etapas elegidas."
+              emptyHint="Esa lista no tiene contactos enviables."
             />
           ) : (
-            <p className="text-sm text-muted-foreground">Elegí una lista para ver a quién le va a llegar.</p>
+            <p className="text-sm text-muted-foreground">Todavía no hay destinatarios en esta campaña.</p>
           )}
         </div>
+
         <div className="space-y-1">
-          <Label htmlFor="camp-body">Cuerpo (HTML o texto). Variables: {"{{nombre}} {{empresa}} {{pais}} {{cargo}} {{email}}"}</Label>
-          <Textarea id="camp-body" required rows={14} value={form.htmlBody} onChange={(e) => setForm({ ...form, htmlBody: e.target.value })} className="font-mono text-sm" />
+          <Label htmlFor="camp-subj">Asunto</Label>
+          <Input id="camp-subj" required value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="Notificas para {{empresa}}" />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="camp-body">Texto del correo</Label>
+          <Textarea
+            id="camp-body"
+            required
+            rows={14}
+            value={form.htmlBody}
+            onChange={(e) => setForm({ ...form, htmlBody: e.target.value })}
+            placeholder={"Hola {{nombre}},\n\nTe escribo desde Notificas…\n\nVariables: {{nombre}} {{empresa}} {{pais}} {{cargo}} {{email}}"}
+            className="font-sans text-sm"
+          />
+          <p className="text-sm text-muted-foreground">Podés pegar HTML o texto. Variables: {"{{nombre}} {{empresa}} {{pais}} {{cargo}} {{email}}"}</p>
         </div>
         <Button type="submit" disabled={saving || !listId}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar borrador"}

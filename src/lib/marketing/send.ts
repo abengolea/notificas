@@ -4,7 +4,7 @@ import { MARKETING_CAMPAIGNS, MARKETING_CONTACTS, MARKETING_SENDS } from "./coll
 import { countryName } from "./countries";
 import { assembleMarketingHtml } from "./html";
 import { recordMarketingEvent } from "./events";
-import { campaignRecipientSource, contactMatchesSource } from "./lists";
+import { namedRecipientSource, contactMatchesSource } from "./lists";
 import { marketingFromHeader, marketingFromName, marketingReplyTo } from "./types";
 import { marketingUnsubUrl } from "./tokens";
 
@@ -197,22 +197,16 @@ export async function enqueueCampaignSends(campaignId: string): Promise<{ queued
     throw Object.assign(new Error("La campaña está cancelada."), { status: 409 });
   }
 
-  const source = campaignRecipientSource(camp);
-  if (source.kind === "none") {
-    throw Object.assign(new Error("La campaña no tiene lista de destinatarios."), { status: 400 });
+  const source = namedRecipientSource(camp);
+  if (source.kind !== "list") {
+    throw Object.assign(new Error("Cargá una lista de destinatarios en la campaña."), { status: 400 });
   }
-  let q: FirebaseFirestore.Query = db.collection(MARKETING_CONTACTS);
-  if (source.kind === "country" && source.country !== "all") {
-    q = q.where("country", "==", source.country);
-  }
-  if (source.kind === "list") {
-    q = q.where("listIds", "array-contains", source.listId);
-  }
+  let q: FirebaseFirestore.Query = db.collection(MARKETING_CONTACTS).where("listIds", "array-contains", source.listId);
   const snap = await q.limit(5000).get();
   const include = new Set<string>(
     Array.isArray(camp.includeStages) && camp.includeStages.length
       ? camp.includeStages.map(String)
-      : ["new", "sent", "opened", "clicked"],
+      : ["new", "sent", "opened", "clicked", "replied"],
   );
 
   const existing = await db.collection(MARKETING_SENDS).where("campaignId", "==", campaignId).get();
@@ -240,7 +234,7 @@ export async function enqueueCampaignSends(campaignId: string): Promise<{ queued
       campaignId,
       contactId: doc.id,
       email: String(c.email || ""),
-      country: String(c.country || (source.kind === "country" ? source.country : "")),
+      country: String(c.country || ""),
       company: String(c.company || ""),
       name: String(c.name || ""),
       subject: String(camp.subject || ""),

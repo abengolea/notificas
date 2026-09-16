@@ -6,6 +6,7 @@ import { getAdminDb } from "@/lib/firebase-admin";
 import { resolveListLabel } from "@/lib/marketing/audience";
 import { MARKETING_CAMPAIGNS } from "@/lib/marketing/collections";
 import { serializeAdminDoc } from "@/lib/marketing/events";
+import { namedRecipientSource } from "@/lib/marketing/lists";
 import { isMarketingStage } from "@/lib/marketing/stages";
 import { emptyCampaignStats, marketingFromEmail, marketingFromName } from "@/lib/marketing/types";
 
@@ -42,8 +43,8 @@ export async function POST(request: NextRequest) {
     const parsed = postSchema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     const list = await resolveListLabel(parsed.data.listId);
-    if (!list.listId) {
-      return NextResponse.json({ error: "Elegí una lista de destinatarios." }, { status: 400 });
+    if (namedRecipientSource({ listId: list.listId }).kind !== "list") {
+      return NextResponse.json({ error: "Cargá o elegí una lista de destinatarios (CSV). No se envía a todos los contactos del CRM." }, { status: 400 });
     }
     const includeStages = (parsed.data.includeStages || ["new"]).filter(isMarketingStage);
     const db = getAdminDb();

@@ -109,6 +109,12 @@ export function campaignRecipientSource(camp: { listId?: unknown; country?: unkn
   return { kind: "country", country: country.toLowerCase() === "all" ? "all" : country.toUpperCase() };
 }
 
+/** Solo listas nominadas: no arrastra todos los contactos de un país. */
+export function namedRecipientSource(camp: { listId?: unknown }): RecipientSource {
+  const parsed = parseRecipientSource(typeof camp.listId === "string" ? camp.listId : "");
+  return parsed.kind === "list" ? parsed : { kind: "none" };
+}
+
 export function decorateRecipient(row: RecipientRow, includeStages: Set<string> | null): RecipientRow {
   if (row.skipReason) return { ...row, eligible: false };
   if (includeStages && includeStages.size > 0 && !includeStages.has(row.stage)) {

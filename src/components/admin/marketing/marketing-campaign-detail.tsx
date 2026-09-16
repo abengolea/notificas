@@ -5,9 +5,13 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { MarketingSubnav } from "./marketing-subnav";
 import { StageBadge } from "./stage-badge";
+import { MarketingListUpload } from "./marketing-list-upload";
 import { MarketingRecipientPreview, type PreviewContact } from "./marketing-recipient-preview";
 import { countryName } from "@/lib/marketing/countries";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -39,6 +43,7 @@ type Campaign = {
   id: string;
   name: string;
   country: string;
+  listId?: string | null;
   listName?: string;
   status: string;
   subject: string;
@@ -61,7 +66,9 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
   const [sends, setSends] = useState<Send[]>([]);
   const [audience, setAudience] = useState<Audience | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<"send" | "tick" | "pause" | null>(null);
+  const [busy, setBusy] = useState<"send" | "tick" | "pause" | "save" | null>(null);
+  const [subject, setSubject] = useState("");
+  const [htmlBody, setHtmlBody] = useState("");
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/admin/marketing/campaigns/${campaignId}`, { credentials: "include" });
@@ -70,6 +77,8 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
     setCampaign(data.campaign);
     setSends(data.sends || []);
     setAudience(data.audience || null);
+    setSubject(String(data.campaign?.subject || ""));
+    setHtmlBody(String(data.campaign?.htmlBody || ""));
   }, [campaignId]);
 
   useEffect(() => {
@@ -104,9 +113,53 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
     return () => window.clearInterval(id);
   }, [campaign?.status, campaignId, load]);
 
+  async function patch(body: Record<string, unknown>) {
+    const res = await fetch(`/api/admin/marketing/campaigns/${campaignId}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "No se pudo actualizar");
+    return data;
+  }
+
+  async function saveCopy() {
+    setBusy("save");
+    try {
+      if (!subject.trim() || htmlBody.trim().length < 8) {
+        throw new Error("Completá asunto y texto del correo");
+      }
+      await patch({ subject: subject.trim(), htmlBody });
+      toast({ title: "Texto guardado" });
+      await load();
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function attachList(listId: string) {
+    setBusy("save");
+    try {
+      await patch({ listId });
+      toast({ title: "Lista asociada a esta campaña" });
+      await load();
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function startSend() {
     setBusy("send");
     try {
+      if (subject !== campaign?.subject || htmlBody !== campaign?.htmlBody) {
+        await patch({ subject: subject.trim(), htmlBody });
+      }
       const res = await fetch(`/api/admin/marketing/campaigns/${campaignId}/send`, { method: "POST", credentials: "include" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "No se pudo enviar");
@@ -122,14 +175,7 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
   async function pause() {
     setBusy("pause");
     try {
-      const res = await fetch(`/api/admin/marketing/campaigns/${campaignId}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: campaign?.status === "paused" ? "sending" : "paused" }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "No se pudo actualizar");
+      await patch({ status: campaign?.status === "paused" ? "sending" : "paused" });
       await load();
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
@@ -148,6 +194,9 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
   }
 
   const stats = campaign.stats || {};
+  const isDraft = campaign.status === "draft";
+  const hasNamedList = Boolean(audience && audience.total > 0);
+  const canSend = isDraft && hasNamedList && (audience?.eligible || 0) > 0 && htmlBody.trim().length >= 8 && subject.trim().length >= 2;
 
   return (
     <div className="space-y-6">
@@ -159,12 +208,12 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
         <div>
           <h3 className="text-xl font-semibold">{campaign.name}</h3>
           <p className="text-sm text-muted-foreground">
-            {campaign.listName || (campaign.country === "all" ? "Todos los países" : countryName(campaign.country))} · {campaign.subject}
+            {campaign.listName || (campaign.country === "all" ? "Sin lista nominada" : countryName(campaign.country))} · {campaign.subject}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {campaign.status === "draft" ? (
-            <Button onClick={() => void startSend()} disabled={busy !== null || (audience !== null && audience.eligible === 0)}>
+          {isDraft ? (
+            <Button onClick={() => void startSend()} disabled={busy !== null || !canSend}>
               {busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enviar ahora"}
             </Button>
           ) : null}
@@ -175,6 +224,52 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
           ) : null}
         </div>
       </div>
+
+      {isDraft ? (
+        <div className="space-y-3 rounded-lg border bg-background p-4">
+          <div>
+            <h4 className="text-sm font-medium">Destinatarios de este envío</h4>
+            <p className="text-sm text-muted-foreground">
+              Subí un CSV. No se usan contactos viejos del CRM salvo que estén en esta lista.
+            </p>
+          </div>
+          <MarketingListUpload defaultName={campaign.name} onImported={(list) => void attachList(list.listId)} />
+          {audience && audience.total > 0 ? (
+            <MarketingRecipientPreview
+              contacts={audience.contacts}
+              total={audience.total}
+              eligible={audience.eligible}
+              skipped={audience.skipped}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">Todavía no hay destinatarios cargados en esta campaña.</p>
+          )}
+        </div>
+      ) : null}
+
+      {isDraft ? (
+        <div className="space-y-3 rounded-lg border bg-background p-4">
+          <h4 className="text-sm font-medium">Texto del correo</h4>
+          <div className="space-y-1">
+            <Label htmlFor="camp-subj">Asunto</Label>
+            <Input id="camp-subj" value={subject} onChange={(e) => setSubject(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="camp-body">Cuerpo</Label>
+            <Textarea id="camp-body" rows={12} value={htmlBody} onChange={(e) => setHtmlBody(e.target.value)} className="font-sans text-sm" />
+            <p className="text-sm text-muted-foreground">Variables: {"{{nombre}} {{empresa}} {{pais}} {{cargo}} {{email}}"}</p>
+          </div>
+          <Button type="button" variant="outline" onClick={() => void saveCopy()} disabled={busy !== null}>
+            {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar texto"}
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-2 rounded-lg border bg-background p-4">
+          <h4 className="text-sm font-medium">Texto enviado</h4>
+          <p className="text-sm font-medium">{campaign.subject}</p>
+          <div className="whitespace-pre-wrap text-sm text-muted-foreground">{campaign.htmlBody}</div>
+        </div>
+      )}
 
       <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-4">
         {[
@@ -203,20 +298,7 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
         </p>
       ) : null}
 
-      {campaign.status === "draft" && audience ? (
-        <div className="space-y-2">
-          <h4 className="text-sm font-medium">A quién se lo mandamos</h4>
-          <MarketingRecipientPreview
-            contacts={audience.contacts}
-            total={audience.total}
-            eligible={audience.eligible}
-            skipped={audience.skipped}
-            emptyHint="Esta campaña no tiene destinatarios. Volvé a Contactos, cargá una lista y creá la campaña eligiendo esa lista."
-          />
-        </div>
-      ) : null}
-
-      {campaign.status === "draft" && sends.length === 0 ? null : (
+      {isDraft && sends.length === 0 ? null : (
       <div className="rounded-lg border bg-background overflow-x-auto">
         <Table>
           <TableHeader>
@@ -230,9 +312,7 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
             {sends.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={3} className="text-sm text-muted-foreground">
-                  {campaign.status === "draft"
-                    ? "Todavía no se envió. Arriba está quién va a recibir el correo; Enviar ahora arma la cola."
-                    : "Todavía no hay envíos."}
+                  Todavía no hay envíos.
                 </TableCell>
               </TableRow>
             ) : (

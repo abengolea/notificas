@@ -4,12 +4,12 @@ import { MARKETING_CONTACTS, MARKETING_LISTS } from "./collections";
 import { isMarketingCountryCode, type MarketingCountryCode } from "./countries";
 import { serializeAdminDoc } from "./events";
 import {
-  campaignRecipientSource,
   contactMatchesSource,
   countryListKey,
   decorateRecipient,
   includeStageSet,
   listNameKey,
+  namedRecipientSource,
   normalizeListName,
   parseRecipientSource,
   toRecipientRow,
@@ -233,11 +233,10 @@ export async function loadMarketingListCatalog(): Promise<MarketingList[]> {
 
 export async function audienceForCampaign(camp: {
   listId?: unknown;
-  country?: unknown;
   includeStages?: unknown;
 }): Promise<AudienceResult> {
   return loadMarketingAudience({
-    source: campaignRecipientSource(camp),
+    source: namedRecipientSource(camp),
     includeStages: camp.includeStages,
   });
 }

@@ -37,7 +37,7 @@ Las campañas de producto certifican un acto de comunicación. El CRM de marketi
 
 - Módulo admin `/admin/marketing`: resumen por país, contactos con listas, campañas, conexión Gmail.
 - Etapas: nuevo → en cola / enviado → abierto → clic → respondió; más no interesa, rebotó, baja.
-- Antes de enviar una campaña se elige una lista precargada (o el atajo por país) y se ven los destinatarios.
+- Antes de enviar una campaña se carga el CSV de destinatarios y el texto del correo en la misma pantalla. No se arrastran contactos viejos del CRM.
 - From fijo: `contacto@notificas.com.ar`. La API key de Resend de producción solo autoriza `@notificas.com.ar`, no `@notificas.com`. Reply-To y Gmail siguen en `adrianbengolea@notificas.com`.
 - Gmail Workspace tiene tope diario propio; el envío masivo no pasa por Gmail para no quemar la casilla.
 - OAuth de Gmail requiere `GOOGLE_MARKETING_OAUTH_CLIENT_ID` y `GOOGLE_MARKETING_OAUTH_CLIENT_SECRET` (y URI de redirección registrada). Sin eso, el CRM carga contactos y arma campañas, pero no sincroniza respuestas.

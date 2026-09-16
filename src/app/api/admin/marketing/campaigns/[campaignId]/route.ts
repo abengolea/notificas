@@ -3,15 +3,17 @@ import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { assertAdminSession } from "@/lib/assert-admin-session";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { audienceForCampaign } from "@/lib/marketing/audience";
+import { audienceForCampaign, resolveListLabel } from "@/lib/marketing/audience";
 import { MARKETING_CAMPAIGNS, MARKETING_SENDS } from "@/lib/marketing/collections";
 import { serializeAdminDoc } from "@/lib/marketing/events";
+import { namedRecipientSource } from "@/lib/marketing/lists";
 
 const patchSchema = z.object({
   name: z.string().min(2).max(160).optional(),
   subject: z.string().min(2).max(200).optional(),
   htmlBody: z.string().min(8).max(50_000).optional(),
   textBody: z.string().max(20_000).optional(),
+  listId: z.string().min(1).max(80).optional(),
   status: z.enum(["paused", "cancelled", "sending"]).optional(),
 });
 
@@ -67,6 +69,18 @@ export async function PATCH(
     if (d.subject) updates.subject = d.subject.trim();
     if (d.htmlBody) updates.htmlBody = d.htmlBody;
     if (d.textBody !== undefined) updates.textBody = d.textBody;
+    if (d.listId) {
+      if (current !== "draft" && current !== "paused") {
+        return NextResponse.json({ error: "Solo se puede cambiar la lista en un borrador." }, { status: 409 });
+      }
+      const list = await resolveListLabel(d.listId);
+      if (namedRecipientSource({ listId: list.listId }).kind !== "list") {
+        return NextResponse.json({ error: "Cargá una lista nominada (CSV)." }, { status: 400 });
+      }
+      updates.listId = list.listId;
+      updates.listName = list.listName;
+      updates.country = list.country;
+    }
     if (d.status === "paused" && current === "sending") updates.status = "paused";
     if (d.status === "sending" && current === "paused") updates.status = "sending";
     if (d.status === "cancelled" && current !== "sent") {

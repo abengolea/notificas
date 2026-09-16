@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  campaignRecipientSource,
   contactMatchesSource,
   countryListKey,
   decorateRecipient,
   listNameKey,
+  namedRecipientSource,
   parseRecipientSource,
   toRecipientRow,
 } from "./lists";
@@ -18,12 +18,10 @@ test("parsea lista nominada y atajo por país", () => {
   assert.equal(countryListKey("cu"), "country:CU");
 });
 
-test("campañas viejas sin listId usan el país", () => {
-  assert.deepEqual(campaignRecipientSource({ country: "CL" }), { kind: "country", country: "CL" });
-  assert.deepEqual(campaignRecipientSource({ listId: "country:BR", country: "AR" }), {
-    kind: "country",
-    country: "BR",
-  });
+test("sin lista nominada no se envía a todo el país", () => {
+  assert.equal(namedRecipientSource({ country: "CU" }).kind, "none");
+  assert.equal(namedRecipientSource({ listId: "country:CU" }).kind, "none");
+  assert.deepEqual(namedRecipientSource({ listId: "lista-cuba" }), { kind: "list", listId: "lista-cuba" });
 });
 
 test("un contacto entra en su lista y en el atajo de país", () => {
