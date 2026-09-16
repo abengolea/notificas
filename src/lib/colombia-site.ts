@@ -43,6 +43,14 @@ export const COLOMBIA_KEYWORDS = [
 ] as const;
 
 export const COLOMBIA_SITEMAP_LASTMOD = new Date("2026-09-14T00:00:00.000Z");
+export const COLOMBIA_LEGAL_UPDATED_LABEL = "14 de septiembre de 2026";
+export const COLOMBIA_LEGAL_SITE = "https://www.notificas.com";
+export const COLOMBIA_LEGAL_ADDRESS = [
+  SITE_CONTACT.address.streetAddress,
+  SITE_CONTACT.address.addressLocality,
+  SITE_CONTACT.address.addressRegion,
+  "Argentina",
+].join(", ");
 
 export const COLOMBIA_NAV_LINKS = [
   { href: `${COLOMBIA_PATH}#producto`, label: "Producto" },

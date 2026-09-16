@@ -615,6 +615,14 @@ function whatsappLimitPayload(waId, httpStatus) {
   return { error: message, errorCode: code, limitHit, limitSource: limitHit ? 'whatsapp' : undefined };
 }
 
+function isEmailRecipientLevelError(error) {
+  const message = error && error.message ? error.message : String(error || '');
+  if (/resend|smtp\.resend|quota|sending.?limit|messageid|eauth|authentication/i.test(message)) {
+    return false;
+  }
+  return /invalid.?recipient|mailbox.?(unavailable|not.?found)|user.?unknown|no such user|recipient.?rejected|address.?rejected|all recipients were rejected|eenvelope|550\s*5\.1\.1/i.test(message);
+}
+
 function whatsappErrorMessage(waId) {
   if (!waId) return 'La API de WhatsApp no devolvió un ID de mensaje';
   if (typeof waId === 'string') return null;
@@ -1336,11 +1344,16 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
       console.error('Error:', error);
 
       let failedProvider = 'donweb';
+      let failedCampaignId = '';
       try {
         const failId = req.body && req.body.docId;
         if (failId) {
           const failSnap = await getFirestore().doc(`mail/${failId}`).get();
-          if (failSnap.exists) failedProvider = resolveEmailProvider(failSnap.data());
+          if (failSnap.exists) {
+            const failData = failSnap.data() || {};
+            failedProvider = resolveEmailProvider(failData);
+            failedCampaignId = String(failData.campaignId || '');
+          }
         }
       } catch (_) { /* ignore */ }
       
@@ -1359,12 +1372,16 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
           console.error('Error al actualizar documento:', updateError);
         }
       }
+
+      const emailLimit = Boolean(failedCampaignId) && !isEmailRecipientLevelError(error);
       
       // Devolver respuesta de error
       res.status(500).json({ 
         success: false, 
         error: error.message,
         emailProvider: failedProvider,
+        errorCode: error && (error.code || error.responseCode) ? (error.code || error.responseCode) : undefined,
+        ...(emailLimit ? { limitHit: true, limitSource: 'resend' } : {}),
       });
     }
   }

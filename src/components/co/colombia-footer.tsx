@@ -17,6 +17,7 @@ export function ColombiaFooter() {
             {colombiaCopy.brand.tagline}
           </p>
           <p className="mt-4 text-sm text-white/70">{colombiaCopy.brand.legalLine}</p>
+          <p className="mt-1 text-sm text-white/70">{colombiaCopy.brand.entityLine}</p>
           <p className="mt-1 text-sm text-white/70">{colombiaCopy.brand.markets}</p>
         </div>
 
@@ -45,8 +46,10 @@ export function ColombiaFooter() {
             </a>
           </p>
           <p className="mt-3 text-xs leading-relaxed text-white/55">
-            {SITE_LEGAL_NAME}. No existe una sociedad colombiana de Notificas.
-            El servicio para Colombia se presta desde Argentina.
+            {SITE_LEGAL_NAME}, CUIT {SITE_CONTACT.cuit}. Domicilio en{" "}
+            {SITE_CONTACT.address.streetAddress}, {SITE_CONTACT.address.addressLocality},{" "}
+            {SITE_CONTACT.address.addressRegion}, Argentina. No existe una sociedad colombiana
+            de Notificas. El servicio para Colombia se presta desde Argentina.
           </p>
         </div>
       </div>

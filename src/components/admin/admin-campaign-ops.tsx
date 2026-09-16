@@ -519,7 +519,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
             <>
               <p className="font-medium">Campaña pausada automáticamente</p>
               <p className="mt-1 text-muted-foreground">{c.autoPauseReason}</p>
-              <p className="mt-2">Reanudá cuando el límite se haya despejado. El lote de mañana no arranca solo mientras esté pausada.</p>
+              <p className="mt-2">Reanudá cuando el problema se haya resuelto. El lote de mañana no arranca solo mientras esté pausada.</p>
             </>
           ) : (
             <>Campaña pausada. No sale el lote de mañana hasta que la reanudés. El cupo que guardes rige al día siguiente de reanudar.</>

@@ -1,18 +1,19 @@
 import type { Metadata } from "next";
 
+import { ColombiaLegalIdentity } from "@/components/co/colombia-legal-identity";
 import { ColombiaLegalShell } from "@/components/co/colombia-legal-shell";
 import {
+  COLOMBIA_LEGAL_UPDATED_LABEL,
   COLOMBIA_PATH,
   COLOMBIA_PRIVACY_PATH,
   COLOMBIA_TERMS_PATH,
   colombiaPageMetadata,
 } from "@/lib/colombia-site";
-import { SITE_CONTACT, SITE_LEGAL_NAME } from "@/lib/seo";
 
 export const metadata: Metadata = colombiaPageMetadata({
   title: "Términos y Condiciones | Notificas Colombia",
   description:
-    "Términos del servicio de Notificas SRL para organizaciones en Colombia: infraestructura de comunicaciones por WhatsApp y correo electrónico con evidencia técnica.",
+    "Términos del servicio de NOTIFICAS S.R.L., sociedad argentina, para organizaciones en Colombia: infraestructura de comunicaciones por WhatsApp y correo electrónico con evidencia técnica.",
   path: COLOMBIA_TERMS_PATH,
 });
 
@@ -20,7 +21,7 @@ export default function ColombiaTermsPage() {
   return (
     <ColombiaLegalShell
       title="Términos y Condiciones"
-      updated="Última actualización: septiembre de 2026"
+      updated={`Última actualización: ${COLOMBIA_LEGAL_UPDATED_LABEL}`}
       crumbs={[
         { name: "Notificas Colombia", path: COLOMBIA_PATH },
         { name: "Términos", path: COLOMBIA_TERMS_PATH },
@@ -28,14 +29,9 @@ export default function ColombiaTermsPage() {
     >
       <section>
         <h2 className="mb-2 text-lg font-semibold">1. Prestador</h2>
-        <p>
-          El servicio es prestado por <strong>{SITE_LEGAL_NAME}</strong>, CUIT 33-71729868-9,
-          Argentina. Contacto:{" "}
-          <a href={`mailto:${SITE_CONTACT.email}`} className="text-primary underline">
-            {SITE_CONTACT.email}
-          </a>
-          . No se afirma la existencia de una sociedad colombiana de Notificas.
-        </p>
+        <div className="space-y-3">
+          <ColombiaLegalIdentity />
+        </div>
       </section>
       <section>
         <h2 className="mb-2 text-lg font-semibold">2. Objeto</h2>

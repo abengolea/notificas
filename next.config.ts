@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
       beforeFiles: [
         {
           source: "/",
-          has: [{ type: "host", value: "notificas\\.com" }],
+          has: [{ type: "host", value: "^notificas\\.com$" }],
           destination: "/intl",
         },
       ],

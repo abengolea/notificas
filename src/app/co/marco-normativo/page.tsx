@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 
+import { ColombiaLegalIdentity, ColombiaMailLink } from "@/components/co/colombia-legal-identity";
 import { ColombiaLegalShell } from "@/components/co/colombia-legal-shell";
 import { colombiaCopy } from "@/lib/colombia-content";
 import {
   COLOMBIA_FRAMEWORK_PATH,
+  COLOMBIA_LEGAL_UPDATED_LABEL,
   COLOMBIA_PATH,
   LEY_1266_URL,
   LEY_1581_URL,
@@ -30,12 +32,18 @@ export default function ColombiaFrameworkPage() {
   return (
     <ColombiaLegalShell
       title={copy.title}
-      updated="Última actualización: septiembre de 2026"
+      updated={`Última actualización: ${COLOMBIA_LEGAL_UPDATED_LABEL}`}
       crumbs={[
         { name: "Notificas Colombia", path: COLOMBIA_PATH },
         { name: "Marco normativo", path: COLOMBIA_FRAMEWORK_PATH },
       ]}
     >
+      <section>
+        <h2 className="mb-2 text-lg font-semibold">Prestador</h2>
+        <div className="space-y-3">
+          <ColombiaLegalIdentity compact />
+        </div>
+      </section>
       <p>{copy.lead}</p>
       <section>
         <h2 className="mb-2 text-lg font-semibold">{copy.ley2300Title}</h2>
@@ -68,6 +76,9 @@ export default function ColombiaFrameworkPage() {
             </a>
           </li>
         </ul>
+        <p className="mt-3">
+          Consultas: <ColombiaMailLink />.
+        </p>
       </section>
     </ColombiaLegalShell>
   );

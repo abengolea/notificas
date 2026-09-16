@@ -24,6 +24,8 @@ function escapeHtml(s: string): string {
 function sourceLabel(source: CampaignLimitSource): string {
   if (source === 'whatsapp') return 'WhatsApp / Meta';
   if (source === 'polygon') return 'Polygon';
+  if (source === 'resend') return 'Resend / correo';
+  if (source === 'credits') return 'envíos / créditos';
   return 'Google Cloud';
 }
 
@@ -45,9 +47,9 @@ async function notifyAdminCampaignAutoPause(
   const html = [
     `<p>Una campaña de Notificas <strong>se pausó sola</strong>.</p>`,
     `<p><strong>Campaña:</strong> ${escapeHtml(nombre)}</p>`,
-    `<p><strong>Motivo:</strong> límite de ${escapeHtml(origen)}</p>`,
+    `<p><strong>Motivo:</strong> ${escapeHtml(origen)}</p>`,
     `<p>${escapeHtml(reason)}</p>`,
-    `<p>Los destinatarios que no se enviaron siguen pendientes. Cuando el límite se despeje, reanudá desde el panel.</p>`,
+    `<p>Los destinatarios que no se enviaron siguen pendientes. Cuando el problema se resuelva, reanudá desde el panel.</p>`,
     `<p><a href="${escapeHtml(adminUrl)}">${escapeHtml(adminUrl)}</a></p>`,
     orgId ? `<p style="color:#666;font-size:12px">org: ${escapeHtml(orgId)} · id: ${escapeHtml(campaignId)}</p>` : '',
   ]
@@ -57,7 +59,7 @@ async function notifyAdminCampaignAutoPause(
   const text = [
     'Una campaña de Notificas se pausó sola.',
     `Campaña: ${nombre}`,
-    `Motivo: límite de ${origen}`,
+    `Motivo: ${origen}`,
     reason,
     `Panel: ${adminUrl}`,
   ].join('\n');

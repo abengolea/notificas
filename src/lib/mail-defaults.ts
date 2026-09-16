@@ -62,7 +62,7 @@ export function getReclamosCreatedBy(): string {
   );
 }
 
-/** Aviso cuando una campaña se pausa sola por un límite de WhatsApp / Polygon / GCP. */
+/** Aviso cuando una campaña se pausa sola por WhatsApp, Polygon, GCP, Resend o créditos. */
 export const DEFAULT_CAMPAIGN_AUTO_PAUSE_NOTIFY_EMAIL = "abengolea1@gmail.com";
 
 export function getCampaignAutoPauseNotifyEmail(): string {

@@ -1,10 +1,18 @@
-export type CampaignLimitSource = 'whatsapp' | 'polygon' | 'gcp';
+export type CampaignLimitSource = 'whatsapp' | 'polygon' | 'gcp' | 'resend' | 'credits';
 
 export type CampaignLimitHit = {
   source: CampaignLimitSource;
   code: string;
   reason: string;
 };
+
+const LIMIT_SOURCES = new Set<CampaignLimitSource>([
+  'whatsapp',
+  'polygon',
+  'gcp',
+  'resend',
+  'credits',
+]);
 
 const WA_ACCOUNT_LIMIT_CODES = new Set([
   '4',
@@ -30,6 +38,15 @@ const POLYGON_LIMIT_TEXT =
 const GCP_LIMIT_TEXT =
   /resource_exhausted|quota.?exceeded|too many outstanding requests|cloud tasks api error 429|429 too many|rateLimitExceeded|billing|exceeded.{0,40}quota/i;
 
+const RESEND_LIMIT_TEXT =
+  /resend|smtp\.resend|servidor de correo|no se recibi[oó] messageid|eauth|invalid.?api.?key|authentication.?failed|etimedout|econnreset|econnrefused|enotfound|socket hang up|greeting never received|unexpected socket close|sending.?(limit|quota)|daily.?email|monthly.?(quota|limit)|email.{0,20}quota|too many emails|payment.?required|domain.?not.?verif|454\b|421\b|451\b/i;
+
+const CREDITS_LIMIT_TEXT = /sin env[ií]os disponibles|env[ií]os insuficientes/i;
+
+/** Fallos de un destinatario: no frenan la campaña entera. */
+const EMAIL_RECIPIENT_TEXT =
+  /invalid.?recipient|mailbox.?(unavailable|not.?found)|user.?unknown|no such user|recipient.?rejected|address.?rejected|unknown.?user|all recipients were rejected|email inv[aá]lido|destinatario inv[aá]lido|550\s*5\.1\.1|551\s*5\.1|eenvelope/i;
+
 function asCode(value: unknown): string {
   if (value == null || value === '') return '';
   return String(value).replace(/^#+/, '').trim();
@@ -42,6 +59,31 @@ function blob(parts: unknown[]): string {
     .join(' ');
 }
 
+function asLimitSource(value: unknown): CampaignLimitSource | null {
+  return typeof value === 'string' && LIMIT_SOURCES.has(value as CampaignLimitSource)
+    ? (value as CampaignLimitSource)
+    : null;
+}
+
+export function isRecipientLevelEmailError(message: unknown): boolean {
+  const text = blob([message]);
+  if (!text) return false;
+  if (RESEND_LIMIT_TEXT.test(text) || CREDITS_LIMIT_TEXT.test(text)) return false;
+  return EMAIL_RECIPIENT_TEXT.test(text);
+}
+
+/** En email/mixto, un fallo de envío (salvo destinatario inválido) suspende la campaña. */
+export function campaignEmailSendShouldPause(input: {
+  canal?: unknown;
+  error?: unknown;
+  limitHit?: unknown;
+}): boolean {
+  if (input.limitHit === true) return true;
+  const canal = String(input.canal || '');
+  if (canal !== 'email' && canal !== 'ambos') return false;
+  return !isRecipientLevelEmailError(input.error);
+}
+
 export function classifyCampaignLimit(input: {
   httpStatus?: number;
   errorCode?: unknown;
@@ -52,9 +94,7 @@ export function classifyCampaignLimit(input: {
   const message = blob([input.message]);
   const code = asCode(input.errorCode) || (message.match(/#(\d{2,6})/)?.[1] ?? '');
   const http = typeof input.httpStatus === 'number' ? input.httpStatus : 0;
-  const hinted = input.limitSource === 'whatsapp' || input.limitSource === 'polygon' || input.limitSource === 'gcp'
-    ? input.limitSource
-    : null;
+  const hinted = asLimitSource(input.limitSource);
 
   if (input.limitHit === true && hinted) {
     return {
@@ -69,6 +109,22 @@ export function classifyCampaignLimit(input: {
       source: 'polygon',
       code: code || 'polygon_limit',
       reason: message || 'Límite de Polygon (gas, RPC o cupo)',
+    };
+  }
+
+  if (CREDITS_LIMIT_TEXT.test(message)) {
+    return {
+      source: 'credits',
+      code: code || 'credits',
+      reason: message || 'Sin envíos disponibles',
+    };
+  }
+
+  if (RESEND_LIMIT_TEXT.test(message) && !isRecipientLevelEmailError(message)) {
+    return {
+      source: 'resend',
+      code: code || (http === 429 ? '429' : 'resend'),
+      reason: message || 'Error de Resend / correo',
     };
   }
 
@@ -117,6 +173,8 @@ export function campaignLimitUserMessage(hit: CampaignLimitHit): string {
     whatsapp: 'WhatsApp/Meta alcanzó un límite (rate-limit, plantilla o cuenta).',
     polygon: 'Polygon alcanzó un límite (POL, RPC o cuota).',
     gcp: 'Google Cloud alcanzó un límite (Cloud Tasks, Functions o cuota).',
+    resend: 'Resend / el correo falló (cupo, autenticación o el proveedor no aceptó el envío).',
+    credits: 'No quedan envíos disponibles en la cuenta.',
   };
   const head = bySource[hit.source];
   const detail = hit.reason.replace(/\s+/g, ' ').slice(0, 280);

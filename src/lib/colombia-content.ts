@@ -7,7 +7,9 @@ export const colombiaCopy = {
   brand: {
     localeBadge: "Colombia",
     tagline: "Infraestructura digital para comunicaciones empresariales.",
-    legalLine: "Servicio prestado por NOTIFICAS S.R.L.",
+    legalLine: "Servicio prestado por NOTIFICAS S.R.L., sociedad argentina.",
+    entityLine:
+      "CUIT 33-71729868-9 · Colón 12, primer piso, San Nicolás de los Arroyos, Buenos Aires, Argentina.",
     markets: "Argentina · Colombia",
   },
 

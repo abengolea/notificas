@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -14,8 +15,14 @@ import { FaqSection } from '@/components/faq-section';
 import { QuoteContactForm } from '@/components/footer-contact-form';
 import { EnterpriseValuePanel } from '@/components/enterprise-value-panel';
 import { LandingHeader } from '@/components/landing-header';
+import { InternationalLanding } from '@/components/international-landing';
 import { JsonLd } from '@/components/json-ld';
 import { PublicFooter } from '@/components/public-footer';
+import {
+  hostnameFromRequestHeaders,
+  internationalLandingMetadata,
+  isInternationalHost,
+} from '@/lib/international-site';
 import { createPageMetadata } from '@/lib/seo';
 import {
   faqPageJsonLd,
@@ -30,7 +37,7 @@ const HOME_TITLE =
 const HOME_DESCRIPTION =
   'Plataforma argentina para comunicaciones digitales verificables por WhatsApp y email. Evidencia técnica, trazabilidad de eventos y verificación pública de constancias.';
 
-export const metadata: Metadata = {
+const ARGENTINA_METADATA: Metadata = {
   ...createPageMetadata({
     title: HOME_TITLE,
     description: HOME_DESCRIPTION,
@@ -54,6 +61,14 @@ export const metadata: Metadata = {
   }),
   title: { absolute: HOME_TITLE },
 };
+
+export async function generateMetadata(): Promise<Metadata> {
+  const host = hostnameFromRequestHeaders(await headers());
+  if (isInternationalHost(host)) {
+    return internationalLandingMetadata(true);
+  }
+  return ARGENTINA_METADATA;
+}
 
 const features: { icon: LucideIcon; title: string; description: string }[] = [
   {
@@ -126,7 +141,12 @@ const certifiedChannels: {
   },
 ];
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const host = hostnameFromRequestHeaders(await headers());
+  if (isInternationalHost(host)) {
+    return <InternationalLanding />;
+  }
+
   return (
     <div className="brand-canvas flex min-h-screen flex-col text-foreground">
       <JsonLd data={organizationJsonLd()} />
