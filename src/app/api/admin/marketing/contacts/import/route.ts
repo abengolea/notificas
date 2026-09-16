@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { assertAdminSession } from "@/lib/assert-admin-session";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { bumpListCount, countryFromRows, getOrCreateMarketingList } from "@/lib/marketing/audience";
 import { MARKETING_CONTACTS } from "@/lib/marketing/collections";
 import { contactIdForEmail, parseContactCsv } from "@/lib/marketing/csv";
 
@@ -11,14 +12,17 @@ export async function POST(request: NextRequest) {
   try {
     const contentType = request.headers.get("content-type") || "";
     let text = "";
+    let listName = "";
     if (contentType.includes("multipart/form-data")) {
       const form = await request.formData();
       const file = form.get("file");
       if (file instanceof File) text = await file.text();
       else text = String(form.get("csv") || "");
+      listName = String(form.get("listName") || "");
     } else {
-      const body = await request.json().catch(() => ({}));
-      text = String((body as { csv?: string }).csv || "");
+      const body = (await request.json().catch(() => ({}))) as { csv?: string; listName?: string };
+      text = String(body.csv || "");
+      listName = String(body.listName || "");
     }
     const parsed = parseContactCsv(text);
     if (parsed.rows.length === 0) {
@@ -28,9 +32,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const list = await getOrCreateMarketingList({
+      name: listName,
+      country: countryFromRows(parsed.rows.map((r) => r.country)),
+      source: "csv",
+    });
+
     const db = getAdminDb();
     let created = 0;
     let updated = 0;
+    let addedToList = 0;
     let batch = db.batch();
     let ops = 0;
     const flush = async () => {
@@ -44,6 +55,10 @@ export async function POST(request: NextRequest) {
       const id = contactIdForEmail(row.email);
       const ref = db.collection(MARKETING_CONTACTS).doc(id);
       const existing = await ref.get();
+      const alreadyInList =
+        existing.exists &&
+        Array.isArray(existing.data()?.listIds) &&
+        existing.data()!.listIds.map(String).includes(list.id);
       const base = {
         email: row.email,
         emailKey: row.email,
@@ -55,7 +70,14 @@ export async function POST(request: NextRequest) {
         updatedAt: FieldValue.serverTimestamp(),
       };
       if (existing.exists) {
-        batch.set(ref, base, { merge: true });
+        batch.set(
+          ref,
+          {
+            ...base,
+            listIds: FieldValue.arrayUnion(list.id),
+          },
+          { merge: true },
+        );
         updated += 1;
       } else {
         batch.set(ref, {
@@ -64,6 +86,7 @@ export async function POST(request: NextRequest) {
           stageManual: false,
           source: "csv",
           tags: [],
+          listIds: [list.id],
           lastCampaignId: null,
           lastSendId: null,
           lastSentAt: null,
@@ -74,21 +97,28 @@ export async function POST(request: NextRequest) {
         });
         created += 1;
       }
+      if (!alreadyInList) addedToList += 1;
       ops += 1;
       if (ops >= 400) await flush();
     }
     await flush();
+    await bumpListCount(list.id, addedToList);
 
     return NextResponse.json({
       ok: true,
+      listId: list.id,
+      listName: list.name,
       created,
       updated,
+      addedToList,
       skipped: parsed.skipped,
       errors: parsed.errors.slice(0, 40),
       errorCount: parsed.errors.length,
     });
   } catch (e) {
+    const status = typeof (e as { status?: number }).status === "number" ? (e as { status: number }).status : 500;
+    const msg = e instanceof Error ? e.message : "Error interno";
     console.error("POST marketing import", e);
-    return NextResponse.json({ error: "Error interno" }, { status: 500 });
+    return NextResponse.json({ error: msg }, { status });
   }
 }

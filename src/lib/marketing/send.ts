@@ -4,7 +4,8 @@ import { MARKETING_CAMPAIGNS, MARKETING_CONTACTS, MARKETING_SENDS } from "./coll
 import { countryName } from "./countries";
 import { assembleMarketingHtml } from "./html";
 import { recordMarketingEvent } from "./events";
-import { marketingFromEmail, marketingFromHeader, marketingFromName } from "./types";
+import { campaignRecipientSource, contactMatchesSource } from "./lists";
+import { marketingFromHeader, marketingFromName, marketingReplyTo } from "./types";
 import { marketingUnsubUrl } from "./tokens";
 
 const BATCH = Math.max(1, Math.min(20, Number(process.env.MARKETING_SEND_BATCH || 8) || 8));
@@ -34,7 +35,7 @@ export async function sendMarketingEmailViaResend(input: {
     body: JSON.stringify({
       from: marketingFromHeader(),
       to: [input.to],
-      reply_to: marketingFromEmail(),
+      reply_to: marketingReplyTo(),
       subject: input.subject,
       html: input.html,
       text: input.text,
@@ -196,10 +197,16 @@ export async function enqueueCampaignSends(campaignId: string): Promise<{ queued
     throw Object.assign(new Error("La campaña está cancelada."), { status: 409 });
   }
 
-  const country = String(camp.country || "all");
+  const source = campaignRecipientSource(camp);
+  if (source.kind === "none") {
+    throw Object.assign(new Error("La campaña no tiene lista de destinatarios."), { status: 400 });
+  }
   let q: FirebaseFirestore.Query = db.collection(MARKETING_CONTACTS);
-  if (country && country !== "all") {
-    q = q.where("country", "==", country);
+  if (source.kind === "country" && source.country !== "all") {
+    q = q.where("country", "==", source.country);
+  }
+  if (source.kind === "list") {
+    q = q.where("listIds", "array-contains", source.listId);
   }
   const snap = await q.limit(5000).get();
   const include = new Set<string>(
@@ -223,6 +230,7 @@ export async function enqueueCampaignSends(campaignId: string): Promise<{ queued
 
   for (const doc of snap.docs) {
     const c = doc.data();
+    if (!contactMatchesSource(c, source)) continue;
     const stage = String(c.stage || "new");
     if (stage === "unsubscribed" || stage === "bounced" || stage === "not_interested") continue;
     if (!include.has(stage)) continue;
@@ -232,7 +240,7 @@ export async function enqueueCampaignSends(campaignId: string): Promise<{ queued
       campaignId,
       contactId: doc.id,
       email: String(c.email || ""),
-      country: String(c.country || country),
+      country: String(c.country || (source.kind === "country" ? source.country : "")),
       company: String(c.company || ""),
       name: String(c.name || ""),
       subject: String(camp.subject || ""),

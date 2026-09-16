@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { MarketingSubnav } from "./marketing-subnav";
 import { StageBadge } from "./stage-badge";
+import { MarketingRecipientPreview, type PreviewContact } from "./marketing-recipient-preview";
 import { countryName } from "@/lib/marketing/countries";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -38,17 +39,27 @@ type Campaign = {
   id: string;
   name: string;
   country: string;
+  listName?: string;
   status: string;
   subject: string;
   htmlBody: string;
+  fromEmail?: string;
   stats?: Record<string, number>;
   contactCount?: number;
+};
+
+type Audience = {
+  total: number;
+  eligible: number;
+  skipped: number;
+  contacts: PreviewContact[];
 };
 
 export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) {
   const { toast } = useToast();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [sends, setSends] = useState<Send[]>([]);
+  const [audience, setAudience] = useState<Audience | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"send" | "tick" | "pause" | null>(null);
 
@@ -58,6 +69,7 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
     if (!res.ok) throw new Error(data.error || "Error");
     setCampaign(data.campaign);
     setSends(data.sends || []);
+    setAudience(data.audience || null);
   }, [campaignId]);
 
   useEffect(() => {
@@ -147,12 +159,12 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
         <div>
           <h3 className="text-xl font-semibold">{campaign.name}</h3>
           <p className="text-sm text-muted-foreground">
-            {campaign.country === "all" ? "Todos los países" : countryName(campaign.country)} · {campaign.subject}
+            {campaign.listName || (campaign.country === "all" ? "Todos los países" : countryName(campaign.country))} · {campaign.subject}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {campaign.status === "draft" ? (
-            <Button onClick={() => void startSend()} disabled={busy !== null}>
+            <Button onClick={() => void startSend()} disabled={busy !== null || (audience !== null && audience.eligible === 0)}>
               {busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enviar ahora"}
             </Button>
           ) : null}
@@ -187,10 +199,24 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
 
       {campaign.status === "sending" ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> Enviando por Resend desde adrianbengolea@notificas.com…
+          <Loader2 className="h-4 w-4 animate-spin" /> Enviando por Resend desde {campaign.fromEmail || "contacto@notificas.com.ar"}…
         </p>
       ) : null}
 
+      {campaign.status === "draft" && audience ? (
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium">A quién se lo mandamos</h4>
+          <MarketingRecipientPreview
+            contacts={audience.contacts}
+            total={audience.total}
+            eligible={audience.eligible}
+            skipped={audience.skipped}
+            emptyHint="Esta campaña no tiene destinatarios. Volvé a Contactos, cargá una lista y creá la campaña eligiendo esa lista."
+          />
+        </div>
+      ) : null}
+
+      {campaign.status === "draft" && sends.length === 0 ? null : (
       <div className="rounded-lg border bg-background overflow-x-auto">
         <Table>
           <TableHeader>
@@ -204,7 +230,9 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
             {sends.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={3} className="text-sm text-muted-foreground">
-                  Todavía no hay envíos. Enviá la campaña para armar la cola según el país y las etapas elegidas.
+                  {campaign.status === "draft"
+                    ? "Todavía no se envió. Arriba está quién va a recibir el correo; Enviar ahora arma la cola."
+                    : "Todavía no hay envíos."}
                 </TableCell>
               </TableRow>
             ) : (
@@ -230,6 +258,7 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
           </TableBody>
         </Table>
       </div>
+      )}
     </div>
   );
 }

@@ -37,7 +37,7 @@ function page(ok: boolean): NextResponse {
   <p style="color:#5b6b75;max-width:28rem;margin:0 auto;">${
     ok
       ? "No vas a recibir más correos de este listado comercial. Los envíos certificados de Notificas no se ven afectados."
-      : "El enlace no es válido o ya venció. Si seguís recibiendo correos, escribinos a adrianbengolea@notificas.com."
+      : "El enlace no es válido o ya venció. Si seguís recibiendo correos, escribinos a contacto@notificas.com.ar."
   }</p>
 </body></html>`;
   return new NextResponse(html, {

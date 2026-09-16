@@ -14,7 +14,13 @@ type GmailState = {
   redirectUri: string;
 };
 
-export function MarketingGmailBar({ fromEmail }: { fromEmail: string }) {
+export function MarketingGmailBar({
+  fromEmail,
+  replyTo = "adrianbengolea@notificas.com",
+}: {
+  fromEmail: string;
+  replyTo?: string;
+}) {
   const { toast } = useToast();
   const [state, setState] = useState<GmailState | null>(null);
   const [busy, setBusy] = useState<"sync" | "disconnect" | null>(null);
@@ -74,10 +80,10 @@ export function MarketingGmailBar({ fromEmail }: { fromEmail: string }) {
         </p>
         <p className="text-sm text-muted-foreground">
           {state.connected
-            ? `Respuestas: Gmail conectado (${state.email || fromEmail})${state.lastSyncAt ? ` · última sync ${new Date(state.lastSyncAt).toLocaleString("es-AR")}` : ""}`
+            ? `Respuestas: Gmail conectado (${state.email || replyTo})${state.lastSyncAt ? ` · última sync ${new Date(state.lastSyncAt).toLocaleString("es-AR")}` : ""}`
             : state.configured
-              ? "Gmail no conectado: las respuestas no se marcan en el CRM hasta que autorices la casilla."
-              : `Para leer respuestas, registrá un cliente OAuth de Google y las variables GOOGLE_MARKETING_OAUTH_*. Redirect: ${state.redirectUri}`}
+              ? `Reply-To ${replyTo}. Gmail no conectado: las respuestas no se marcan en el CRM hasta que autorices esa casilla.`
+              : `Reply-To ${replyTo}. Para leer respuestas, registrá un cliente OAuth de Google y las variables GOOGLE_MARKETING_OAUTH_*. Redirect: ${state.redirectUri}`}
         </p>
         {state.lastError ? <p className="text-sm text-destructive mt-1">{state.lastError}</p> : null}
       </div>

@@ -29,6 +29,7 @@ type CountryRow = {
 
 type Overview = {
   fromEmail: string;
+  replyTo: string;
   gmail: { connected: boolean };
   total: number;
   stages: Record<MarketingStage, number>;
@@ -101,13 +102,13 @@ export function MarketingDashboard() {
   return (
     <div className="space-y-6">
       <MarketingSubnav />
-      <MarketingGmailBar fromEmail={data.fromEmail} />
+      <MarketingGmailBar fromEmail={data.fromEmail} replyTo={data.replyTo} />
 
       {data.total === 0 ? (
         <div className="rounded-lg border bg-background px-5 py-10">
           <h3 className="text-lg font-semibold">Todavía no hay empresas en el listado</h3>
           <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-            Importá un CSV con columnas email, empresa, país (AR, CL, BR, ES…) y cargo. El seguimiento se arma por país: envío, apertura, clic y respuesta.
+            Importá un CSV, nombrá la lista, y en Campañas elegí a quién se lo mandamos. El seguimiento se arma por país: envío, apertura, clic y respuesta.
           </p>
           <Button asChild className="mt-5">
             <Link href="/admin/marketing/contactos">Cargar contactos</Link>

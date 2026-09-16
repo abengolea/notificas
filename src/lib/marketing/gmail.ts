@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { MARKETING_GMAIL_DOC, MARKETING_SENDS, MARKETING_SETTINGS } from "./collections";
 import { recordMarketingEvent } from "./events";
-import { marketingFromEmail } from "./types";
+import { marketingGmailEmail } from "./types";
 import { appBaseUrl } from "./tokens";
 import { matchReplyToSends, type GmailHeaderSet } from "./reply-match";
 
@@ -31,7 +31,7 @@ export function gmailConnectUrl(state: string): string {
     access_type: "offline",
     prompt: "consent",
     include_granted_scopes: "true",
-    login_hint: marketingFromEmail(),
+    login_hint: marketingGmailEmail(),
     state,
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
@@ -116,7 +116,7 @@ export async function storeGmailTokens(code: string): Promise<{ email: string }>
   }
   const profile = await gmailGet<{ emailAddress?: string }>(tokens.access_token, "profile");
   const email = String(profile.emailAddress || "").trim().toLowerCase();
-  const expected = marketingFromEmail();
+  const expected = marketingGmailEmail();
   if (email !== expected) {
     throw new Error(`Hay que conectar ${expected}, no ${email || "otra cuenta"}.`);
   }

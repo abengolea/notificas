@@ -3,15 +3,16 @@ import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { assertAdminSession } from "@/lib/assert-admin-session";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { resolveListLabel } from "@/lib/marketing/audience";
 import { MARKETING_CAMPAIGNS } from "@/lib/marketing/collections";
-import { isMarketingCountryCode } from "@/lib/marketing/countries";
 import { serializeAdminDoc } from "@/lib/marketing/events";
 import { isMarketingStage } from "@/lib/marketing/stages";
 import { emptyCampaignStats, marketingFromEmail, marketingFromName } from "@/lib/marketing/types";
 
 const postSchema = z.object({
   name: z.string().min(2).max(160),
-  country: z.string().min(2).max(3),
+  listId: z.string().min(1).max(80),
+  country: z.string().min(2).max(12).optional(),
   subject: z.string().min(2).max(200),
   htmlBody: z.string().min(8).max(50_000),
   textBody: z.string().max(20_000).optional().default(""),
@@ -40,16 +41,18 @@ export async function POST(request: NextRequest) {
   try {
     const parsed = postSchema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-    const country = parsed.data.country.toUpperCase();
-    if (country !== "ALL" && !isMarketingCountryCode(country)) {
-      return NextResponse.json({ error: "País no soportado" }, { status: 400 });
+    const list = await resolveListLabel(parsed.data.listId);
+    if (!list.listId) {
+      return NextResponse.json({ error: "Elegí una lista de destinatarios." }, { status: 400 });
     }
     const includeStages = (parsed.data.includeStages || ["new"]).filter(isMarketingStage);
     const db = getAdminDb();
     const ref = db.collection(MARKETING_CAMPAIGNS).doc();
     await ref.set({
       name: parsed.data.name.trim(),
-      country: country === "ALL" ? "all" : country,
+      country: list.country,
+      listId: list.listId,
+      listName: list.listName,
       subject: parsed.data.subject.trim(),
       htmlBody: parsed.data.htmlBody,
       textBody: parsed.data.textBody || "",
@@ -67,7 +70,9 @@ export async function POST(request: NextRequest) {
     const snap = await ref.get();
     return NextResponse.json({ campaign: serializeAdminDoc(snap.id, snap.data() || {}) }, { status: 201 });
   } catch (e) {
+    const status = typeof (e as { status?: number }).status === "number" ? (e as { status: number }).status : 500;
+    const msg = e instanceof Error ? e.message : "Error interno";
     console.error("POST marketing campaigns", e);
-    return NextResponse.json({ error: "Error interno" }, { status: 500 });
+    return NextResponse.json({ error: msg }, { status });
   }
 }

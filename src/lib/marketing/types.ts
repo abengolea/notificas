@@ -1,8 +1,10 @@
 import type { MarketingCountryCode } from "./countries";
 import type { MarketingStage } from "./stages";
 
-export const MARKETING_FROM_EMAIL_DEFAULT = "adrianbengolea@notificas.com";
-export const MARKETING_FROM_NAME_DEFAULT = "Adrian Bengolea";
+export const MARKETING_FROM_EMAIL_DEFAULT = "contacto@notificas.com.ar";
+export const MARKETING_FROM_NAME_DEFAULT = "Notificas";
+export const MARKETING_REPLY_TO_DEFAULT = "adrianbengolea@notificas.com";
+export const MARKETING_GMAIL_EMAIL_DEFAULT = "adrianbengolea@notificas.com";
 
 export type MarketingCampaignStatus = "draft" | "sending" | "paused" | "sent" | "cancelled";
 
@@ -39,6 +41,7 @@ export type MarketingContact = {
   stageManual: boolean;
   tags: string[];
   source: "csv" | "manual";
+  listIds: string[];
   lastCampaignId: string | null;
   lastSendId: string | null;
   lastSentAt: string | null;
@@ -60,10 +63,21 @@ export type MarketingCampaignStats = {
   unsubscribed: number;
 };
 
+export type MarketingList = {
+  id: string;
+  name: string;
+  country: MarketingCountryCode | "all";
+  contactCount: number;
+  source: "csv" | "manual";
+  virtual?: boolean;
+};
+
 export type MarketingCampaign = {
   id: string;
   name: string;
   country: MarketingCountryCode | "all";
+  listId: string | null;
+  listName: string;
   subject: string;
   htmlBody: string;
   textBody: string;
@@ -141,6 +155,14 @@ export function marketingFromEmail(): string {
 
 export function marketingFromName(): string {
   return (process.env.MARKETING_FROM_NAME || MARKETING_FROM_NAME_DEFAULT).trim();
+}
+
+export function marketingReplyTo(): string {
+  return (process.env.MARKETING_REPLY_TO || MARKETING_REPLY_TO_DEFAULT).trim().toLowerCase();
+}
+
+export function marketingGmailEmail(): string {
+  return (process.env.MARKETING_GMAIL_EMAIL || MARKETING_GMAIL_EMAIL_DEFAULT).trim().toLowerCase();
 }
 
 export function marketingFromHeader(): string {

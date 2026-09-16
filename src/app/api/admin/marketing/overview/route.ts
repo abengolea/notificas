@@ -6,7 +6,7 @@ import { MARKETING_COUNTRIES, countryName, type MarketingCountryCode } from "@/l
 import { serializeAdminDoc } from "@/lib/marketing/events";
 import { gmailStatus } from "@/lib/marketing/gmail";
 import { MARKETING_STAGES, type MarketingStage } from "@/lib/marketing/stages";
-import { marketingFromEmail } from "@/lib/marketing/types";
+import { marketingFromEmail, marketingReplyTo } from "@/lib/marketing/types";
 
 function emptyStages(): Record<MarketingStage, number> {
   return Object.fromEntries(MARKETING_STAGES.map((s) => [s, 0])) as Record<MarketingStage, number>;
@@ -59,6 +59,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       fromEmail: marketingFromEmail(),
+      replyTo: marketingReplyTo(),
       gmail,
       total,
       stages: allStages,

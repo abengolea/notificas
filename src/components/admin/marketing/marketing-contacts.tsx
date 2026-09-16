@@ -15,7 +15,9 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -42,6 +44,13 @@ type Contact = {
   lastRepliedAt?: string | null;
 };
 
+type ListOption = {
+  id: string;
+  name: string;
+  contactCount: number;
+  virtual?: boolean;
+};
+
 const CSV_TEMPLATE = "email,nombre,empresa,cargo,pais,notas\ncontacto@empresa.cl,Ana Pérez,Empresa Sur,Gerente,CL,\n";
 
 export function MarketingContacts() {
@@ -50,12 +59,15 @@ export function MarketingContacts() {
   const params = useSearchParams();
   const [country, setCountry] = useState(params.get("country") || "all");
   const [stage, setStage] = useState(params.get("stage") || "all");
+  const [listId, setListId] = useState(params.get("listId") || "all");
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<Contact[]>([]);
+  const [lists, setLists] = useState<ListOption[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [listName, setListName] = useState("");
   const [form, setForm] = useState({
     email: "",
     name: "",
@@ -63,6 +75,7 @@ export function MarketingContacts() {
     title: "",
     country: "AR",
     notes: "",
+    listId: "",
   });
 
   const load = useCallback(async () => {
@@ -71,6 +84,7 @@ export function MarketingContacts() {
       const sp = new URLSearchParams();
       if (country !== "all") sp.set("country", country);
       if (stage !== "all") sp.set("stage", stage);
+      if (listId !== "all") sp.set("listId", listId);
       const res = await fetch(`/api/admin/marketing/contacts?${sp}`, { credentials: "include" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error");
@@ -81,16 +95,34 @@ export function MarketingContacts() {
     } finally {
       setLoading(false);
     }
-  }, [country, stage, toast]);
+  }, [country, stage, listId, toast]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  function pushFilters(nextCountry: string, nextStage: string) {
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/marketing/lists", { credentials: "include" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "No se pudieron cargar las listas");
+        if (!cancelled) setLists(data.lists || []);
+      } catch {
+        /* el listado de contactos igual sirve */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function pushFilters(nextCountry: string, nextStage: string, nextList: string) {
     const sp = new URLSearchParams();
     if (nextCountry !== "all") sp.set("country", nextCountry);
     if (nextStage !== "all") sp.set("stage", nextStage);
+    if (nextList !== "all") sp.set("listId", nextList);
     router.replace(`/admin/marketing/contactos${sp.toString() ? `?${sp}` : ""}`);
   }
 
@@ -99,10 +131,16 @@ export function MarketingContacts() {
     : rows;
 
   async function onImport(file: File) {
+    const name = listName.trim();
+    if (name.length < 2) {
+      toast({ title: "Poné un nombre a la lista antes de importar el CSV", variant: "destructive" });
+      return;
+    }
     setImporting(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
+      fd.append("listName", name);
       const res = await fetch("/api/admin/marketing/contacts/import", {
         method: "POST",
         credentials: "include",
@@ -111,9 +149,12 @@ export function MarketingContacts() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "No se pudo importar");
       toast({
-        title: `Importados ${data.created} nuevos, ${data.updated} actualizados`,
+        title: `Lista “${data.listName || name}”: ${data.created} nuevos, ${data.updated} actualizados`,
         description: data.errorCount ? `${data.errorCount} filas con error` : undefined,
       });
+      const listsRes = await fetch("/api/admin/marketing/lists", { credentials: "include" });
+      const listsData = await listsRes.json().catch(() => ({}));
+      if (listsRes.ok) setLists(listsData.lists || []);
       await load();
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
@@ -130,11 +171,11 @@ export function MarketingContacts() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, listId: form.listId || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "No se pudo guardar");
-      setForm({ email: "", name: "", company: "", title: "", country: form.country, notes: "" });
+      setForm({ email: "", name: "", company: "", title: "", country: form.country, notes: "", listId: form.listId });
       toast({ title: "Contacto guardado" });
       await load();
     } catch (err) {
@@ -148,15 +189,80 @@ export function MarketingContacts() {
     <div className="space-y-6">
       <MarketingSubnav />
 
+      <div className="space-y-3 rounded-lg border bg-background p-4">
+        <div>
+          <h3 className="text-base font-semibold">Cargar lista de destinatarios</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Importá un CSV, dale un nombre, y después elegí esa lista al crear la campaña.
+          </p>
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="flex-1 space-y-1">
+            <Label htmlFor="list-name">Nombre de la lista</Label>
+            <Input
+              id="list-name"
+              value={listName}
+              onChange={(e) => setListName(e.target.value)}
+              placeholder="Ej. Cuba — clínicas marzo"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" asChild>
+              <a href={`data:text/csv;charset=utf-8,${encodeURIComponent(CSV_TEMPLATE)}`} download="contactos-marketing.csv">
+                Plantilla CSV
+              </a>
+            </Button>
+            <Button type="button" variant="secondary" className="relative" disabled={importing}>
+              {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              <span className="ml-2">Importar CSV</span>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="absolute inset-0 cursor-pointer opacity-0"
+                aria-label="Importar CSV"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void onImport(file);
+                  e.target.value = "";
+                }}
+              />
+            </Button>
+          </div>
+        </div>
+      </div>
+
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
-        <div className="grid flex-1 gap-3 sm:grid-cols-3">
+        <div className="grid flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-1">
+            <Label>Lista</Label>
+            <Select
+              value={listId}
+              onValueChange={(v) => {
+                setListId(v);
+                pushFilters(country, stage, v);
+              }}
+            >
+              <SelectTrigger><SelectValue placeholder="Lista" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas</SelectItem>
+                {lists.filter((l) => !l.virtual).length ? (
+                  <SelectGroup>
+                    <SelectLabel>Listas cargadas</SelectLabel>
+                    {lists.filter((l) => !l.virtual).map((l) => (
+                      <SelectItem key={l.id} value={l.id}>{l.name} ({l.contactCount})</SelectItem>
+                    ))}
+                  </SelectGroup>
+                ) : null}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-1">
             <Label>País</Label>
             <Select
               value={country}
               onValueChange={(v) => {
                 setCountry(v);
-                pushFilters(v, stage);
+                pushFilters(v, stage, listId);
               }}
             >
               <SelectTrigger><SelectValue placeholder="País" /></SelectTrigger>
@@ -174,7 +280,7 @@ export function MarketingContacts() {
               value={stage}
               onValueChange={(v) => {
                 setStage(v);
-                pushFilters(country, v);
+                pushFilters(country, v, listId);
               }}
             >
               <SelectTrigger><SelectValue placeholder="Etapa" /></SelectTrigger>
@@ -190,28 +296,6 @@ export function MarketingContacts() {
             <Label htmlFor="mkt-q">Buscar</Label>
             <Input id="mkt-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Email, empresa, nombre" />
           </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" asChild>
-            <a href={`data:text/csv;charset=utf-8,${encodeURIComponent(CSV_TEMPLATE)}`} download="contactos-marketing.csv">
-              Plantilla CSV
-            </a>
-          </Button>
-          <Button type="button" variant="secondary" className="relative" disabled={importing}>
-            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            <span className="ml-2">Importar CSV</span>
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              className="absolute inset-0 cursor-pointer opacity-0"
-              aria-label="Importar CSV"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void onImport(file);
-                e.target.value = "";
-              }}
-            />
-          </Button>
         </div>
       </div>
 
@@ -239,6 +323,21 @@ export function MarketingContacts() {
             <SelectContent>
               {MARKETING_COUNTRIES.map((c) => (
                 <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label>Lista</Label>
+          <Select
+            value={form.listId || "__none__"}
+            onValueChange={(v) => setForm({ ...form, listId: v === "__none__" ? "" : v })}
+          >
+            <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Sin lista</SelectItem>
+              {lists.filter((l) => !l.virtual).map((l) => (
+                <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>

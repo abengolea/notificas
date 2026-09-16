@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { assertAdminSession } from "@/lib/assert-admin-session";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { audienceForCampaign } from "@/lib/marketing/audience";
 import { MARKETING_CAMPAIGNS, MARKETING_SENDS } from "@/lib/marketing/collections";
 import { serializeAdminDoc } from "@/lib/marketing/events";
 
@@ -29,9 +30,15 @@ export async function GET(
     const sends = sendsSnap.docs
       .map((d) => serializeAdminDoc(d.id, d.data()))
       .sort((a, b) => String(b.sentAt || b.createdAt || "").localeCompare(String(a.sentAt || a.createdAt || "")));
+    const campaign = serializeAdminDoc(snap.id, snap.data() || {});
+    const audience =
+      String(campaign.status || "") === "draft"
+        ? await audienceForCampaign(campaign)
+        : null;
     return NextResponse.json({
-      campaign: serializeAdminDoc(snap.id, snap.data() || {}),
+      campaign,
       sends,
+      audience,
     });
   } catch (e) {
     console.error("GET marketing campaign", e);

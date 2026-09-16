@@ -16,7 +16,7 @@ web
 
 Notificas es un sistema de **comunicaciones certificadas** (correo y WhatsApp) con evidencia técnica y, cuando aplica, sello en blockchain. El producto existe para que un envío deje constancia verificable.
 
-El **CRM de marketing** del admin es un espacio aparte: outreach comercial desde `adrianbengolea@notificas.com` a empresas de distintos países, con listas, campañas, etapas y seguimiento de envío / apertura / clic / respuesta. No consume créditos de clientes y no genera constancia fehaciente.
+El **CRM de marketing** del admin es un espacio aparte: outreach comercial desde `contacto@notificas.com.ar` a empresas de distintos países, con listas, campañas, etapas y seguimiento de envío / apertura / clic / respuesta. No consume créditos de clientes y no genera constancia fehaciente.
 
 Éxito del CRM: poder cargar contactos por país, enviar una campaña, y ver quién abrió, quién hizo clic y quién respondió, sin mezclarlo con las campañas certificadas.
 
@@ -27,26 +27,27 @@ Las campañas de producto certifican un acto de comunicación. El CRM de marketi
 ## Operating Context
 
 - Panel admin existente (`/admin`), sesión por cookie HttpOnly.
-- Envío masivo de marketing: **Resend**, remitente `Adrian Bengolea <adrianbengolea@notificas.com>`.
+- Envío masivo de marketing: **Resend**, remitente `Notificas <contacto@notificas.com.ar>`. Reply-To: `adrianbengolea@notificas.com`.
 - Respuestas: **Gmail API** (OAuth, solo lectura) sobre la casilla `adrianbengolea@notificas.com`.
 - Aperturas y clics: señal técnica (pixel / webhook Resend / redirección). No son lectura fehaciente.
-- Importación CSV de contactos. Países: LATAM hispana + Brasil + España.
+- Importación CSV de contactos en **listas nominadas**. Países: LATAM hispana + Brasil + España.
 - Firestore vía Admin SDK. El cliente web no escribe colecciones de marketing.
 
 ## Capabilities and Constraints
 
-- Módulo admin `/admin/marketing`: resumen por país, contactos con etapas, campañas, conexión Gmail.
+- Módulo admin `/admin/marketing`: resumen por país, contactos con listas, campañas, conexión Gmail.
 - Etapas: nuevo → en cola / enviado → abierto → clic → respondió; más no interesa, rebotó, baja.
-- From fijo: `adrianbengolea@notificas.com`. No es el canal SMTP de notificaciones certificadas (`contacto@` / Resend de producto).
+- Antes de enviar una campaña se elige una lista precargada (o el atajo por país) y se ven los destinatarios.
+- From fijo: `contacto@notificas.com.ar`. La API key de Resend de producción solo autoriza `@notificas.com.ar`, no `@notificas.com`. Reply-To y Gmail siguen en `adrianbengolea@notificas.com`.
 - Gmail Workspace tiene tope diario propio; el envío masivo no pasa por Gmail para no quemar la casilla.
 - OAuth de Gmail requiere `GOOGLE_MARKETING_OAUTH_CLIENT_ID` y `GOOGLE_MARKETING_OAUTH_CLIENT_SECRET` (y URI de redirección registrada). Sin eso, el CRM carga contactos y arma campañas, pero no sincroniza respuestas.
-- Resend debe tener autorizado el From `@notificas.com`.
+- Resend debe tener autorizado el From `@notificas.com.ar`.
 - **Undecided:** volumen máximo por tanda y plantillas legales por país (solo aviso de baja genérico en v1).
 
 ## Brand Commitments
 
 - Nombre: Notificas.
-- Remitente de marketing: Adrian Bengolea / `adrianbengolea@notificas.com`.
+- Remitente de marketing: Notificas / `contacto@notificas.com.ar`.
 - Español en el admin.
 - No presentar aperturas de marketing como prueba fehaciente.
 

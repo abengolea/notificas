@@ -88,7 +88,7 @@ export function assembleMarketingHtml(input: {
           </tr>
           <tr>
             <td style="padding:16px 32px 24px;border-top:1px solid #e6ecef;font-family:system-ui,sans-serif;font-size:12px;line-height:1.5;color:#5b6b75;">
-              Enviado por Adrian Bengolea · notificas.com
+              Enviado por Notificas · contacto@notificas.com.ar
               <br />
               <a href="${escapeHtml(unsubUrl)}" style="color:#5b6b75;">Darse de baja de estos correos</a>
             </td>
@@ -100,6 +100,6 @@ export function assembleMarketingHtml(input: {
   </table>
 </body>
 </html>`;
-  const text = `${htmlToText(merged)}\n\n—\nAdrian Bengolea · Notificas\nBaja: ${unsubUrl}`;
+  const text = `${htmlToText(merged)}\n\n—\nNotificas · contacto@notificas.com.ar\nBaja: ${unsubUrl}`;
   return { html, text };
 }

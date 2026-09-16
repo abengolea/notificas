@@ -13,6 +13,7 @@ type Campaign = {
   id: string;
   name: string;
   country: string;
+  listName?: string;
   status: string;
   subject: string;
   contactCount?: number;
@@ -56,7 +57,7 @@ export function MarketingCampaigns() {
         <Skeleton className="h-40 w-full" />
       ) : rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No hay campañas. Elegí un país, escribí el correo y mandalo a quienes estén en esa lista.
+          No hay campañas. Cargá una lista en Contactos, después elegila acá antes de enviar.
         </p>
       ) : (
         <ul className="divide-y rounded-lg border bg-background">
@@ -68,7 +69,7 @@ export function MarketingCampaigns() {
                   <StageBadge stage={c.status === "draft" ? "new" : c.status === "sending" ? "queued" : c.status === "sent" ? "sent" : "new"} />
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {c.country === "all" ? "Todos los países" : countryName(c.country)} · {c.subject}
+                  {c.listName || (c.country === "all" ? "Todos los países" : countryName(c.country))} · {c.subject}
                   {c.stats?.sent ? ` · ${c.stats.sent} enviados` : ""}
                   {c.stats?.opened ? ` · ${c.stats.opened} abiertos` : ""}
                   {c.stats?.replied ? ` · ${c.stats.replied} respuestas` : ""}
