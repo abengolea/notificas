@@ -64,14 +64,22 @@ export function legacyArchivoRewrites() {
 }
 
 export function legacyArchivoHeaders() {
+  const seoHeaders = [
+    { key: "Cache-Control", value: "no-cache" },
+    { key: "X-Robots-Tag", value: "noindex, follow" },
+  ];
   return [
     {
       source: `${LEGACY_ARCHIVO_BASE_PATH}`,
-      headers: [{ key: "Cache-Control", value: "no-cache" }],
+      headers: seoHeaders,
     },
     {
       source: `${LEGACY_ARCHIVO_BASE_PATH}/index.html`,
-      headers: [{ key: "Cache-Control", value: "no-cache" }],
+      headers: seoHeaders,
+    },
+    {
+      source: `${LEGACY_ARCHIVO_BASE_PATH}/:path*`,
+      headers: [{ key: "X-Robots-Tag", value: "noindex, follow" }],
     },
   ];
 }

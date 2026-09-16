@@ -53,6 +53,8 @@ test("el SPA copiado usa base href /archivo y no apunta assets a la raíz", () =
   assert.equal(fs.existsSync(archivoIndex), true, "falta public/archivo/index.html");
   const html = fs.readFileSync(archivoIndex, "utf8");
   assert.match(html, /<base href="\/archivo\/">/);
+  assert.match(html, /rel="canonical" href="https:\/\/notificas\.com\.ar\/archivo"/);
+  assert.match(html, /name="robots" content="noindex, follow"/);
   assert.doesNotMatch(html, /<base href="\/">/);
   assert.doesNotMatch(html, /href="\.\.\/assets\//);
   assert.match(html, /src="runtime\.[0-9a-f]+\.js"/);

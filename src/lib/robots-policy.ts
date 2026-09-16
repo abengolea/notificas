@@ -17,7 +17,6 @@ export const PRIVATE_PATH_PREFIXES = [
   "/pdf-viewer/",
   "/process-payment/",
   "/email-preview/",
-  "/intl",
   "/test-firestore/",
   "/test-polygon/",
   "/test-reader/",

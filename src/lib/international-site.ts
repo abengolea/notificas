@@ -111,21 +111,33 @@ function hostnamesFromForwarded(value: string | null): string[] {
   return hosts.filter(Boolean);
 }
 
+function knownPublicHostsFromRequest(headers: HeaderReader): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  const push = (value: string) => {
+    if (!value || seen.has(value) || !isKnownPublicHost(value)) return;
+    seen.add(value);
+    ordered.push(value);
+  };
+  for (const item of hostnamesFromListHeader(headers.get("x-forwarded-host"))) push(item);
+  for (const item of hostnamesFromListHeader(headers.get("x-original-host"))) push(item);
+  for (const item of hostnamesFromForwarded(headers.get("forwarded"))) push(item);
+  push(hostnameOf(headers.get("host") ?? ""));
+  return ordered;
+}
+
 /**
  * Hostname público de la request.
  * En App Hosting el `Host` interno suele ser el *.hosted.app o el canónico
  * `.com.ar`; el dominio que pidió el usuario viene en `x-forwarded-host`.
  * Un forwarded host desconocido se ignora (anti-spoof).
+ * Si aparece `www` en cualquier header conocido, gana: hace falta para 301 al apex.
  */
 export function hostnameFromRequestHeaders(headers: HeaderReader): string {
-  const forwardedKnown = [
-    ...hostnamesFromListHeader(headers.get("x-forwarded-host")),
-    ...hostnamesFromListHeader(headers.get("x-original-host")),
-    ...hostnamesFromForwarded(headers.get("forwarded")),
-  ].find((item) => isKnownPublicHost(item));
-
-  if (forwardedKnown) return forwardedKnown;
-
+  const known = knownPublicHostsFromRequest(headers);
+  const www = known.find((item) => item.startsWith("www."));
+  if (www) return www;
+  if (known[0]) return known[0];
   return hostnameOf(headers.get("host") ?? "");
 }
 
@@ -167,6 +179,10 @@ export function isInternationalHost(hostHeader: string): boolean {
   return (INTERNATIONAL_HOSTS as readonly string[]).includes(hostnameOf(hostHeader));
 }
 
+export function isArgentinaHost(hostHeader: string): boolean {
+  return (ARGENTINA_HOSTS as readonly string[]).includes(hostnameOf(hostHeader));
+}
+
 export function publicOriginFromHost(hostHeader: string): string {
   return isInternationalHost(hostHeader) ? INTERNATIONAL_ORIGIN : ARGENTINA_ORIGIN;
 }
@@ -187,22 +203,52 @@ function isInternalAsset(pathname: string): boolean {
   return /\.[a-z0-9]+$/i.test(pathname);
 }
 
+function isIntlPreviewPath(pathname: string): boolean {
+  return pathname === INTL_PREVIEW_PATH || pathname.startsWith(`${INTL_PREVIEW_PATH}/`);
+}
+
 /**
  * Qué hace notificas.com: landing internacional en `/`,
  * envíos viejos al archivo, el resto a .com.ar.
  *
- * Prioridad: www → apex; rutas del SPA viejo → archivo; `/` → landing internacional.
+ * Prioridad: landings BR/CO e `/intl` en .com.ar → .com; www → apex;
+ * rutas del SPA viejo → archivo; `/` en .com → landing internacional.
  */
 export function resolveInternationalGate(opts: {
   host: string;
   pathname: string;
   search?: string;
 }): InternationalGate {
-  if (!isInternationalHost(opts.host)) return { type: "passthrough" };
-
   const host = hostnameOf(opts.host);
   const search = opts.search ?? "";
   const pathname = opts.pathname || "/";
+
+  if (isArgentinaHost(host)) {
+    if (isBrazilPublicPath(pathname) || isColombiaPublicPath(pathname)) {
+      return {
+        type: "redirect",
+        location: `${INTERNATIONAL_ORIGIN}${pathname}${search}`,
+        status: 301,
+      };
+    }
+    if (isIntlPreviewPath(pathname)) {
+      return {
+        type: "redirect",
+        location: `${INTERNATIONAL_ORIGIN}/${search}`,
+        status: 301,
+      };
+    }
+    if (host === "www.notificas.com.ar") {
+      return {
+        type: "redirect",
+        location: `${ARGENTINA_ORIGIN}${pathname}${search}`,
+        status: 301,
+      };
+    }
+    return { type: "passthrough" };
+  }
+
+  if (!isInternationalHost(host)) return { type: "passthrough" };
 
   if (host === "www.notificas.com") {
     return {
@@ -223,7 +269,15 @@ export function resolveInternationalGate(opts: {
     };
   }
 
-  if (pathname === "/" || pathname === INTL_PREVIEW_PATH) {
+  if (isIntlPreviewPath(pathname)) {
+    return {
+      type: "redirect",
+      location: `${INTERNATIONAL_ORIGIN}/${search}`,
+      status: 301,
+    };
+  }
+
+  if (pathname === "/") {
     return { type: "rewrite", pathname: INTL_PREVIEW_PATH };
   }
 

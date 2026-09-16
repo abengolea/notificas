@@ -23,6 +23,8 @@ const nextConfig: NextConfig = {
     };
   },
   async redirects() {
+    // Backup: App Hosting a menudo reescribe Host, así que el 301 canónico
+    // real vive en middleware (resolveInternationalGate).
     return [
       {
         source: "/",

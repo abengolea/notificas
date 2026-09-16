@@ -39,8 +39,42 @@ test("notificas.com.ar no se reescribe a la landing internacional", () => {
     type: "passthrough",
   });
   assert.deepEqual(
+    resolveInternationalGate({ host: "notificas.com.ar", pathname: "/consumidores" }),
+    { type: "passthrough" }
+  );
+  assert.deepEqual(
     resolveInternationalGate({ host: "localhost:9006", pathname: INTL_PREVIEW_PATH }),
     { type: "passthrough" }
+  );
+});
+
+test("www y landings de otro país en .com.ar van al canónico", () => {
+  assert.deepEqual(
+    resolveInternationalGate({ host: "www.notificas.com.ar", pathname: "/", search: "?utm=1" }),
+    { type: "redirect", location: `${ARGENTINA_ORIGIN}/?utm=1`, status: 301 }
+  );
+  assert.deepEqual(resolveInternationalGate({ host: "www.notificas.com.ar", pathname: "/verify" }), {
+    type: "redirect",
+    location: `${ARGENTINA_ORIGIN}/verify`,
+    status: 301,
+  });
+  assert.deepEqual(resolveInternationalGate({ host: "notificas.com.ar", pathname: "/br" }), {
+    type: "redirect",
+    location: `${INTERNATIONAL_ORIGIN}/br`,
+    status: 301,
+  });
+  assert.deepEqual(
+    resolveInternationalGate({ host: "notificas.com.ar", pathname: "/co/privacidad" }),
+    { type: "redirect", location: `${INTERNATIONAL_ORIGIN}/co/privacidad`, status: 301 }
+  );
+  assert.deepEqual(resolveInternationalGate({ host: "notificas.com.ar", pathname: INTL_PREVIEW_PATH }), {
+    type: "redirect",
+    location: `${INTERNATIONAL_ORIGIN}/`,
+    status: 301,
+  });
+  assert.deepEqual(
+    resolveInternationalGate({ host: "www.notificas.com.ar", pathname: "/br/termos" }),
+    { type: "redirect", location: `${INTERNATIONAL_ORIGIN}/br/termos`, status: 301 }
   );
 });
 
@@ -96,6 +130,24 @@ test("App Hosting: el dominio pedido va en x-forwarded-host", () => {
   );
   assert.equal(publicOriginFromHost("notificas.com"), INTERNATIONAL_ORIGIN);
   assert.equal(publicOriginFromHost("www.notificas.com.ar"), ARGENTINA_ORIGIN);
+  assert.equal(
+    hostnameFromRequestHeaders(
+      headersOf({
+        host: "www.notificas.com.ar",
+        "x-forwarded-host": "notificas.com.ar",
+      })
+    ),
+    "www.notificas.com.ar"
+  );
+  assert.equal(
+    hostnameFromRequestHeaders(
+      headersOf({
+        host: "www.notificas.com",
+        "x-forwarded-host": "notificas.com",
+      })
+    ),
+    "www.notificas.com"
+  );
 });
 
 test("notificas.com sirve la landing en / y manda el SPA viejo al archivo", () => {
@@ -104,6 +156,11 @@ test("notificas.com sirve la landing en / y manda el SPA viejo al archivo", () =
   assert.deepEqual(resolveInternationalGate({ host: "notificas.com", pathname: "/" }), {
     type: "rewrite",
     pathname: INTL_PREVIEW_PATH,
+  });
+  assert.deepEqual(resolveInternationalGate({ host: "notificas.com", pathname: INTL_PREVIEW_PATH }), {
+    type: "redirect",
+    location: `${INTERNATIONAL_ORIGIN}/`,
+    status: 301,
   });
   assert.deepEqual(
     resolveInternationalGate({ host: "www.notificas.com", pathname: "/", search: "?x=1" }),
@@ -160,8 +217,12 @@ test("notificas.com sirve la landing en / y manda el SPA viejo al archivo", () =
   );
 });
 
-test("la preview /intl no entra al sitemap ni a robots públicos", () => {
-  assert.ok((PRIVATE_PATH_PREFIXES as readonly string[]).includes("/intl"));
+test("la preview /intl no entra al sitemap y redirige al canónico", () => {
+  assert.equal(
+    (PRIVATE_PATH_PREFIXES as readonly string[]).includes("/intl"),
+    false,
+    "/intl debe rastrearse para que Google vea el 301"
+  );
   assert.ok((PRIVATE_SITEMAP_PATHS as readonly string[]).includes("/intl"));
   const argentinaUrls = buildSitemap(ARGENTINA_ORIGIN).map((entry) => entry.url);
   assert.equal(
