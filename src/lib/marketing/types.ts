@@ -8,6 +8,7 @@ import type {
 import type { MarketingStage } from "./stages";
 
 export const MARKETING_FROM_EMAIL_DEFAULT = "contacto@notificas.com.ar";
+export const MARKETING_CONTACT_EMAIL_DEFAULT = "contacto@notificas.com";
 export const MARKETING_FROM_NAME_DEFAULT = "Notificas";
 export const MARKETING_REPLY_TO_DEFAULT = "adrianbengolea@notificas.com";
 export const MARKETING_GMAIL_EMAIL_DEFAULT = "adrianbengolea@notificas.com";
@@ -22,7 +23,8 @@ export type MarketingSendStatus =
   | "clicked"
   | "replied"
   | "bounced"
-  | "failed";
+  | "failed"
+  | "unsubscribed";
 
 export type MarketingEventType =
   | "sent"
@@ -162,6 +164,10 @@ export function emptyCampaignStats(): MarketingCampaignStats {
 
 export function marketingFromEmail(): string {
   return (process.env.MARKETING_FROM_EMAIL || MARKETING_FROM_EMAIL_DEFAULT).trim().toLowerCase();
+}
+
+export function marketingContactEmail(): string {
+  return (process.env.MARKETING_CONTACT_EMAIL || MARKETING_CONTACT_EMAIL_DEFAULT).trim().toLowerCase();
 }
 
 export function marketingFromName(): string {

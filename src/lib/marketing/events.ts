@@ -56,6 +56,7 @@ const EVENT_TO_SEND: Partial<Record<MarketingEventType, MarketingSendStatus>> = 
   replied: "replied",
   bounced: "bounced",
   failed: "failed",
+  unsubscribed: "unsubscribed",
 };
 
 const EVENT_TO_STAGE: Partial<Record<MarketingEventType, MarketingStage>> = {
@@ -148,6 +149,7 @@ export async function recordMarketingEvent(input: {
       if (input.type === "opened") contactUpdates.lastOpenedAt = at;
       if (input.type === "clicked") contactUpdates.lastClickedAt = at;
       if (input.type === "replied") contactUpdates.lastRepliedAt = at;
+      if (input.type === "unsubscribed") contactUpdates.lastUnsubscribedAt = at;
     }
 
     const campaignSnap = await tx.get(campaignRef);
@@ -212,6 +214,7 @@ function shouldAdvanceSend(current: string, incoming: MarketingSendStatus): bool
     replied: 6,
     bounced: 80,
     failed: 80,
+    unsubscribed: 90,
   };
   if (current === incoming) return false;
   if (current === "replied" && incoming !== "bounced") return false;

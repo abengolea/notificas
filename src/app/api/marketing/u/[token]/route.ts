@@ -1,25 +1,86 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase-admin";
-import { MARKETING_CONTACTS } from "@/lib/marketing/collections";
-import { recordMarketingEvent } from "@/lib/marketing/events";
-import { verifyMarketingToken } from "@/lib/marketing/tokens";
 import { FieldValue } from "firebase-admin/firestore";
+import { getAdminDb } from "@/lib/firebase-admin";
+import { MARKETING_CONTACTS, MARKETING_SENDS } from "@/lib/marketing/collections";
+import { recordMarketingEvent } from "@/lib/marketing/events";
+import { marketingContactEmail } from "@/lib/marketing/types";
+import { verifyMarketingToken } from "@/lib/marketing/tokens";
+
+async function latestSendForContact(contactId: string): Promise<{
+  sendId: string;
+  campaignId: string;
+  email: string;
+} | null> {
+  try {
+    const snap = await getAdminDb()
+      .collection(MARKETING_SENDS)
+      .where("contactId", "==", contactId)
+      .limit(5)
+      .get();
+    if (snap.empty) return null;
+    const doc = snap.docs[0];
+    const data = doc.data() || {};
+    return {
+      sendId: doc.id,
+      campaignId: String(data.campaignId || ""),
+      email: String(data.email || ""),
+    };
+  } catch {
+    return null;
+  }
+}
 
 async function unsubscribe(contactId: string): Promise<boolean> {
   const db = getAdminDb();
   const ref = db.collection(MARKETING_CONTACTS).doc(contactId);
   const snap = await ref.get();
-  if (!snap.exists) return false;
-  const data = snap.data() || {};
-  await ref.update({
-    stage: "unsubscribed",
-    stageManual: true,
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-  if (data.lastSendId && data.lastCampaignId) {
+  const existing = snap.exists ? snap.data() || {} : {};
+  let lastSendId = String(existing.lastSendId || "");
+  let lastCampaignId = String(existing.lastCampaignId || "");
+  let email = String(existing.email || "");
+  if (!lastSendId || !email) {
+    const send = await latestSendForContact(contactId);
+    if (send) {
+      lastSendId = lastSendId || send.sendId;
+      lastCampaignId = lastCampaignId || send.campaignId;
+      email = email || send.email;
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  if (snap.exists) {
+    await ref.update({
+      stage: "unsubscribed",
+      stageManual: true,
+      lastUnsubscribedAt: nowIso,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  } else {
+    await ref.set({
+      email,
+      emailKey: email,
+      name: "",
+      company: "",
+      title: "",
+      country: "AR",
+      notes: "",
+      tags: [],
+      listIds: [],
+      stage: "unsubscribed",
+      stageManual: true,
+      source: "unsub",
+      lastCampaignId: lastCampaignId || null,
+      lastSendId: lastSendId || null,
+      lastUnsubscribedAt: nowIso,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+
+  if (lastSendId && lastCampaignId) {
     await recordMarketingEvent({
-      sendId: String(data.lastSendId),
-      campaignId: String(data.lastCampaignId),
+      sendId: lastSendId,
+      campaignId: lastCampaignId,
       contactId,
       type: "unsubscribed",
     });
@@ -28,6 +89,7 @@ async function unsubscribe(contactId: string): Promise<boolean> {
 }
 
 function page(ok: boolean): NextResponse {
+  const from = marketingContactEmail();
   const html = `<!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Notificas</title></head>
@@ -37,7 +99,7 @@ function page(ok: boolean): NextResponse {
   <p style="color:#5b6b75;max-width:28rem;margin:0 auto;">${
     ok
       ? "No vas a recibir más correos de este listado comercial. Los envíos certificados de Notificas no se ven afectados."
-      : "El enlace no es válido o ya venció. Si seguís recibiendo correos, escribinos a contacto@notificas.com.ar."
+      : `El enlace no es válido o ya venció. Si seguís recibiendo correos, escribinos a ${from}.`
   }</p>
 </body></html>`;
   return new NextResponse(html, {

@@ -43,6 +43,7 @@ export const PIPELINE_STAGES: MarketingStage[] = [
   "opened",
   "clicked",
   "replied",
+  "unsubscribed",
 ];
 
 export function isMarketingStage(value: string): value is MarketingStage {

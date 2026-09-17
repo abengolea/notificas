@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
+import { publicAppBase } from "@/lib/public-verify-url";
 
 function secret(): string {
   return (
@@ -49,18 +50,23 @@ export function appBaseUrl(): string {
   return "https://notificas.com";
 }
 
+/** Pixel, clic y baja van a producción. Nunca localhost. */
+export function marketingPublicBaseUrl(): string {
+  return publicAppBase();
+}
+
 export function marketingOpenUrl(sendId: string): string {
-  return `${appBaseUrl()}/api/marketing/o/${signMarketingToken("o", sendId)}`;
+  return `${marketingPublicBaseUrl()}/api/marketing/o/${signMarketingToken("o", sendId)}`;
 }
 
 export function marketingUnsubUrl(contactId: string): string {
-  return `${appBaseUrl()}/api/marketing/u/${signMarketingToken("u", contactId)}`;
+  return `${marketingPublicBaseUrl()}/api/marketing/u/${signMarketingToken("u", contactId)}`;
 }
 
 export function marketingClickUrl(sendId: string, target: string): string {
   const encoded = Buffer.from(target, "utf8").toString("base64url");
   const token = signMarketingToken("c", sendId, encoded);
-  return `${appBaseUrl()}/api/marketing/c/${token}?u=${encodeURIComponent(encoded)}`;
+  return `${marketingPublicBaseUrl()}/api/marketing/c/${token}?u=${encodeURIComponent(encoded)}`;
 }
 
 export function decodeClickTarget(encoded: string): string | null {
