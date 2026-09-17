@@ -20,6 +20,7 @@ export type MarketingCountryCode =
   | "UY"
   | "VE";
 
+/** Lookup v1 (código + nombre). El documento de catálogo es `domain.MarketingCountry`. */
 export type MarketingCountry = {
   code: MarketingCountryCode;
   name: string;

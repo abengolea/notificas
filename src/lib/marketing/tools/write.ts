@@ -1,0 +1,403 @@
+import { z } from "zod";
+import { MarketingValidationError } from "../errors";
+import { COUNTRY_LIST_PREFIX } from "../lists";
+import type { CrmToolContext, CrmToolRuntime, CrmToolSuccess } from "./types";
+import { crmIdempotencyKey } from "./idempotency";
+import { clarificationResult, resolveCompanyByName } from "./helpers";
+import { sanitizeCrmPayload } from "./sanitize";
+import {
+  addContactToListSchema,
+  completeTaskSchema,
+  createCampaignDraftSchema,
+  createCompanySchema,
+  createContactSchema,
+  createListSchema,
+  createNoteSchema,
+  createOpportunitySchema,
+  createTaskSchema,
+  updateCompanySchema,
+  updateContactSchema,
+  updateOpportunitySchema,
+} from "./schemas";
+
+function ok(
+  tool: CrmToolSuccess["tool"],
+  data: unknown,
+  extra?: Partial<CrmToolSuccess>,
+): CrmToolSuccess {
+  return { ok: true, tool, write: true, data: sanitizeCrmPayload(data), ...extra };
+}
+
+async function remember(
+  runtime: CrmToolRuntime,
+  key: string,
+  compute: () => Promise<CrmToolSuccess>,
+): Promise<CrmToolSuccess> {
+  const cached = await runtime.idempotency.get<CrmToolSuccess>(key);
+  if (cached && cached.ok) return cached;
+  const result = await compute();
+  if (result.ok && !result.needsClarification) {
+    await runtime.idempotency.set(key, result);
+  }
+  return result;
+}
+
+async function companyFromNameOrId(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  tool: CrmToolSuccess["tool"],
+  companyId?: string,
+  companyName?: string,
+): Promise<{ id: string; name?: string } | CrmToolSuccess> {
+  if (companyId) {
+    const company = await runtime.services.companies.getCompany(ctx, companyId);
+    return { id: company.id, name: company.name };
+  }
+  if (!companyName?.trim()) return { id: "" };
+  const resolved = await resolveCompanyByName(runtime, ctx, companyName);
+  if ("needsClarification" in resolved) {
+    return clarificationResult(tool, true, resolved.candidates, "empresas");
+  }
+  return { id: resolved.company.id, name: resolved.company.name };
+}
+
+export async function createCompany(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof createCompanySchema>,
+): Promise<CrmToolSuccess> {
+  const key = crmIdempotencyKey([
+    ctx.workspaceId,
+    "create_company",
+    ctx.idempotencyKey,
+    ctx.conversationId,
+    input.name,
+    input.countryCode,
+    input.website,
+  ]);
+  return remember(runtime, key, async () => {
+    const created = await runtime.services.companies.createCompany(ctx, {
+      name: input.name,
+      countryCode: input.countryCode,
+      website: input.website,
+      industryIds: input.industryIds,
+      useCaseIds: input.useCaseIds,
+      notes: input.notes,
+      idempotencyKey: ctx.idempotencyKey,
+    });
+    return ok(
+      "create_company",
+      {
+        company: {
+          id: created.company.id,
+          name: created.company.name,
+          countryCode: created.company.countryCode,
+        },
+        duplicateWarnings: created.duplicateWarnings,
+      },
+      {
+        entityType: "company",
+        entityIds: [created.company.id],
+        duplicateWarnings: created.duplicateWarnings,
+        summary:
+          created.duplicateWarnings.length > 0
+            ? `Empresa creada: ${created.company.name}. Posibles duplicados: ${created.duplicateWarnings.map((w) => w.companyId).join(", ")}. No fusioné nada.`
+            : `Empresa creada: ${created.company.name}`,
+      },
+    );
+  });
+}
+
+export async function updateCompany(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof updateCompanySchema>,
+): Promise<CrmToolSuccess> {
+  const updated = await runtime.services.companies.updateCompany(ctx, input.companyId, input.changes);
+  return ok(
+    "update_company",
+    { company: { id: updated.id, name: updated.name, commercialStageId: updated.commercialStageId } },
+    { entityType: "company", entityIds: [updated.id], summary: `Empresa actualizada: ${updated.name}` },
+  );
+}
+
+export async function createContact(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof createContactSchema>,
+): Promise<CrmToolSuccess> {
+  const company = await companyFromNameOrId(runtime, ctx, "create_contact", input.companyId, input.companyName);
+  if ("ok" in company) return company;
+  const key = crmIdempotencyKey([
+    ctx.workspaceId,
+    "create_contact",
+    ctx.idempotencyKey,
+    ctx.conversationId,
+    input.email,
+    company.id,
+  ]);
+  return remember(runtime, key, async () => {
+    const contact = await runtime.services.contacts.createContact(ctx, {
+      email: input.email,
+      name: input.name,
+      companyId: company.id || undefined,
+      company: company.name,
+      title: input.title,
+      countryCode: input.countryCode,
+      notes: input.notes,
+      idempotencyKey: ctx.idempotencyKey,
+    });
+    return ok(
+      "create_contact",
+      {
+        contact: {
+          id: contact.id,
+          name: contact.name,
+          email: contact.email,
+          companyId: contact.companyId || null,
+        },
+      },
+      { entityType: "contact", entityIds: [contact.id], summary: `Contacto creado: ${contact.name || contact.email}` },
+    );
+  });
+}
+
+export async function updateContact(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof updateContactSchema>,
+): Promise<CrmToolSuccess> {
+  const updated = await runtime.services.contacts.updateContact(ctx, input.contactId, input.changes);
+  return ok(
+    "update_contact",
+    { contact: { id: updated.id, name: updated.name, email: updated.email } },
+    { entityType: "contact", entityIds: [updated.id], summary: `Contacto actualizado: ${updated.name || updated.email}` },
+  );
+}
+
+export async function createTask(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof createTaskSchema>,
+): Promise<CrmToolSuccess> {
+  const company = await companyFromNameOrId(runtime, ctx, "create_task", input.companyId, input.companyName);
+  if ("ok" in company) return company;
+  const dueAt =
+    input.dueAt ||
+    (input.dueInDays != null
+      ? new Date(Date.now() + input.dueInDays * 24 * 60 * 60 * 1000).toISOString()
+      : undefined);
+  const key = crmIdempotencyKey([
+    ctx.workspaceId,
+    "create_task",
+    ctx.idempotencyKey,
+    ctx.conversationId,
+    input.title,
+    company.id,
+    dueAt,
+  ]);
+  return remember(runtime, key, async () => {
+    const task = await runtime.services.tasks.createTask(ctx, {
+      title: input.title,
+      description: input.description,
+      type: input.type || "follow_up",
+      companyId: company.id || undefined,
+      contactId: input.contactId,
+      dueAt,
+      priority: input.priority,
+      source: "ai",
+      idempotencyKey: ctx.idempotencyKey,
+    });
+    return ok(
+      "create_task",
+      { task: { id: task.id, title: task.title, dueAt: task.dueAt || null, companyId: task.companyId || null } },
+      {
+        entityType: "task",
+        entityIds: [task.id],
+        summary: task.dueAt ? `Tarea creada: ${task.title} (${task.dueAt.slice(0, 10)})` : `Tarea creada: ${task.title}`,
+      },
+    );
+  });
+}
+
+export async function completeTask(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof completeTaskSchema>,
+): Promise<CrmToolSuccess> {
+  const task = await runtime.services.tasks.completeTask(ctx, input.taskId);
+  return ok(
+    "complete_task",
+    { task: { id: task.id, title: task.title, status: task.status } },
+    { entityType: "task", entityIds: [task.id], summary: `Tarea completada: ${task.title}` },
+  );
+}
+
+export async function createList(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof createListSchema>,
+): Promise<CrmToolSuccess> {
+  void ctx;
+  const list = await runtime.catalog.createList({ name: input.name, country: input.countryCode });
+  return ok(
+    "create_list",
+    { list },
+    { entityType: "list", entityIds: [list.id], summary: `Lista creada: ${list.name}` },
+  );
+}
+
+export async function addContactToList(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof addContactToListSchema>,
+): Promise<CrmToolSuccess> {
+  if (input.listId.startsWith(COUNTRY_LIST_PREFIX)) {
+    throw new MarketingValidationError("No se pueden agregar contactos a una lista virtual de país. Usá una lista nominada.");
+  }
+  const contact = await runtime.services.contacts.getContact(ctx, input.contactId);
+  await runtime.services.memberships.addContactToList(ctx, {
+    listId: input.listId,
+    contactId: contact.id,
+    source: "ai",
+  });
+  const listIds = Array.isArray(contact.listIds) ? contact.listIds.map(String) : [];
+  if (!listIds.includes(input.listId)) {
+    await runtime.services.contacts.updateContact(ctx, contact.id, { listIds: [...listIds, input.listId] });
+  }
+  return ok(
+    "add_contact_to_list",
+    { listId: input.listId, contactId: contact.id },
+    { entityType: "list", entityIds: [input.listId, contact.id], summary: `Contacto agregado a la lista` },
+  );
+}
+
+export async function createNote(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof createNoteSchema>,
+): Promise<CrmToolSuccess> {
+  if (!input.companyId && !input.contactId) {
+    throw new MarketingValidationError("Indicá companyId o contactId para la nota.");
+  }
+  const activity = await runtime.services.activities.createActivity(ctx, {
+    type: "note_added",
+    title: input.text.slice(0, 180),
+    description: input.text,
+    companyId: input.companyId,
+    contactId: input.contactId,
+    actorType: "ai",
+    actorId: ctx.actorId,
+  });
+  return ok(
+    "create_note",
+    { activity: { id: activity.id, type: activity.type, title: activity.title } },
+    { entityType: "activity", entityIds: [activity.id], summary: "Nota creada" },
+  );
+}
+
+export async function createOpportunity(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof createOpportunitySchema>,
+): Promise<CrmToolSuccess> {
+  const company = await companyFromNameOrId(runtime, ctx, "create_opportunity", input.companyId, input.companyName);
+  if ("ok" in company) return company;
+  if (!company.id) throw new MarketingValidationError("Indicá companyId o un companyName inequívoco.");
+  const key = crmIdempotencyKey([
+    ctx.workspaceId,
+    "create_opportunity",
+    ctx.idempotencyKey,
+    ctx.conversationId,
+    input.name,
+    company.id,
+  ]);
+  return remember(runtime, key, async () => {
+    const opportunity = await runtime.services.opportunities.createOpportunity(ctx, {
+      name: input.name,
+      companyId: company.id,
+      commercialStageId: input.commercialStageId,
+      countryCode: input.countryCode,
+      contactIds: input.contactIds,
+      industryId: input.industryId,
+      useCaseId: input.useCaseId,
+      nextStep: input.nextStep,
+      nextActionAt: input.nextActionAt,
+      notes: input.notes,
+      estimatedValue: input.estimatedValue,
+      currency: input.currency,
+      idempotencyKey: ctx.idempotencyKey,
+    });
+    return ok(
+      "create_opportunity",
+      { opportunity: { id: opportunity.id, name: opportunity.name, commercialStageId: opportunity.commercialStageId } },
+      { entityType: "opportunity", entityIds: [opportunity.id], summary: `Oportunidad creada: ${opportunity.name}` },
+    );
+  });
+}
+
+export async function updateOpportunity(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof updateOpportunitySchema>,
+): Promise<CrmToolSuccess> {
+  const updated = await runtime.services.opportunities.updateOpportunity(ctx, input.opportunityId, input.changes);
+  return ok(
+    "update_opportunity",
+    { opportunity: { id: updated.id, name: updated.name, commercialStageId: updated.commercialStageId } },
+    { entityType: "opportunity", entityIds: [updated.id], summary: `Oportunidad actualizada: ${updated.name}` },
+  );
+}
+
+export async function createCampaignDraft(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof createCampaignDraftSchema>,
+): Promise<CrmToolSuccess> {
+  void ctx;
+  let listId = input.listId;
+  if (!listId && input.listName) {
+    const created = await runtime.catalog.createList({
+      name: input.listName,
+      country: input.countryCode,
+    });
+    listId = created.id;
+  }
+  if (!listId) throw new MarketingValidationError("Indicá listId o listName para el draft de campaña.");
+  const htmlBody =
+    input.htmlBody?.trim() ||
+    `<p>Borrador generado por el asistente CRM. Revisar antes de enviar.</p><p>${input.subject}</p>`;
+  const campaign = await runtime.catalog.createCampaignDraft({
+    name: input.name,
+    listId,
+    subject: input.subject,
+    htmlBody,
+    textBody: input.textBody,
+    country: input.countryCode,
+    includeStages: input.includeStages,
+  });
+  return ok(
+    "create_campaign_draft",
+    { campaign, sent: false },
+    {
+      entityType: "campaign",
+      entityIds: [campaign.id],
+      summary: `Borrador de campaña creado: ${campaign.name}. No se envió.`,
+    },
+  );
+}
+
+export const CRM_WRITE_HANDLERS = {
+  create_company: { schema: createCompanySchema, run: createCompany },
+  update_company: { schema: updateCompanySchema, run: updateCompany },
+  create_contact: { schema: createContactSchema, run: createContact },
+  update_contact: { schema: updateContactSchema, run: updateContact },
+  create_task: { schema: createTaskSchema, run: createTask },
+  complete_task: { schema: completeTaskSchema, run: completeTask },
+  create_list: { schema: createListSchema, run: createList },
+  add_contact_to_list: { schema: addContactToListSchema, run: addContactToList },
+  create_note: { schema: createNoteSchema, run: createNote },
+  create_opportunity: { schema: createOpportunitySchema, run: createOpportunity },
+  update_opportunity: { schema: updateOpportunitySchema, run: updateOpportunity },
+  create_campaign_draft: { schema: createCampaignDraftSchema, run: createCampaignDraft },
+} as const;

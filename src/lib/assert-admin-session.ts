@@ -20,3 +20,12 @@ export function assertAdminSession(request: NextRequest): NextResponse | null {
   }
   return null;
 }
+
+/** Email del admin autenticado. El cliente no elige actor ni workspace. */
+export function getAdminSessionEmail(request: NextRequest): string | null {
+  const cfg = getAdminPanelConfig();
+  if (!cfg) return null;
+  const raw = request.cookies.get(ADMIN_SESSION_COOKIE)?.value;
+  if (!raw || !verifyAdminSessionToken(raw, cfg.secret, cfg.email)) return null;
+  return cfg.email;
+}

@@ -40,6 +40,13 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Salidas de migración CRM con datos reales
+/artifacts/crm-company-migration-preview.json
+/artifacts/crm-company-migration-preview.csv
+/artifacts/crm-company-migration-*.json
+/artifacts/crm-company-migration-*.csv
+/artifacts/crm-taxonomy-*.json
+
 .genkit/*
 # Credenciales - NUNCA commitear
 .env

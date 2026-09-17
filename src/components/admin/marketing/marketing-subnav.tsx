@@ -8,6 +8,7 @@ const links = [
   { href: "/admin/marketing", label: "Por país" },
   { href: "/admin/marketing/contactos", label: "Contactos" },
   { href: "/admin/marketing/campanas", label: "Campañas" },
+  { href: "/admin/marketing/asistente", label: "Asistente IA" },
 ] as const;
 
 export function MarketingSubnav() {

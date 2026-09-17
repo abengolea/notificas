@@ -55,6 +55,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     if (pathname === "/admin/marketing/campanas/nueva") return "Nueva campaña de marketing";
     if (pathname?.startsWith("/admin/marketing/campanas/")) return "Campaña de marketing";
     if (pathname?.startsWith("/admin/marketing/campanas")) return "Campañas de marketing";
+    if (pathname?.startsWith("/admin/marketing/asistente")) return "Asistente IA";
     if (pathname?.startsWith("/admin/marketing")) return "Marketing";
     if (pathname?.startsWith("/admin/verificacion-meta")) return "Verificación Meta";
     if (pathname?.startsWith("/admin/verificacion-resend")) return "Verificación Resend";

@@ -1,4 +1,10 @@
 import type { MarketingCountryCode } from "./countries";
+import type {
+  MarketingCampaignV2Fields,
+  MarketingContactV2Fields,
+  MarketingListV2Fields,
+  MarketingSendV2Fields,
+} from "./domain/types";
 import type { MarketingStage } from "./stages";
 
 export const MARKETING_FROM_EMAIL_DEFAULT = "contacto@notificas.com.ar";
@@ -37,6 +43,7 @@ export type MarketingContact = {
   title: string;
   country: MarketingCountryCode;
   notes: string;
+  /** Ciclo de engagement de email. Nunca pipeline comercial. */
   stage: MarketingStage;
   stageManual: boolean;
   tags: string[];
@@ -50,7 +57,7 @@ export type MarketingContact = {
   lastRepliedAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
-};
+} & MarketingContactV2Fields;
 
 export type MarketingCampaignStats = {
   queued: number;
@@ -70,7 +77,7 @@ export type MarketingList = {
   contactCount: number;
   source: "csv" | "manual";
   virtual?: boolean;
-};
+} & MarketingListV2Fields;
 
 export type MarketingCampaign = {
   id: string;
@@ -91,7 +98,7 @@ export type MarketingCampaign = {
   updatedAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
-};
+} & MarketingCampaignV2Fields;
 
 export type MarketingSend = {
   id: string;
@@ -117,7 +124,7 @@ export type MarketingSend = {
   repliedAt: string | null;
   bouncedAt: string | null;
   createdAt: string | null;
-};
+} & MarketingSendV2Fields;
 
 export type MarketingEvent = {
   id: string;

@@ -110,7 +110,7 @@ export function campaignRecipientSource(camp: { listId?: unknown; country?: unkn
 }
 
 /** Solo listas nominadas: no arrastra todos los contactos de un país. */
-export function namedRecipientSource(camp: { listId?: unknown }): RecipientSource {
+export function namedRecipientSource(camp: { listId?: unknown; country?: unknown }): RecipientSource {
   const parsed = parseRecipientSource(typeof camp.listId === "string" ? camp.listId : "");
   return parsed.kind === "list" ? parsed : { kind: "none" };
 }

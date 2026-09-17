@@ -343,13 +343,36 @@ service cloud.firestore {
     match /art_evidence/{id} { allow read, write: if false; }
     match /art_rate_limits/{id} { allow read, write: if false; }
 
-    // CRM marketing admin: solo Admin SDK.
+    // CRM marketing: solo Admin SDK. Catch-all deny cubre las nuevas; se listan para auditoría.
     match /marketing_contacts/{id} { allow read, write: if false; }
     match /marketing_campaigns/{id} { allow read, write: if false; }
     match /marketing_lists/{id} { allow read, write: if false; }
     match /marketing_sends/{id} { allow read, write: if false; }
     match /marketing_events/{id} { allow read, write: if false; }
     match /marketing_settings/{id} { allow read, write: if false; }
+    match /marketing_companies/{id} { allow read, write: if false; }
+    match /marketing_countries/{id} { allow read, write: if false; }
+    match /marketing_industries/{id} { allow read, write: if false; }
+    match /marketing_use_cases/{id} { allow read, write: if false; }
+    match /marketing_sources/{id} { allow read, write: if false; }
+    match /marketing_tags/{id} { allow read, write: if false; }
+    match /marketing_list_memberships/{id} { allow read, write: if false; }
+    match /marketing_message_templates/{id} { allow read, write: if false; }
+    match /marketing_message_template_versions/{id} { allow read, write: if false; }
+    match /marketing_activities/{id} { allow read, write: if false; }
+    match /marketing_opportunities/{id} { allow read, write: if false; }
+    match /marketing_commercial_stages/{id} { allow read, write: if false; }
+    match /marketing_tasks/{id} { allow read, write: if false; }
+    match /marketing_saved_searches/{id} { allow read, write: if false; }
+    match /marketing_duplicate_candidates/{id} { allow read, write: if false; }
+    match /marketing_stats/{id} { allow read, write: if false; }
+    match /marketing_ai_inbox/{id} { allow read, write: if false; }
+    match /marketing_ai_audit_logs/{id} { allow read, write: if false; }
+    match /marketing_action_confirmations/{id} { allow read, write: if false; }
+    match /marketing_ai_conversations/{id} { allow read, write: if false; }
+    match /marketing_ai_messages/{id} { allow read, write: if false; }
+    match /marketing_ai_idempotency/{id} { allow read, write: if false; }
+    match /marketing_mcp_audit/{id} { allow read, write: if false; }
 
     match /{document=**} {
       allow read, write: if false;
