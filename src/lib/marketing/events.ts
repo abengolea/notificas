@@ -50,6 +50,7 @@ function serializeValue(v: unknown): unknown {
 
 const EVENT_TO_SEND: Partial<Record<MarketingEventType, MarketingSendStatus>> = {
   sent: "sent",
+  delivered: "delivered",
   opened: "opened",
   clicked: "clicked",
   replied: "replied",
@@ -90,6 +91,9 @@ export async function recordMarketingEvent(input: {
     const nextSend = EVENT_TO_SEND[input.type];
     const sendUpdates: Record<string, unknown> = {};
 
+    if (input.type === "delivered" && !str(send.deliveredAt)) {
+      sendUpdates.deliveredAt = at;
+    }
     if (input.type === "opened") {
       sendUpdates.openCount = FieldValue.increment(1);
       if (!str(send.openedAt)) sendUpdates.openedAt = at;
@@ -155,6 +159,9 @@ export async function recordMarketingEvent(input: {
         campaignUpdates["stats.queued"] = FieldValue.increment(-1);
         campaignUpdates["stats.sent"] = FieldValue.increment(1);
       }
+      if (input.type === "delivered" && !str(send.deliveredAt)) {
+        campaignUpdates["stats.delivered"] = FieldValue.increment(1);
+      }
       if (input.type === "opened" && !str(send.openedAt)) {
         campaignUpdates["stats.opened"] = FieldValue.increment(1);
       }
@@ -199,9 +206,10 @@ function shouldAdvanceSend(current: string, incoming: MarketingSendStatus): bool
   const rank: Record<string, number> = {
     queued: 1,
     sent: 2,
-    opened: 3,
-    clicked: 4,
-    replied: 5,
+    delivered: 3,
+    opened: 4,
+    clicked: 5,
+    replied: 6,
     bounced: 80,
     failed: 80,
   };
@@ -251,6 +259,12 @@ export function marketingEventFromResend(eventType: string): MarketingEventType 
   }
 }
 
+/** Marketing only tracks delivery/open (and CRM extras). Never anchors to Polygon. */
+export function shouldApplyMarketingResendEvent(eventType: string): boolean {
+  const type = marketingEventFromResend(eventType);
+  return Boolean(type) && type !== "sent";
+}
+
 export async function applyMarketingResendEvent(input: {
   eventType: string;
   providerMessageId: string | null;
@@ -258,8 +272,9 @@ export async function applyMarketingResendEvent(input: {
   clickUrl?: string | null;
   occurredAt: string;
 }): Promise<boolean> {
+  if (!shouldApplyMarketingResendEvent(input.eventType)) return false;
   const type = marketingEventFromResend(input.eventType);
-  if (!type || type === "delivered" || type === "sent") return false;
+  if (!type) return false;
   const db = getAdminDb();
   const tags = parseResendTags(input.tags);
   let sendId = tags.marketing_send_id || "";

@@ -38,6 +38,7 @@ type Detail = {
     subject: string;
     status: string;
     sentAt: string | null;
+    deliveredAt: string | null;
     openedAt: string | null;
     repliedAt: string | null;
     replySnippet: string | null;
@@ -178,6 +179,7 @@ export function MarketingContactDetail({ contactId }: { contactId: string }) {
                 </div>
                 <p className="text-sm text-muted-foreground">
                   {s.sentAt ? `Enviado ${new Date(s.sentAt).toLocaleString("es-AR")}` : "En cola"}
+                  {s.deliveredAt ? ` · recibido ${new Date(s.deliveredAt).toLocaleString("es-AR")}` : ""}
                   {s.openedAt ? ` · abierto ${new Date(s.openedAt).toLocaleString("es-AR")}` : ""}
                   {s.repliedAt ? ` · respondió ${new Date(s.repliedAt).toLocaleString("es-AR")}` : ""}
                 </p>

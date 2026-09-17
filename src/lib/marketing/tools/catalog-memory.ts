@@ -81,7 +81,7 @@ export function createMemoryCampaignCatalog(seed?: {
         listName: list?.name || "",
         subject: input.subject,
         contactCount: list?.contactCount || 0,
-        stats: { queued: 0, sent: 0, opened: 0, clicked: 0, replied: 0, bounced: 0, failed: 0, unsubscribed: 0 },
+        stats: { queued: 0, sent: 0, delivered: 0, opened: 0, clicked: 0, replied: 0, bounced: 0, failed: 0, unsubscribed: 0 },
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         includeStages: input.includeStages || ["new"],

@@ -163,6 +163,7 @@ export async function tickMarketingCampaign(campaignId: string): Promise<{
       contactId: String(send.contactId),
       type: "sent",
     });
+    // Commercial outreach only: delivery/open live in marketing_sends. No Polygon.
     processed += 1;
   }
 
@@ -248,6 +249,7 @@ export async function enqueueCampaignSends(campaignId: string): Promise<{ queued
       replySnippet: null,
       lastError: null,
       sentAt: null,
+      deliveredAt: null,
       openedAt: null,
       clickedAt: null,
       repliedAt: null,

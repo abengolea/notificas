@@ -17,7 +17,7 @@ type Campaign = {
   status: string;
   subject: string;
   contactCount?: number;
-  stats?: { sent?: number; opened?: number; clicked?: number; replied?: number; bounced?: number; failed?: number };
+  stats?: { sent?: number; delivered?: number; opened?: number; clicked?: number; replied?: number; bounced?: number; failed?: number };
   createdAt?: string | null;
 };
 
@@ -71,6 +71,7 @@ export function MarketingCampaigns() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   {c.listName || (c.country === "all" ? "Todos los países" : countryName(c.country))} · {c.subject}
                   {c.stats?.sent ? ` · ${c.stats.sent} enviados` : ""}
+                  {c.stats?.delivered ? ` · ${c.stats.delivered} recibidos` : ""}
                   {c.stats?.opened ? ` · ${c.stats.opened} abiertos` : ""}
                   {c.stats?.replied ? ` · ${c.stats.replied} respuestas` : ""}
                 </p>

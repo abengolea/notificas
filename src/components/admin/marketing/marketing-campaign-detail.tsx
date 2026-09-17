@@ -31,6 +31,7 @@ type Send = {
   company: string;
   status: string;
   sentAt: string | null;
+  deliveredAt: string | null;
   openedAt: string | null;
   clickedAt: string | null;
   repliedAt: string | null;
@@ -275,12 +276,12 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
         {[
           ["En cola", stats.queued],
           ["Enviados", stats.sent],
+          ["Recibidos", stats.delivered],
           ["Abiertos", stats.opened],
           ["Clics", stats.clicked],
           ["Respuestas", stats.replied],
           ["Rebotes", stats.bounced],
           ["Fallidos", stats.failed],
-          ["Bajas", stats.unsubscribed],
         ].map(([label, value]) => (
           <div key={String(label)} className="bg-background px-4 py-3">
             <dt className="text-sm text-muted-foreground">{label}</dt>
@@ -289,7 +290,7 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
         ))}
       </dl>
       <p className="text-sm text-muted-foreground">
-        Abierto y clic son señales técnicas (pixel, proxy o Resend), no lectura certificada.
+        Marketing no se certifica en Polygon. Solo se registra si el correo llegó y si se abrió.
       </p>
 
       {campaign.status === "sending" ? (
@@ -305,7 +306,7 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
             <TableRow>
               <TableHead>Destinatario</TableHead>
               <TableHead>Estado</TableHead>
-              <TableHead>Señales</TableHead>
+              <TableHead>Recibido / abierto</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -326,7 +327,8 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
                   </TableCell>
                   <TableCell><StageBadge stage={s.status} /></TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {s.openedAt ? `Abierto${s.openCount && s.openCount > 1 ? ` ×${s.openCount}` : ""}` : "—"}
+                    {s.deliveredAt ? "Recibido" : s.sentAt ? "Enviado" : "—"}
+                    {s.openedAt ? ` · Abierto${s.openCount && s.openCount > 1 ? ` ×${s.openCount}` : ""}` : ""}
                     {s.clickedAt ? " · clic" : ""}
                     {s.repliedAt ? " · respondió" : ""}
                     {s.replySnippet ? <div className="mt-1 text-foreground">{s.replySnippet}</div> : null}

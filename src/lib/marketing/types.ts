@@ -17,6 +17,7 @@ export type MarketingCampaignStatus = "draft" | "sending" | "paused" | "sent" | 
 export type MarketingSendStatus =
   | "queued"
   | "sent"
+  | "delivered"
   | "opened"
   | "clicked"
   | "replied"
@@ -62,6 +63,7 @@ export type MarketingContact = {
 export type MarketingCampaignStats = {
   queued: number;
   sent: number;
+  delivered: number;
   opened: number;
   clicked: number;
   replied: number;
@@ -119,6 +121,7 @@ export type MarketingSend = {
   replySnippet: string | null;
   lastError: string | null;
   sentAt: string | null;
+  deliveredAt: string | null;
   openedAt: string | null;
   clickedAt: string | null;
   repliedAt: string | null;
@@ -147,6 +150,7 @@ export function emptyCampaignStats(): MarketingCampaignStats {
   return {
     queued: 0,
     sent: 0,
+    delivered: 0,
     opened: 0,
     clicked: 0,
     replied: 0,

@@ -39,7 +39,7 @@ type Overview = {
     name: string;
     country: string;
     status: string;
-    stats?: { sent?: number; opened?: number; replied?: number };
+    stats?: { sent?: number; delivered?: number; opened?: number; replied?: number };
   }>;
 };
 
@@ -190,6 +190,7 @@ export function MarketingDashboard() {
                   <span className="flex items-center gap-2 text-sm text-muted-foreground">
                     <StageBadge stage={c.status === "sent" ? "sent" : c.status === "sending" ? "queued" : "new"} />
                     {c.stats?.sent ? `${c.stats.sent} env.` : null}
+                    {c.stats?.delivered ? ` · ${c.stats.delivered} rec.` : null}
                     {c.stats?.opened ? ` · ${c.stats.opened} ab.` : null}
                     {c.stats?.replied ? ` · ${c.stats.replied} resp.` : null}
                   </span>

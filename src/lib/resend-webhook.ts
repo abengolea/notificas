@@ -410,6 +410,7 @@ export async function processResendWebhook(input: {
     void syncPublicApiNotificationFromMail(mailId, hint).catch(() => undefined);
   }
 
+  // Outreach CRM: delivered/opened on marketing_sends only. Never Polygon.
   try {
     const { applyMarketingResendEvent } = await import("@/lib/marketing/events");
     const click = asRecord(data.click);
