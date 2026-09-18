@@ -4,6 +4,8 @@ import { createAuthorizationCode } from "@/mcp/auth/tokens";
 import { isMcpUserAllowlisted, mcpResourceUrl } from "@/mcp/config";
 import { resolveAuthorizedOrg } from "@/mcp/auth/orgs";
 import { parseScopeString } from "@/mcp/scopes";
+import { crmMcpEnabledSafe, crmMcpResourceUrl, crmMcpWorkspaceId, isCrmMcpUserAllowed } from "@/mcp/crm/config";
+import { parseCrmScopeString } from "@/mcp/crm/scopes";
 import { isValidCodeChallenge } from "@/mcp/auth/pkce";
 import { oauthCorsResponse, oauthOptions, requireMcpOauth } from "@/mcp/auth/http";
 
@@ -40,10 +42,6 @@ export async function POST(request: Request) {
     return oauthCorsResponse({ error: "unauthorized", error_description: "Invalid or expired session." }, 401);
   }
 
-  if (!isMcpUserAllowlisted(decoded.uid, decoded.email || null)) {
-    return oauthCorsResponse({ error: "access_denied", error_description: "MCP is not enabled for this user." }, 403);
-  }
-
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const clientId = String(body.client_id || "");
   const redirectUri = String(body.redirect_uri || "");
@@ -52,6 +50,16 @@ export async function POST(request: Request) {
   const resource = String(body.resource || mcpResourceUrl());
   const orgId = String(body.org_id || "");
   const deny = body.deny === true;
+  const isCrmResource = resource === crmMcpResourceUrl();
+
+  if (isCrmResource) {
+    const actor = decoded.email || decoded.uid;
+    if (!crmMcpEnabledSafe() || (!isCrmMcpUserAllowed(actor) && !isCrmMcpUserAllowed(decoded.uid))) {
+      return oauthCorsResponse({ error: "access_denied", error_description: "CRM MCP is not enabled for this user." }, 403);
+    }
+  } else if (!isMcpUserAllowlisted(decoded.uid, decoded.email || null)) {
+    return oauthCorsResponse({ error: "access_denied", error_description: "MCP is not enabled for this user." }, 403);
+  }
 
   const client = await getOauthClient(clientId);
   if (!client || !clientAllowsRedirect(client, redirectUri)) {
@@ -60,7 +68,7 @@ export async function POST(request: Request) {
   if (!isValidCodeChallenge(codeChallenge)) {
     return oauthCorsResponse({ error: "invalid_request", error_description: "PKCE S256 code_challenge required." }, 400);
   }
-  if (resource !== mcpResourceUrl()) {
+  if (resource !== mcpResourceUrl() && !isCrmResource) {
     return oauthCorsResponse({ error: "invalid_target", error_description: "Unknown resource." }, 400);
   }
 
@@ -71,12 +79,15 @@ export async function POST(request: Request) {
     return oauthCorsResponse({ redirect_to: redirect.toString() }, 200);
   }
 
-  const org = await resolveAuthorizedOrg(decoded.uid, decoded.email || null, orgId);
-  if (!org) {
+  const org = isCrmResource ? null : await resolveAuthorizedOrg(decoded.uid, decoded.email || null, orgId);
+  if (!isCrmResource && !org) {
     return oauthCorsResponse({ error: "access_denied", error_description: "You cannot authorize this company." }, 403);
   }
 
-  const scopes = parseScopeString(typeof body.scope === "string" ? body.scope : "");
+  const scopes = isCrmResource
+    ? parseCrmScopeString(typeof body.scope === "string" ? body.scope : "")
+    : parseScopeString(typeof body.scope === "string" ? body.scope : "");
+  const workspaceId = crmMcpWorkspaceId();
   const code = await createAuthorizationCode({
     clientId,
     redirectUri,
@@ -86,10 +97,10 @@ export async function POST(request: Request) {
     scopes,
     userId: decoded.uid,
     userEmail: decoded.email || null,
-    orgId: org.id,
-    orgName: org.nombre,
-    senderUid: org.adminUserId,
-    senderEmail: org.adminUserEmail,
+    orgId: isCrmResource ? workspaceId : org!.id,
+    orgName: isCrmResource ? "Notificas CRM" : org!.nombre,
+    senderUid: isCrmResource ? decoded.uid : org!.adminUserId,
+    senderEmail: isCrmResource ? decoded.email || "" : org!.adminUserEmail,
     mcpClient: client.inferredClient,
   });
 

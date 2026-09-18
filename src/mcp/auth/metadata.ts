@@ -1,5 +1,7 @@
 import { ALL_MCP_SCOPES, scopeDescriptions } from "@/mcp/scopes";
 import { mcpIssuer, mcpResourceUrl, MCP_PROTOCOL_VERSION } from "@/mcp/config";
+import { CRM_MCP_SCOPES, crmScopeDescriptions } from "@/mcp/crm/scopes";
+import { crmMcpEnabledSafe } from "@/mcp/crm/config";
 
 export function protectedResourceMetadata() {
   const resource = mcpResourceUrl();
@@ -17,8 +19,8 @@ export function protectedResourceMetadata() {
 
 export function authorizationServerMetadata() {
   const issuer = mcpIssuer();
-  const scopes = ALL_MCP_SCOPES;
-  const desc = scopeDescriptions();
+  const scopes = crmMcpEnabledSafe() ? [...ALL_MCP_SCOPES, ...CRM_MCP_SCOPES] : ALL_MCP_SCOPES;
+  const desc = crmMcpEnabledSafe() ? { ...scopeDescriptions(), ...crmScopeDescriptions() } : scopeDescriptions();
   return {
     issuer,
     authorization_endpoint: `${issuer}/oauth/authorize`,

@@ -14,6 +14,7 @@ export function listCrmMcpTools() {
     description: t.description,
     inputSchema: t.inputSchema,
     annotations: annotationsFor("read"),
+    securitySchemes: [{ type: "oauth2" as const, scopes: ["crm:read"] }],
   }));
 }
 

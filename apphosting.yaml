@@ -101,6 +101,23 @@ env:
     availability:
       - BUILD
       - RUNTIME
+  # MCP interno de CRM — OAuth de solo lectura para ChatGPT Business.
+  - variable: MCP_BASE_URL
+    value: "https://notificas.com.ar"
+    availability:
+      - RUNTIME
+  - variable: CRM_MCP
+    value: "true"
+    availability:
+      - RUNTIME
+  - variable: MARKETING_WORKSPACE_ID
+    value: "notificas-internal"
+    availability:
+      - RUNTIME
+  - variable: CRM_MCP_ALLOWED_USERS
+    value: "abengolea1@gmail.com"
+    availability:
+      - RUNTIME
   - variable: EVIDENCE_STORAGE_BUCKET
     value: "notificas-f9953-evidence"
     availability:

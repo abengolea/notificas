@@ -24,10 +24,14 @@ test("CRM MCP scopes are crm:read only", () => {
 });
 
 test("CRM MCP tool list never includes writes", () => {
-  const names: string[] = listCrmMcpTools().map((t) => t.name);
+  const tools = listCrmMcpTools();
+  const names: string[] = tools.map((t) => t.name);
   for (const write of CRM_WRITE_TOOL_NAMES) assert.equal(names.includes(write), false);
   assert.equal(names.includes("send_campaign"), false);
   assert.equal(crmMcpWriteToolCount(), 0);
+  for (const tool of tools) {
+    assert.deepEqual(tool.securitySchemes, [{ type: "oauth2", scopes: ["crm:read"] }]);
+  }
   assert.throws(() => assertCrmMcpToolAllowed("create_company"), McpToolError);
   assert.throws(() => assertCrmMcpToolAllowed("send_email"), McpToolError);
 });

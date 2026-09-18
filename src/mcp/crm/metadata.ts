@@ -14,6 +14,5 @@ export function crmProtectedResourceMetadata() {
     resource_name: "Notificas CRM MCP",
     resource_documentation: `${issuer}/docs/crm/MCP_CRM.md`,
     mcp_protocol_version: CRM_MCP_PROTOCOL_VERSION,
-    token_endpoint: `${resource}/oauth/token`,
   };
 }

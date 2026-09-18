@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorizationServerMetadata, OAUTH_CORS } from "@/mcp/auth/metadata";
 import { mcpEnabled } from "@/mcp/config";
+import { crmMcpEnabledSafe } from "@/mcp/crm/config";
 import { oauthOptions } from "@/mcp/auth/http";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ export function OPTIONS() {
 }
 
 export function GET() {
-  if (!mcpEnabled()) {
+  if (!mcpEnabled() && !crmMcpEnabledSafe()) {
     return NextResponse.json({ error: "not_found" }, { status: 404, headers: OAUTH_CORS });
   }
   return NextResponse.json(authorizationServerMetadata(), { headers: OAUTH_CORS });

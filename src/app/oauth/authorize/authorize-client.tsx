@@ -10,6 +10,7 @@ import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { parseScopeString, scopeDescriptions, type McpScope } from "@/mcp/scopes";
+import { parseCrmScopeString, crmScopeDescriptions, type CrmMcpScope } from "@/mcp/crm/scopes";
 
 type Org = { id: string; nombre?: string; plan?: string };
 
@@ -22,13 +23,14 @@ export function AuthorizeClient() {
   const challenge = search.get("code_challenge") || "";
   const method = search.get("code_challenge_method") || "S256";
   const resource = search.get("resource") || "";
+  const isCrmResource = resource.endsWith("/mcp/crm");
   const nextLogin = useMemo(() => {
     const qs = search.toString();
     return `/login?next=${encodeURIComponent(`/oauth/authorize?${qs}`)}`;
   }, [search]);
 
-  const scopes = parseScopeString(scope);
-  const descriptions = scopeDescriptions();
+  const scopes = isCrmResource ? parseCrmScopeString(scope) : parseScopeString(scope);
+  const descriptions: Record<string, string> = isCrmResource ? crmScopeDescriptions() : scopeDescriptions();
 
   const [ready, setReady] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -48,10 +50,10 @@ export function AuthorizeClient() {
       try {
         const token = await user.getIdToken();
         const [orgRes, clientRes] = await Promise.all([
-          fetch("/api/organizations", { headers: { Authorization: `Bearer ${token}` } }),
+          isCrmResource ? Promise.resolve(null) : fetch("/api/organizations", { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`/oauth/consent?client_id=${encodeURIComponent(clientId)}`),
         ]);
-        const orgJson = (await orgRes.json().catch(() => ({}))) as { organizations?: Org[] };
+        const orgJson = orgRes ? ((await orgRes.json().catch(() => ({}))) as { organizations?: Org[] }) : {};
         const list = Array.isArray(orgJson.organizations) ? orgJson.organizations : [];
         setOrgs(list);
         if (list[0]?.id) setOrgId(list[0].id);
@@ -64,7 +66,7 @@ export function AuthorizeClient() {
       }
     });
     return () => unsub();
-  }, [clientId, nextLogin]);
+  }, [clientId, isCrmResource, nextLogin]);
 
   const submit = async (deny: boolean) => {
     setBusy(true);
@@ -130,7 +132,7 @@ export function AuthorizeClient() {
             <p className="text-sm text-destructive">Esta solicitud OAuth no incluye PKCE S256 y no puede autorizarse.</p>
           ) : null}
 
-          <div>
+          {!isCrmResource ? <div>
             <p className="mb-2 text-sm font-medium">Empresa</p>
             {orgs.length === 0 ? (
               <p className="text-sm text-muted-foreground">No hay organizaciones asociadas a esta cuenta.</p>
@@ -147,12 +149,12 @@ export function AuthorizeClient() {
                 ))}
               </select>
             )}
-          </div>
+          </div> : null}
 
           <div>
             <p className="mb-2 text-sm font-medium">Permisos solicitados</p>
             <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-              {scopes.map((s: McpScope) => (
+              {scopes.map((s: McpScope | CrmMcpScope) => (
                 <li key={s}>
                   <span className="font-medium text-foreground">{s}</span> — {descriptions[s]}
                 </li>
@@ -171,7 +173,7 @@ export function AuthorizeClient() {
             <Button variant="outline" className="flex-1" disabled={busy} onClick={() => void submit(true)}>
               Denegar
             </Button>
-            <Button className="flex-1" disabled={busy || !orgId} onClick={() => void submit(false)}>
+            <Button className="flex-1" disabled={busy || (!isCrmResource && !orgId)} onClick={() => void submit(false)}>
               {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Autorizar
             </Button>

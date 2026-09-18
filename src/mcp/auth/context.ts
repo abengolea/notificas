@@ -6,7 +6,7 @@ import { lookupAccessToken, type AccessTokenRecord } from "@/mcp/auth/tokens";
 import { inferMcpClientFromUserAgent } from "@/mcp/auth/client-name";
 import { bearerFromAuthorization, isApiKeyOnMcp } from "@/mcp/auth/bearer";
 import type { McpScope } from "@/mcp/scopes";
-import { hasMcpScope } from "@/mcp/scopes";
+import { hasMcpScope, isMcpScope } from "@/mcp/scopes";
 import type { PublicApiAuthContext } from "@/lib/public-api/types";
 
 export type McpAuthContext = {
@@ -28,7 +28,7 @@ export { bearerFromAuthorization } from "@/mcp/auth/bearer";
 
 export function wwwAuthenticate(error: string, description: string): string {
   const meta = `${mcpResourceUrl().replace(/\/mcp$/, "")}/.well-known/oauth-protected-resource`;
-  return `Bearer FAKESECRET_g3h4i5j6k7l8m9n0o1p2="${error}", error_description="${description.replace(/"/g, "")}", resource_metadata="${meta}"`;
+  return `Bearer realm="notificas-mcp", error="${error}", error_description="${description.replace(/"/g, "")}", resource_metadata="${meta}"`;
 }
 
 export async function authenticateMcpRequest(request: Request, requestId: string): Promise<McpAuthContext> {
@@ -72,7 +72,7 @@ async function hydrateAuthContext(
     orgPlan: plan,
     senderUid,
     senderEmail,
-    scopes: rec.scopes,
+    scopes: rec.scopes.filter(isMcpScope),
     clientId: rec.clientId,
     mcpClient: rec.mcpClient !== "unknown" ? rec.mcpClient : uaClient || "unknown",
     resource: rec.resource,

@@ -1,6 +1,5 @@
 import { getOauthClient, clientAllowsRedirect } from "@/mcp/auth/clients";
 import { consumeAuthorizationCode, issueTokens, refreshTokens } from "@/mcp/auth/tokens";
-import { mcpResourceUrl } from "@/mcp/config";
 import { oauthCorsResponse, oauthOptions, readFormOrJson, requireMcpOauth } from "@/mcp/auth/http";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +20,7 @@ export async function POST(request: Request) {
       const redirectUri = body.redirect_uri || "";
       const code = body.code || "";
       const verifier = body.code_verifier || "";
-      const resource = body.resource || mcpResourceUrl();
+      const resource = body.resource || undefined;
       const client = await getOauthClient(clientId);
       if (!client || !clientAllowsRedirect(client, redirectUri)) {
         return oauthCorsResponse({ error: "invalid_client" }, 401);

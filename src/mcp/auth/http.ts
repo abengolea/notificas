@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { OAUTH_CORS } from "@/mcp/auth/metadata";
 import { mcpEnabled } from "@/mcp/config";
+import { crmMcpEnabledSafe } from "@/mcp/crm/config";
 
 export function oauthCorsResponse(body: unknown, status: number, extra?: Record<string, string>): NextResponse {
   const res = NextResponse.json(body, { status });
@@ -18,7 +19,7 @@ export function oauthDisabled(): NextResponse {
 }
 
 export function requireMcpOauth(): NextResponse | null {
-  if (!mcpEnabled()) return oauthDisabled();
+  if (!mcpEnabled() && !crmMcpEnabledSafe()) return oauthDisabled();
   return null;
 }
 

@@ -1,4 +1,11 @@
-import { registerOauthClient, validateRedirectUris } from "@/mcp/auth/clients";
+import { NextResponse } from "next/server";
+import {
+  OauthClientMetadataError,
+  parseDcrRegistration,
+  registerOauthClient,
+  registrationResponse,
+  summarizeDcrBody,
+} from "@/mcp/auth/clients";
 import { oauthCorsResponse, oauthOptions, requireMcpOauth } from "@/mcp/auth/http";
 
 export const dynamic = "force-dynamic";
@@ -12,26 +19,26 @@ export async function POST(request: Request) {
   if (disabled) return disabled;
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-    validateRedirectUris(body.redirect_uris);
+    console.info("[oauth/register] dcr", summarizeDcrBody(body));
+    const parsed = parseDcrRegistration(body);
     const client = await registerOauthClient({
-      clientName: typeof body.client_name === "string" ? body.client_name : undefined,
-      redirectUris: body.redirect_uris,
-      clientUri: typeof body.client_uri === "string" ? body.client_uri : undefined,
+      clientName: parsed.clientName,
+      redirectUris: parsed.redirectUris,
+      clientUri: parsed.clientUri,
+      grantTypes: parsed.grantTypes,
+      responseTypes: parsed.responseTypes,
     });
-    return oauthCorsResponse(
-      {
-        client_id: client.id,
-        client_id_issued_at: Math.floor(client.createdAtMs / 1000),
-        client_name: client.clientName,
-        redirect_uris: client.redirectUris,
-        grant_types: client.grantTypes,
-        response_types: client.responseTypes,
-        token_endpoint_auth_method: client.tokenEndpointAuthMethod,
-        client_uri: client.clientUri,
-      },
-      201
-    );
-  } catch {
+    return oauthCorsResponse(registrationResponse(client), 201);
+  } catch (e) {
+    if (e instanceof OauthClientMetadataError) {
+      console.warn("[oauth/register] invalid_client_metadata", e.errorDescription);
+      return oauthCorsResponse({ error: e.error, error_description: e.errorDescription }, 400);
+    }
+    console.error("[oauth/register] failed", e instanceof Error ? e.message : "unknown");
     return oauthCorsResponse({ error: "invalid_client_metadata", error_description: "Invalid client metadata." }, 400);
   }
+}
+
+export function GET() {
+  return NextResponse.json({ error: "method_not_allowed" }, { status: 405 });
 }

@@ -9,6 +9,7 @@ import {
   mcpResourceUrl,
 } from "@/mcp/config";
 import type { McpScope } from "@/mcp/scopes";
+import type { CrmMcpScope } from "@/mcp/crm/scopes";
 import { verifyPkceS256 } from "@/mcp/auth/pkce";
 
 export type IssuedTokens = {
@@ -17,7 +18,10 @@ export type IssuedTokens = {
   token_type: "Bearer";
   expires_in: number;
   scope: string;
+  resource: string;
 };
+
+export type OauthScope = McpScope | CrmMcpScope;
 
 export type AccessTokenRecord = {
   userId: string;
@@ -27,7 +31,7 @@ export type AccessTokenRecord = {
   senderUid: string;
   senderEmail: string;
   clientId: string;
-  scopes: McpScope[];
+  scopes: OauthScope[];
   resource: string;
   mcpClient: string;
   expiresAtMs: number;
@@ -40,7 +44,7 @@ export async function createAuthorizationCode(input: {
   codeChallenge: string;
   codeChallengeMethod: "S256";
   resource: string;
-  scopes: McpScope[];
+  scopes: OauthScope[];
   userId: string;
   userEmail: string | null;
   orgId: string;
@@ -104,7 +108,7 @@ export async function consumeAuthorizationCode(opts: {
       senderUid: String(d.senderUid),
       senderEmail: String(d.senderEmail || ""),
       clientId: String(d.clientId),
-      scopes: Array.isArray(d.scopes) ? (d.scopes as McpScope[]) : [],
+      scopes: Array.isArray(d.scopes) ? (d.scopes as OauthScope[]) : [],
       resource: expectedResource,
       mcpClient: String(d.mcpClient || "unknown"),
       expiresAtMs: 0,
@@ -141,6 +145,7 @@ export async function issueTokens(record: Omit<AccessTokenRecord, "expiresAtMs" 
     token_type: "Bearer",
     expires_in: accessTtl,
     scope: record.scopes.join(" "),
+    resource: record.resource,
   };
 }
 
@@ -163,7 +168,7 @@ export async function refreshTokens(refreshToken: string, resource?: string): Pr
     senderUid: String(d.senderUid),
     senderEmail: String(d.senderEmail || ""),
     clientId: String(d.clientId),
-    scopes: Array.isArray(d.scopes) ? (d.scopes as McpScope[]) : [],
+    scopes: Array.isArray(d.scopes) ? (d.scopes as OauthScope[]) : [],
     resource: expectedResource,
     mcpClient: String(d.mcpClient || "unknown"),
   });
@@ -185,7 +190,7 @@ export async function lookupAccessToken(token: string): Promise<AccessTokenRecor
     senderUid: String(d.senderUid),
     senderEmail: String(d.senderEmail || ""),
     clientId: String(d.clientId),
-    scopes: Array.isArray(d.scopes) ? (d.scopes as McpScope[]) : [],
+    scopes: Array.isArray(d.scopes) ? (d.scopes as OauthScope[]) : [],
     resource: String(d.resource || mcpResourceUrl()),
     mcpClient: String(d.mcpClient || "unknown"),
     expiresAtMs,

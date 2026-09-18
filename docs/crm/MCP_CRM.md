@@ -27,8 +27,8 @@ Workspace: siempre `getMarketingWorkspaceId()`. El modelo no puede mandar `works
 
 ## Auth
 
-1. Bearer `CRM_MCP_TOKEN` (timing-safe). Pensado para el conector de ChatGPT.
-2. Token OAuth cuyo `resource` sea exactamente `{base}/mcp/crm` y scope `crm:read`.
+1. Token OAuth cuyo `resource` sea exactamente `{base}/mcp/crm` y scope `crm:read`. Es el mecanismo para ChatGPT.
+2. Bearer `CRM_MCP_TOKEN` (timing-safe), opcional para diagnóstico o clientes controlados.
 3. Rechazo: API keys `ntf_live_` / `ntf_test_`, tokens del MCP de producto, tokens de otro resource.
 
 Scopes CRM: solo `crm:read`. No hay `crm:write`.
@@ -54,14 +54,14 @@ Rate limit: mismo mecanismo que el MCP de producto, cubeta `crmws:{workspaceId}`
 ## Cómo conectar ChatGPT
 
 1. `CRM_MCP=true`
-2. `CRM_MCP_TOKEN` largo y aleatorio (`openssl rand -hex 32`)
+2. `CRM_MCP_ALLOWED_USERS` con los correos o UID autorizados
 3. `MCP_BASE_URL` / `NEXT_PUBLIC_APP_URL` público HTTPS
-4. En ChatGPT (conector MCP / custom GPT):
+4. En ChatGPT Business, modo desarrollador / complemento MCP:
    - Server URL: `https://<host>/mcp/crm`
-   - Auth: Bearer `CRM_MCP_TOKEN`
+   - Auth: OAuth 2.1 con PKCE mediante la metadata publicada
 5. Probar: «¿Cuántas empresas tenemos en el CRM?» (usa `get_crm_stats`) y «Mostrame las empresas de Argentina» (`search_companies`).
 
-Opcional client-credentials: `CRM_MCP_CLIENT_ID` + `CRM_MCP_CLIENT_SECRET` (si no hay secret, se usa el mismo `CRM_MCP_TOKEN`) contra `POST /mcp/crm/oauth/token`. ChatGPT a menudo alcanza con el Bearer estático.
+Opcional para diagnóstico o clientes controlados: `CRM_MCP_TOKEN`, o `CRM_MCP_CLIENT_ID` + `CRM_MCP_CLIENT_SECRET` contra `POST /mcp/crm/oauth/token`. ChatGPT usa el flujo OAuth 2.1 con PKCE publicado por el servidor.
 
 ## Configuración
 

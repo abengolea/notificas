@@ -177,6 +177,8 @@ test("PKCE S256 verifies; invalid verifier fails", () => {
 
 test("OAuth redirect URIs: https and localhost only", () => {
   assert.equal(isAllowedRedirectUri("https://claude.ai/api/mcp/auth/callback"), true);
+  assert.equal(isAllowedRedirectUri("https://chatgpt.com/connector_platform_oauth_redirect"), true);
+  assert.equal(isAllowedRedirectUri("https://chatgpt.com/connector/oauth/abc123"), true);
   assert.equal(isAllowedRedirectUri("http://localhost:3000/cb"), true);
   assert.equal(isAllowedRedirectUri("http://evil.example/cb"), false);
   assert.equal(isAllowedRedirectUri("javascript:alert(1)"), false);
