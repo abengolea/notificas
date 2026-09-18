@@ -20,7 +20,6 @@ import {
   CAMPAIGN_STATUSES,
 } from "@/lib/marketing/admin-filters";
 import { MARKETING_STAGES, STAGE_LABEL } from "@/lib/marketing/stages";
-import { catalogUseCaseAppliesToIndustry } from "@/lib/marketing/taxonomy/seed";
 import { CatalogSearchSelect } from "./marketing-catalog-search";
 import type { TaxonomyCatalog } from "./marketing-taxonomy-fields";
 import { catalogUseCasesForIndustry } from "./marketing-taxonomy-fields";
@@ -105,9 +104,8 @@ export function MarketingFilterBar({
   function patch(partial: Partial<MarketingFilterValues>) {
     const next = { ...values, ...partial };
     if (partial.industryId && partial.industryId !== "all") {
-      const kept = parseCatalogKeyList(next.useCaseId).filter((key) =>
-        catalogUseCaseAppliesToIndustry(key, partial.industryId || ""),
-      );
+      const allowed = new Set(catalogUseCasesForIndustry(catalog, partial.industryId).map((row) => row.key));
+      const kept = parseCatalogKeyList(next.useCaseId).filter((key) => allowed.has(key));
       next.useCaseId = kept.length ? kept.join(",") : "all";
     }
     onChange(next);

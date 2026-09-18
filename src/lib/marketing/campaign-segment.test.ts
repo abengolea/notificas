@@ -23,12 +23,33 @@ test("el catálogo de campaña es el catálogo fijo de rubros y casos de uso", a
   assert.ok(catalog.industries.some((row) => row.key === "gas"));
   assert.ok(catalog.industries.some((row) => row.key === "seguros"));
   assert.ok(catalog.industries.some((row) => row.key === "carteras_credito"));
+  assert.ok(catalog.industries.some((row) => row.key === "operadoras_de_petroleo_y_gas"));
   assert.ok(!catalog.industries.some((row) => row.key === "utilities_gas"));
   assert.ok(!catalog.industries.some((row) => row.key === "cesion_credito"));
   assert.ok(catalog.useCases.some((row) => row.key === "aviso_corte"));
   assert.ok(catalog.useCases.some((row) => row.key === "cesion_credito"));
+  assert.ok(catalog.useCases.some((row) => row.key === "comunicaciones_cuadrillas"));
   assert.equal(catalog.industries.length, TAXONOMY_INDUSTRIES.filter((row) => row.active).length);
   assert.equal(catalog.useCases.length, TAXONOMY_USE_CASES.filter((row) => row.active).length);
+});
+
+test("el catálogo de campaña incluye un rubro cargado a mano", async () => {
+  const { services, ctx, deps } = setup();
+  await services.industries.createIndustry(ctx, { key: "mineria_de_litio", name: "Minería de litio" });
+  await services.useCases.createUseCase(ctx, {
+    key: "avisos_contratistas_mineria",
+    name: "Avisos a contratistas",
+    industryIds: ["mineria_de_litio"],
+  });
+  const catalog = await loadCampaignCatalog(deps);
+  assert.ok(catalog.industries.some((row) => row.key === "mineria_de_litio"));
+  assert.ok(catalog.useCases.some((row) => row.key === "avisos_contratistas_mineria"));
+  const audience = await previewCrmCampaignAudience(
+    { countryCode: "AR", industryId: "mineria_de_litio", useCaseId: "avisos_contratistas_mineria" },
+    ["new"],
+    deps,
+  );
+  assert.equal(audience.companyCount, 0);
 });
 
 test("la audiencia CRM filtra país + rubro + caso de uso", async () => {

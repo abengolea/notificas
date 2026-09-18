@@ -95,6 +95,96 @@ export const TAXONOMY_INDUSTRIES: readonly TaxonomyIndustrySeed[] = [
   { key: "postal_logistica", name: "Correo / Postal / Logística Documental", active: true },
   { key: "agro", name: "Agro / Agronegocios", active: true },
   { key: "logistica_puertos", name: "Logística / Puertos / Comercio Exterior", active: true },
+  {
+    key: "camaras_canales_partners",
+    name: "Cámaras / canales / partners",
+    active: true,
+    keywords: ["camara", "camaras", "fecene", "asociados", "partners", "vaca muerta"],
+  },
+  {
+    key: "catering_alimentacion_facilities",
+    name: "Catering / alimentación / facilities",
+    active: true,
+    keywords: ["catering", "alimentacion", "campamento", "maximia", "vaca muerta"],
+  },
+  {
+    key: "comercio_servicios_generales",
+    name: "Comercio / servicios generales",
+    active: true,
+    keywords: ["comercio", "retail", "servicios generales", "vaca muerta"],
+  },
+  {
+    key: "energia_gas_utilities",
+    name: "Energía / gas / utilities",
+    active: true,
+    keywords: ["energia", "utilities", "bentia", "vaca muerta"],
+  },
+  {
+    key: "ingenieria_construccion_montaje",
+    name: "Ingeniería / construcción / montaje",
+    active: true,
+    keywords: ["ingenieria", "construccion", "montaje", "obra", "vaca muerta"],
+  },
+  {
+    key: "metalmecanica_equipos_insumos",
+    name: "Metalmecánica / equipos / insumos",
+    active: true,
+    keywords: ["metalmecanica", "equipos", "insumos", "maquinaria", "vaca muerta"],
+  },
+  {
+    key: "operadoras_de_petroleo_y_gas",
+    name: "Operadoras de petróleo y gas",
+    active: true,
+    keywords: ["operadora", "operadoras", "petroleo", "oil", "gas", "vaca muerta"],
+  },
+  {
+    key: "rrhh_empleo_capacitacion",
+    name: "RRHH / empleo / capacitación",
+    active: true,
+    keywords: ["empleo", "capacitacion", "personal eventual", "staffing", "vaca muerta"],
+  },
+  {
+    key: "salud_ocupacional_art_seguros",
+    name: "Salud ocupacional / ART / seguros",
+    active: true,
+    keywords: ["salud ocupacional", "medicina laboral", "art", "vaca muerta"],
+  },
+  {
+    key: "seguridad_hse",
+    name: "Seguridad / HSE",
+    active: true,
+    keywords: ["hse", "seguridad", "ehs", "vaca muerta"],
+  },
+  {
+    key: "servicios_industriales_facilities",
+    name: "Servicios industriales / facilities",
+    active: true,
+    keywords: ["facilities", "mantenimiento", "industria", "vaca muerta"],
+  },
+  {
+    key: "servicios_petroleros_perforacion",
+    name: "Servicios petroleros / perforación",
+    active: true,
+    keywords: ["perforacion", "oilfield", "pozo", "drilling", "vaca muerta"],
+  },
+  {
+    key: "servicios_profesionales_financieros_legales",
+    name: "Servicios profesionales / financieros / legales",
+    active: true,
+    keywords: ["profesionales", "estudio", "asesores", "vaca muerta"],
+  },
+  {
+    key: "tecnologia_telecom_instrumentacion",
+    name: "Tecnología / telecom / instrumentación",
+    active: true,
+    keywords: ["instrumentacion", "telecom", "scada", "vaca muerta"],
+  },
+  {
+    key: "transporte_logistica",
+    name: "Transporte / logística",
+    active: true,
+    keywords: ["transporte", "choferes", "cargas", "vaca muerta"],
+  },
   { key: "otros", name: "Otros", active: true },
 ];
 
@@ -113,6 +203,25 @@ const UTILITY_INDUSTRIES = [
   "agua_saneamiento",
   "servicios_publicos",
   "telecomunicaciones",
+  "energia_gas_utilities",
+] as const;
+
+const VACA_MUERTA_INDUSTRIES = [
+  "camaras_canales_partners",
+  "catering_alimentacion_facilities",
+  "comercio_servicios_generales",
+  "energia_gas_utilities",
+  "ingenieria_construccion_montaje",
+  "metalmecanica_equipos_insumos",
+  "operadoras_de_petroleo_y_gas",
+  "rrhh_empleo_capacitacion",
+  "salud_ocupacional_art_seguros",
+  "seguridad_hse",
+  "servicios_industriales_facilities",
+  "servicios_petroleros_perforacion",
+  "servicios_profesionales_financieros_legales",
+  "tecnologia_telecom_instrumentacion",
+  "transporte_logistica",
 ] as const;
 
 export const TAXONOMY_USE_CASES: readonly TaxonomyUseCaseSeed[] = [
@@ -149,6 +258,7 @@ export const TAXONOMY_USE_CASES: readonly TaxonomyUseCaseSeed[] = [
       "leasing",
       "cooperativas_credito",
       "retail_credito",
+      "servicios_profesionales_financieros_legales",
     ],
     countryCodes: [],
     active: true,
@@ -205,42 +315,60 @@ export const TAXONOMY_USE_CASES: readonly TaxonomyUseCaseSeed[] = [
   {
     key: "rechazo_siniestro",
     name: "Rechazo de siniestro",
-    industryKeys: ["seguros"],
+    industryKeys: ["seguros", "salud_ocupacional_art_seguros"],
     countryCodes: [],
     active: true,
   },
   {
     key: "rescision_poliza",
     name: "Rescisión / cancelación de póliza",
-    industryKeys: ["seguros", "art"],
+    industryKeys: ["seguros", "art", "salud_ocupacional_art_seguros"],
     countryCodes: [],
     active: true,
   },
   {
     key: "notificacion_trabajador",
     name: "Notificación al trabajador",
-    industryKeys: ["art", "rrhh"],
+    industryKeys: ["art", "rrhh", "rrhh_empleo_capacitacion", "salud_ocupacional_art_seguros", "seguridad_hse"],
     countryCodes: [],
     active: true,
   },
   {
     key: "notificacion_empleador",
     name: "Notificación al empleador",
-    industryKeys: ["art", "rrhh"],
+    industryKeys: ["art", "rrhh", "rrhh_empleo_capacitacion", "salud_ocupacional_art_seguros", "seguridad_hse"],
     countryCodes: [],
     active: true,
   },
   {
     key: "entrega_documentacion",
     name: "Entrega acreditable de documentación",
-    industryKeys: ["estudios_juridicos", "judicial", "certificacion_digital", "postal_logistica", "mercado_capitales"],
+    industryKeys: [
+      "estudios_juridicos",
+      "judicial",
+      "certificacion_digital",
+      "postal_logistica",
+      "mercado_capitales",
+      ...VACA_MUERTA_INDUSTRIES,
+    ],
     countryCodes: [],
     active: true,
   },
   {
     key: "cambio_contractual",
     name: "Cambio contractual",
-    industryKeys: ["seguros", "art", "bancos", "factoring", "mercado_capitales", ...UTILITY_INDUSTRIES],
+    industryKeys: [
+      "seguros",
+      "art",
+      "bancos",
+      "factoring",
+      "mercado_capitales",
+      ...UTILITY_INDUSTRIES,
+      "operadoras_de_petroleo_y_gas",
+      "servicios_petroleros_perforacion",
+      "servicios_profesionales_financieros_legales",
+      "ingenieria_construccion_montaje",
+    ],
     countryCodes: [],
     active: true,
   },
@@ -259,6 +387,125 @@ export const TAXONOMY_USE_CASES: readonly TaxonomyUseCaseSeed[] = [
       "20643",
       "aviso fehaciente",
     ],
+  },
+  {
+    key: "canal_derivacion_institucional",
+    name: "Canal de derivación y comunicaciones institucionales",
+    industryKeys: ["camaras_canales_partners"],
+    countryCodes: [],
+    active: true,
+  },
+  {
+    key: "documentacion_laboral_campamentos",
+    name: "Documentación laboral de personal en campamentos y bases",
+    industryKeys: ["catering_alimentacion_facilities"],
+    countryCodes: [],
+    active: true,
+  },
+  {
+    key: "documentacion_laboral_proveedores",
+    name: "Documentación laboral y comunicaciones con proveedores",
+    industryKeys: ["comercio_servicios_generales"],
+    countryCodes: [],
+    active: true,
+  },
+  {
+    key: "notificaciones_regulatorias_operativas",
+    name: "Notificaciones regulatorias, contractuales y operativas",
+    industryKeys: ["energia_gas_utilities"],
+    countryCodes: [],
+    active: true,
+  },
+  {
+    key: "notificaciones_subcontratistas_obra",
+    name: "Notificaciones a subcontratistas por obra, plazos e incumplimientos",
+    industryKeys: ["ingenieria_construccion_montaje"],
+    countryCodes: [],
+    active: true,
+  },
+  {
+    key: "protocolos_hse_evidencia",
+    name: "Citaciones, protocolos y comunicaciones de Salud/HSE con evidencia",
+    industryKeys: [
+      "ingenieria_construccion_montaje",
+      "operadoras_de_petroleo_y_gas",
+      "seguridad_hse",
+      "salud_ocupacional_art_seguros",
+      "servicios_petroleros_perforacion",
+      "servicios_industriales_facilities",
+    ],
+    countryCodes: [],
+    active: true,
+  },
+  {
+    key: "notificaciones_contractuales_proveedores",
+    name: "Notificaciones contractuales a proveedores y contratistas",
+    industryKeys: [
+      "ingenieria_construccion_montaje",
+      "metalmecanica_equipos_insumos",
+      "operadoras_de_petroleo_y_gas",
+      "servicios_profesionales_financieros_legales",
+    ],
+    countryCodes: [],
+    active: true,
+    keywords: ["clientes y proveedores", "contratistas y proveedores"],
+  },
+  {
+    key: "documentacion_laboral_entrega",
+    name: "Recibos y documentación laboral con constancia de entrega/aceptación",
+    industryKeys: [...VACA_MUERTA_INDUSTRIES, "rrhh", "art"],
+    countryCodes: [],
+    active: true,
+    keywords: ["recibos", "firma", "aceptacion", "onboarding"],
+  },
+  {
+    key: "citaciones_salud_ocupacional",
+    name: "Citaciones y comunicaciones trazables a trabajadores/empleadores",
+    industryKeys: ["salud_ocupacional_art_seguros", "art", "rrhh"],
+    countryCodes: [],
+    active: true,
+  },
+  {
+    key: "protocolos_personal_hse",
+    name: "Entrega acreditada de instrucciones y protocolos a personal",
+    industryKeys: ["seguridad_hse"],
+    countryCodes: [],
+    active: true,
+  },
+  {
+    key: "notificaciones_personal_clientes",
+    name: "Notificaciones a personal, clientes y contratistas",
+    industryKeys: ["servicios_industriales_facilities"],
+    countryCodes: [],
+    active: true,
+  },
+  {
+    key: "comunicaciones_cuadrillas",
+    name: "Comunicaciones fehacientes con cuadrillas, contratistas y clientes",
+    industryKeys: ["servicios_petroleros_perforacion"],
+    countryCodes: [],
+    active: true,
+  },
+  {
+    key: "comunicaciones_contractuales_evidencia",
+    name: "Comunicaciones contractuales y requerimientos con evidencia",
+    industryKeys: ["servicios_profesionales_financieros_legales"],
+    countryCodes: [],
+    active: true,
+  },
+  {
+    key: "avisos_servicio_evidencia",
+    name: "Avisos contractuales y de servicio con evidencia",
+    industryKeys: ["tecnologia_telecom_instrumentacion"],
+    countryCodes: [],
+    active: true,
+  },
+  {
+    key: "comunicaciones_personal_movil",
+    name: "Comunicaciones a choferes y personal móvil",
+    industryKeys: ["transporte_logistica"],
+    countryCodes: [],
+    active: true,
   },
 ];
 
@@ -307,6 +554,8 @@ export const INDUSTRY_KEY_ALIASES: Readonly<Record<string, string>> = {
   alyc: "mercado_capitales",
   capital_markets: "mercado_capitales",
   brokers: "mercado_capitales",
+  operadoras: "operadoras_de_petroleo_y_gas",
+  hse: "seguridad_hse",
 };
 
 export const USE_CASE_KEY_ALIASES: Readonly<Record<string, string>> = {
@@ -396,6 +645,32 @@ export function foldCatalogSearchText(value: string): string {
     .trim();
 }
 
+/** Slug estable para un rubro o caso de uso cargado a mano. */
+export function slugFromCatalogName(name: string): string {
+  const folded = foldCatalogSearchText(name);
+  let slug = folded.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").replace(/_+/g, "_");
+  if (!slug) return "";
+  if (!/^[a-z]/.test(slug)) slug = `r_${slug}`;
+  if (slug.length < 2) slug = `${slug}_x`;
+  return slug.slice(0, 79);
+}
+
+export type CatalogNameMatch = { key: string; name: string };
+
+export function findCatalogNameMatch(
+  name: string,
+  rows: readonly CatalogNameMatch[],
+): CatalogNameMatch | undefined {
+  const trimmed = name.trim();
+  if (!trimmed) return undefined;
+  const key = slugFromCatalogName(trimmed);
+  const folded = foldCatalogSearchText(trimmed);
+  return rows.find((row) => {
+    const rowKey = row.key.trim();
+    return rowKey === key || foldCatalogSearchText(row.name) === folded;
+  });
+}
+
 export function catalogRowMatchesQuery(
   row: { key: string; name: string; keywords?: readonly string[] },
   query: string,
@@ -413,10 +688,18 @@ export function parseCatalogKeyList(value: unknown): string[] {
   return [...new Set(parts.map((item) => String(item).trim()).filter((item) => item && item !== "all"))];
 }
 
-export function catalogUseCaseAppliesToIndustry(useCaseKey: string, industryKey: string): boolean {
+export function catalogUseCaseAppliesToIndustry(
+  useCaseKey: string,
+  industryKey: string,
+  catalogUseCases?: ReadonlyArray<{ key: string; industryKeys: readonly string[] }>,
+): boolean {
+  const industry = canonicalIndustryKey(industryKey);
+  const fromCatalog = catalogUseCases?.find((row) => canonicalUseCaseKey(row.key) === canonicalUseCaseKey(useCaseKey));
+  if (fromCatalog) {
+    return fromCatalog.industryKeys.some((key) => canonicalIndustryKey(key) === industry);
+  }
   const useCase = seedUseCaseByKey(useCaseKey);
   if (!useCase) return false;
-  const industry = canonicalIndustryKey(industryKey);
   return useCase.industryKeys.some((key) => canonicalIndustryKey(key) === industry);
 }
 

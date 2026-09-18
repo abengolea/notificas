@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { MarketingSubnav } from "./marketing-subnav";
@@ -174,7 +175,7 @@ export function MarketingCampaignForm() {
 
   const emptyHint =
     source === "crm" && audience && (audience.companyCount || 0) === 0
-      ? "No hay empresas de ese rubro y caso de uso en ese país. El catálogo es fijo; hay que clasificar las empresas para armar destinatarios."
+      ? "No hay empresas de ese rubro y caso de uso en ese país. Clasificá las empresas para armar destinatarios."
       : source === "crm"
         ? "Esas empresas no tienen contactos enviables."
         : "Esa lista no tiene contactos enviables.";
@@ -192,7 +193,11 @@ export function MarketingCampaignForm() {
           <div>
             <p className="text-sm font-medium">Destinatarios</p>
             <p className="text-sm text-muted-foreground">
-              Armá la audiencia con el catálogo fijo: país, rubro y caso de uso. El CSV no inventa rubros.
+              Elegí país, rubro y caso de uso. Si falta un rubro, cargalo en{" "}
+              <Link href="/admin/marketing/catalogo" className="underline underline-offset-2">
+                Catálogo
+              </Link>
+              . El CSV no inventa rubros.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">

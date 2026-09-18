@@ -12,17 +12,14 @@ import {
   toRecipientRow,
   type RecipientRow,
 } from "./lists";
+import { listAllMarketingPages } from "./pagination";
 import { createFirestoreMarketingRepositories } from "./repositories/firestore";
 import { createMarketingServices, type MarketingServices } from "./services";
 import { companyClassificationTarget } from "./taxonomy/classify";
 import {
   canonicalIndustryKey,
   canonicalUseCaseKey,
-  isCanonicalIndustryKey,
-  isCanonicalUseCaseKey,
   parseCatalogKeyList,
-  seedIndustryByKey,
-  seedUseCaseByKey,
   storedKeysMatch,
   TAXONOMY_INDUSTRIES,
   TAXONOMY_USE_CASES,
@@ -119,20 +116,34 @@ export async function loadCampaignCatalog(deps?: CampaignSegmentDeps): Promise<C
   const useCaseByKey = new Map(useCases.map((row) => [row.key, row]));
   try {
     const [persistedIndustries, persistedUseCases] = await Promise.all([
-      services.industries.listIndustries(ctx, undefined, 100),
-      services.useCases.listUseCases(ctx, undefined, 100),
+      listAllMarketingPages((cursor) => services.industries.listIndustries(ctx, cursor, 100)),
+      listAllMarketingPages((cursor) => services.useCases.listUseCases(ctx, cursor, 100)),
     ]);
-    for (const row of persistedIndustries.items) {
-      if (row.active === false || !isCanonicalIndustryKey(row.key)) continue;
+    for (const row of persistedIndustries) {
+      if (row.active === false) continue;
       const key = canonicalIndustryKey(row.key);
       const current = industryByKey.get(key);
-      if (current) current.name = row.name;
+      if (current) {
+        current.name = row.name;
+        continue;
+      }
+      industryByKey.set(row.key, { key: row.key, name: row.name });
     }
-    for (const row of persistedUseCases.items) {
-      if (row.active === false || !isCanonicalUseCaseKey(row.key)) continue;
+    for (const row of persistedUseCases) {
+      if (row.active === false) continue;
       const key = canonicalUseCaseKey(row.key);
       const current = useCaseByKey.get(key);
-      if (current) current.name = row.name;
+      const industryKeys = [...new Set([...(current?.industryKeys || []), ...(row.industryIds || [])])];
+      if (current) {
+        current.name = row.name;
+        current.industryKeys = industryKeys;
+        continue;
+      }
+      useCaseByKey.set(row.key, {
+        key: row.key,
+        name: row.name,
+        industryKeys: [...(row.industryIds || [])],
+      });
     }
   } catch {
     // El formulario muestra la semilla aunque el catálogo Firestore no esté aplicado.
@@ -275,7 +286,7 @@ async function contactsForCompanies(
   return found;
 }
 
-function parseSegment(segment: CrmCampaignSegment): CrmCampaignSegment {
+function parseSegment(segment: CrmCampaignSegment, catalog: CampaignCatalog): CrmCampaignSegment {
   const countryCode = String(segment.countryCode || "").trim().toUpperCase();
   const industryId = canonicalIndustryKey(String(segment.industryId || "").trim());
   const useCaseIds = [...new Set(
@@ -284,17 +295,17 @@ function parseSegment(segment: CrmCampaignSegment): CrmCampaignSegment {
   if (!isMarketingCountryCode(countryCode)) {
     throw new MarketingValidationError("País inválido");
   }
-  if (!seedIndustryByKey(industryId)) {
+  if (!catalog.industries.some((row) => row.key === industryId)) {
     throw new MarketingValidationError("Elegí un rubro del catálogo");
   }
   if (useCaseIds.length === 0) {
     throw new MarketingValidationError("Elegí al menos un caso de uso");
   }
   for (const useCaseId of useCaseIds) {
-    if (!seedUseCaseByKey(useCaseId)) {
+    if (!catalog.useCases.some((row) => row.key === useCaseId)) {
       throw new MarketingValidationError("Elegí un caso de uso del catálogo");
     }
-    if (!catalogUseCaseAppliesToIndustry(useCaseId, industryId)) {
+    if (!catalogUseCaseAppliesToIndustry(useCaseId, industryId, catalog.useCases)) {
       throw new MarketingValidationError("Ese caso de uso no corresponde a ese rubro");
     }
   }
@@ -306,9 +317,9 @@ export async function loadCrmCampaignAudience(
   includeStages?: unknown,
   deps?: CampaignSegmentDeps,
 ): Promise<CrmAudienceLoad> {
-  const parsed = parseSegment(segment);
-  const { services, ctx } = resolveDeps(deps);
   const catalog = await loadCampaignCatalog(deps);
+  const parsed = parseSegment(segment, catalog);
+  const { services, ctx } = resolveDeps(deps);
   const industry = catalog.industries.find((row) => row.key === parsed.industryId);
   const useCases = catalog.useCases.filter((row) => (parsed.useCaseIds || []).includes(row.key));
   if (!industry) throw new MarketingValidationError("Rubro desconocido");
@@ -375,7 +386,7 @@ export async function materializeCrmCampaignList(input: {
         : "Esas empresas no tienen contactos enviables.",
     );
   }
-  const parsed = parseSegment(input.segment);
+  const parsed = parseSegment(input.segment, await loadCampaignCatalog());
   const country = parsed.countryCode as MarketingCountryCode;
   const listName = `${loaded.industryName} — ${loaded.useCaseName} — ${countryName(country)}`.slice(0, 80);
   const list = await getOrCreateMarketingList({

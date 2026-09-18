@@ -7,6 +7,7 @@ import { MARKETING_CONTACTS, MARKETING_LISTS } from "@/lib/marketing/collections
 import { contactIdForEmail, parseContactCsv } from "@/lib/marketing/csv";
 import { MarketingError } from "@/lib/marketing/errors";
 import { lookupStampedCompanyId, parseImportTaxonomy, stampImportedCompanies } from "@/lib/marketing/taxonomy/assign";
+import { loadCampaignCatalog } from "@/lib/marketing/campaign-segment";
 
 export async function POST(request: NextRequest) {
   const denied = assertAdminSession(request);
@@ -46,7 +47,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const taxonomy = parseImportTaxonomy({ industryId, useCaseIds });
+    const catalog = await loadCampaignCatalog();
+    const taxonomy = parseImportTaxonomy({ industryId, useCaseIds }, catalog);
     const stamped = taxonomy
       ? await stampImportedCompanies({
           items: parsed.rows.map((row) => ({ name: row.company, countryCode: row.country })),

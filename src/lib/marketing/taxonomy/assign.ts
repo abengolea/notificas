@@ -19,25 +19,39 @@ export type ImportTaxonomyStamp = {
   useCaseIds: string[];
 };
 
+export type ImportTaxonomyCatalog = {
+  industries: Array<{ key: string; name: string }>;
+  useCases: Array<{ key: string; name: string; industryKeys: string[] }>;
+};
+
 function liveServices(): MarketingServices {
   return createMarketingServices(createFirestoreMarketingRepositories());
 }
 
-export function parseImportTaxonomy(input: {
-  industryId?: string;
-  useCaseId?: string;
-  useCaseIds?: unknown;
-}): ImportTaxonomyStamp | null {
+export function parseImportTaxonomy(
+  input: {
+    industryId?: string;
+    useCaseId?: string;
+    useCaseIds?: unknown;
+  },
+  catalog?: ImportTaxonomyCatalog | null,
+): ImportTaxonomyStamp | null {
   const industryId = canonicalIndustryKey(String(input.industryId || "").trim());
   const useCaseIds = [...new Set(
     parseCatalogKeyList([input.useCaseIds, input.useCaseId]).map(canonicalUseCaseKey),
   )];
   if (!industryId && useCaseIds.length === 0) return null;
-  if (!seedIndustryByKey(industryId)) throw new MarketingValidationError("Elegí un rubro del catálogo");
+  const industryOk = catalog
+    ? catalog.industries.some((row) => row.key === industryId)
+    : Boolean(seedIndustryByKey(industryId));
+  if (!industryOk) throw new MarketingValidationError("Elegí un rubro del catálogo");
   if (useCaseIds.length === 0) throw new MarketingValidationError("Elegí al menos un caso de uso");
   for (const useCaseId of useCaseIds) {
-    if (!seedUseCaseByKey(useCaseId)) throw new MarketingValidationError("Elegí un caso de uso del catálogo");
-    if (!catalogUseCaseAppliesToIndustry(useCaseId, industryId)) {
+    const useCaseOk = catalog
+      ? catalog.useCases.some((row) => row.key === useCaseId)
+      : Boolean(seedUseCaseByKey(useCaseId));
+    if (!useCaseOk) throw new MarketingValidationError("Elegí un caso de uso del catálogo");
+    if (!catalogUseCaseAppliesToIndustry(useCaseId, industryId, catalog?.useCases)) {
       throw new MarketingValidationError("Ese caso de uso no corresponde a ese rubro");
     }
   }

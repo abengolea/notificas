@@ -27,3 +27,18 @@ export function clampMarketingLimit(limit: number | undefined, fallback = 50, ma
   if (limit == null || Number.isNaN(limit)) return fallback;
   return Math.min(max, Math.max(1, Math.floor(limit)));
 }
+
+export async function listAllMarketingPages<T>(
+  pageFn: (cursor?: string) => Promise<MarketingPage<T>>,
+  maxPages = 40,
+): Promise<T[]> {
+  const items: T[] = [];
+  let cursor: string | undefined;
+  for (let i = 0; i < maxPages; i++) {
+    const page = await pageFn(cursor);
+    items.push(...page.items);
+    if (!page.nextCursor) break;
+    cursor = page.nextCursor;
+  }
+  return items;
+}

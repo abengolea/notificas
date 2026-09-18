@@ -17,6 +17,8 @@ export {
   catalogUseCaseAppliesToIndustry,
   catalogRowMatchesQuery,
   parseCatalogKeyList,
+  slugFromCatalogName,
+  findCatalogNameMatch,
 } from "./seed";
 export { companyClassificationTarget, mergeCompanyTagKeys } from "./classify";
 export { previewTaxonomySeed, assertTaxonomyPreviewClean } from "./preview";

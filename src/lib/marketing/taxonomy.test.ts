@@ -18,7 +18,13 @@ import {
   TAXONOMY_USE_CASES,
 } from "./taxonomy";
 import { parseImportTaxonomy } from "./taxonomy/assign";
-import { catalogRowMatchesQuery, catalogUseCaseAppliesToIndustry } from "./taxonomy/seed";
+import { upsertCatalogFromNames } from "./taxonomy/catalog-write";
+import {
+  catalogRowMatchesQuery,
+  catalogUseCaseAppliesToIndustry,
+  findCatalogNameMatch,
+  slugFromCatalogName,
+} from "./taxonomy/seed";
 import { CLASSIFICATION_PENDING_TAG_KEY } from "./taxonomy/constants";
 
 function setup(workspaceId = "notificas-internal") {
@@ -253,17 +259,27 @@ test("use case vacío countryCodes es global", async () => {
 });
 
 test("el catálogo fijo es plano y separa rubro de caso de uso", () => {
-  assert.equal(TAXONOMY_INDUSTRIES.length, 31);
+  assert.equal(TAXONOMY_INDUSTRIES.length, 46);
+  assert.equal(new Set(TAXONOMY_INDUSTRIES.map((row) => row.key)).size, TAXONOMY_INDUSTRIES.length);
+  assert.equal(new Set(TAXONOMY_USE_CASES.map((row) => row.key)).size, TAXONOMY_USE_CASES.length);
   assert.ok(TAXONOMY_INDUSTRIES.every((row) => !row.parentKey));
   assert.ok(TAXONOMY_INDUSTRIES.some((row) => row.key === "art"));
   assert.ok(TAXONOMY_INDUSTRIES.some((row) => row.key === "carteras_credito"));
   assert.ok(TAXONOMY_INDUSTRIES.some((row) => row.key === "mercado_capitales"));
+  assert.ok(TAXONOMY_INDUSTRIES.some((row) => row.key === "operadoras_de_petroleo_y_gas"));
+  assert.ok(TAXONOMY_INDUSTRIES.some((row) => row.key === "servicios_petroleros_perforacion"));
+  assert.ok(!TAXONOMY_INDUSTRIES.some((row) => row.key === "revisar_sin_dato_suficiente"));
+  assert.ok(!TAXONOMY_INDUSTRIES.some((row) => /revisar/i.test(row.name)));
   assert.ok(!TAXONOMY_INDUSTRIES.some((row) => row.key === "cesion_credito"));
   assert.ok(TAXONOMY_USE_CASES.some((row) => row.key === "cesion_credito"));
   assert.ok(TAXONOMY_USE_CASES.some((row) => row.key === "aviso_comitentes"));
+  assert.ok(
+    TAXONOMY_USE_CASES.every((row) => row.industryKeys.every((key) => TAXONOMY_INDUSTRIES.some((industry) => industry.key === key))),
+  );
   assert.equal(canonicalIndustryKey("utilities_gas"), "gas");
   assert.equal(canonicalIndustryKey("alyc"), "mercado_capitales");
   assert.equal(canonicalIndustryKey("workers_compensation"), "art");
+  assert.equal(canonicalIndustryKey("operadoras"), "operadoras_de_petroleo_y_gas");
   assert.equal(canonicalUseCaseKey("utility_cutoff_warning"), "aviso_corte");
   assert.equal(canonicalUseCaseKey("debt_assignment_notice"), "cesion_credito");
 });
@@ -283,4 +299,33 @@ test("importación acepta varios casos de uso", () => {
     useCaseIds: ["aviso_comitentes", "cambio_contractual"],
   });
   assert.deepEqual(stamp?.useCaseIds, ["aviso_comitentes", "cambio_contractual"]);
+});
+
+test("el alta manual no duplica un rubro por nombre", async () => {
+  assert.equal(slugFromCatalogName("Operadoras de petróleo y gas"), "operadoras_de_petroleo_y_gas");
+  const match = findCatalogNameMatch("Cámaras / canales / partners", TAXONOMY_INDUSTRIES);
+  assert.equal(match?.key, "camaras_canales_partners");
+  const { services, ctx } = setup();
+  const first = await upsertCatalogFromNames(
+    { industryName: "Minería de litio", useCaseNames: "Avisos a contratistas\nProtocolos HSE" },
+    { services, ctx },
+  );
+  assert.equal(first.industry.created, true);
+  assert.equal(first.industry.key, "mineria_de_litio");
+  assert.equal(first.useCases.filter((row) => row.created).length, 2);
+  const second = await upsertCatalogFromNames(
+    { industryName: "Minería de litio", useCaseNames: "Avisos a contratistas" },
+    { services, ctx },
+  );
+  assert.equal(second.industry.skipped, true);
+  assert.equal(second.useCases[0]?.skipped, true);
+  const third = await upsertCatalogFromNames(
+    {
+      industryName: "Operadoras de petróleo y gas",
+      useCaseNames: "Notificaciones contractuales a proveedores y contratistas",
+    },
+    { services, ctx },
+  );
+  assert.equal(third.industry.skipped, true);
+  assert.equal(third.industry.key, "operadoras_de_petroleo_y_gas");
 });
