@@ -4,12 +4,15 @@ import { z } from "zod";
 import { assertAdminSession } from "@/lib/assert-admin-session";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { bumpListCount } from "@/lib/marketing/audience";
+import { contactMatchesOutcome, parseAdminFilterValue } from "@/lib/marketing/admin-filters";
+import { listCompaniesMatchingTaxonomy } from "@/lib/marketing/campaign-segment";
 import { MARKETING_CONTACTS } from "@/lib/marketing/collections";
 import { isMarketingCountryCode } from "@/lib/marketing/countries";
 import { contactIdForEmail, isValidEmail, normalizeEmail } from "@/lib/marketing/csv";
 import { serializeAdminDoc } from "@/lib/marketing/events";
 import { parseRecipientSource } from "@/lib/marketing/lists";
 import { isMarketingStage } from "@/lib/marketing/stages";
+import { parseCatalogKeyList, storedKeysMatch } from "@/lib/marketing/taxonomy/seed";
 
 const postSchema = z.object({
   email: z.string().email(),
@@ -25,9 +28,14 @@ const postSchema = z.object({
 export async function GET(request: NextRequest) {
   const denied = assertAdminSession(request);
   if (denied) return denied;
-  const country = request.nextUrl.searchParams.get("country") || "";
-  const stage = request.nextUrl.searchParams.get("stage") || "";
-  const listId = request.nextUrl.searchParams.get("listId") || "";
+  const country = parseAdminFilterValue(request.nextUrl.searchParams.get("country"));
+  const stage = parseAdminFilterValue(request.nextUrl.searchParams.get("stage"));
+  const listId = parseAdminFilterValue(request.nextUrl.searchParams.get("listId"));
+  const industryId = parseAdminFilterValue(request.nextUrl.searchParams.get("industryId"));
+  const useCaseId = parseAdminFilterValue(
+    request.nextUrl.searchParams.get("useCaseIds") || request.nextUrl.searchParams.get("useCaseId"),
+  );
+  const outcome = parseAdminFilterValue(request.nextUrl.searchParams.get("outcome"));
   const q = (request.nextUrl.searchParams.get("q") || "").trim().toLowerCase();
   const limit = Math.min(500, Math.max(1, Number(request.nextUrl.searchParams.get("limit") || 200) || 200));
 
@@ -47,6 +55,27 @@ export async function GET(request: NextRequest) {
       contacts = contacts.filter((c) => Array.isArray(c.listIds) && c.listIds.map(String).includes(listSource.listId));
     } else if (listSource.kind === "country" && listSource.country !== "all") {
       contacts = contacts.filter((c) => String(c.country || "").toUpperCase() === listSource.country);
+    }
+    if (industryId || useCaseId) {
+      const useCaseIds = parseCatalogKeyList(useCaseId);
+      const companies = await listCompaniesMatchingTaxonomy({
+        countryCode: country || undefined,
+        industryId: industryId || undefined,
+        useCaseIds,
+      });
+      const ids = new Set(companies.map((row) => row.id));
+      const names = new Set(companies.map((row) => row.name.trim().toLowerCase()).filter(Boolean));
+      contacts = contacts.filter((c) => {
+        if (c.companyId && ids.has(String(c.companyId))) return true;
+        if (names.has(String(c.company || "").trim().toLowerCase())) return true;
+        if (useCaseIds.some((key) => storedKeysMatch(Array.isArray(c.useCaseIds) ? c.useCaseIds.map(String) : [], key, "useCase"))) {
+          return true;
+        }
+        return false;
+      });
+    }
+    if (outcome) {
+      contacts = contacts.filter((c) => contactMatchesOutcome(c, outcome));
     }
     if (q) {
       contacts = contacts.filter((c) => {

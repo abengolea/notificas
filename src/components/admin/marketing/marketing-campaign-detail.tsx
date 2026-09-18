@@ -8,11 +8,18 @@ import { StageBadge } from "./stage-badge";
 import { MarketingListUpload } from "./marketing-list-upload";
 import { MarketingRecipientPreview, type PreviewContact } from "./marketing-recipient-preview";
 import { countryName } from "@/lib/marketing/countries";
+import { CAMPAIGN_OUTCOME_LABEL, CAMPAIGN_OUTCOMES, sendMatchesOutcome } from "@/lib/marketing/admin-filters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -21,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 
 type Send = {
@@ -70,6 +78,7 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
   const [busy, setBusy] = useState<"send" | "tick" | "pause" | "save" | null>(null);
   const [subject, setSubject] = useState("");
   const [htmlBody, setHtmlBody] = useState("");
+  const [sendOutcome, setSendOutcome] = useState("all");
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/admin/marketing/campaigns/${campaignId}`, { credentials: "include" });
@@ -198,6 +207,18 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
   const isDraft = campaign.status === "draft";
   const hasNamedList = Boolean(audience && audience.total > 0);
   const canSend = isDraft && hasNamedList && (audience?.eligible || 0) > 0 && htmlBody.trim().length >= 8 && subject.trim().length >= 2;
+  const filteredSends = sendOutcome === "all" ? sends : sends.filter((row) => sendMatchesOutcome(row, sendOutcome));
+  const statTiles: Array<{ label: string; value: number; outcome: string }> = [
+    { label: "En cola", value: stats.queued || 0, outcome: "unsent" },
+    { label: "Enviados", value: stats.sent || 0, outcome: "sent" },
+    { label: "Recibidos", value: stats.delivered || 0, outcome: "delivered" },
+    { label: "Abiertos", value: stats.opened || 0, outcome: "opened" },
+    { label: "Clics", value: stats.clicked || 0, outcome: "clicked" },
+    { label: "Respuestas", value: stats.replied || 0, outcome: "replied" },
+    { label: "Rebotes", value: stats.bounced || 0, outcome: "bounced" },
+    { label: "Fallidos", value: stats.failed || 0, outcome: "failed" },
+    { label: "Bajas", value: stats.unsubscribed || 0, outcome: "unsubscribed" },
+  ];
 
   return (
     <div className="space-y-6">
@@ -234,7 +255,7 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
               Subí un CSV. No se usan contactos viejos del CRM salvo que estén en esta lista.
             </p>
           </div>
-          <MarketingListUpload defaultName={campaign.name} onImported={(list) => void attachList(list.listId)} />
+          <MarketingListUpload requireTaxonomy defaultName={campaign.name} onImported={(list) => void attachList(list.listId)} />
           {audience && audience.total > 0 ? (
             <MarketingRecipientPreview
               contacts={audience.contacts}
@@ -273,20 +294,16 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
       )}
 
       <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-4">
-        {[
-          ["En cola", stats.queued],
-          ["Enviados", stats.sent],
-          ["Recibidos", stats.delivered],
-          ["Abiertos", stats.opened],
-          ["Clics", stats.clicked],
-          ["Respuestas", stats.replied],
-          ["Rebotes", stats.bounced],
-          ["Fallidos", stats.failed],
-        ].map(([label, value]) => (
-          <div key={String(label)} className="bg-background px-4 py-3">
-            <dt className="text-sm text-muted-foreground">{label}</dt>
-            <dd className="text-xl font-semibold tabular-nums">{value || 0}</dd>
-          </div>
+        {statTiles.map((tile) => (
+          <button
+            key={tile.label}
+            type="button"
+            className={`bg-background px-4 py-3 text-left ${sendOutcome === tile.outcome ? "ring-1 ring-inset ring-foreground/20" : ""}`}
+            onClick={() => setSendOutcome(sendOutcome === tile.outcome ? "all" : tile.outcome)}
+          >
+            <dt className="text-sm text-muted-foreground">{tile.label}</dt>
+            <dd className="text-xl font-semibold tabular-nums">{tile.value}</dd>
+          </button>
         ))}
       </dl>
       <p className="text-sm text-muted-foreground">
@@ -295,12 +312,30 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
 
       {campaign.status === "sending" ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> Enviando por Resend desde {campaign.fromEmail || "contacto@notificas.com.ar"}…
+          <Loader2 className="h-4 w-4 animate-spin" /> Enviando por Resend desde {campaign.fromEmail || "contacto@notificas.com"}…
         </p>
       ) : null}
 
       {isDraft && sends.length === 0 ? null : (
-      <div className="rounded-lg border bg-background overflow-x-auto">
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {filteredSends.length} de {sends.length} destinatarios
+          </p>
+          <div className="w-56 space-y-1">
+            <Label>Filtrar envíos</Label>
+            <Select value={sendOutcome} onValueChange={setSendOutcome}>
+              <SelectTrigger><SelectValue placeholder="Resultado" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                {CAMPAIGN_OUTCOMES.map((row) => (
+                  <SelectItem key={row} value={row}>{CAMPAIGN_OUTCOME_LABEL[row]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="rounded-lg border bg-background overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -310,14 +345,14 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sends.length === 0 ? (
+            {filteredSends.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={3} className="text-sm text-muted-foreground">
-                  Todavía no hay envíos.
+                  {sends.length === 0 ? "Todavía no hay envíos." : "Nada coincide con ese resultado."}
                 </TableCell>
               </TableRow>
             ) : (
-              sends.map((s) => (
+              filteredSends.map((s) => (
                 <TableRow key={s.id}>
                   <TableCell>
                     <Link href={`/admin/marketing/contactos/${s.contactId}`} className="font-medium hover:underline">
@@ -339,6 +374,7 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
       )}
     </div>

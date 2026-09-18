@@ -4,7 +4,19 @@ export {
   TAXONOMY_INDUSTRIES,
   TAXONOMY_TAGS,
   TAXONOMY_USE_CASES,
+  INDUSTRY_KEY_ALIASES,
+  USE_CASE_KEY_ALIASES,
+  canonicalIndustryKey,
+  canonicalUseCaseKey,
   expandSeedIndustryKeys,
+  isCanonicalIndustryKey,
+  isCanonicalUseCaseKey,
+  seedIndustryByKey,
+  seedUseCaseByKey,
+  storedKeysMatch,
+  catalogUseCaseAppliesToIndustry,
+  catalogRowMatchesQuery,
+  parseCatalogKeyList,
 } from "./seed";
 export { companyClassificationTarget, mergeCompanyTagKeys } from "./classify";
 export { previewTaxonomySeed, assertTaxonomyPreviewClean } from "./preview";

@@ -135,7 +135,7 @@ export type MarketingUseCase = MarketingEntityBase & {
   key: string;
   name: string;
   description?: string;
-  /** Keys de industria (`utilities`, `utilities_gas`), no hashes de documento. */
+  /** Keys de industria (`seguros`, `gas`), no hashes de documento. */
   industryIds: string[];
   /**
    * ISO-2. `[]` significa global / no restringido.

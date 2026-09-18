@@ -41,7 +41,7 @@ Prefijo obligatorio `marketing_`. Prohibido crear `contacts`, `campaigns`, `comp
 
 Todas las FKs de operación (`companyId`, `contactId`, `listId`, `templateId`, …) son IDs internos de documento.
 
-Los catálogos tienen **key** lógica (`utilities`, `utility_cutoff_warning`, `AR`) además del id de documento. En `company.industryIds` / `useCaseIds` / `tagIds` y `useCase.industryIds` se persisten **keys**, no hashes, para poder filtrar con `array-contains` sin resolver el árbol. Detalle: [`TAXONOMY.md`](TAXONOMY.md).
+Los catálogos tienen **key** lógica (`gas`, `aviso_corte`, `AR`) además del id de documento. En `company.industryIds` / `useCaseIds` / `tagIds` y `useCase.industryIds` se persisten **keys**, no hashes, para poder filtrar con `array-contains` sin resolver el árbol. Detalle: [`TAXONOMY.md`](TAXONOMY.md).
 
 ```
 workspace

@@ -3,11 +3,21 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Upload } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { MarketingSubnav } from "./marketing-subnav";
 import { StageBadge } from "./stage-badge";
+import { MarketingListUpload } from "./marketing-list-upload";
+import {
+  CONTACT_FILTER_SHOW,
+  EMPTY_MARKETING_FILTERS,
+  MarketingFilterBar,
+  filtersFromSearchParams,
+  filtersToSearchParams,
+  type MarketingFilterValues,
+} from "./marketing-filter-bar";
+import type { TaxonomyCatalog } from "./marketing-taxonomy-fields";
 import { MARKETING_COUNTRIES } from "@/lib/marketing/countries";
-import { MARKETING_STAGES, STAGE_LABEL, type MarketingStage } from "@/lib/marketing/stages";
+import type { MarketingStage } from "@/lib/marketing/stages";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,12 +25,11 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -51,23 +60,30 @@ type ListOption = {
   virtual?: boolean;
 };
 
-const CSV_TEMPLATE = "email,nombre,empresa,cargo,pais,notas\ncontacto@empresa.cl,Ana Pérez,Empresa Sur,Gerente,CL,\n";
+type ContactsTab = "listas" | "manual";
+
+function contactsPageUrl(filters: MarketingFilterValues, tab: ContactsTab): string {
+  const sp = filtersToSearchParams(filters);
+  if (tab === "manual") sp.set("tab", "manual");
+  const qs = sp.toString();
+  return `/admin/marketing/contactos${qs ? `?${qs}` : ""}`;
+}
 
 export function MarketingContacts() {
   const { toast } = useToast();
   const router = useRouter();
   const params = useSearchParams();
-  const [country, setCountry] = useState(params.get("country") || "all");
-  const [stage, setStage] = useState(params.get("stage") || "all");
-  const [listId, setListId] = useState(params.get("listId") || "all");
-  const [q, setQ] = useState("");
+  const [filters, setFilters] = useState<MarketingFilterValues>(() => ({
+    ...EMPTY_MARKETING_FILTERS,
+    ...filtersFromSearchParams(params),
+  }));
   const [rows, setRows] = useState<Contact[]>([]);
   const [lists, setLists] = useState<ListOption[]>([]);
+  const [catalog, setCatalog] = useState<TaxonomyCatalog | null>(null);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [importing, setImporting] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [listName, setListName] = useState("");
+  const [tab, setTab] = useState<ContactsTab>(() => (params.get("tab") === "manual" ? "manual" : "listas"));
   const [form, setForm] = useState({
     email: "",
     name: "",
@@ -81,10 +97,7 @@ export function MarketingContacts() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const sp = new URLSearchParams();
-      if (country !== "all") sp.set("country", country);
-      if (stage !== "all") sp.set("stage", stage);
-      if (listId !== "all") sp.set("listId", listId);
+      const sp = filtersToSearchParams(filters);
       const res = await fetch(`/api/admin/marketing/contacts?${sp}`, { credentials: "include" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error");
@@ -95,20 +108,39 @@ export function MarketingContacts() {
     } finally {
       setLoading(false);
     }
-  }, [country, stage, listId, toast]);
+  }, [filters, toast]);
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 200);
+    return () => window.clearTimeout(timer);
   }, [load]);
+
+  useEffect(() => {
+    router.replace(contactsPageUrl(filters, tab));
+  }, [filters, tab, router]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/admin/marketing/lists", { credentials: "include" });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "No se pudieron cargar las listas");
-        if (!cancelled) setLists(data.lists || []);
+        const [listsRes, catalogRes] = await Promise.all([
+          fetch("/api/admin/marketing/lists", { credentials: "include" }),
+          fetch("/api/admin/marketing/catalog", { credentials: "include" }),
+        ]);
+        const listsData = await listsRes.json();
+        const catalogData = await catalogRes.json();
+        if (!cancelled) {
+          if (listsRes.ok) setLists(listsData.lists || []);
+          if (catalogRes.ok) {
+            setCatalog({
+              countries: catalogData.countries || [],
+              industries: catalogData.industries || [],
+              useCases: catalogData.useCases || [],
+            });
+          }
+        }
       } catch {
         /* el listado de contactos igual sirve */
       }
@@ -117,51 +149,6 @@ export function MarketingContacts() {
       cancelled = true;
     };
   }, []);
-
-  function pushFilters(nextCountry: string, nextStage: string, nextList: string) {
-    const sp = new URLSearchParams();
-    if (nextCountry !== "all") sp.set("country", nextCountry);
-    if (nextStage !== "all") sp.set("stage", nextStage);
-    if (nextList !== "all") sp.set("listId", nextList);
-    router.replace(`/admin/marketing/contactos${sp.toString() ? `?${sp}` : ""}`);
-  }
-
-  const filtered = q.trim()
-    ? rows.filter((r) => `${r.email} ${r.name} ${r.company} ${r.title}`.toLowerCase().includes(q.trim().toLowerCase()))
-    : rows;
-
-  async function onImport(file: File) {
-    const name = listName.trim();
-    if (name.length < 2) {
-      toast({ title: "Poné un nombre a la lista antes de importar el CSV", variant: "destructive" });
-      return;
-    }
-    setImporting(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("listName", name);
-      const res = await fetch("/api/admin/marketing/contacts/import", {
-        method: "POST",
-        credentials: "include",
-        body: fd,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "No se pudo importar");
-      toast({
-        title: `Lista “${data.listName || name}”: ${data.created} nuevos, ${data.updated} actualizados`,
-        description: data.errorCount ? `${data.errorCount} filas con error` : undefined,
-      });
-      const listsRes = await fetch("/api/admin/marketing/lists", { credentials: "include" });
-      const listsData = await listsRes.json().catch(() => ({}));
-      if (listsRes.ok) setLists(listsData.lists || []);
-      await load();
-    } catch (e) {
-      toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
-    } finally {
-      setImporting(false);
-    }
-  }
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -177,6 +164,7 @@ export function MarketingContacts() {
       if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "No se pudo guardar");
       setForm({ email: "", name: "", company: "", title: "", country: form.country, notes: "", listId: form.listId });
       toast({ title: "Contacto guardado" });
+      setTab("listas");
       await load();
     } catch (err) {
       toast({ title: err instanceof Error ? err.message : "Error", variant: "destructive" });
@@ -189,177 +177,39 @@ export function MarketingContacts() {
     <div className="space-y-6">
       <MarketingSubnav />
 
-      <div className="space-y-3 rounded-lg border bg-background p-4">
-        <div>
-          <h3 className="text-base font-semibold">Cargar lista de destinatarios</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Importá un CSV, dale un nombre, y después elegí esa lista al crear la campaña.
-          </p>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="flex-1 space-y-1">
-            <Label htmlFor="list-name">Nombre de la lista</Label>
-            <Input
-              id="list-name"
-              value={listName}
-              onChange={(e) => setListName(e.target.value)}
-              placeholder="Ej. Cuba — clínicas marzo"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" asChild>
-              <a href={`data:text/csv;charset=utf-8,${encodeURIComponent(CSV_TEMPLATE)}`} download="contactos-marketing.csv">
-                Plantilla CSV
-              </a>
-            </Button>
-            <Button type="button" variant="secondary" className="relative" disabled={importing}>
-              {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              <span className="ml-2">Importar CSV</span>
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                className="absolute inset-0 cursor-pointer opacity-0"
-                aria-label="Importar CSV"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void onImport(file);
-                  e.target.value = "";
-                }}
-              />
-            </Button>
-          </div>
-        </div>
-      </div>
+      <Tabs value={tab} onValueChange={(value) => setTab(value === "manual" ? "manual" : "listas")}>
+        <TabsList>
+          <TabsTrigger value="listas">Listas CSV</TabsTrigger>
+          <TabsTrigger value="manual">Agregar manual</TabsTrigger>
+        </TabsList>
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
-        <div className="grid flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-1">
-            <Label>Lista</Label>
-            <Select
-              value={listId}
-              onValueChange={(v) => {
-                setListId(v);
-                pushFilters(country, stage, v);
-              }}
-            >
-              <SelectTrigger><SelectValue placeholder="Lista" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas</SelectItem>
-                {lists.filter((l) => !l.virtual).length ? (
-                  <SelectGroup>
-                    <SelectLabel>Listas cargadas</SelectLabel>
-                    {lists.filter((l) => !l.virtual).map((l) => (
-                      <SelectItem key={l.id} value={l.id}>{l.name} ({l.contactCount})</SelectItem>
-                    ))}
-                  </SelectGroup>
-                ) : null}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label>País</Label>
-            <Select
-              value={country}
-              onValueChange={(v) => {
-                setCountry(v);
-                pushFilters(v, stage, listId);
-              }}
-            >
-              <SelectTrigger><SelectValue placeholder="País" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                {MARKETING_COUNTRIES.map((c) => (
-                  <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label>Etapa</Label>
-            <Select
-              value={stage}
-              onValueChange={(v) => {
-                setStage(v);
-                pushFilters(country, v, listId);
-              }}
-            >
-              <SelectTrigger><SelectValue placeholder="Etapa" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas</SelectItem>
-                {MARKETING_STAGES.map((s) => (
-                  <SelectItem key={s} value={s}>{STAGE_LABEL[s]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="mkt-q">Buscar</Label>
-            <Input id="mkt-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Email, empresa, nombre" />
-          </div>
-        </div>
-      </div>
+        <TabsContent value="listas" className="mt-6 space-y-6">
+          <MarketingListUpload
+            catalog={catalog}
+            requireTaxonomy
+            onImported={async () => {
+              const listsRes = await fetch("/api/admin/marketing/lists", { credentials: "include" });
+              const listsData = await listsRes.json().catch(() => ({}));
+              if (listsRes.ok) setLists(listsData.lists || []);
+              await load();
+            }}
+          />
 
-      <form onSubmit={onCreate} className="grid gap-3 rounded-lg border bg-background p-4 md:grid-cols-6">
-        <div className="md:col-span-2 space-y-1">
-          <Label htmlFor="c-email">Email</Label>
-          <Input id="c-email" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="c-name">Nombre</Label>
-          <Input id="c-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="c-co">Empresa</Label>
-          <Input id="c-co" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="c-title">Cargo</Label>
-          <Input id="c-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-        </div>
-        <div className="space-y-1">
-          <Label>País</Label>
-          <Select value={form.country} onValueChange={(v) => setForm({ ...form, country: v })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {MARKETING_COUNTRIES.map((c) => (
-                <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1">
-          <Label>Lista</Label>
-          <Select
-            value={form.listId || "__none__"}
-            onValueChange={(v) => setForm({ ...form, listId: v === "__none__" ? "" : v })}
-          >
-            <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">Sin lista</SelectItem>
-              {lists.filter((l) => !l.virtual).map((l) => (
-                <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="md:col-span-5 space-y-1">
-          <Label htmlFor="c-notes">Notas</Label>
-          <Textarea id="c-notes" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-        </div>
-        <div className="flex items-end">
-          <Button type="submit" disabled={saving} className="w-full">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Agregar"}
-          </Button>
-        </div>
-      </form>
+          <MarketingFilterBar
+            catalog={catalog}
+            lists={lists}
+            values={filters}
+            onChange={setFilters}
+            show={CONTACT_FILTER_SHOW}
+          />
 
-      {loading ? (
-        <Skeleton className="h-48 w-full" />
-      ) : filtered.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {total === 0 ? "No hay contactos con ese filtro. Importá un CSV o agregá uno arriba." : "Nada coincide con la búsqueda."}
-        </p>
-      ) : (
+          {loading ? (
+            <Skeleton className="h-48 w-full" />
+          ) : rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {total === 0 ? "No hay contactos con ese filtro. Importá un CSV." : "Nada coincide con la búsqueda."}
+            </p>
+          ) : (
         <div className="rounded-lg border bg-background overflow-x-auto">
           <Table>
             <TableHeader>
@@ -372,7 +222,7 @@ export function MarketingContacts() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((r) => (
+              {rows.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell>
                     <Link href={`/admin/marketing/contactos/${r.id}`} className="font-medium hover:underline">
@@ -397,9 +247,73 @@ export function MarketingContacts() {
               ))}
             </TableBody>
           </Table>
-          <p className="px-4 py-2 text-sm text-muted-foreground">{filtered.length} de {total}</p>
+          <p className="px-4 py-2 text-sm text-muted-foreground">{rows.length} de {total}</p>
         </div>
-      )}
+          )}
+        </TabsContent>
+
+        <TabsContent value="manual" className="mt-6">
+          <form onSubmit={onCreate} className="grid gap-3 rounded-lg border bg-background p-4 md:grid-cols-6">
+            <div className="md:col-span-6 space-y-1">
+              <p className="text-sm font-medium">Agregar un contacto a mano</p>
+              <p className="text-sm text-muted-foreground">
+                Lo habitual es importar una lista CSV. Usá esto solo para un contacto suelto.
+              </p>
+            </div>
+            <div className="md:col-span-2 space-y-1">
+              <Label htmlFor="c-email">Email</Label>
+              <Input id="c-email" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="c-name">Nombre</Label>
+              <Input id="c-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="c-co">Empresa</Label>
+              <Input id="c-co" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="c-title">Cargo</Label>
+              <Input id="c-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <Label>País</Label>
+              <Select value={form.country} onValueChange={(v) => setForm({ ...form, country: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {MARKETING_COUNTRIES.map((c) => (
+                    <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Lista</Label>
+              <Select
+                value={form.listId || "__none__"}
+                onValueChange={(v) => setForm({ ...form, listId: v === "__none__" ? "" : v })}
+              >
+                <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Sin lista</SelectItem>
+                  {lists.filter((l) => !l.virtual).map((l) => (
+                    <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="md:col-span-5 space-y-1">
+              <Label htmlFor="c-notes">Notas</Label>
+              <Textarea id="c-notes" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+            </div>
+            <div className="flex items-end">
+              <Button type="submit" disabled={saving} className="w-full">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Agregar"}
+              </Button>
+            </div>
+          </form>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

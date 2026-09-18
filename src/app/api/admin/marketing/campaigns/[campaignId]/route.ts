@@ -80,6 +80,9 @@ export async function PATCH(
       updates.listId = list.listId;
       updates.listName = list.listName;
       updates.country = list.country;
+      if (list.industryId) updates.industryId = list.industryId;
+      if (list.useCaseId) updates.useCaseId = list.useCaseId;
+      if (list.useCaseIds?.length) updates.useCaseIds = list.useCaseIds;
     }
     if (d.status === "paused" && current === "sending") updates.status = "paused";
     if (d.status === "sending" && current === "paused") updates.status = "sending";

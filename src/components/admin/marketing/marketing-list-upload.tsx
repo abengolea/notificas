@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { MarketingTaxonomyFields, type TaxonomyCatalog } from "./marketing-taxonomy-fields";
 
 export const MARKETING_CSV_TEMPLATE =
   "email,nombre,empresa,cargo,pais,notas\ncontacto@empresa.cl,Ana Pérez,Empresa Sur,Gerente,CL,\n";
@@ -19,15 +20,49 @@ export type ImportedList = {
 
 export function MarketingListUpload({
   defaultName,
+  catalog,
+  requireTaxonomy = false,
   onImported,
 }: {
   defaultName?: string;
+  catalog?: TaxonomyCatalog | null;
+  requireTaxonomy?: boolean;
   onImported: (list: ImportedList) => void;
 }) {
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [listName, setListName] = useState(defaultName || "");
   const [importing, setImporting] = useState(false);
+  const [localCatalog, setLocalCatalog] = useState<TaxonomyCatalog | null>(catalog || null);
+  const [industryId, setIndustryId] = useState("");
+  const [useCaseIds, setUseCaseIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (catalog) {
+      setLocalCatalog(catalog);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/marketing/catalog", { credentials: "include" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "No se pudo cargar el catálogo");
+        if (!cancelled) {
+          setLocalCatalog({
+            countries: data.countries || [],
+            industries: data.industries || [],
+            useCases: data.useCases || [],
+          });
+        }
+      } catch {
+        if (!cancelled) setLocalCatalog({ countries: [], industries: [], useCases: [] });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [catalog]);
 
   async function onFile(file: File) {
     const name = listName.trim() || defaultName?.trim() || file.name.replace(/\.csv$/i, "");
@@ -35,11 +70,17 @@ export function MarketingListUpload({
       toast({ title: "Poné un nombre a esta lista", variant: "destructive" });
       return;
     }
+    if (requireTaxonomy && (!industryId || useCaseIds.length === 0)) {
+      toast({ title: "Elegí rubro y al menos un caso de uso. El CSV no inventa el catálogo.", variant: "destructive" });
+      return;
+    }
     setImporting(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("listName", name);
+      if (industryId) fd.append("industryId", industryId);
+      for (const useCaseId of useCaseIds) fd.append("useCaseId", useCaseId);
       const res = await fetch("/api/admin/marketing/contacts/import", {
         method: "POST",
         credentials: "include",
@@ -73,9 +114,19 @@ export function MarketingListUpload({
       <div>
         <p className="text-sm font-medium">Cargar destinatarios (CSV)</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Columnas: email, nombre, empresa, cargo, pais (AR, CL, BR…). Esta lista es la que recibe el correo.
+          Columnas: email, nombre, empresa, cargo, pais (AR, CL, BR…). Rubro y casos de uso se eligen acá; se pueden marcar todos o algunos.
         </p>
       </div>
+      <MarketingTaxonomyFields
+        catalog={localCatalog}
+        countryCode=""
+        industryId={industryId}
+        useCaseIds={useCaseIds}
+        onCountryChange={() => undefined}
+        onIndustryChange={setIndustryId}
+        onUseCaseIdsChange={setUseCaseIds}
+        showCountry={false}
+      />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="flex-1 space-y-1">
           <Label htmlFor="camp-list-name">Nombre de la lista</Label>

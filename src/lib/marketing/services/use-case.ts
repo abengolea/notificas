@@ -6,6 +6,7 @@ import { MarketingValidationError } from "../errors";
 import type { MarketingIndustryRepository, MarketingUseCaseRepository } from "../repositories/types";
 import { createStamps, requireFound, updateStamps } from "./scope";
 import { createCountryService } from "./country";
+import { canonicalUseCaseKey } from "../taxonomy/seed";
 import { createIndustryService } from "./industry";
 
 const createSchema = z.object({
@@ -51,7 +52,12 @@ export function createUseCaseService(
     async resolveUseCase(ctx: MarketingServiceContext, idOrKey: string) {
       const direct = await useCases.getById(ctx.workspaceId, idOrKey);
       if (direct) return direct;
-      if (isMarketingCatalogKey(idOrKey)) return useCases.findByKey(ctx.workspaceId, idOrKey);
+      if (isMarketingCatalogKey(idOrKey)) {
+        const found = await useCases.findByKey(ctx.workspaceId, idOrKey);
+        if (found) return found;
+        const canonical = canonicalUseCaseKey(idOrKey);
+        if (canonical !== idOrKey) return useCases.findByKey(ctx.workspaceId, canonical);
+      }
       return null;
     },
 

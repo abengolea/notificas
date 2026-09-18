@@ -5,6 +5,7 @@ import type { MarketingIndustry } from "../domain/types";
 import { MarketingValidationError } from "../errors";
 import { normalizeMarketingCompanyName } from "../normalizers";
 import type { MarketingIndustryRepository } from "../repositories/types";
+import { canonicalIndustryKey, expandSeedIndustryKeys, seedIndustryByKey } from "../taxonomy/seed";
 import { createStamps, requireFound, updateStamps } from "./scope";
 
 const createSchema = z.object({
@@ -37,8 +38,17 @@ export function createIndustryService(industries: MarketingIndustryRepository) {
     async expandAssignedIndustryKeys(ctx: MarketingServiceContext, keys: string[]) {
       const out = new Set<string>();
       for (const raw of keys) {
+        const canonical = canonicalIndustryKey(raw);
         let current = await this.resolveIndustry(ctx, raw);
-        if (!current) throw new MarketingValidationError(`industryId inexistente: ${raw}`);
+        if (!current && canonical !== raw) current = await this.resolveIndustry(ctx, canonical);
+        if (!current) {
+          const seedKeys = expandSeedIndustryKeys([canonical]);
+          if (seedKeys.length && seedIndustryByKey(canonical)) {
+            for (const key of seedKeys) out.add(key);
+            continue;
+          }
+          throw new MarketingValidationError(`industryId inexistente: ${raw}`);
+        }
         const seen = new Set<string>();
         while (current) {
           if (seen.has(current.id)) throw new MarketingValidationError("Ciclo en parentIndustryId");

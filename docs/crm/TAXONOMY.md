@@ -41,91 +41,85 @@ El allowlist TypeScript (`MARKETING_COUNTRY_SEED_CORE` / `listCountries()`) sigu
 
 Identidad lógica = `key` (slug). Nombre visible ≠ key.
 
-| key | name | parent |
-|---|---|---|
-| insurance | Seguros | — |
-| banking | Bancos | — |
-| fintech | Fintech | — |
-| collections | Cobranzas | — |
-| debt_portfolios | Compra / gestión de carteras | — |
-| factoring | Factoring | — |
-| utilities | Servicios públicos | — |
-| telecommunications | Telecomunicaciones | — |
-| legal | Servicios jurídicos | — |
-| automotive | Automotriz | — |
-| healthcare | Salud | — |
-| government | Gobierno | — |
-| retail | Retail | — |
-| ecommerce | E-commerce | — |
-| real_estate | Inmobiliario | — |
-| education | Educación | — |
-| logistics | Logística | — |
-| other | Otros | — |
+Catálogo **fijo y plano**. No se inventan rubros al importar CSV ni al crear campañas. ART no cuelga de Seguros. Gas no cuelga de servicios públicos. Un caso de uso nunca es un rubro.
 
-Banking, fintech y factoring quedan hermanos. No hay un padre “servicios financieros” redundante.
+| key | name |
+|---|---|
+| seguros | Seguros |
+| art | ART / Riesgos del Trabajo |
+| bancos | Bancos |
+| financieras | Financieras / Crédito |
+| fintech | Fintech / Pagos |
+| mercado_capitales | Mercado de Capitales / ALyC |
+| cobranzas | Cobranzas / Recupero |
+| carteras_credito | Compra y Administración de Carteras |
+| factoring | Factoring / Factoraje |
+| cooperativas_credito | Cooperativas / Crédito Mutual |
+| retail_credito | Retail con Crédito Propio |
+| telecomunicaciones | Telecomunicaciones |
+| gas | Gas / Distribución de Gas |
+| electricidad | Electricidad / Energía |
+| agua_saneamiento | Agua y Saneamiento |
+| servicios_publicos | Otros Servicios Públicos |
+| rrhh | RR.HH. / Relaciones Laborales |
+| estudios_juridicos | Estudios Jurídicos |
+| bpo_contact_center | BPO / Contact Center |
+| ecommerce | E-commerce / Comercio Digital |
+| leasing | Leasing / Financiamiento de Activos |
+| inmobiliario | Inmobiliario / Administradores |
+| salud | Salud |
+| gobierno | Gobierno / Administración Pública |
+| judicial | Poder Judicial / Organismos Jurídicos |
+| tecnologia | Tecnología / SaaS |
+| certificacion_digital | Certificación Digital / Comunicaciones Certificadas |
+| postal_logistica | Correo / Postal / Logística Documental |
+| agro | Agro / Agronegocios |
+| logistica_puertos | Logística / Puertos / Comercio Exterior |
+| otros | Otros |
+
+Keys del catálogo anterior (`insurance`, `utilities_gas`, `debt_portfolios`, `legal`, …) se resuelven como alias. No aparecen en la UI.
 
 ---
 
 ## 3. Subindustrias
 
-`parentIndustryId` apunta al **documento** padre (hash determinista). El `key` del padre se usa al asignar y al expandir.
-
-| key | name | parent key |
-|---|---|---|
-| insurance_carriers | Aseguradoras | insurance |
-| workers_compensation | Riesgos del trabajo / ART | insurance |
-| insurance_brokers | Productores / brokers | insurance |
-| utilities_gas | Gas | utilities |
-| utilities_electricity | Electricidad | utilities |
-| utilities_water | Agua | utilities |
+El catálogo comercial **no usa subrubros**. `parentIndustryId` sigue existiendo en el modelo por si un workspace arma un árbol propio; la semilla de Notificas no lo usa.
 
 ---
 
 ## 4. Casos de uso
 
-Entidad central. `industryIds` guarda **keys** de industria (puede ser más de una). `countryCodes: []` = global.
+Entidad distinta del rubro. `industryIds` guarda **keys** de industria (puede ser más de una). `countryCodes: []` = global.
 
 | key | name | industries |
 |---|---|---|
-| insurance_claim_rejection | Rechazo de siniestro | insurance |
-| insurance_policy_cancellation | Rescisión / cancelación de póliza | insurance |
-| insurance_payment_default | Mora del asegurado | insurance |
-| insurance_contract_notice | Comunicaciones contractuales fehacientes | insurance |
-| insurance_claim_notice | Comunicaciones relacionadas con siniestros | insurance |
-| workers_compensation_worker_notice | Comunicaciones al trabajador | workers_compensation (+ insurance) |
-| workers_compensation_employer_notice | Comunicaciones al empleador | workers_compensation (+ insurance) |
-| workers_compensation_medical_notice | Comunicaciones médico-administrativas | workers_compensation (+ insurance) |
-| workers_compensation_contract_notice | Comunicaciones contractuales fehacientes | workers_compensation (+ insurance) |
-| collections_payment_demand | Intimación de pago | collections |
-| collections_prelegal_notice | Aviso previo a gestión judicial | collections |
-| collections_credit_reporting_notice | Aviso previo a reporte de deuda | collections |
-| collections_debt_status_notice | Comunicación de estado de deuda | collections |
-| debt_assignment_notice | Notificación de cesión de crédito | debt_portfolios, factoring, banking, fintech, collections |
-| debt_portfolio_transfer_notice | Comunicación de transferencia de cartera | ídem |
-| debtor_new_creditor_notice | Comunicación de nuevo acreedor | ídem |
-| factoring_assignment_notice | Notificación al deudor cedido | factoring |
-| factoring_payment_instruction | Comunicación de instrucciones de pago | factoring |
-| factoring_contract_notice | Comunicación contractual | factoring |
-| utility_cutoff_warning | Aviso previo de corte | utilities + gas/electricidad/agua |
-| utility_payment_default | Mora | utilities + subrubros |
-| utility_service_suspension | Suspensión del servicio | utilities + subrubros |
-| utility_reconnection_notice | Reconexión | utilities + subrubros |
-| utility_contract_change | Cambios contractuales | utilities + subrubros |
-| utility_debt_notice | Comunicación de deuda | utilities + subrubros |
-| telecom_payment_default | Mora | telecommunications |
-| telecom_service_suspension | Suspensión | telecommunications |
-| telecom_termination | Baja / rescisión | telecommunications |
-| telecom_debt_notice | Comunicación de deuda | telecommunications |
-| telecom_contract_notice | Comunicación contractual | telecommunications |
-| financial_payment_default | Intimación de pago | banking, fintech |
-| financial_contract_notice | Comunicación contractual | banking, fintech |
-| financial_debt_assignment | Cesión de crédito | banking, fintech |
-| financial_data_notice | Comunicación relacionada con datos crediticios | banking, fintech |
-| financial_collection_notice | Gestión de cobranza | banking, fintech |
-| legal_extrajudicial_notice | Intimación extrajudicial | legal |
-| legal_contract_notice | Notificación contractual | legal |
-| legal_default_notice | Constitución en mora | legal |
-| legal_document_delivery | Entrega acreditable de documentación | legal |
+| cesion_credito | Notificación de cesión de crédito | carteras_credito, factoring, bancos, financieras, fintech, cobranzas |
+| transferencia_cartera | Comunicación de transferencia de cartera | carteras_credito, factoring, cobranzas, bpo_contact_center |
+| nuevo_acreedor | Comunicación de nuevo acreedor | carteras_credito, factoring, cobranzas |
+| intimacion_pago | Intimación de pago | cobranzas, bancos, financieras, fintech, estudios_juridicos, leasing, cooperativas_credito, retail_credito |
+| preaviso_morosidad | Preaviso de morosidad | bancos, financieras, fintech, cobranzas, utilities |
+| preaviso_reporte_crediticio | Preaviso de reporte crediticio | cobranzas, bancos, financieras, fintech, carteras_credito |
+| cobranza_temprana | Cobranza temprana | cobranzas, bancos, financieras, fintech, bpo_contact_center, retail_credito |
+| cobranza_prejudicial | Cobranza prejudicial | cobranzas, estudios_juridicos, bpo_contact_center, carteras_credito |
+| aviso_corte | Aviso previo de corte | gas, electricidad, agua_saneamiento, servicios_publicos, telecomunicaciones |
+| suspension_servicio | Suspensión del servicio | ídem |
+| reconexion | Reconexión | ídem |
+| rechazo_siniestro | Rechazo de siniestro | seguros |
+| rescision_poliza | Rescisión / cancelación de póliza | seguros, art |
+| notificacion_trabajador | Notificación al trabajador | art, rrhh |
+| notificacion_empleador | Notificación al empleador | art, rrhh |
+| entrega_documentacion | Entrega acreditable de documentación | estudios_juridicos, judicial, certificacion_digital, postal_logistica, mercado_capitales |
+| cambio_contractual | Cambio contractual | seguros, art, bancos, factoring, mercado_capitales, utilities |
+| aviso_comitentes | Aviso fehaciente a comitentes | mercado_capitales, bancos, fintech |
+
+Ejemplos de audiencia:
+
+```text
+CO → carteras_credito → cesion_credito
+UY → gas → aviso_corte
+AR → seguros → rechazo_siniestro
+AR → mercado_capitales → aviso_comitentes
+```
 
 No intenta cubrir todas las figuras jurídicas mundiales. Es una base comercial de Notificas.
 
@@ -157,7 +151,7 @@ Tags operativos / de relación. **No** duplican país ni rubro.
 
 ## 6. Naming
 
-- `key`: slug estable, snake_case ASCII (`utilities`, `utility_cutoff_warning`).
+- `key`: slug estable, snake_case ASCII (`gas`, `aviso_corte`, `carteras_credito`).
 - `name`: display en español.
 - No usar el display como FK.
 - No usar UUID aleatorio como identidad lógica del catálogo.
@@ -182,19 +176,12 @@ Países: `key === code` (ISO-2).
 Convención elegida (filtros Firestore, esta escala):
 
 ```ts
-industryIds: ["utilities", "utilities_gas"]
+industryIds: ["gas"]
 ```
 
-Se persisten **padre + hoja** para poder filtrar:
+Se persiste la **key canónica**. El catálogo es plano: filtrar gas no requiere expander un padre.
 
-- `array-contains "utilities"`
-- `array-contains "utilities_gas"`
-
-sin resolver el árbol en cada query.
-
-El service expande solo. Si el caller pasa `utilities_gas`, se incluye `utilities`. No se agregan hijos al asignar solo el padre.
-
-`parentIndustryId` en el documento de industria es FK interna al id de documento del padre.
+Si un workspace arma un árbol propio, el service sigue expandiendo padre+hoja. La semilla de Notificas no lo hace.
 
 Naturgy, Naturgy NOA y Gasnor / Naturgy NOA comparten taxonomía y **siguen siendo empresas distintas**.
 
@@ -203,10 +190,10 @@ Naturgy, Naturgy NOA y Gasnor / Naturgy NOA comparten taxonomía y **siguen sien
 ## 9. Company ↔ use case
 
 ```ts
-useCaseIds: ["utility_cutoff_warning"]
+useCaseIds: ["aviso_corte"]
 ```
 
-Una empresa suma casos de uso después (`utility_payment_default`) sin duplicar la empresa.
+Una empresa suma casos de uso después (`preaviso_morosidad`) sin duplicar la empresa.
 
 Los contactos **no** copian `industryIds`. Se derivan de `contact.companyId → company.industryIds`. `contact.useCaseIds` queda para excepciones futuras, no se llena en esta seed.
 
@@ -245,8 +232,8 @@ Default: **preview** (no escribe). Apply usa `countryService`, `industryService`
 Clasificación inicial de empresas de gas:
 
 ```text
-industryIds: utilities, utilities_gas
-useCaseIds: utility_cutoff_warning
+industryIds: gas
+useCaseIds: aviso_corte
 ```
 
 No se asignan todos los casos de utilities posibles: el criterio es **qué estamos ofreciendo ahora** (aviso previo de corte), no todo lo aplicable.
@@ -259,7 +246,7 @@ Empresa Sur: `industryIds: []`, `useCaseIds: []`, tag `classification_pending`. 
 
 - Etapa 5: UI CRM v2 (países → rubros → empresas → contactos, matriz país × rubro).
 - Filtros y listas dinámicas sobre `industryIds` / `useCaseIds` / `countryCode`.
-- Campañas segmentadas por la misma taxonomía.
+- Campañas e import CSV segmentados por **País + Rubro + Caso de uso** del catálogo fijo.
 - Casos de uso country-specific cuando el producto lo exija.
 - Eliminación de catálogos: manual / explícita, nunca por seed.
 - `contact.useCaseIds` sólo si un contacto diverge de la empresa.

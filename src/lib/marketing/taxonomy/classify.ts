@@ -1,5 +1,5 @@
 import { normalizeMarketingCompanyName } from "../normalizers";
-import { CLASSIFICATION_PENDING_TAG_KEY, GAS_INDUSTRY_KEYS, GAS_USE_CASE_KEYS } from "./constants";
+import { CLASSIFICATION_PENDING_TAG_KEY, CAPITAL_MARKETS_INDUSTRY_KEYS, CAPITAL_MARKETS_USE_CASE_KEYS, GAS_INDUSTRY_KEYS, GAS_USE_CASE_KEYS } from "./constants";
 import { expandSeedIndustryKeys } from "./seed";
 
 export type CompanyTaxonomyIntent = "classify" | "unresolved" | "leave";
@@ -14,7 +14,7 @@ export type CompanyClassificationTarget = {
 };
 
 const GAS_REASON =
-  "Dataset de prospección de gas: rubro servicios públicos / gas y oferta inicial de aviso previo de corte.";
+  "Dataset de prospección de gas: rubro Gas / Distribución de Gas y oferta inicial de aviso previo de corte.";
 
 const GAS_DISPLAY_NAMES = [
   "Camuzzi Gas",
@@ -46,8 +46,34 @@ const EMPRESA_SUR_TARGET: CompanyClassificationTarget = {
   pending: true,
 };
 
+const CAPITAL_MARKETS_REASON =
+  "Dataset de prospección ALyC: rubro Mercado de Capitales y oferta inicial de aviso fehaciente a comitentes.";
+
+const CAPITAL_MARKETS_DISPLAY_NAMES = [
+  "InvertirOnline S.A.U.",
+  "Bull Market Brokers S.A.",
+  "Balanz Capital Valores S.A.U.",
+  "PP Inversiones S.A. - Portfolio Personal Inversiones",
+  "Cocos Capital S.A.",
+  "Allaria S.A.",
+  "SBS Trading S.A. - Grupo SBS",
+  "Cohen S.A.",
+  "Adcap Securities Argentina S.A.",
+  "Max Capital S.A.",
+  "Criteria WM S.A.",
+];
+
+const CAPITAL_MARKETS_TARGETS: CompanyClassificationTarget[] = CAPITAL_MARKETS_DISPLAY_NAMES.map((name) => ({
+  normalizedName: normalizeMarketingCompanyName(name),
+  intent: "classify",
+  reason: CAPITAL_MARKETS_REASON,
+  industryKeys: expandSeedIndustryKeys([...CAPITAL_MARKETS_INDUSTRY_KEYS]),
+  useCaseKeys: [...CAPITAL_MARKETS_USE_CASE_KEYS],
+  pending: false,
+}));
+
 const TARGETS = new Map<string, CompanyClassificationTarget>(
-  [...GAS_TARGETS, EMPRESA_SUR_TARGET].map((row) => [row.normalizedName, row]),
+  [...GAS_TARGETS, ...CAPITAL_MARKETS_TARGETS, EMPRESA_SUR_TARGET].map((row) => [row.normalizedName, row]),
 );
 
 export function companyClassificationTarget(normalizedName: string): CompanyClassificationTarget | null {

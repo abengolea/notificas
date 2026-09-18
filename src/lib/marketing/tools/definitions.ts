@@ -26,8 +26,8 @@ export const CRM_READ_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     inputSchema: obj({
       query: { type: "string", description: "Company name or website/domain." },
       countryCode: { type: "string", description: "ISO-2 country code, e.g. UY, AR, CL, CO, PE." },
-      industryId: { type: "string", description: "Industry catalog key, e.g. insurance or utilities_gas." },
-      useCaseId: { type: "string", description: "Use-case catalog key." },
+      industryId: { type: "string", description: "Industry catalog key, e.g. seguros, gas, carteras_credito." },
+      useCaseId: { type: "string", description: "Use-case catalog key, e.g. aviso_corte, cesion_credito. Not an industry." },
       commercialStageId: { type: "string", description: "Commercial pipeline id, not email engagement stage." },
       limit,
       cursor,

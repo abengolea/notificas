@@ -84,7 +84,7 @@ Pendiente: substring, país+industria, listado v1 completo sin `workspaceId`.
 
 `industryService`, `useCaseService` y `tagService` exigen `key` estable en el alta. `getByKey()` resuelve workspace+key. El id de documento es `marketingCatalogId`, no UUID aleatorio.
 
-Al asignar `industryIds` (empresa o caso de uso), el service **expande el padre**. `utilities_gas` persiste `["utilities", "utilities_gas"]`. No depende del caller.
+Al asignar `industryIds` (empresa o caso de uso), el service **expande el padre si existe**. El catálogo comercial actual es **plano** (`gas`, `art`, `seguros` son hermanos). Keys del catálogo anterior (`utilities_gas`, `insurance`) se canonicalizan. Si el documento Firestore aún no existe, se acepta la key de la semilla fija. No depende del caller.
 
 `useCase.countryCodes: []` implica `appliesToAllCountries: true` (global). Ver [`TAXONOMY.md`](TAXONOMY.md). Seed: `npm run crm:seed:taxonomy` (`CRM_TAXONOMY_V1`, preview default).
 

@@ -7,6 +7,8 @@ import type { MarketingRepositories } from "./repositories/types";
 import { createMarketingServices } from "./services";
 import {
   applyTaxonomySeed,
+  canonicalIndustryKey,
+  canonicalUseCaseKey,
   CRM_TAXONOMY_MIGRATION_ID,
   parseTaxonomyCliArgs,
   previewTaxonomySeed,
@@ -15,6 +17,8 @@ import {
   TAXONOMY_TAGS,
   TAXONOMY_USE_CASES,
 } from "./taxonomy";
+import { parseImportTaxonomy } from "./taxonomy/assign";
+import { catalogRowMatchesQuery, catalogUseCaseAppliesToIndustry } from "./taxonomy/seed";
 import { CLASSIFICATION_PENDING_TAG_KEY } from "./taxonomy/constants";
 
 function setup(workspaceId = "notificas-internal") {
@@ -196,11 +200,11 @@ test("companies de gas se clasifican y Naturgy permanece separada", async () => 
   const gasnor = await services.companies.getCompany(ctx, ids["gasnor naturgy noa"]);
   const sur = await services.companies.getCompany(ctx, ids["empresa sur"]);
 
-  assert.deepEqual(camuzzi.industryIds, ["utilities", "utilities_gas"]);
-  assert.deepEqual(camuzzi.useCaseIds, ["utility_cutoff_warning"]);
-  assert.deepEqual(naturgy.industryIds, ["utilities", "utilities_gas"]);
-  assert.deepEqual(noa.industryIds, ["utilities", "utilities_gas"]);
-  assert.deepEqual(gasnor.industryIds, ["utilities", "utilities_gas"]);
+  assert.deepEqual(camuzzi.industryIds, ["gas"]);
+  assert.deepEqual(camuzzi.useCaseIds, ["aviso_corte"]);
+  assert.deepEqual(naturgy.industryIds, ["gas"]);
+  assert.deepEqual(noa.industryIds, ["gas"]);
+  assert.deepEqual(gasnor.industryIds, ["gas"]);
   assert.notEqual(naturgy.id, noa.id);
   assert.notEqual(naturgy.id, gasnor.id);
   assert.notEqual(noa.id, gasnor.id);
@@ -230,7 +234,7 @@ test("seed no toca catálogos de otro workspace", async () => {
   const still = await services.industries.getIndustry(otherCtx, foreign.id);
   assert.equal(still.id, foreign.id);
   assert.equal(still.workspaceId, "otro-workspace");
-  const local = await services.industries.getByKey(ctx, "utilities");
+  const local = await services.industries.getByKey(ctx, "gas");
   assert.ok(local);
   assert.notEqual(local.id, foreign.id);
 });
@@ -246,4 +250,37 @@ test("use case vacío countryCodes es global", async () => {
   });
   assert.equal(created.appliesToAllCountries, true);
   assert.deepEqual(created.countryCodes, []);
+});
+
+test("el catálogo fijo es plano y separa rubro de caso de uso", () => {
+  assert.equal(TAXONOMY_INDUSTRIES.length, 31);
+  assert.ok(TAXONOMY_INDUSTRIES.every((row) => !row.parentKey));
+  assert.ok(TAXONOMY_INDUSTRIES.some((row) => row.key === "art"));
+  assert.ok(TAXONOMY_INDUSTRIES.some((row) => row.key === "carteras_credito"));
+  assert.ok(TAXONOMY_INDUSTRIES.some((row) => row.key === "mercado_capitales"));
+  assert.ok(!TAXONOMY_INDUSTRIES.some((row) => row.key === "cesion_credito"));
+  assert.ok(TAXONOMY_USE_CASES.some((row) => row.key === "cesion_credito"));
+  assert.ok(TAXONOMY_USE_CASES.some((row) => row.key === "aviso_comitentes"));
+  assert.equal(canonicalIndustryKey("utilities_gas"), "gas");
+  assert.equal(canonicalIndustryKey("alyc"), "mercado_capitales");
+  assert.equal(canonicalIndustryKey("workers_compensation"), "art");
+  assert.equal(canonicalUseCaseKey("utility_cutoff_warning"), "aviso_corte");
+  assert.equal(canonicalUseCaseKey("debt_assignment_notice"), "cesion_credito");
+});
+
+test("el rubro ALyC se encuentra por palabra clave", () => {
+  const row = TAXONOMY_INDUSTRIES.find((item) => item.key === "mercado_capitales");
+  assert.ok(row);
+  assert.equal(catalogRowMatchesQuery(row, "alyc"), true);
+  assert.equal(catalogRowMatchesQuery(row, "capitales"), true);
+  assert.equal(catalogRowMatchesQuery(row, "gas"), false);
+  assert.equal(catalogUseCaseAppliesToIndustry("aviso_comitentes", "mercado_capitales"), true);
+});
+
+test("importación acepta varios casos de uso", () => {
+  const stamp = parseImportTaxonomy({
+    industryId: "mercado_capitales",
+    useCaseIds: ["aviso_comitentes", "cambio_contractual"],
+  });
+  assert.deepEqual(stamp?.useCaseIds, ["aviso_comitentes", "cambio_contractual"]);
 });

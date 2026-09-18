@@ -3,8 +3,10 @@ import { FieldValue } from "firebase-admin/firestore";
 import { assertAdminSession } from "@/lib/assert-admin-session";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { bumpListCount, countryFromRows, getOrCreateMarketingList } from "@/lib/marketing/audience";
-import { MARKETING_CONTACTS } from "@/lib/marketing/collections";
+import { MARKETING_CONTACTS, MARKETING_LISTS } from "@/lib/marketing/collections";
 import { contactIdForEmail, parseContactCsv } from "@/lib/marketing/csv";
+import { MarketingError } from "@/lib/marketing/errors";
+import { lookupStampedCompanyId, parseImportTaxonomy, stampImportedCompanies } from "@/lib/marketing/taxonomy/assign";
 
 export async function POST(request: NextRequest) {
   const denied = assertAdminSession(request);
@@ -13,16 +15,28 @@ export async function POST(request: NextRequest) {
     const contentType = request.headers.get("content-type") || "";
     let text = "";
     let listName = "";
+    let industryId = "";
+    let useCaseIds: string[] = [];
     if (contentType.includes("multipart/form-data")) {
       const form = await request.formData();
       const file = form.get("file");
       if (file instanceof File) text = await file.text();
       else text = String(form.get("csv") || "");
       listName = String(form.get("listName") || "");
+      industryId = String(form.get("industryId") || "");
+      useCaseIds = form.getAll("useCaseId").map(String).concat(String(form.get("useCaseIds") || "").split(","));
     } else {
-      const body = (await request.json().catch(() => ({}))) as { csv?: string; listName?: string };
+      const body = (await request.json().catch(() => ({}))) as {
+        csv?: string;
+        listName?: string;
+        industryId?: string;
+        useCaseId?: string;
+        useCaseIds?: string[];
+      };
       text = String(body.csv || "");
       listName = String(body.listName || "");
+      industryId = String(body.industryId || "");
+      useCaseIds = [...(body.useCaseIds || []), body.useCaseId || ""];
     }
     const parsed = parseContactCsv(text);
     if (parsed.rows.length === 0) {
@@ -32,11 +46,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const taxonomy = parseImportTaxonomy({ industryId, useCaseIds });
+    const stamped = taxonomy
+      ? await stampImportedCompanies({
+          items: parsed.rows.map((row) => ({ name: row.company, countryCode: row.country })),
+          taxonomy,
+        })
+      : new Map<string, string>();
+
     const list = await getOrCreateMarketingList({
       name: listName,
       country: countryFromRows(parsed.rows.map((r) => r.country)),
       source: "csv",
     });
+    if (taxonomy) {
+      await getAdminDb().collection(MARKETING_LISTS).doc(list.id).update({
+        industryId: taxonomy.industryId,
+        useCaseId: taxonomy.useCaseIds[0] || null,
+        useCaseIds: taxonomy.useCaseIds,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
 
     const db = getAdminDb();
     let created = 0;
@@ -59,6 +89,7 @@ export async function POST(request: NextRequest) {
         existing.exists &&
         Array.isArray(existing.data()?.listIds) &&
         existing.data()!.listIds.map(String).includes(list.id);
+      const companyId = lookupStampedCompanyId(stamped, row.company, row.country);
       const base = {
         email: row.email,
         emailKey: row.email,
@@ -68,6 +99,8 @@ export async function POST(request: NextRequest) {
         country: row.country,
         notes: row.notes,
         updatedAt: FieldValue.serverTimestamp(),
+        ...(companyId ? { companyId } : {}),
+        ...(taxonomy ? { useCaseIds: taxonomy.useCaseIds } : {}),
       };
       if (existing.exists) {
         batch.set(
@@ -114,9 +147,17 @@ export async function POST(request: NextRequest) {
       skipped: parsed.skipped,
       errors: parsed.errors.slice(0, 40),
       errorCount: parsed.errors.length,
+      industryId: taxonomy?.industryId || null,
+      useCaseId: taxonomy?.useCaseIds[0] || null,
+      useCaseIds: taxonomy?.useCaseIds || [],
     });
   } catch (e) {
-    const status = typeof (e as { status?: number }).status === "number" ? (e as { status: number }).status : 500;
+    const status =
+      e instanceof MarketingError && e.code === "validation"
+        ? 400
+        : typeof (e as { status?: number }).status === "number"
+          ? (e as { status: number }).status
+          : 500;
     const msg = e instanceof Error ? e.message : "Error interno";
     console.error("POST marketing import", e);
     return NextResponse.json({ error: msg }, { status });

@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { MarketingSubnav } from "./marketing-subnav";
 import { MarketingListUpload } from "./marketing-list-upload";
 import { MarketingRecipientPreview, type PreviewContact } from "./marketing-recipient-preview";
+import { MarketingTaxonomyFields, type TaxonomyCatalog } from "./marketing-taxonomy-fields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +20,8 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
+const INCLUDE_STAGES = ["new", "sent", "opened", "clicked", "replied"];
+
 type ListOption = {
   id: string;
   name: string;
@@ -30,6 +33,7 @@ type Audience = {
   total: number;
   eligible: number;
   skipped: number;
+  companyCount?: number;
   contacts: PreviewContact[];
 };
 
@@ -37,8 +41,13 @@ export function MarketingCampaignForm() {
   const router = useRouter();
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
+  const [source, setSource] = useState<"crm" | "list">("crm");
   const [listId, setListId] = useState("");
   const [lists, setLists] = useState<ListOption[] | null>(null);
+  const [catalog, setCatalog] = useState<TaxonomyCatalog | null>(null);
+  const [countryCode, setCountryCode] = useState("");
+  const [industryId, setIndustryId] = useState("");
+  const [useCaseIds, setUseCaseIds] = useState<string[]>([]);
   const [audience, setAudience] = useState<Audience | null>(null);
   const [loadingAudience, setLoadingAudience] = useState(false);
   const [form, setForm] = useState({
@@ -48,6 +57,7 @@ export function MarketingCampaignForm() {
   });
 
   const namedLists = useMemo(() => (lists || []).filter((l) => !l.virtual), [lists]);
+  const canSubmit = source === "crm" ? Boolean(countryCode && industryId && useCaseIds.length) : Boolean(listId);
 
   async function refreshLists() {
     const res = await fetch("/api/admin/marketing/lists", { credentials: "include" });
@@ -60,10 +70,25 @@ export function MarketingCampaignForm() {
     let cancelled = false;
     (async () => {
       try {
-        await refreshLists();
+        const [listsRes, catalogRes] = await Promise.all([
+          fetch("/api/admin/marketing/lists", { credentials: "include" }),
+          fetch("/api/admin/marketing/catalog", { credentials: "include" }),
+        ]);
+        const listsData = await listsRes.json();
+        const catalogData = await catalogRes.json();
+        if (!listsRes.ok) throw new Error(listsData.error || "No se pudieron cargar las listas");
+        if (!catalogRes.ok) throw new Error(catalogData.error || "No se pudieron cargar los rubros");
+        if (cancelled) return;
+        setLists(listsData.lists || []);
+        setCatalog({
+          countries: catalogData.countries || [],
+          industries: catalogData.industries || [],
+          useCases: catalogData.useCases || [],
+        });
       } catch (e) {
         if (!cancelled) {
           setLists([]);
+          setCatalog({ countries: [], industries: [], useCases: [] });
           toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
         }
       }
@@ -74,7 +99,9 @@ export function MarketingCampaignForm() {
   }, [toast]);
 
   useEffect(() => {
-    if (!listId) {
+    const crmReady = source === "crm" && countryCode && industryId && useCaseIds.length;
+    const listReady = source === "list" && listId;
+    if (!crmReady && !listReady) {
       setAudience(null);
       return;
     }
@@ -83,10 +110,11 @@ export function MarketingCampaignForm() {
       setLoadingAudience(true);
       void (async () => {
         try {
-          const res = await fetch(
-            `/api/admin/marketing/recipients?listId=${encodeURIComponent(listId)}&stages=new,sent,opened,clicked,replied`,
-            { credentials: "include", signal: controller.signal },
-          );
+          const url =
+            source === "crm"
+              ? `/api/admin/marketing/crm-audience?countryCode=${encodeURIComponent(countryCode)}&industryId=${encodeURIComponent(industryId)}&useCaseIds=${encodeURIComponent(useCaseIds.join(","))}&stages=${INCLUDE_STAGES.join(",")}`
+              : `/api/admin/marketing/recipients?listId=${encodeURIComponent(listId)}&stages=${INCLUDE_STAGES.join(",")}`;
+          const res = await fetch(url, { credentials: "include", signal: controller.signal });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || "No se pudo armar la lista");
           setAudience(data);
@@ -102,11 +130,15 @@ export function MarketingCampaignForm() {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [listId, toast]);
+  }, [source, listId, countryCode, industryId, useCaseIds, toast]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!listId) {
+    if (source === "crm" && (!countryCode || !industryId || useCaseIds.length === 0)) {
+      toast({ title: "Elegí país, rubro y al menos un caso de uso", variant: "destructive" });
+      return;
+    }
+    if (source === "list" && !listId) {
       toast({ title: "Cargá un CSV de destinatarios o elegí una lista", variant: "destructive" });
       return;
     }
@@ -122,8 +154,13 @@ export function MarketingCampaignForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
-          listId,
-          includeStages: ["new", "sent", "opened", "clicked", "replied"],
+          source,
+          listId: source === "list" ? listId : undefined,
+          countryCode: source === "crm" ? countryCode : undefined,
+          industryId: source === "crm" ? industryId : undefined,
+          useCaseId: source === "crm" ? useCaseIds[0] : undefined,
+          useCaseIds: source === "crm" ? useCaseIds : undefined,
+          includeStages: INCLUDE_STAGES,
         }),
       });
       const data = await res.json();
@@ -134,6 +171,13 @@ export function MarketingCampaignForm() {
       setSaving(false);
     }
   }
+
+  const emptyHint =
+    source === "crm" && audience && (audience.companyCount || 0) === 0
+      ? "No hay empresas de ese rubro y caso de uso en ese país. El catálogo es fijo; hay que clasificar las empresas para armar destinatarios."
+      : source === "crm"
+        ? "Esas empresas no tienen contactos enviables."
+        : "Esa lista no tiene contactos enviables.";
 
   return (
     <div className="space-y-6">
@@ -147,44 +191,89 @@ export function MarketingCampaignForm() {
         <div className="space-y-3">
           <div>
             <p className="text-sm font-medium">Destinatarios</p>
-            <p className="text-sm text-muted-foreground">Subí el CSV acá. No se mandan contactos viejos del CRM si no están en esta lista.</p>
+            <p className="text-sm text-muted-foreground">
+              Armá la audiencia con el catálogo fijo: país, rubro y caso de uso. El CSV no inventa rubros.
+            </p>
           </div>
-          <MarketingListUpload
-            defaultName={form.name}
-            onImported={(list) => {
-              setListId(list.listId);
-              void refreshLists().catch(() => undefined);
-            }}
-          />
-          {namedLists.length ? (
-            <div className="space-y-1">
-              <Label>O usar una lista ya cargada</Label>
-              <Select value={listId || undefined} onValueChange={setListId}>
-                <SelectTrigger><SelectValue placeholder="Ninguna todavía" /></SelectTrigger>
-                <SelectContent>
-                  {namedLists.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.name} ({l.contactCount})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant={source === "crm" ? "default" : "outline"}
+              onClick={() => setSource("crm")}
+            >
+              Empresas del CRM
+            </Button>
+            <Button
+              type="button"
+              variant={source === "list" ? "default" : "outline"}
+              onClick={() => setSource("list")}
+            >
+              CSV / lista
+            </Button>
+          </div>
+
+          {source === "crm" ? (
+            <MarketingTaxonomyFields
+              catalog={catalog}
+              countryCode={countryCode}
+              industryId={industryId}
+              useCaseIds={useCaseIds}
+              onCountryChange={setCountryCode}
+              onIndustryChange={setIndustryId}
+              onUseCaseIdsChange={setUseCaseIds}
+            />
+          ) : (
+            <>
+              <MarketingListUpload
+                defaultName={form.name}
+                catalog={catalog}
+                requireTaxonomy
+                onImported={(list) => {
+                  setListId(list.listId);
+                  void refreshLists().catch(() => undefined);
+                }}
+              />
+              {namedLists.length ? (
+                <div className="space-y-1">
+                  <Label>O usar una lista ya cargada</Label>
+                  <Select value={listId || undefined} onValueChange={setListId}>
+                    <SelectTrigger><SelectValue placeholder="Ninguna todavía" /></SelectTrigger>
+                    <SelectContent>
+                      {namedLists.map((l) => (
+                        <SelectItem key={l.id} value={l.id}>
+                          {l.name} ({l.contactCount})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+            </>
+          )}
+
           {loadingAudience ? (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Leyendo destinatarios…
             </p>
-          ) : listId && audience ? (
-            <MarketingRecipientPreview
-              contacts={audience.contacts}
-              total={audience.total}
-              eligible={audience.eligible}
-              skipped={audience.skipped}
-              emptyHint="Esa lista no tiene contactos enviables."
-            />
+          ) : audience ? (
+            <>
+              {source === "crm" && typeof audience.companyCount === "number" ? (
+                <p className="text-sm text-muted-foreground">
+                  {audience.companyCount} {audience.companyCount === 1 ? "empresa" : "empresas"} de ese rubro y caso de uso.
+                </p>
+              ) : null}
+              <MarketingRecipientPreview
+                contacts={audience.contacts}
+                total={audience.total}
+                eligible={audience.eligible}
+                skipped={audience.skipped}
+                emptyHint={emptyHint}
+              />
+            </>
           ) : (
-            <p className="text-sm text-muted-foreground">Todavía no hay destinatarios en esta campaña.</p>
+            <p className="text-sm text-muted-foreground">
+              {source === "crm" ? "Elegí país, rubro y caso de uso para ver las empresas." : "Todavía no hay destinatarios en esta campaña."}
+            </p>
           )}
         </div>
 
@@ -205,7 +294,7 @@ export function MarketingCampaignForm() {
           />
           <p className="text-sm text-muted-foreground">Podés pegar HTML o texto. Variables: {"{{nombre}} {{empresa}} {{pais}} {{cargo}} {{email}}"}</p>
         </div>
-        <Button type="submit" disabled={saving || !listId}>
+        <Button type="submit" disabled={saving || !canSubmit}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar borrador"}
         </Button>
       </form>

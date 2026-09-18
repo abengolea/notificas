@@ -91,10 +91,13 @@ export async function resolveListLabel(listId: string | null | undefined): Promi
   listId: string | null;
   listName: string;
   country: MarketingCountryCode | "all";
+  industryId: string | null;
+  useCaseId: string | null;
+  useCaseIds: string[];
 }> {
   const source = parseRecipientSource(listId);
   if (source.kind === "none") {
-    return { listId: null, listName: "", country: "all" };
+    return { listId: null, listName: "", country: "all", industryId: null, useCaseId: null, useCaseIds: [] };
   }
   if (source.kind === "country") {
     const country = source.country === "all" || isMarketingCountryCode(source.country) ? source.country : "all";
@@ -102,6 +105,9 @@ export async function resolveListLabel(listId: string | null | undefined): Promi
       listId: countryListKey(country),
       listName: virtualCountryListName(country),
       country: country === "all" || isMarketingCountryCode(country) ? country : "all",
+      industryId: null,
+      useCaseId: null,
+      useCaseIds: [],
     };
   }
   const db = getAdminDb();
@@ -117,6 +123,13 @@ export async function resolveListLabel(listId: string | null | undefined): Promi
     listId: snap.id,
     listName: String(data.name || "Lista"),
     country,
+    industryId: String(data.industryId || "").trim() || null,
+    useCaseId: String(data.useCaseId || "").trim() || null,
+    useCaseIds: Array.isArray(data.useCaseIds)
+      ? data.useCaseIds.map(String).filter(Boolean)
+      : String(data.useCaseId || "").trim()
+        ? [String(data.useCaseId).trim()]
+        : [],
   };
 }
 

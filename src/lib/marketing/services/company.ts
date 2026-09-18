@@ -16,6 +16,7 @@ import {
   normalizeMarketingUrl,
 } from "../normalizers";
 import type { CompanySearchFilters, MarketingCompanyRepository, MarketingIndustryRepository, MarketingUseCaseRepository } from "../repositories/types";
+import { seedUseCaseByKey } from "../taxonomy/seed";
 import { nowIso } from "../persistence/timestamps";
 import { createIndustryService } from "./industry";
 import { createUseCaseService } from "./use-case";
@@ -102,8 +103,16 @@ export function createCompanyService(
     const out: string[] = [];
     for (const raw of keys) {
       const row = await useCaseService.resolveUseCase(ctx, raw);
-      if (!row) throw new MarketingValidationError(`useCaseId inexistente: ${raw}`);
-      out.push(row.key);
+      if (row) {
+        out.push(row.key);
+        continue;
+      }
+      const seed = seedUseCaseByKey(raw);
+      if (seed) {
+        out.push(seed.key);
+        continue;
+      }
+      throw new MarketingValidationError(`useCaseId inexistente: ${raw}`);
     }
     return [...new Set(out)].sort();
   }

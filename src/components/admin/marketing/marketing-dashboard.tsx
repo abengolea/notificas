@@ -173,11 +173,22 @@ export function MarketingDashboard() {
       )}
 
       <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-lg font-semibold">Campañas recientes</h3>
-          <Button asChild size="sm">
-            <Link href="/admin/marketing/campanas/nueva">Nueva campaña</Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="sm" variant="outline">
+              <Link href="/admin/marketing/campanas?outcome=unsent">Sin envíos</Link>
+            </Button>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/admin/marketing/campanas?outcome=sent">Enviadas</Link>
+            </Button>
+            <Button asChild size="sm" variant="outline">
+              <Link href="/admin/marketing/campanas?outcome=delivered">Recibidos</Link>
+            </Button>
+            <Button asChild size="sm">
+              <Link href="/admin/marketing/campanas/nueva">Nueva campaña</Link>
+            </Button>
+          </div>
         </div>
         {data.campaigns.length === 0 ? (
           <p className="text-sm text-muted-foreground">Todavía no hay campañas de marketing.</p>
