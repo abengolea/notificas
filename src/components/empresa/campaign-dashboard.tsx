@@ -970,7 +970,7 @@ export const CampaignDashboard = forwardRef<
       csvInFlight={csvInFlight}
       csvFailed={csvFailed}
       onCopy={() => void copiarCampana()}
-      hideCopy={empresaReadOnly}
+      hideCopy={empresaReadOnly || isAdmin}
       onDownloadPdf={() => void descargarReporte()}
       onDownloadFilteredCsv={(kind) => void descargarCsvFiltrado(kind)}
       onDownloadProblemasCsv={() => void descargarCsvFiltrado("problemas")}

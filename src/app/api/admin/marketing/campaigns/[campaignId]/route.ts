@@ -15,6 +15,7 @@ const patchSchema = z.object({
   textBody: z.string().max(20_000).optional(),
   listId: z.string().min(1).max(80).optional(),
   status: z.enum(["paused", "cancelled", "sending"]).optional(),
+  archived: z.boolean().optional(),
 });
 
 export async function GET(
@@ -85,11 +86,21 @@ export async function PATCH(
       if (list.useCaseIds?.length) updates.useCaseIds = list.useCaseIds;
     }
     if (d.status === "paused" && current === "sending") updates.status = "paused";
-    if (d.status === "sending" && current === "paused") updates.status = "sending";
+    if (d.status === "sending" && current === "paused") {
+      if (snap.data()?.archivedAt) {
+        return NextResponse.json({ error: "Restaurá la campaña para reanudar el envío." }, { status: 409 });
+      }
+      updates.status = "sending";
+    }
     if (d.status === "cancelled" && current !== "sent") {
       updates.status = "cancelled";
       updates.completedAt = FieldValue.serverTimestamp();
     }
+    if (d.archived === true) {
+      updates.archivedAt = FieldValue.serverTimestamp();
+      if (current === "sending") updates.status = "paused";
+    }
+    if (d.archived === false) updates.archivedAt = null;
     await ref.update(updates);
     const next = await ref.get();
     return NextResponse.json({ campaign: serializeAdminDoc(next.id, next.data() || {}) });

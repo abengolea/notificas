@@ -55,6 +55,7 @@ type CampaignPayload = {
   autoPauseSource?: string;
   autoPauseReason?: string;
   autoPauseCode?: string;
+  archivedAt?: string | null;
   waTemplateName: string;
   waTemplateLang: string;
   waTemplateVariables: string[];
@@ -180,6 +181,35 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
       waUrlButton: templateUrlButton,
       waTemplateBody: templateBody,
     });
+  }
+
+  async function copyCampaign() {
+    if (!data) return;
+    setSending(true);
+    try {
+      const res = await fetch("/api/campaigns/copy", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId, orgId: data.campaign.orgId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "No se pudo copiar");
+      toast({ title: "Campaña copiada como borrador" });
+      window.location.href = `/admin/campanas/${json.newCampaignId}`;
+    } catch (e) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Error", variant: "destructive" });
+      setSending(false);
+    }
+  }
+
+  async function toggleArchive() {
+    if (!data) return;
+    try {
+      await patchCampaign({ archived: !data.campaign.archivedAt });
+    } catch {
+      /* patchCampaign already toasts */
+    }
   }
 
   async function onFile(file: File) {
@@ -465,6 +495,28 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
           )}
           <div ref={setExportActionsHost} className="flex flex-wrap gap-2" />
         </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background p-4">
+        <Button variant="secondary" className="gap-2" disabled={sending || saving} onClick={() => void copyCampaign()}>
+          Copiar campaña
+        </Button>
+        {hasErrors ? (
+          <Button
+            variant="outline"
+            disabled={sending}
+            onClick={() => setConfirmSend(true)}
+            className="gap-2 border-destructive text-destructive hover:bg-destructive/10"
+          >
+            Reenviar fallidos ({stats.errores.toLocaleString("es-AR")})
+          </Button>
+        ) : (
+          <Button variant="outline" disabled>
+            Reenviar fallidos
+          </Button>
+        )}
+        <Button variant="outline" disabled={saving} onClick={() => void toggleArchive()}>
+          {c.archivedAt ? "Restaurar" : "Archivar"}
+        </Button>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

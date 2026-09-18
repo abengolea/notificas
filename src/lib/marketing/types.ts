@@ -102,6 +102,8 @@ export type MarketingCampaign = {
   updatedAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
+  archivedAt: string | null;
+  copiedFromId?: string | null;
 } & MarketingCampaignV2Fields;
 
 export type MarketingSend = {

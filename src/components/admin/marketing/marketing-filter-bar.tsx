@@ -14,6 +14,8 @@ import {
 import {
   AUDIENCE_KIND_LABEL,
   AUDIENCE_KINDS,
+  CAMPAIGN_ARCHIVED_LABEL,
+  CAMPAIGN_ARCHIVED_FILTERS,
   CAMPAIGN_OUTCOME_LABEL,
   CAMPAIGN_OUTCOMES,
   CAMPAIGN_STATUS_LABEL,
@@ -42,6 +44,7 @@ export type MarketingFilterValues = {
   outcome: string;
   listId: string;
   audienceKind: string;
+  archived: string;
 };
 
 export const EMPTY_MARKETING_FILTERS: MarketingFilterValues = {
@@ -54,6 +57,7 @@ export const EMPTY_MARKETING_FILTERS: MarketingFilterValues = {
   outcome: "all",
   listId: "all",
   audienceKind: "all",
+  archived: "hide",
 };
 
 export const CONTACT_FILTER_SHOW = {
@@ -70,6 +74,7 @@ export const CAMPAIGN_FILTER_SHOW = {
   ...CONTACT_FILTER_SHOW,
   status: true,
   audienceKind: true,
+  archived: true,
 } as const;
 
 export function MarketingFilterBar({
@@ -93,6 +98,7 @@ export function MarketingFilterBar({
     outcome?: boolean;
     list?: boolean;
     audienceKind?: boolean;
+    archived?: boolean;
   };
 }) {
   const namedLists = (lists || []).filter((row) => !row.virtual);
@@ -238,6 +244,19 @@ export function MarketingFilterBar({
           </Select>
         </div>
       ) : null}
+      {show.archived ? (
+        <div className="space-y-1">
+          <Label>Visibilidad</Label>
+          <Select value={values.archived} onValueChange={(archived) => patch({ archived })}>
+            <SelectTrigger><SelectValue placeholder="Visibilidad" /></SelectTrigger>
+            <SelectContent>
+              {CAMPAIGN_ARCHIVED_FILTERS.map((row) => (
+                <SelectItem key={row} value={row}>{CAMPAIGN_ARCHIVED_LABEL[row]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
       {filtersHaveValues(values) ? (
         <div className="flex items-end">
           <button
@@ -256,6 +275,7 @@ export function MarketingFilterBar({
 export function filtersHaveValues(values: MarketingFilterValues): boolean {
   return Object.entries(values).some(([key, value]) => {
     if (key === "q") return Boolean(value.trim());
+    if (key === "archived") return value !== "hide";
     return Boolean(value) && value !== "all";
   });
 }
@@ -264,12 +284,14 @@ export function filtersToSearchParams(values: MarketingFilterValues): URLSearchP
   const sp = new URLSearchParams();
   for (const [key, value] of Object.entries(values)) {
     if (!value || value === "all") continue;
+    if (key === "archived" && value === "hide") continue;
     sp.set(key, value);
   }
   return sp;
 }
 
 export function filtersFromSearchParams(params: { get: (key: string) => string | null }): MarketingFilterValues {
+  const archived = params.get("archived") || "hide";
   return {
     q: params.get("q") || "",
     country: params.get("country") || "all",
@@ -280,5 +302,6 @@ export function filtersFromSearchParams(params: { get: (key: string) => string |
     outcome: params.get("outcome") || "all",
     listId: params.get("listId") || "all",
     audienceKind: params.get("audienceKind") || "all",
+    archived: archived === "only" || archived === "all" ? archived : "hide",
   };
 }

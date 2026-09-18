@@ -55,6 +55,8 @@ export async function GET(request: NextRequest) {
     const listId = parseAdminFilterValue(request.nextUrl.searchParams.get("listId"));
     const stage = parseAdminFilterValue(request.nextUrl.searchParams.get("stage"));
     const q = parseAdminFilterValue(request.nextUrl.searchParams.get("q"));
+    const archivedRaw = String(request.nextUrl.searchParams.get("archived") || "hide").trim();
+    const archived = archivedRaw === "only" || archivedRaw === "all" ? archivedRaw : "hide";
     const db = getAdminDb();
     const [snap, listsSnap] = await Promise.all([
       db.collection(MARKETING_CAMPAIGNS).limit(400).get(),
@@ -101,6 +103,7 @@ export async function GET(request: NextRequest) {
           audienceKind,
           listId,
           stage,
+          archived,
         }),
       )
       .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));

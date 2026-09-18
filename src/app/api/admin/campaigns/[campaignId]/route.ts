@@ -20,6 +20,7 @@ const patchSchema = z.object({
   waTemplateBody: z.string().max(20000).optional(),
   tandaSize: z.number().int().min(0).optional(),
   notificationType: z.enum(['ORDINARY', 'SRT_ART']).optional(),
+  archived: z.boolean().optional(),
 });
 
 function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
@@ -62,6 +63,7 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     createdAt: data.createdAt?.toDate?.()?.toISOString?.() ?? null,
     startedAt: data.startedAt?.toDate?.()?.toISOString?.() ?? null,
     completedAt: data.completedAt?.toDate?.()?.toISOString?.() ?? null,
+    archivedAt: data.archivedAt?.toDate?.()?.toISOString?.() ?? (data.archivedAt ? String(data.archivedAt) : null),
     nextDailyDayKey: typeof data.nextDailyDayKey === 'string' ? data.nextDailyDayKey : '',
     nextDailyAt: data.nextDailyAt?.toDate?.()?.toISOString?.() ?? null,
   };
@@ -172,6 +174,11 @@ export async function PATCH(
     }
     if (d.tandaSize != null) patch.tandaSize = d.tandaSize;
     if (d.notificationType != null) patch.notificationType = d.notificationType;
+    if (d.archived === true) {
+      patch.archivedAt = FieldValue.serverTimestamp();
+      if (String(current.estado) === 'enviando') patch.estado = 'pausada';
+    }
+    if (d.archived === false) patch.archivedAt = null;
 
     await ref.update(patch);
     const updated = await ref.get();

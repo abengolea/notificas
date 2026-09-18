@@ -16,6 +16,7 @@ import {
 import type { TaxonomyCatalog } from "./marketing-taxonomy-fields";
 import { CAMPAIGN_STATUS_LABEL, isCampaignAdminStatus } from "@/lib/marketing/admin-filters";
 import { countryName } from "@/lib/marketing/countries";
+import { MarketingCampaignActions } from "./marketing-campaign-actions";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -31,6 +32,7 @@ type Campaign = {
   useCaseId?: string | null;
   useCaseIds?: string[] | null;
   audienceKind?: string | null;
+  archivedAt?: string | null;
   contactCount?: number;
   stats?: { sent?: number; delivered?: number; opened?: number; clicked?: number; replied?: number; bounced?: number; failed?: number; unsubscribed?: number };
   createdAt?: string | null;
@@ -63,9 +65,77 @@ export function MarketingCampaigns() {
   const [catalog, setCatalog] = useState<TaxonomyCatalog | null>(null);
   const [lists, setLists] = useState<ListOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const industryName = useMemo(() => new Map((catalog?.industries || []).map((row) => [row.key, row.name])), [catalog]);
   const useCaseName = useMemo(() => new Map((catalog?.useCases || []).map((row) => [row.key, row.name])), [catalog]);
+
+  function reload() {
+    const sp = filtersToSearchParams(filters);
+    return fetch(`/api/admin/marketing/campaigns?${sp}`, { credentials: "include" })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Error");
+        setRows(data.campaigns || []);
+      });
+  }
+
+  async function copyCampaign(id: string) {
+    setBusyId(id);
+    try {
+      const res = await fetch(`/api/admin/marketing/campaigns/${id}/copy`, { method: "POST", credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "No se pudo copiar");
+      toast({ title: "Campaña copiada como borrador" });
+      router.push(`/admin/marketing/campanas/${data.campaign.id}`);
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function retryFailed(row: Campaign) {
+    setBusyId(row.id);
+    try {
+      const res = await fetch(`/api/admin/marketing/campaigns/${row.id}/retry`, { method: "POST", credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "No se pudo reenviar");
+      toast({
+        title: data.retried
+          ? `${data.retried} fallidos en cola`
+          : data.skipped
+            ? "Nada para reenviar (bajas o sin email)"
+            : "No hay envíos fallidos",
+      });
+      await reload();
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function toggleArchive(row: Campaign) {
+    setBusyId(row.id);
+    try {
+      const archived = !row.archivedAt;
+      const res = await fetch(`/api/admin/marketing/campaigns/${row.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "No se pudo archivar");
+      toast({ title: archived ? "Campaña archivada" : "Campaña restaurada" });
+      await reload();
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -132,10 +202,25 @@ export function MarketingCampaigns() {
   return (
     <div className="space-y-6">
       <MarketingSubnav />
-      <div className="flex justify-end">
-        <Button asChild>
-          <Link href="/admin/marketing/campanas/nueva">Nueva campaña</Link>
-        </Button>
+      <div className="flex flex-col gap-3 rounded-lg border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Acciones de campaña</h3>
+          <p className="text-sm text-muted-foreground">
+            Copiá para reusar el texto, reenviá los correos que fallaron, o archivá las que ya no querés ver.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant={filters.archived === "only" ? "secondary" : "outline"}
+            onClick={() => setFilters((prev) => ({ ...prev, archived: prev.archived === "only" ? "hide" : "only" }))}
+          >
+            {filters.archived === "only" ? "Ver activas" : "Ver archivadas"}
+          </Button>
+          <Button asChild>
+            <Link href="/admin/marketing/campanas/nueva">Nueva campaña</Link>
+          </Button>
+        </div>
       </div>
       <MarketingFilterBar
         catalog={catalog}
@@ -152,12 +237,15 @@ export function MarketingCampaigns() {
         </p>
       ) : (
         <ul className="divide-y rounded-lg border bg-background">
-          {rows.map((c) => (
-            <li key={c.id}>
-              <Link href={`/admin/marketing/campanas/${c.id}`} className="block px-4 py-4 hover:bg-muted/40">
+          {rows.map((c) => {
+            const failedCount = c.stats?.failed || 0;
+            return (
+            <li key={c.id} className="px-4 py-4">
+              <Link href={`/admin/marketing/campanas/${c.id}`} className="block hover:opacity-80">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-medium">{c.name}</span>
                   <span className="flex items-center gap-2">
+                    {c.archivedAt ? <span className="text-xs text-muted-foreground">Archivada</span> : null}
                     <StageBadge stage={statusBadge(c.status)} />
                     <span className="text-xs text-muted-foreground">
                       {isCampaignAdminStatus(c.status) ? CAMPAIGN_STATUS_LABEL[c.status] : c.status}
@@ -180,11 +268,24 @@ export function MarketingCampaigns() {
                   {c.stats?.clicked ? ` · ${c.stats.clicked} clics` : ""}
                   {c.stats?.replied ? ` · ${c.stats.replied} respuestas` : ""}
                   {c.stats?.bounced ? ` · ${c.stats.bounced} rebotes` : ""}
+                  {failedCount ? ` · ${failedCount} fallidos` : ""}
                   {c.stats?.unsubscribed ? ` · ${c.stats.unsubscribed} bajas` : ""}
                 </p>
               </Link>
+              <div className="mt-3">
+                <MarketingCampaignActions
+                  archived={Boolean(c.archivedAt)}
+                  failedCount={failedCount}
+                  canRetry={c.status !== "draft" && failedCount > 0}
+                  busy={busyId === c.id}
+                  onCopy={() => void copyCampaign(c.id)}
+                  onRetry={() => void retryFailed(c)}
+                  onArchive={() => void toggleArchive(c)}
+                />
+              </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </div>

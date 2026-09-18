@@ -72,6 +72,9 @@ export async function tickMarketingCampaign(campaignId: string): Promise<{
   const campSnap = await campRef.get();
   if (!campSnap.exists) throw Object.assign(new Error("Campaña no encontrada"), { status: 404 });
   const camp = campSnap.data() || {};
+  if (camp.archivedAt) {
+    return { processed: 0, remaining: 0, done: true, errors: 0 };
+  }
   if (camp.status !== "sending") {
     const queued = await db
       .collection(MARKETING_SENDS)
@@ -191,6 +194,9 @@ export async function enqueueCampaignSends(campaignId: string): Promise<{ queued
   const campSnap = await campRef.get();
   if (!campSnap.exists) throw Object.assign(new Error("Campaña no encontrada"), { status: 404 });
   const camp = campSnap.data() || {};
+  if (camp.archivedAt) {
+    throw Object.assign(new Error("La campaña está archivada. Restaurala para enviar."), { status: 409 });
+  }
   if (camp.status === "sending" || camp.status === "sent") {
     throw Object.assign(new Error("La campaña ya está en envío o fue enviada."), { status: 409 });
   }

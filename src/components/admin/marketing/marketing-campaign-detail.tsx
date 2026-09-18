@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { MarketingSubnav } from "./marketing-subnav";
 import { StageBadge } from "./stage-badge";
@@ -9,6 +10,7 @@ import { MarketingListUpload } from "./marketing-list-upload";
 import { MarketingRecipientPreview, type PreviewContact } from "./marketing-recipient-preview";
 import { countryName } from "@/lib/marketing/countries";
 import { CAMPAIGN_OUTCOME_LABEL, CAMPAIGN_OUTCOMES, sendMatchesOutcome } from "@/lib/marketing/admin-filters";
+import { MarketingCampaignActions } from "./marketing-campaign-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,6 +60,7 @@ type Campaign = {
   subject: string;
   htmlBody: string;
   fromEmail?: string;
+  archivedAt?: string | null;
   stats?: Record<string, number>;
   contactCount?: number;
 };
@@ -71,11 +74,12 @@ type Audience = {
 
 export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) {
   const { toast } = useToast();
+  const router = useRouter();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [sends, setSends] = useState<Send[]>([]);
   const [audience, setAudience] = useState<Audience | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<"send" | "tick" | "pause" | "save" | null>(null);
+  const [busy, setBusy] = useState<"send" | "tick" | "pause" | "save" | "copy" | "retry" | "archive" | null>(null);
   const [subject, setSubject] = useState("");
   const [htmlBody, setHtmlBody] = useState("");
   const [sendOutcome, setSendOutcome] = useState("all");
@@ -194,6 +198,54 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
     }
   }
 
+  async function copyCampaign() {
+    setBusy("copy");
+    try {
+      const res = await fetch(`/api/admin/marketing/campaigns/${campaignId}/copy`, { method: "POST", credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "No se pudo copiar");
+      toast({ title: "Campaña copiada como borrador" });
+      router.push(`/admin/marketing/campanas/${data.campaign.id}`);
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
+      setBusy(null);
+    }
+  }
+
+  async function retryFailed() {
+    setBusy("retry");
+    try {
+      const res = await fetch(`/api/admin/marketing/campaigns/${campaignId}/retry`, { method: "POST", credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "No se pudo reenviar");
+      toast({
+        title: data.retried
+          ? `${data.retried} fallidos en cola`
+          : data.skipped
+            ? "Nada para reenviar (bajas o sin email)"
+            : "No hay envíos fallidos",
+      });
+      await load();
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function toggleArchive() {
+    setBusy("archive");
+    try {
+      await patch({ archived: !campaign?.archivedAt });
+      toast({ title: campaign?.archivedAt ? "Campaña restaurada" : "Campaña archivada" });
+      await load();
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (loading || !campaign) {
     return (
       <div className="space-y-6">
@@ -205,8 +257,10 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
 
   const stats = campaign.stats || {};
   const isDraft = campaign.status === "draft";
+  const archived = Boolean(campaign.archivedAt);
+  const failedCount = sends.filter((row) => row.status === "failed").length || stats.failed || 0;
   const hasNamedList = Boolean(audience && audience.total > 0);
-  const canSend = isDraft && hasNamedList && (audience?.eligible || 0) > 0 && htmlBody.trim().length >= 8 && subject.trim().length >= 2;
+  const canSend = isDraft && !archived && hasNamedList && (audience?.eligible || 0) > 0 && htmlBody.trim().length >= 8 && subject.trim().length >= 2;
   const filteredSends = sendOutcome === "all" ? sends : sends.filter((row) => sendMatchesOutcome(row, sendOutcome));
   const statTiles: Array<{ label: string; value: number; outcome: string }> = [
     { label: "En cola", value: stats.queued || 0, outcome: "unsent" },
@@ -231,6 +285,7 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
           <h3 className="text-xl font-semibold">{campaign.name}</h3>
           <p className="text-sm text-muted-foreground">
             {campaign.listName || (campaign.country === "all" ? "Sin lista nominada" : countryName(campaign.country))} · {campaign.subject}
+            {archived ? " · Archivada" : ""}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -240,12 +295,29 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
             </Button>
           ) : null}
           {campaign.status === "sending" || campaign.status === "paused" ? (
-            <Button variant="outline" onClick={() => void pause()} disabled={busy !== null}>
+            <Button variant="outline" onClick={() => void pause()} disabled={busy !== null || archived}>
               {campaign.status === "paused" ? "Reanudar" : "Pausar"}
             </Button>
           ) : null}
         </div>
       </div>
+      <div className="space-y-2 rounded-lg border bg-background p-4">
+        <h4 className="text-sm font-medium">Acciones</h4>
+        <MarketingCampaignActions
+          archived={archived}
+          failedCount={failedCount}
+          canRetry={!isDraft && failedCount > 0}
+          busy={busy !== null}
+          onCopy={() => void copyCampaign()}
+          onRetry={() => void retryFailed()}
+          onArchive={() => void toggleArchive()}
+        />
+      </div>
+      {archived ? (
+        <p className="rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          Esta campaña está archivada. No aparece en la lista activa. Restaurala para reanudar o enviar.
+        </p>
+      ) : null}
 
       {isDraft ? (
         <div className="space-y-3 rounded-lg border bg-background p-4">

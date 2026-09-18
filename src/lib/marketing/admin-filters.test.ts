@@ -56,6 +56,16 @@ test("filtros de campaña: lista y etapa como en contactos", () => {
   assert.equal(campaignMatchesAdminFilters(withList, { stage: "replied" }), false);
 });
 
+test("filtros de campaña: archivadas ocultas por defecto", () => {
+  const archived = { ...camp, archivedAt: "2026-09-18T12:00:00.000Z" };
+  assert.equal(campaignMatchesAdminFilters(camp, {}), true);
+  assert.equal(campaignMatchesAdminFilters(archived, {}), false);
+  assert.equal(campaignMatchesAdminFilters(archived, { archived: "hide" }), false);
+  assert.equal(campaignMatchesAdminFilters(archived, { archived: "only" }), true);
+  assert.equal(campaignMatchesAdminFilters(camp, { archived: "only" }), false);
+  assert.equal(campaignMatchesAdminFilters(archived, { archived: "all" }), true);
+});
+
 test("filtros de contacto: sin envío, enviado y respondido", () => {
   assert.equal(contactMatchesOutcome({ stage: "new" }, "unsent"), true);
   assert.equal(contactMatchesOutcome({ stage: "new" }, "sent"), false);

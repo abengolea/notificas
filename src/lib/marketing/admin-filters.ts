@@ -44,6 +44,15 @@ export const AUDIENCE_KIND_LABEL: Record<(typeof AUDIENCE_KINDS)[number], string
   list: "CSV / lista",
 };
 
+export const CAMPAIGN_ARCHIVED_FILTERS = ["hide", "only", "all"] as const;
+export type CampaignArchivedFilter = (typeof CAMPAIGN_ARCHIVED_FILTERS)[number];
+
+export const CAMPAIGN_ARCHIVED_LABEL: Record<CampaignArchivedFilter, string> = {
+  hide: "Activas",
+  only: "Archivadas",
+  all: "Activas y archivadas",
+};
+
 export type CampaignAdminFilters = {
   q?: string;
   country?: string;
@@ -55,6 +64,7 @@ export type CampaignAdminFilters = {
   audienceKind?: string;
   listId?: string;
   stage?: string;
+  archived?: string;
 };
 
 export type CampaignFilterable = {
@@ -69,6 +79,7 @@ export type CampaignFilterable = {
   useCaseIds?: unknown;
   includeStages?: unknown;
   status?: unknown;
+  archivedAt?: unknown;
   audienceKind?: unknown;
   stats?: {
     queued?: number;
@@ -216,6 +227,10 @@ export function campaignMatchesAdminFilters(camp: CampaignFilterable, filters: C
       return false;
     }
   }
+  const archivedFilter = asText(filters.archived) || "hide";
+  const archived = Boolean(camp.archivedAt);
+  if (archivedFilter === "hide" && archived) return false;
+  if (archivedFilter === "only" && !archived) return false;
   const outcome = asText(filters.outcome);
   if (outcome && outcome !== "all" && isCampaignOutcome(outcome)) {
     if (outcome === "unsent") {

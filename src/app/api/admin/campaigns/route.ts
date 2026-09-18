@@ -61,6 +61,7 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     createdAt: data.createdAt?.toDate?.()?.toISOString?.() ?? null,
     startedAt: data.startedAt?.toDate?.()?.toISOString?.() ?? null,
     completedAt: data.completedAt?.toDate?.()?.toISOString?.() ?? null,
+    archivedAt: data.archivedAt?.toDate?.()?.toISOString?.() ?? (data.archivedAt ? String(data.archivedAt) : null),
     nextDailyDayKey: typeof data.nextDailyDayKey === 'string' ? data.nextDailyDayKey : '',
     nextDailyAt: data.nextDailyAt?.toDate?.()?.toISOString?.() ?? null,
   };
@@ -73,8 +74,15 @@ export async function GET(request: NextRequest) {
   try {
     const db = getAdminDb();
     const snap = await db.collection('campaigns').where('managedByAdmin', '==', true).limit(200).get();
+    const archivedRaw = String(request.nextUrl.searchParams.get('archived') || 'hide').trim();
     const campaigns = snap.docs
       .map((d) => serializeCampaign(d.id, d.data()))
+      .filter((c) => {
+        const archived = Boolean(c.archivedAt);
+        if (archivedRaw === 'only') return archived;
+        if (archivedRaw === 'all') return true;
+        return !archived;
+      })
       .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
     return NextResponse.json({ campaigns });
   } catch (e) {
