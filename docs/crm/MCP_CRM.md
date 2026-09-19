@@ -23,6 +23,7 @@ El MCP CRM **no** llama a Firestore. Usa los mismos handlers que el asistente in
 - JSON-RPC Streamable HTTP: `POST /mcp/crm`
 - Salud: `GET /mcp/crm/health` → `{ ok, service, readOnly, sendForbidden, enabled }` (sin secretos)
 - Metadata: `GET /.well-known/oauth-protected-resource/mcp/crm`
+- Authorization Server path-aware (ChatGPT DCR): `GET /.well-known/oauth-authorization-server/mcp/crm` — mismo issuer y `registration_endpoint` que `/.well-known/oauth-authorization-server`
 - Token client-credentials (opcional): `POST /mcp/crm/oauth/token` — **solo `crm:read`**
 
 Workspace: siempre `getMarketingWorkspaceId()`. El modelo no puede mandar `workspaceId`.

@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -10,6 +13,41 @@ import {
 } from "./clients";
 import { authorizationServerMetadata } from "./metadata";
 import { crmProtectedResourceMetadata } from "../crm/metadata";
+import { GET as getAuthorizationServer } from "../../app/.well-known/oauth-authorization-server/route";
+import { GET as getAuthorizationServerMcp } from "../../app/.well-known/oauth-authorization-server/mcp/route";
+import { GET as getAuthorizationServerMcpCrm } from "../../app/.well-known/oauth-authorization-server/mcp/crm/route";
+
+const REQUIRED_AS_FIELDS = [
+  "issuer",
+  "authorization_endpoint",
+  "token_endpoint",
+  "registration_endpoint",
+  "response_types_supported",
+  "grant_types_supported",
+  "code_challenge_methods_supported",
+  "token_endpoint_auth_methods_supported",
+  "scopes_supported",
+] as const;
+
+const CHATGPT_DCR_REGISTRATION_ENDPOINT = "https://notificas.com.ar/oauth/register";
+const CHATGPT_CRM_ISSUER = "https://notificas.com.ar";
+
+async function readAsJson(res: Response): Promise<Record<string, unknown>> {
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("location"), null);
+  const contentType = res.headers.get("content-type") || "";
+  assert.equal(contentType.includes("application/json"), true);
+  assert.equal(contentType.includes("text/html"), false);
+  const body = (await res.json()) as Record<string, unknown>;
+  for (const field of REQUIRED_AS_FIELDS) {
+    assert.notEqual(body[field], undefined, `missing ${field}`);
+  }
+  assert.equal(body.issuer, CHATGPT_CRM_ISSUER);
+  assert.equal(body.registration_endpoint, CHATGPT_DCR_REGISTRATION_ENDPOINT);
+  assert.deepEqual(body.code_challenge_methods_supported, ["S256"]);
+  assert.deepEqual(body.token_endpoint_auth_methods_supported, ["none"]);
+  return body;
+}
 
 const chatgptPayload = {
   client_name: "ChatGPT",
@@ -87,9 +125,58 @@ test("OAuth metadata advertises PKCE S256, DCR and none auth", () => {
   assert.ok(meta.grant_types_supported.includes("refresh_token"));
 });
 
+function restoreEnv(name: string, previous: string | undefined) {
+  if (previous === undefined) delete process.env[name];
+  else process.env[name] = previous;
+}
+
 test("CRM protected resource is /mcp/crm", () => {
-  const meta = crmProtectedResourceMetadata();
-  assert.ok(String(meta.resource).endsWith("/mcp/crm"));
-  assert.ok(Array.isArray(meta.authorization_servers) && meta.authorization_servers.length === 1);
-  assert.deepEqual(meta.scopes_supported, ["crm:read", "crm:write", "campaigns:read", "campaigns:write"]);
+  const prevBase = process.env.MCP_BASE_URL;
+  const prevApp = process.env.NEXT_PUBLIC_APP_URL;
+  process.env.MCP_BASE_URL = CHATGPT_CRM_ISSUER;
+  process.env.NEXT_PUBLIC_APP_URL = CHATGPT_CRM_ISSUER;
+  try {
+    const meta = crmProtectedResourceMetadata();
+    assert.equal(meta.resource, "https://notificas.com.ar/mcp/crm");
+    assert.deepEqual(meta.authorization_servers, [CHATGPT_CRM_ISSUER]);
+    assert.deepEqual(meta.scopes_supported, ["crm:read", "crm:write", "campaigns:read", "campaigns:write"]);
+  } finally {
+    restoreEnv("MCP_BASE_URL", prevBase);
+    restoreEnv("NEXT_PUBLIC_APP_URL", prevApp);
+  }
+});
+
+test("path-aware OAuth AS discovery for /mcp/crm stays published with DCR", async () => {
+  const prevCrm = process.env.CRM_MCP;
+  const prevMcp = process.env.MCP_ENABLED;
+  const prevBase = process.env.MCP_BASE_URL;
+  const prevApp = process.env.NEXT_PUBLIC_APP_URL;
+  process.env.CRM_MCP = "true";
+  process.env.MCP_ENABLED = "true";
+  process.env.MCP_BASE_URL = CHATGPT_CRM_ISSUER;
+  process.env.NEXT_PUBLIC_APP_URL = CHATGPT_CRM_ISSUER;
+  try {
+    const root = await readAsJson(getAuthorizationServer());
+    const product = await readAsJson(getAuthorizationServerMcp());
+    const crm = await readAsJson(getAuthorizationServerMcpCrm());
+    assert.deepEqual(product, root);
+    assert.deepEqual(crm, root);
+    assert.equal(crm.authorization_endpoint, "https://notificas.com.ar/oauth/authorize");
+    assert.equal(crm.token_endpoint, "https://notificas.com.ar/oauth/token");
+  } finally {
+    restoreEnv("CRM_MCP", prevCrm);
+    restoreEnv("MCP_ENABLED", prevMcp);
+    restoreEnv("MCP_BASE_URL", prevBase);
+    restoreEnv("NEXT_PUBLIC_APP_URL", prevApp);
+  }
+});
+
+test("regression: /.well-known/oauth-authorization-server/mcp/crm route file cannot disappear", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const routeFile = join(
+    here,
+    "../../app/.well-known/oauth-authorization-server/mcp/crm/route.ts",
+  );
+  assert.equal(existsSync(routeFile), true);
+  assert.equal(typeof getAuthorizationServerMcpCrm, "function");
 });
