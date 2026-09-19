@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { GoogleAuthProvider, signInWithPopup, type AuthError } from "firebase/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +12,16 @@ import { auth } from "@/lib/firebase";
 
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
+
+function postLoginPath(): string {
+  const requested = new URLSearchParams(window.location.search).get("next");
+  if (!requested || !requested.startsWith("/") || requested.startsWith("//")) {
+    return "/admin";
+  }
+  const resolved = new URL(requested, window.location.origin);
+  if (resolved.origin !== window.location.origin) return "/admin";
+  return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+}
 
 function googleAuthErrorMessage(error: AuthError): string {
   switch (error.code) {
@@ -35,7 +44,6 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState("");
   const [loadingMode, setLoadingMode] = useState<"password" | "google" | null>(null);
   const [error, setError] = useState("");
-  const router = useRouter();
   const isLoading = loadingMode !== null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,7 +65,7 @@ export default function AdminLoginPage() {
         return;
       }
 
-      router.push("/admin");
+      window.location.assign(postLoginPath());
     } catch {
       setError("Error al iniciar sesión");
     } finally {
@@ -87,7 +95,7 @@ export default function AdminLoginPage() {
         return;
       }
 
-      router.push("/admin");
+      window.location.assign(postLoginPath());
     } catch (err) {
       const message = googleAuthErrorMessage(err as AuthError);
       if (message) setError(message);

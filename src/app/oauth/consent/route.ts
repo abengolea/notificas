@@ -1,4 +1,6 @@
 import { adminAuth } from "@/lib/firebase-admin";
+import type { NextRequest } from "next/server";
+import { getAdminSessionEmail } from "@/lib/assert-admin-session";
 import { clientAllowsRedirect, getOauthClient } from "@/mcp/auth/clients";
 import { createAuthorizationCode } from "@/mcp/auth/tokens";
 import { isMcpUserAllowlisted, mcpResourceUrl } from "@/mcp/config";
@@ -25,22 +27,9 @@ export function OPTIONS() {
   return oauthOptions();
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   const disabled = requireMcpOauth();
   if (disabled) return disabled;
-
-  const authHeader = request.headers.get("Authorization");
-  const idToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  if (!idToken) {
-    return oauthCorsResponse({ error: "unauthorized", error_description: "Firebase ID token required." }, 401);
-  }
-
-  let decoded: { uid: string; email?: string };
-  try {
-    decoded = await adminAuth.verifyIdToken(idToken);
-  } catch {
-    return oauthCorsResponse({ error: "unauthorized", error_description: "Invalid or expired session." }, 401);
-  }
 
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const clientId = String(body.client_id || "");
@@ -51,6 +40,35 @@ export async function POST(request: Request) {
   const orgId = String(body.org_id || "");
   const deny = body.deny === true;
   const isCrmResource = resource === crmMcpResourceUrl();
+
+  let decoded: { uid: string; email?: string };
+  if (isCrmResource) {
+    const adminEmail = getAdminSessionEmail(request);
+    if (!adminEmail) {
+      return oauthCorsResponse(
+        { error: "unauthorized", error_description: "Administrative session required." },
+        401,
+      );
+    }
+    decoded = { uid: `admin:${adminEmail}`, email: adminEmail };
+  } else {
+    const authHeader = request.headers.get("Authorization");
+    const idToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    if (!idToken) {
+      return oauthCorsResponse(
+        { error: "unauthorized", error_description: "Firebase ID token required." },
+        401,
+      );
+    }
+    try {
+      decoded = await adminAuth.verifyIdToken(idToken);
+    } catch {
+      return oauthCorsResponse(
+        { error: "unauthorized", error_description: "Invalid or expired session." },
+        401,
+      );
+    }
+  }
 
   if (isCrmResource) {
     const actor = decoded.email || decoded.uid;
@@ -116,4 +134,3 @@ export async function POST(request: Request) {
   if (state) redirect.searchParams.set("state", state);
   return oauthCorsResponse({ redirect_to: redirect.toString() }, 200);
 }
-

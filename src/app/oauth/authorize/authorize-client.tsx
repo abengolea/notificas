@@ -33,8 +33,9 @@ export function AuthorizeClient() {
   }
   const nextLogin = useMemo(() => {
     const qs = search.toString();
-    return `/login?next=${encodeURIComponent(`/oauth/authorize?${qs}`)}`;
-  }, [search]);
+    const loginPath = isCrmResource ? "/admin/login" : "/login";
+    return `${loginPath}?next=${encodeURIComponent(`/oauth/authorize?${qs}`)}`;
+  }, [isCrmResource, search]);
   const descriptions: Record<string, string> = isCrmResource ? crmScopeDescriptions() : scopeDescriptions();
 
   const [ready, setReady] = useState(false);
@@ -46,6 +47,42 @@ export function AuthorizeClient() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    if (isCrmResource) {
+      let cancelled = false;
+
+      void (async () => {
+        try {
+          const [sessionRes, clientRes] = await Promise.all([
+            fetch("/api/admin/me", { credentials: "include", cache: "no-store" }),
+            fetch(`/oauth/consent?client_id=${encodeURIComponent(clientId)}`),
+          ]);
+          if (cancelled) return;
+          if (sessionRes.status === 401) {
+            window.location.href = nextLogin;
+            return;
+          }
+          if (!sessionRes.ok) {
+            throw new Error("admin_session_unavailable");
+          }
+          const sessionJson = (await sessionRes.json().catch(() => ({}))) as { email?: string };
+          const clientJson = (await clientRes.json().catch(() => ({}))) as { client_name?: string };
+          if (cancelled) return;
+          setUserEmail(typeof sessionJson.email === "string" ? sessionJson.email : null);
+          if (clientJson.client_name) setClientName(clientJson.client_name);
+          setReady(true);
+        } catch {
+          if (!cancelled) {
+            setError("No se pudo cargar la sesión administrativa.");
+            setReady(true);
+          }
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         window.location.href = nextLogin;
@@ -55,10 +92,10 @@ export function AuthorizeClient() {
       try {
         const token = await user.getIdToken();
         const [orgRes, clientRes] = await Promise.all([
-          isCrmResource ? Promise.resolve(null) : fetch("/api/organizations", { headers: { Authorization: `Bearer ${token}` } }),
+          fetch("/api/organizations", { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`/oauth/consent?client_id=${encodeURIComponent(clientId)}`),
         ]);
-        const orgJson = orgRes ? ((await orgRes.json().catch(() => ({}))) as { organizations?: Org[] }) : {};
+        const orgJson = (await orgRes.json().catch(() => ({}))) as { organizations?: Org[] };
         const list = Array.isArray(orgJson.organizations) ? orgJson.organizations : [];
         setOrgs(list);
         if (list[0]?.id) setOrgId(list[0].id);
@@ -77,15 +114,20 @@ export function AuthorizeClient() {
     setBusy(true);
     setError(null);
     try {
-      const user = auth.currentUser;
-      if (!user) {
-        window.location.href = nextLogin;
-        return;
+      let authorizationHeader: Record<string, string> = {};
+      if (!isCrmResource) {
+        const user = auth.currentUser;
+        if (!user) {
+          window.location.href = nextLogin;
+          return;
+        }
+        const token = await user.getIdToken();
+        authorizationHeader = { Authorization: `Bearer ${token}` };
       }
-      const token = await user.getIdToken();
       const res = await fetch("/oauth/consent", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { ...authorizationHeader, "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           client_id: clientId,
           redirect_uri: redirectUri,
