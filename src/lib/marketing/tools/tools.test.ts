@@ -4,8 +4,10 @@ import { marketingContext } from "../context";
 import { executeCrmTool } from "./execute";
 import { createMemoryCrmToolRuntime } from "./runtime";
 import { mcpCrmToolDefinitions, crmWriteTools } from "./registry";
-import { CRM_FORBIDDEN_TOOL_NAMES, CRM_WRITE_TOOL_NAMES } from "./types";
+import { CRM_FORBIDDEN_TOOL_NAMES, CRM_READ_TOOL_NAMES, CRM_WRITE_TOOL_NAMES } from "./types";
 import { listCrmMcpTools } from "../../../mcp/crm/registry";
+import { CRM_READ_HANDLERS } from "./read";
+import { CRM_WRITE_HANDLERS } from "./write";
 
 function setup(workspaceId = "notificas-internal") {
   const { runtime } = createMemoryCrmToolRuntime();
@@ -20,8 +22,20 @@ function setup(workspaceId = "notificas-internal") {
   return { runtime, ctx, other };
 }
 
-test("MCP CRM registry is read-only and has no send/write tools", () => {
-  const names: string[] = listCrmMcpTools().map((t) => t.name);
+test("every declared CRM tool has a handler and MCP never lists send", () => {
+  for (const name of CRM_READ_TOOL_NAMES) {
+    assert.equal(name in CRM_READ_HANDLERS, true, name);
+  }
+  for (const name of CRM_WRITE_TOOL_NAMES) {
+    assert.equal(name in CRM_WRITE_HANDLERS, true, name);
+  }
+  const listed: string[] = mcpCrmToolDefinitions().map((t) => t.name);
+  assert.equal(listed.includes("send_campaign"), false);
+  assert.equal(listed.includes("retry_failed_sends"), false);
+});
+
+test("MCP CRM registry with crm:read stays additive-read and has no send/write tools", () => {
+  const names: string[] = listCrmMcpTools(["crm:read"]).map((t) => t.name);
   for (const write of CRM_WRITE_TOOL_NAMES) {
     assert.equal(names.includes(write), false);
   }
@@ -30,11 +44,13 @@ test("MCP CRM registry is read-only and has no send/write tools", () => {
   }
   assert.ok(names.includes("search_companies"));
   assert.ok(names.includes("get_crm_stats"));
+  assert.ok(names.includes("preview_campaign"));
+  assert.ok(names.includes("list_taxonomy"));
   assert.equal(
-    listCrmMcpTools().every((t) => t.annotations.readOnlyHint === true),
+    listCrmMcpTools(["crm:read"]).every((t) => t.annotations.readOnlyHint === true),
     true,
   );
-  assert.equal(mcpCrmToolDefinitions().length, names.length);
+  assert.ok(mcpCrmToolDefinitions().length > names.length);
   assert.ok(crmWriteTools.length > 0);
 });
 
@@ -270,3 +286,250 @@ test("create_task for a unique company name", async () => {
   if (!task.ok) return;
   assert.ok(task.summary?.includes("Tarea creada"));
 });
+
+test("create_company uses industryIds; industryId is rejected", async () => {
+  const { runtime, ctx } = setup();
+  const okIds = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "create_company",
+    args: { name: "Metrogas", countryCode: "AR", industryIds: ["gas"] },
+    mode: "readwrite",
+  });
+  assert.equal(okIds.ok, true);
+  const bad = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "create_company",
+    args: { name: "Wrong field", countryCode: "AR", industryId: "gas" },
+    mode: "readwrite",
+  });
+  assert.equal(bad.ok, false);
+  if (bad.ok) return;
+  assert.equal(bad.error.code, "validation_error");
+});
+
+test("list_taxonomy returns canonical industry keys", async () => {
+  const { runtime, ctx } = setup();
+  const res = await executeCrmTool({ runtime, ctx, name: "list_taxonomy", args: {}, mode: "read" });
+  assert.equal(res.ok, true);
+  if (!res.ok) return;
+  const data = res.data as { industries: Array<{ key: string }>; commercialStages: Array<{ id: string }> };
+  assert.ok(data.industries.some((i) => i.key === "mercado_capitales"));
+  assert.ok(data.commercialStages.some((s) => s.id === "nuevo"));
+});
+
+test("cancel_task marks a task cancelled", async () => {
+  const { runtime, ctx } = setup();
+  const created = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "create_task",
+    args: { title: "Llamar mañana" },
+    mode: "readwrite",
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  const taskId = (created.data as { task: { id: string } }).task.id;
+  const cancelled = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "cancel_task",
+    args: { taskId },
+    mode: "readwrite",
+  });
+  assert.equal(cancelled.ok, true);
+  if (!cancelled.ok) return;
+  assert.equal((cancelled.data as { task: { status: string } }).task.status, "cancelled");
+});
+
+test("create_campaign_draft never sends and rejects send in the same call", async () => {
+  const { runtime, ctx } = setup();
+  const list = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "create_list",
+    args: { name: "ALyC AR", countryCode: "AR" },
+    mode: "readwrite",
+  });
+  assert.equal(list.ok, true);
+  if (!list.ok) return;
+  const listId = (list.data as { list: { id: string } }).list.id;
+  const draft = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "create_campaign_draft",
+    args: { name: "Aviso comitentes", listId, subject: "Aviso", htmlBody: "<p>Hola comitentes</p>" },
+    mode: "readwrite",
+  });
+  assert.equal(draft.ok, true);
+  if (!draft.ok) return;
+  const campaign = (draft.data as { campaign: { id: string; status: string }; sent: boolean }).campaign;
+  assert.equal(campaign.status, "draft");
+  assert.equal((draft.data as { sent: boolean }).sent, false);
+
+  const withSend = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "create_campaign_draft",
+    args: { name: "No enviar", listId, subject: "X", htmlBody: "<p>Hola</p>", send: true },
+    mode: "readwrite",
+  });
+  assert.equal(withSend.ok, false);
+
+  const preview = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "preview_campaign",
+    args: { campaignId: campaign.id },
+    mode: "read",
+  });
+  assert.equal(preview.ok, true);
+  if (!preview.ok) return;
+  assert.equal((preview.data as { sent: boolean }).sent, false);
+});
+
+test("update_campaign_draft only works on drafts; copy stays draft", async () => {
+  const { runtime, ctx } = setup();
+  await executeCrmTool({
+    runtime,
+    ctx,
+    name: "create_list",
+    args: { name: "Lista draft", countryCode: "AR" },
+    mode: "readwrite",
+  });
+  const lists = await executeCrmTool({ runtime, ctx, name: "search_lists", args: {}, mode: "read" });
+  assert.equal(lists.ok, true);
+  if (!lists.ok) return;
+  const listId = (lists.data as { items: Array<{ id: string }> }).items[0].id;
+  const draft = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "create_campaign_draft",
+    args: { name: "Original", listId, subject: "Asunto 1", htmlBody: "<p>Uno</p>" },
+    mode: "readwrite",
+  });
+  assert.equal(draft.ok, true);
+  if (!draft.ok) return;
+  const campaignId = (draft.data as { campaign: { id: string } }).campaign.id;
+  const updated = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "update_campaign_draft",
+    args: { campaignId, changes: { subject: "Asunto 2" } },
+    mode: "readwrite",
+  });
+  assert.equal(updated.ok, true);
+  if (!updated.ok) return;
+  assert.equal((updated.data as { campaign: { subject: string } }).campaign.subject, "Asunto 2");
+
+  const copied = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "copy_campaign",
+    args: { campaignId },
+    mode: "readwrite",
+  });
+  assert.equal(copied.ok, true);
+  if (!copied.ok) return;
+  assert.equal((copied.data as { campaign: { status: string }; sent: boolean }).campaign.status, "draft");
+  assert.equal((copied.data as { sent: boolean }).sent, false);
+
+  await runtime.catalog.pauseCampaign(campaignId).catch(() => undefined);
+  // Force non-draft in memory catalog
+  const sending = await runtime.catalog.getCampaign(campaignId);
+  if (sending) sending.status = "sending";
+  const bad = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "update_campaign_draft",
+    args: { campaignId, changes: { subject: "No" } },
+    mode: "readwrite",
+  });
+  assert.equal(bad.ok, false);
+  if (bad.ok) return;
+  assert.equal(bad.error.code, "conflict");
+});
+
+test("pause_campaign cannot start a draft; send tools stay forbidden", async () => {
+  const { runtime, ctx } = setup();
+  await executeCrmTool({
+    runtime,
+    ctx,
+    name: "create_list",
+    args: { name: "Lista pause", countryCode: "UY" },
+    mode: "readwrite",
+  });
+  const lists = await executeCrmTool({ runtime, ctx, name: "search_lists", args: {}, mode: "read" });
+  assert.equal(lists.ok, true);
+  if (!lists.ok) return;
+  const listId = (lists.data as { items: Array<{ id: string }> }).items[0].id;
+  const draft = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "create_campaign_draft",
+    args: { name: "Draft pause", listId, subject: "Hola", htmlBody: "<p>Hola</p>" },
+    mode: "readwrite",
+  });
+  assert.equal(draft.ok, true);
+  if (!draft.ok) return;
+  const campaignId = (draft.data as { campaign: { id: string } }).campaign.id;
+  const paused = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "pause_campaign",
+    args: { campaignId },
+    mode: "readwrite",
+  });
+  assert.equal(paused.ok, false);
+
+  for (const name of ["send_campaign", "retry_failed_sends", "cancel_campaign", "schedule_campaign"]) {
+    const res = await executeCrmTool({ runtime, ctx, name, args: { campaignId }, mode: "readwrite" });
+    assert.equal(res.ok, false);
+    if (res.ok) return;
+    assert.equal(res.error.code, "forbidden_tool");
+  }
+});
+
+test("opportunities search and get", async () => {
+  const { runtime, ctx } = setup();
+  const company = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "create_company",
+    args: { name: "Sancor Seguros", countryCode: "AR" },
+    mode: "readwrite",
+  });
+  assert.equal(company.ok, true);
+  if (!company.ok) return;
+  const companyId = (company.data as { company: { id: string } }).company.id;
+  const created = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "create_opportunity",
+    args: { name: "Piloto mora", companyId, commercialStageId: "interesado" },
+    mode: "readwrite",
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  const opportunityId = (created.data as { opportunity: { id: string } }).opportunity.id;
+  const listed = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "search_opportunities",
+    args: { companyId },
+    mode: "read",
+  });
+  assert.equal(listed.ok, true);
+  if (!listed.ok) return;
+  assert.equal((listed.data as { items: unknown[] }).items.length, 1);
+  const got = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "get_opportunity",
+    args: { opportunityId },
+    mode: "read",
+  });
+  assert.equal(got.ok, true);
+});
+

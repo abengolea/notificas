@@ -14,6 +14,7 @@ import {
 import { authenticateCrmMcpRequest, crmWwwAuthenticate, type CrmMcpAuthContext } from "./auth";
 import { writeCrmMcpAudit } from "./audit";
 import { callCrmMcpTool, listCrmMcpTools } from "./registry";
+import { crmMcpToolIsWrite } from "./policy";
 
 function protocolVersion(requested: unknown): string {
   if (typeof requested === "string" && (CRM_MCP_PROTOCOL_VERSIONS as readonly string[]).includes(requested)) {
@@ -47,7 +48,7 @@ async function handleOne(
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: CRM_MCP_SERVER_NAME, version: CRM_MCP_SERVER_VERSION },
         instructions:
-          "Notificas CRM MCP is read-only access to the internal commercial CRM. Never invent companies, contacts or campaign results. Use search_* then get_*. Workspace is fixed by the server. You cannot send email, create records or delete anything here.",
+          "Notificas CRM MCP is the internal commercial CRM (not the certified product). Use search_* then get_*. Workspace is fixed by the server. Writes require crm:write or campaigns:write. create_campaign_draft never sends. Sending, scheduling, deleting and bulk import are not available.",
       }),
       tool: "initialize",
     };
@@ -62,7 +63,7 @@ async function handleOne(
   }
 
   if (method === "tools/list") {
-    return { body: jsonRpcResult(id, { tools: listCrmMcpTools() }), tool: "tools/list" };
+    return { body: jsonRpcResult(id, { tools: listCrmMcpTools(ctx.scopes) }), tool: "tools/list" };
   }
 
   if (method === "tools/call") {
@@ -77,7 +78,7 @@ async function handleOne(
       await consumeMcpRateLimit({
         userId: ctx.actor,
         orgId: `crmws:${ctx.workspaceId}`,
-        bucket: "read",
+        bucket: crmMcpToolIsWrite(params.name) ? "write" : "read",
       });
       const result = await callCrmMcpTool(ctx, params.name, params.arguments);
       return {
@@ -132,6 +133,8 @@ export async function handleCrmMcpHttp(request: Request): Promise<Response> {
   let ctx: CrmMcpAuthContext;
   try {
     ctx = await authenticateCrmMcpRequest(request, requestId);
+    const idem = request.headers.get("Idempotency-Key")?.trim();
+    if (idem && idem.length <= 128) ctx.idempotencyKey = idem;
   } catch (e) {
     const err = e instanceof McpToolError ? e : new McpToolError("UNAUTHORIZED", "Unauthorized.", 401);
     void writeCrmMcpAudit({
@@ -191,6 +194,7 @@ export function crmMcpHealthPayload() {
     service: CRM_MCP_SERVER_NAME,
     version: CRM_MCP_SERVER_VERSION,
     enabled: crmMcpEnabledSafe(),
-    readOnly: true,
+    readOnly: false,
+    sendForbidden: true,
   };
 }

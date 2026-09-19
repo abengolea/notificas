@@ -9,14 +9,19 @@ import {
   getContactSchema,
   getCrmStatsSchema,
   getListSchema,
+  getOpportunitySchema,
   getPendingTasksSchema,
   getTemplateSchema,
+  listTaxonomySchema,
+  previewCampaignSchema,
   searchCampaignsSchema,
   searchCompaniesSchema,
   searchContactsSchema,
   searchListsSchema,
+  searchOpportunitiesSchema,
   searchTemplatesSchema,
 } from "./schemas";
+import { TAXONOMY_INDUSTRIES, TAXONOMY_USE_CASES } from "../taxonomy/seed";
 import { DETAIL_LIMIT, pageLimit, summarizeCompany } from "./helpers";
 import { sanitizeCrmPayload } from "./sanitize";
 
@@ -430,6 +435,115 @@ export async function getCrmStats(
   });
 }
 
+export async function listTaxonomy(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof listTaxonomySchema>,
+): Promise<CrmToolSuccess> {
+  void input;
+  const countries = runtime.services.countries.listCountries().map((c) => ({
+    code: c.code,
+    name: c.name,
+  }));
+  const commercialStages = runtime.services.commercialStages.listCommercialStages(ctx).map((s) => ({
+    id: s.id,
+    name: s.name,
+    order: s.order,
+  }));
+  return ok("list_taxonomy", {
+    countries,
+    industries: TAXONOMY_INDUSTRIES.filter((r) => r.active).map((r) => ({
+      key: r.key,
+      name: r.name,
+      keywords: (r.keywords || []).slice(0, 8),
+    })),
+    useCases: TAXONOMY_USE_CASES.filter((r) => r.active).map((r) => ({
+      key: r.key,
+      name: r.name,
+      industryKeys: r.industryKeys,
+    })),
+    commercialStages,
+  });
+}
+
+export async function searchOpportunities(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof searchOpportunitiesSchema>,
+): Promise<CrmToolSuccess> {
+  const page = await runtime.services.opportunities.searchOpportunities(ctx, {
+    companyId: input.companyId,
+    countryCode: input.countryCode,
+    commercialStageId: input.commercialStageId,
+    status: input.status,
+    limit: pageLimit(input.limit),
+    cursor: input.cursor,
+  });
+  let items = page.items.filter((o) => !o.deletedAt);
+  if (input.query) {
+    const q = input.query.toLowerCase();
+    items = items.filter((o) => o.name.toLowerCase().includes(q));
+  }
+  return ok("search_opportunities", {
+    items: items.map((o) => ({
+      id: o.id,
+      name: o.name,
+      companyId: o.companyId,
+      countryCode: o.countryCode || null,
+      commercialStageId: o.commercialStageId,
+      status: o.status,
+      nextActionAt: o.nextActionAt || null,
+      estimatedValue: o.estimatedValue ?? null,
+    })),
+    nextCursor: page.nextCursor,
+  });
+}
+
+export async function getOpportunity(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof getOpportunitySchema>,
+): Promise<CrmToolSuccess> {
+  const opportunity = await runtime.services.opportunities.getOpportunity(ctx, input.opportunityId);
+  return ok(
+    "get_opportunity",
+    {
+      opportunity: {
+        id: opportunity.id,
+        name: opportunity.name,
+        companyId: opportunity.companyId,
+        contactIds: opportunity.contactIds || [],
+        countryCode: opportunity.countryCode || null,
+        industryId: opportunity.industryId || null,
+        useCaseId: opportunity.useCaseId || null,
+        commercialStageId: opportunity.commercialStageId,
+        status: opportunity.status,
+        nextStep: opportunity.nextStep || null,
+        nextActionAt: opportunity.nextActionAt || null,
+        notes: opportunity.notes || null,
+        estimatedValue: opportunity.estimatedValue ?? null,
+        currency: opportunity.currency || null,
+      },
+    },
+    { entityType: "opportunity", entityIds: [opportunity.id], summary: `Oportunidad ${opportunity.name}` },
+  );
+}
+
+export async function previewCampaign(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof previewCampaignSchema>,
+): Promise<CrmToolSuccess> {
+  void ctx;
+  const preview = await runtime.catalog.previewCampaign(input.campaignId);
+  if (!preview) throw new MarketingNotFoundError("Campaña", input.campaignId);
+  return ok("preview_campaign", preview, {
+    entityType: "campaign",
+    entityIds: [preview.campaignId],
+    summary: `Preview de ${preview.name} (no enviado)`,
+  });
+}
+
 export const CRM_READ_HANDLERS = {
   search_companies: { schema: searchCompaniesSchema, run: searchCompanies },
   get_company: { schema: getCompanySchema, run: getCompany },
@@ -445,4 +559,8 @@ export const CRM_READ_HANDLERS = {
   get_contact_activity: { schema: getContactActivitySchema, run: getContactActivity },
   get_pending_tasks: { schema: getPendingTasksSchema, run: getPendingTasks },
   get_crm_stats: { schema: getCrmStatsSchema, run: getCrmStats },
+  list_taxonomy: { schema: listTaxonomySchema, run: listTaxonomy },
+  search_opportunities: { schema: searchOpportunitiesSchema, run: searchOpportunities },
+  get_opportunity: { schema: getOpportunitySchema, run: getOpportunity },
+  preview_campaign: { schema: previewCampaignSchema, run: previewCampaign },
 } as const;

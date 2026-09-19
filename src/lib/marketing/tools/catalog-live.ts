@@ -1,6 +1,16 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { getOrCreateMarketingList, loadMarketingListCatalog, resolveListLabel } from "../audience";
+import { audienceForCampaign, getOrCreateMarketingList, loadMarketingListCatalog, resolveListLabel } from "../audience";
+import { materializeCrmCampaignList } from "../campaign-segment";
+import {
+  assertDraftForContentEdit,
+  copyMarketingCampaign,
+  isCampaignArchived,
+  pauseCampaignStatus,
+  patchMarketingCampaign,
+  requireMarketingCampaign,
+  resumeCampaignStatus,
+} from "../campaign-ops";
 import { MARKETING_CAMPAIGNS } from "../collections";
 import { serializeAdminDoc } from "../events";
 import { namedRecipientSource } from "../lists";
@@ -8,8 +18,16 @@ import { isMarketingCountryCode, type MarketingCountryCode } from "../countries"
 import { isMarketingStage } from "../stages";
 import { emptyCampaignStats, marketingFromEmail, marketingFromName } from "../types";
 import { clampMarketingLimit, decodeMarketingCursor, encodeMarketingCursor } from "../pagination";
-import { MarketingValidationError } from "../errors";
-import type { CampaignDetail, CampaignListCatalog, CampaignListSummary, CampaignSummary } from "./types";
+import { MarketingNotFoundError, MarketingValidationError } from "../errors";
+import type {
+  CampaignDetail,
+  CampaignDraftChanges,
+  CampaignDraftInput,
+  CampaignListCatalog,
+  CampaignListSummary,
+  CampaignPreview,
+  CampaignSummary,
+} from "./types";
 
 function toCampaign(doc: Record<string, unknown>): CampaignSummary {
   const statsRaw = doc.stats && typeof doc.stats === "object" ? (doc.stats as Record<string, unknown>) : {};
@@ -26,9 +44,34 @@ function toCampaign(doc: Record<string, unknown>): CampaignSummary {
     listName: String(doc.listName || ""),
     subject: String(doc.subject || ""),
     contactCount: Number(doc.contactCount || 0),
+    archivedAt: doc.archivedAt ? String(doc.archivedAt) : null,
     stats,
     createdAt: doc.createdAt ? String(doc.createdAt) : null,
     updatedAt: doc.updatedAt ? String(doc.updatedAt) : null,
+  };
+}
+
+function toDetail(data: Record<string, unknown>): CampaignDetail {
+  const html = String(data.htmlBody || "");
+  const text = String(data.textBody || "");
+  const useCaseIds = Array.isArray(data.useCaseIds)
+    ? data.useCaseIds.map(String).filter(Boolean)
+    : data.useCaseId
+      ? [String(data.useCaseId)]
+      : [];
+  return {
+    ...toCampaign(data),
+    includeStages: Array.isArray(data.includeStages) ? data.includeStages.map(String) : [],
+    htmlPreview: html.slice(0, 1_500),
+    textPreview: text.slice(0, 1_500),
+    htmlBody: html,
+    industryId: data.industryId ? String(data.industryId) : null,
+    useCaseIds,
+    audience: {
+      total: Number(data.contactCount || 0),
+      eligible: Number(data.contactCount || 0),
+      skipped: 0,
+    },
   };
 }
 
@@ -46,6 +89,43 @@ function pageRows<T extends { id: string }>(rows: T[], limit: number, cursor?: s
   return {
     items,
     nextCursor: extra && last ? encodeMarketingCursor({ t: "", id: last.id }) : undefined,
+  };
+}
+
+async function summaryAfter(id: string): Promise<CampaignSummary> {
+  const db = getAdminDb();
+  const snap = await db.collection(MARKETING_CAMPAIGNS).doc(id).get();
+  if (!snap.exists) throw new MarketingNotFoundError("Campaña", id);
+  return toCampaign(serializeAdminDoc(snap.id, snap.data() || {}));
+}
+
+async function previewFromDoc(data: Record<string, unknown>): Promise<CampaignPreview> {
+  const html = String(data.htmlBody || "");
+  const text = String(data.textBody || "");
+  const status = String(data.status || "draft");
+  const live =
+    status === "draft"
+      ? await audienceForCampaign(data)
+      : {
+          total: Number(data.contactCount || 0),
+          eligible: Number(data.contactCount || 0),
+          skipped: 0,
+          contacts: [],
+        };
+  return {
+    campaignId: String(data.id),
+    name: String(data.name || ""),
+    status,
+    subject: String(data.subject || ""),
+    htmlPreview: html.slice(0, 1_500),
+    textPreview: text.slice(0, 1_500),
+    sent: false,
+    audience: {
+      total: live.total,
+      eligible: live.eligible,
+      skipped: live.skipped,
+      sample: live.contacts.slice(0, 8).map((c) => ({ name: c.name, email: c.email })),
+    },
   };
 }
 
@@ -72,22 +152,13 @@ export function createLiveCampaignCatalog(): CampaignListCatalog {
       const db = getAdminDb();
       const snap = await db.collection(MARKETING_CAMPAIGNS).doc(id).get();
       if (!snap.exists) return null;
-      const data = serializeAdminDoc(snap.id, snap.data() || {});
-      const base = toCampaign(data);
-      const html = String(data.htmlBody || "");
-      const text = String(data.textBody || "");
-      const detail: CampaignDetail = {
-        ...base,
-        includeStages: Array.isArray(data.includeStages) ? data.includeStages.map(String) : [],
-        htmlPreview: html.slice(0, 1_500),
-        textPreview: text.slice(0, 1_500),
-        audience: {
-          total: Number(data.contactCount || 0),
-          eligible: Number(data.contactCount || 0),
-          skipped: 0,
-        },
-      };
-      return detail;
+      return toDetail(serializeAdminDoc(snap.id, snap.data() || {}));
+    },
+    async previewCampaign(id) {
+      const db = getAdminDb();
+      const snap = await db.collection(MARKETING_CAMPAIGNS).doc(id).get();
+      if (!snap.exists) return null;
+      return previewFromDoc(serializeAdminDoc(snap.id, snap.data() || {}));
     },
     async searchLists(input) {
       const catalog = await loadMarketingListCatalog();
@@ -136,13 +207,32 @@ export function createLiveCampaignCatalog(): CampaignListCatalog {
       };
     },
     async createCampaignDraft(input) {
-      const list = await resolveListLabel(input.listId);
+      const includeStages = (input.includeStages || ["new"]).filter(isMarketingStage);
+      const useCaseIds = input.useCaseIds?.length ? input.useCaseIds : input.useCaseId ? [input.useCaseId] : [];
+      const crmSegment = Boolean(input.industryId && (useCaseIds.length || input.useCaseId) && input.country);
+      const materialized =
+        !input.listId && crmSegment
+          ? await materializeCrmCampaignList({
+              segment: {
+                countryCode: input.country || "",
+                industryId: input.industryId || "",
+                useCaseIds,
+              },
+              includeStages,
+            })
+          : null;
+      const listId = materialized?.listId || input.listId;
+      if (!listId) {
+        throw new MarketingValidationError(
+          "Indicá listId o un segmento CRM (country + industryId + useCaseIds) para el draft.",
+        );
+      }
+      const list = await resolveListLabel(listId);
       if (namedRecipientSource({ listId: list.listId }).kind !== "list") {
         throw new MarketingValidationError(
           "Elegí una lista nominada de destinatarios. No se crea un draft contra todo el CRM ni listas virtuales de país.",
         );
       }
-      const includeStages = (input.includeStages || ["new"]).filter(isMarketingStage);
       const db = getAdminDb();
       const ref = db.collection(MARKETING_CAMPAIGNS).doc();
       await ref.set({
@@ -157,12 +247,12 @@ export function createLiveCampaignCatalog(): CampaignListCatalog {
         fromName: marketingFromName(),
         status: "draft",
         includeStages: includeStages.length ? includeStages : ["new"],
-        contactCount: 0,
+        contactCount: materialized?.eligible || 0,
         stats: emptyCampaignStats(),
-        audienceKind: "list",
-        industryId: list.industryId,
-        useCaseId: list.useCaseId,
-        useCaseIds: list.useCaseIds,
+        audienceKind: materialized ? "crm" : "list",
+        industryId: materialized ? input.industryId || null : list.industryId,
+        useCaseId: materialized ? useCaseIds[0] || null : list.useCaseId,
+        useCaseIds: materialized ? useCaseIds : list.useCaseIds,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
         startedAt: null,
@@ -170,6 +260,63 @@ export function createLiveCampaignCatalog(): CampaignListCatalog {
       });
       const snap = await ref.get();
       return toCampaign(serializeAdminDoc(snap.id, snap.data() || {}));
+    },
+    async updateCampaignDraft(id, changes: CampaignDraftChanges) {
+      const { data } = await requireMarketingCampaign(id);
+      assertDraftForContentEdit(String(data.status || "draft"));
+      const patch: Record<string, unknown> = {};
+      if (changes.name) patch.name = changes.name.trim();
+      if (changes.subject) patch.subject = changes.subject.trim();
+      if (changes.htmlBody) patch.htmlBody = changes.htmlBody;
+      if (changes.textBody !== undefined) patch.textBody = changes.textBody;
+      if (changes.includeStages) {
+        const stages = changes.includeStages.filter(isMarketingStage);
+        patch.includeStages = stages.length ? stages : ["new"];
+      }
+      if (changes.listId) {
+        const list = await resolveListLabel(changes.listId);
+        if (namedRecipientSource({ listId: list.listId }).kind !== "list") {
+          throw new MarketingValidationError("Cargá una lista nominada (CSV o lista CRM materializada).");
+        }
+        patch.listId = list.listId;
+        patch.listName = list.listName;
+        patch.country = list.country;
+        if (list.industryId) patch.industryId = list.industryId;
+        if (list.useCaseId) patch.useCaseId = list.useCaseId;
+        if (list.useCaseIds?.length) patch.useCaseIds = list.useCaseIds;
+      }
+      if (Object.keys(patch).length === 0) {
+        throw new MarketingValidationError("No hay cambios para aplicar al borrador.");
+      }
+      await patchMarketingCampaign(id, patch);
+      return summaryAfter(id);
+    },
+    async copyCampaign(id) {
+      const copied = await copyMarketingCampaign(id);
+      return toCampaign(copied.campaign);
+    },
+    async archiveCampaign(id) {
+      const { data } = await requireMarketingCampaign(id);
+      const patch: Record<string, unknown> = { archivedAt: FieldValue.serverTimestamp() };
+      if (String(data.status || "") === "sending") patch.status = "paused";
+      await patchMarketingCampaign(id, patch);
+      return summaryAfter(id);
+    },
+    async restoreCampaign(id) {
+      await patchMarketingCampaign(id, { archivedAt: null });
+      return summaryAfter(id);
+    },
+    async pauseCampaign(id) {
+      const { data } = await requireMarketingCampaign(id);
+      await patchMarketingCampaign(id, { status: pauseCampaignStatus(String(data.status || "")) });
+      return summaryAfter(id);
+    },
+    async resumeCampaign(id) {
+      const { data } = await requireMarketingCampaign(id);
+      await patchMarketingCampaign(id, {
+        status: resumeCampaignStatus(String(data.status || ""), isCampaignArchived(data)),
+      });
+      return summaryAfter(id);
     },
     async countCampaigns() {
       const db = getAdminDb();

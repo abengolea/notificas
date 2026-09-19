@@ -10,7 +10,7 @@ import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { parseScopeString, scopeDescriptions, type McpScope } from "@/mcp/scopes";
-import { parseCrmScopeString, crmScopeDescriptions, type CrmMcpScope } from "@/mcp/crm/scopes";
+import { parseCrmScopeString, crmScopeDescriptions, type CrmMcpScope, CrmInvalidScopeError } from "@/mcp/crm/scopes";
 
 type Org = { id: string; nombre?: string; plan?: string };
 
@@ -24,12 +24,17 @@ export function AuthorizeClient() {
   const method = search.get("code_challenge_method") || "S256";
   const resource = search.get("resource") || "";
   const isCrmResource = resource.endsWith("/mcp/crm");
+  let scopeError: string | null = null;
+  let scopes: Array<McpScope | CrmMcpScope> = [];
+  try {
+    scopes = isCrmResource ? parseCrmScopeString(scope) : parseScopeString(scope);
+  } catch (e) {
+    scopeError = e instanceof CrmInvalidScopeError ? e.errorDescription : "invalid_scope";
+  }
   const nextLogin = useMemo(() => {
     const qs = search.toString();
     return `/login?next=${encodeURIComponent(`/oauth/authorize?${qs}`)}`;
   }, [search]);
-
-  const scopes = isCrmResource ? parseCrmScopeString(scope) : parseScopeString(scope);
   const descriptions: Record<string, string> = isCrmResource ? crmScopeDescriptions() : scopeDescriptions();
 
   const [ready, setReady] = useState(false);
@@ -153,18 +158,23 @@ export function AuthorizeClient() {
 
           <div>
             <p className="mb-2 text-sm font-medium">Permisos solicitados</p>
-            <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-              {scopes.map((s: McpScope | CrmMcpScope) => (
-                <li key={s}>
-                  <span className="font-medium text-foreground">{s}</span> — {descriptions[s]}
-                </li>
-              ))}
-            </ul>
+            {scopeError ? (
+              <p className="text-sm text-destructive">{scopeError}</p>
+            ) : (
+              <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                {scopes.map((s: McpScope | CrmMcpScope) => (
+                  <li key={s}>
+                    <span className="font-medium text-foreground">{s}</span> — {descriptions[s as keyof typeof descriptions]}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <p className="text-xs text-muted-foreground">
-            El envío masivo de campañas no está permitido desde ChatGPT ni Claude. Las notificaciones individuales
-            consumen créditos y quedan registradas con la misma evidencia que en la web.
+            {isCrmResource
+              ? "Si autorizás escritura, ChatGPT puede crear o editar empresas, contactos y borradores de campañas comerciales. No puede enviar email, programar envíos, borrar ni importar CSV masivo."
+              : "El envío masivo de campañas no está permitido desde ChatGPT ni Claude. Las notificaciones individuales consumen créditos y quedan registradas con la misma evidencia que en la web."}
           </p>
 
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -173,7 +183,7 @@ export function AuthorizeClient() {
             <Button variant="outline" className="flex-1" disabled={busy} onClick={() => void submit(true)}>
               Denegar
             </Button>
-            <Button className="flex-1" disabled={busy || (!isCrmResource && !orgId)} onClick={() => void submit(false)}>
+            <Button className="flex-1" disabled={busy || Boolean(scopeError) || (!isCrmResource && !orgId)} onClick={() => void submit(false)}>
               {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Autorizar
             </Button>

@@ -1,11 +1,24 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { crmMcpEnabledSafe, crmMcpResourceUrl, CRM_MCP_SERVER_NAME } from "./config";
-import { crmMcpHasRead, parseCrmScopeString, CRM_MCP_SCOPES } from "./scopes";
-import { listCrmMcpTools, crmMcpWriteToolCount, assertCrmMcpToolAllowed } from "./registry";
+import {
+  crmMcpHasRead,
+  parseCrmScopeString,
+  parseStoredCrmScopes,
+  CRM_MCP_SCOPES,
+  CrmInvalidScopeError,
+} from "./scopes";
+import { listCrmMcpTools, listAllCrmMcpTools, crmMcpWriteToolCount, assertCrmMcpToolAllowed } from "./registry";
 import { McpToolError } from "../errors";
 import { mcpResourceUrl } from "../config";
-import { CRM_WRITE_TOOL_NAMES } from "../../lib/marketing/tools/types";
+import { CRM_FORBIDDEN_TOOL_NAMES } from "../../lib/marketing/tools/types";
+import { CRM_MCP_PHASE_B_TOOL_SCOPES, crmMcpCanCallTool, isCrmMcpForbiddenTool } from "./policy";
+
+const PHASE_A_SCOPES = [...CRM_MCP_SCOPES];
+
+function namesFor(scopes: readonly string[]): string[] {
+  return listCrmMcpTools(scopes).map((t) => t.name);
+}
 
 test("CRM MCP is disabled by default and isolated from product resource", () => {
   assert.equal(crmMcpEnabledSafe(), process.env.CRM_MCP === "true" || process.env.CRM_MCP === "1");
@@ -16,22 +29,91 @@ test("CRM MCP is disabled by default and isolated from product resource", () => 
   assert.equal(mcpResourceUrl().endsWith("/mcp/crm"), false);
 });
 
-test("CRM MCP scopes are crm:read only", () => {
-  assert.deepEqual([...CRM_MCP_SCOPES], ["crm:read"]);
+test("CRM MCP scopes: empty defaults to crm:read; unknown is invalid_scope", () => {
+  assert.deepEqual([...CRM_MCP_SCOPES], ["crm:read", "crm:write", "campaigns:read", "campaigns:write"]);
+  assert.deepEqual(parseCrmScopeString(""), ["crm:read"]);
+  assert.deepEqual(parseCrmScopeString(null), ["crm:read"]);
+  assert.deepEqual(parseCrmScopeString("   "), ["crm:read"]);
+  assert.deepEqual(parseCrmScopeString("crm:read"), ["crm:read"]);
+  assert.deepEqual(parseCrmScopeString("crm:write"), ["crm:write"]);
+  assert.deepEqual(parseCrmScopeString("crm:read crm:write"), ["crm:read", "crm:write"]);
+  assert.throws(() => parseCrmScopeString("invented:scope"), CrmInvalidScopeError);
+  assert.throws(() => parseCrmScopeString("crm:read invented:scope"), CrmInvalidScopeError);
+  assert.throws(() => parseCrmScopeString("campaigns:send"), CrmInvalidScopeError);
+  assert.throws(() => parseCrmScopeString("notifications:send account:read"), CrmInvalidScopeError);
+  try {
+    parseCrmScopeString("crm:read foo");
+    assert.fail("expected invalid_scope");
+  } catch (e) {
+    assert.equal(e instanceof CrmInvalidScopeError, true);
+    if (e instanceof CrmInvalidScopeError) {
+      assert.equal(e.error, "invalid_scope");
+      assert.ok(e.errorDescription.includes("foo"));
+    }
+  }
+  assert.equal(parseStoredCrmScopes(["crm:write"]).includes("crm:write"), true);
+  assert.equal(parseStoredCrmScopes(["crm:write"]).includes("crm:read"), false);
   assert.equal(crmMcpHasRead(parseCrmScopeString("crm:read")), true);
   assert.equal(crmMcpHasRead(["account:read", "notifications:send"]), false);
-  assert.equal(parseCrmScopeString("notifications:send account:read").includes("crm:read"), true);
 });
 
-test("CRM MCP tool list never includes writes", () => {
-  const tools = listCrmMcpTools();
-  const names: string[] = tools.map((t) => t.name);
-  for (const write of CRM_WRITE_TOOL_NAMES) assert.equal(names.includes(write), false);
+test("crm:read token still sees additive reads and never writes, pause, resume or send", () => {
+  const names = namesFor(["crm:read"]);
+  for (const forbidden of CRM_FORBIDDEN_TOOL_NAMES) assert.equal(names.includes(forbidden), false);
+  for (const phaseB of Object.keys(CRM_MCP_PHASE_B_TOOL_SCOPES)) assert.equal(names.includes(phaseB), false);
+  assert.ok(names.includes("search_companies"));
+  assert.ok(names.includes("search_campaigns"));
+  assert.ok(names.includes("preview_campaign"));
+  assert.ok(names.includes("list_taxonomy"));
+  assert.ok(names.includes("search_opportunities"));
+  assert.equal(crmMcpWriteToolCount(["crm:read"]), 0);
+  assert.throws(() => assertCrmMcpToolAllowed("create_company", ["crm:read"]), McpToolError);
+  assert.throws(() => assertCrmMcpToolAllowed("send_email", ["crm:read"]), McpToolError);
+  assert.throws(() => assertCrmMcpToolAllowed("pause_campaign", ["crm:read"]), McpToolError);
+  assert.throws(() => assertCrmMcpToolAllowed("resume_campaign", ["crm:read"]), McpToolError);
+});
+
+test("Fase A write scopes never publish pause, resume or send", () => {
+  const names = namesFor(PHASE_A_SCOPES);
+  assert.ok(names.includes("create_company"));
+  assert.ok(names.includes("cancel_task"));
+  assert.ok(names.includes("create_campaign_draft"));
+  assert.ok(names.includes("update_campaign_draft"));
+  assert.ok(names.includes("copy_campaign"));
+  assert.ok(names.includes("archive_campaign"));
+  assert.ok(names.includes("restore_campaign"));
+  assert.equal(names.includes("pause_campaign"), false);
+  assert.equal(names.includes("resume_campaign"), false);
   assert.equal(names.includes("send_campaign"), false);
-  assert.equal(crmMcpWriteToolCount(), 0);
-  for (const tool of tools) {
-    assert.deepEqual(tool.securitySchemes, [{ type: "oauth2", scopes: ["crm:read"] }]);
+  assert.equal(names.includes("retry_failed_sends"), false);
+  assert.equal(names.includes("cancel_campaign"), false);
+  assert.equal(names.includes("schedule_campaign"), false);
+  const published: string[] = listAllCrmMcpTools().map((t) => t.name);
+  for (const phaseB of Object.keys(CRM_MCP_PHASE_B_TOOL_SCOPES)) {
+    assert.equal(published.includes(phaseB), false);
+    assert.equal(isCrmMcpForbiddenTool(phaseB), true);
+    assert.equal(crmMcpCanCallTool(phaseB, PHASE_A_SCOPES), false);
+    assert.throws(() => assertCrmMcpToolAllowed(phaseB, PHASE_A_SCOPES), McpToolError);
   }
-  assert.throws(() => assertCrmMcpToolAllowed("create_company"), McpToolError);
-  assert.throws(() => assertCrmMcpToolAllowed("send_email"), McpToolError);
+  const create = listAllCrmMcpTools().find((t) => t.name === "create_campaign_draft");
+  assert.deepEqual(create?.securitySchemes, [{ type: "oauth2", scopes: ["campaigns:write"] }]);
+  assert.equal(create?.annotations.readOnlyHint, false);
+});
+
+test("tools published per scope combination", () => {
+  const read = namesFor(["crm:read"]);
+  const crmWrite = namesFor(["crm:read", "crm:write"]);
+  const campWrite = namesFor(["crm:read", "campaigns:read", "campaigns:write"]);
+  const all = namesFor(PHASE_A_SCOPES);
+
+  assert.equal(read.includes("create_company"), false);
+  assert.equal(read.includes("create_campaign_draft"), false);
+  assert.ok(crmWrite.includes("create_company"));
+  assert.equal(crmWrite.includes("create_campaign_draft"), false);
+  assert.ok(campWrite.includes("create_campaign_draft"));
+  assert.equal(campWrite.includes("create_company"), false);
+  assert.ok(all.includes("create_company") && all.includes("create_campaign_draft"));
+  assert.equal(all.includes("resume_campaign"), false);
+  assert.equal(all.includes("pause_campaign"), false);
+  assert.equal(all.includes("send_campaign"), false);
 });

@@ -17,6 +17,10 @@ export const CRM_READ_TOOL_NAMES = [
   "get_contact_activity",
   "get_pending_tasks",
   "get_crm_stats",
+  "list_taxonomy",
+  "search_opportunities",
+  "get_opportunity",
+  "preview_campaign",
 ] as const;
 
 export const CRM_WRITE_TOOL_NAMES = [
@@ -26,23 +30,34 @@ export const CRM_WRITE_TOOL_NAMES = [
   "update_contact",
   "create_task",
   "complete_task",
+  "cancel_task",
   "create_list",
   "add_contact_to_list",
   "create_note",
   "create_opportunity",
   "update_opportunity",
   "create_campaign_draft",
+  "update_campaign_draft",
+  "copy_campaign",
+  "archive_campaign",
+  "restore_campaign",
+  "pause_campaign",
+  "resume_campaign",
 ] as const;
 
 export const CRM_FORBIDDEN_TOOL_NAMES = [
   "send_campaign",
   "send_email",
+  "retry_failed_sends",
+  "cancel_campaign",
+  "schedule_campaign",
   "delete_company",
   "delete_contact",
   "bulk_delete",
   "bulk_write",
   "execute_crm_query",
   "merge_companies",
+  "import_contacts_csv",
 ] as const;
 
 export type CrmReadToolName = (typeof CRM_READ_TOOL_NAMES)[number];
@@ -111,6 +126,7 @@ export type CampaignSummary = {
   listName: string;
   subject: string;
   contactCount: number;
+  archivedAt?: string | null;
   stats?: Record<string, number>;
   createdAt: string | null;
   updatedAt: string | null;
@@ -120,7 +136,49 @@ export type CampaignDetail = CampaignSummary & {
   includeStages?: string[];
   htmlPreview?: string;
   textPreview?: string;
+  htmlBody?: string;
+  archivedAt?: string | null;
+  industryId?: string | null;
+  useCaseIds?: string[];
   audience?: { total: number; eligible: number; skipped: number };
+};
+
+export type CampaignPreview = {
+  campaignId: string;
+  name: string;
+  status: string;
+  subject: string;
+  htmlPreview: string;
+  textPreview: string;
+  sent: false;
+  audience: {
+    total: number;
+    eligible: number;
+    skipped: number;
+    sample: Array<{ name: string; email: string }>;
+  };
+};
+
+export type CampaignDraftInput = {
+  name: string;
+  listId?: string;
+  subject: string;
+  htmlBody: string;
+  textBody?: string;
+  country?: string;
+  includeStages?: string[];
+  industryId?: string;
+  useCaseId?: string;
+  useCaseIds?: string[];
+};
+
+export type CampaignDraftChanges = {
+  name?: string;
+  subject?: string;
+  htmlBody?: string;
+  textBody?: string;
+  listId?: string;
+  includeStages?: string[];
 };
 
 export type CampaignListCatalog = {
@@ -132,6 +190,7 @@ export type CampaignListCatalog = {
     cursor?: string;
   }): Promise<{ items: CampaignSummary[]; nextCursor?: string }>;
   getCampaign(id: string): Promise<CampaignDetail | null>;
+  previewCampaign(id: string): Promise<CampaignPreview | null>;
   searchLists(input: {
     query?: string;
     limit: number;
@@ -139,15 +198,13 @@ export type CampaignListCatalog = {
   }): Promise<{ items: CampaignListSummary[]; nextCursor?: string }>;
   getList(id: string): Promise<(CampaignListSummary & { sampleSize?: number }) | null>;
   createList(input: { name: string; country?: string }): Promise<CampaignListSummary>;
-  createCampaignDraft(input: {
-    name: string;
-    listId: string;
-    subject: string;
-    htmlBody: string;
-    textBody?: string;
-    country?: string;
-    includeStages?: string[];
-  }): Promise<CampaignSummary>;
+  createCampaignDraft(input: CampaignDraftInput): Promise<CampaignSummary>;
+  updateCampaignDraft(id: string, changes: CampaignDraftChanges): Promise<CampaignSummary>;
+  copyCampaign(id: string): Promise<CampaignSummary>;
+  archiveCampaign(id: string): Promise<CampaignSummary>;
+  restoreCampaign(id: string): Promise<CampaignSummary>;
+  pauseCampaign(id: string): Promise<CampaignSummary>;
+  resumeCampaign(id: string): Promise<CampaignSummary>;
   countCampaigns(): Promise<number>;
   countLists(): Promise<number>;
 };

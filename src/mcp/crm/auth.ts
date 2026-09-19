@@ -12,7 +12,7 @@ import {
   crmMcpWorkspaceId,
   isCrmMcpUserAllowed,
 } from "./config";
-import { crmMcpHasRead, type CrmMcpScope } from "./scopes";
+import { crmMcpHasKnownScope, parseStoredCrmScopes, type CrmMcpScope } from "./scopes";
 
 export type CrmMcpAuthContext = {
   requestId: string;
@@ -21,6 +21,7 @@ export type CrmMcpAuthContext = {
   scopes: CrmMcpScope[];
   client: string;
   resource: string;
+  idempotencyKey?: string;
 };
 
 function tokenEquals(provided: string, expected: string): boolean {
@@ -80,8 +81,8 @@ export async function authenticateCrmMcpRequest(request: Request, requestId: str
   if (rec.resource !== crmMcpResourceUrl()) {
     throw new McpToolError("UNAUTHORIZED", "Token was not issued for the CRM MCP resource.", 401);
   }
-  if (!crmMcpHasRead(rec.scopes as string[])) {
-    throw new McpToolError("INSUFFICIENT_SCOPE", "This authorization does not include crm:read.", 403);
+  if (!crmMcpHasKnownScope(rec.scopes as string[])) {
+    throw new McpToolError("INSUFFICIENT_SCOPE", "This authorization does not include a CRM MCP scope.", 403);
   }
   const actor = rec.userEmail || rec.userId;
   if (!isCrmMcpUserAllowed(actor) && !isCrmMcpUserAllowed(rec.userId)) {
@@ -91,7 +92,7 @@ export async function authenticateCrmMcpRequest(request: Request, requestId: str
     requestId,
     actor,
     workspaceId,
-    scopes: ["crm:read"],
+    scopes: parseStoredCrmScopes(rec.scopes as string[]),
     client: rec.mcpClient || client,
     resource: rec.resource,
   };

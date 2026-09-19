@@ -8,7 +8,8 @@ export async function GET() {
       {
         ok: body.enabled && body.ok,
         service: body.service,
-        readOnly: true,
+        readOnly: false,
+        sendForbidden: true,
         enabled: body.enabled,
       },
       { status: body.enabled ? 200 : 503 },

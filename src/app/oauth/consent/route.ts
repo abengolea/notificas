@@ -5,7 +5,7 @@ import { isMcpUserAllowlisted, mcpResourceUrl } from "@/mcp/config";
 import { resolveAuthorizedOrg } from "@/mcp/auth/orgs";
 import { parseScopeString } from "@/mcp/scopes";
 import { crmMcpEnabledSafe, crmMcpResourceUrl, crmMcpWorkspaceId, isCrmMcpUserAllowed } from "@/mcp/crm/config";
-import { parseCrmScopeString } from "@/mcp/crm/scopes";
+import { parseCrmScopeString, CrmInvalidScopeError } from "@/mcp/crm/scopes";
 import { isValidCodeChallenge } from "@/mcp/auth/pkce";
 import { oauthCorsResponse, oauthOptions, requireMcpOauth } from "@/mcp/auth/http";
 
@@ -84,9 +84,17 @@ export async function POST(request: Request) {
     return oauthCorsResponse({ error: "access_denied", error_description: "You cannot authorize this company." }, 403);
   }
 
-  const scopes = isCrmResource
-    ? parseCrmScopeString(typeof body.scope === "string" ? body.scope : "")
-    : parseScopeString(typeof body.scope === "string" ? body.scope : "");
+  let scopes;
+  try {
+    scopes = isCrmResource
+      ? parseCrmScopeString(typeof body.scope === "string" ? body.scope : "")
+      : parseScopeString(typeof body.scope === "string" ? body.scope : "");
+  } catch (e) {
+    if (e instanceof CrmInvalidScopeError) {
+      return oauthCorsResponse({ error: e.error, error_description: e.errorDescription }, 400);
+    }
+    throw e;
+  }
   const workspaceId = crmMcpWorkspaceId();
   const code = await createAuthorizationCode({
     clientId,

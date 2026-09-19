@@ -91,14 +91,38 @@ export const getPendingTasksSchema = z.object({
 
 export const getCrmStatsSchema = z.object({});
 
-export const createCompanySchema = z.object({
-  name: z.string().min(1).max(200),
+export const listTaxonomySchema = z.object({});
+
+export const searchOpportunitiesSchema = z.object({
+  query: optStr(200),
+  companyId: optStr(128),
   countryCode: optStr(8),
-  website: optStr(500),
-  industryIds: z.array(z.string().max(80)).max(20).optional(),
-  useCaseIds: z.array(z.string().max(80)).max(20).optional(),
-  notes: optStr(4000),
+  commercialStageId: optStr(80),
+  status: z.enum(["open", "won", "lost", "paused"]).optional(),
+  limit: toolLimitSchema,
+  cursor: toolCursorSchema,
 });
+
+export const getOpportunitySchema = z.object({
+  opportunityId: idSchema,
+});
+
+export const previewCampaignSchema = z.object({
+  campaignId: idSchema,
+});
+
+const idempotencyKeySchema = z.string().min(1).max(128).optional();
+
+export const createCompanySchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    countryCode: optStr(8),
+    website: optStr(500),
+    industryIds: z.array(z.string().max(80)).max(20).optional(),
+    useCaseIds: z.array(z.string().max(80)).max(20).optional(),
+    notes: optStr(4000),
+  })
+  .strict();
 
 export const updateCompanySchema = z.object({
   companyId: idSchema,
@@ -164,6 +188,10 @@ export const completeTaskSchema = z.object({
   taskId: idSchema,
 });
 
+export const cancelTaskSchema = z.object({
+  taskId: idSchema,
+});
+
 export const createListSchema = z.object({
   name: z.string().min(2).max(160),
   countryCode: optStr(8),
@@ -215,13 +243,43 @@ export const updateOpportunitySchema = z.object({
     .strict(),
 });
 
-export const createCampaignDraftSchema = z.object({
-  name: z.string().min(2).max(160),
-  listId: optStr(80),
-  listName: optStr(160),
-  countryCode: optStr(8),
-  subject: z.string().min(2).max(200),
-  htmlBody: optStr(20_000),
-  textBody: optStr(8_000),
-  includeStages: z.array(z.string().max(40)).max(12).optional(),
-});
+export const createCampaignDraftSchema = z
+  .object({
+    name: z.string().min(2).max(160),
+    listId: optStr(80),
+    listName: optStr(160),
+    countryCode: optStr(8),
+    industryId: optStr(80),
+    useCaseId: optStr(80),
+    useCaseIds: z.array(z.string().max(80)).max(20).optional(),
+    subject: z.string().min(2).max(200),
+    htmlBody: optStr(20_000),
+    textBody: optStr(8_000),
+    includeStages: z.array(z.string().max(40)).max(12).optional(),
+    idempotencyKey: idempotencyKeySchema,
+  })
+  .strict();
+
+export const updateCampaignDraftSchema = z
+  .object({
+    campaignId: idSchema,
+    changes: z
+      .object({
+        name: z.string().min(2).max(160).optional(),
+        subject: z.string().min(2).max(200).optional(),
+        htmlBody: z.string().min(8).max(20_000).optional(),
+        textBody: optStr(8_000),
+        listId: optStr(80),
+        includeStages: z.array(z.string().max(40)).max(12).optional(),
+      })
+      .strict(),
+    idempotencyKey: idempotencyKeySchema,
+  })
+  .strict();
+
+export const campaignIdSchema = z
+  .object({
+    campaignId: idSchema,
+    idempotencyKey: idempotencyKeySchema,
+  })
+  .strict();

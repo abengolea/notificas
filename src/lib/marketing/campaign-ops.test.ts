@@ -5,6 +5,9 @@ import {
   copiedCampaignFields,
   isCampaignArchived,
   shouldSkipFailedRetry,
+  assertDraftForContentEdit,
+  pauseCampaignStatus,
+  resumeCampaignStatus,
 } from "./campaign-ops";
 
 test("nombre de copia no se anida", () => {
@@ -55,6 +58,15 @@ test("no reenviar fallidos a bajas o rebotes", () => {
   assert.equal(shouldSkipFailedRetry("unsubscribed"), true);
   assert.equal(shouldSkipFailedRetry("bounced"), true);
   assert.equal(shouldSkipFailedRetry("not_interested"), true);
+});
+
+test("solo se edita contenido en draft", () => {
+  assert.doesNotThrow(() => assertDraftForContentEdit("draft"));
+  assert.throws(() => assertDraftForContentEdit("sending"), /CAMPAIGN_NOT_DRAFT/);
+  assert.throws(() => pauseCampaignStatus("draft"), /sending/);
+  assert.throws(() => resumeCampaignStatus("draft", false), /pausada/);
+  assert.equal(pauseCampaignStatus("sending"), "paused");
+  assert.equal(resumeCampaignStatus("paused", false), "sending");
 });
 
 test("archivada se detecta por archivedAt", () => {

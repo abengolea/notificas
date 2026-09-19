@@ -6,7 +6,7 @@ export const crmWriteTools = CRM_WRITE_TOOL_DEFINITIONS;
 export const crmToolDefinitions = CRM_TOOL_DEFINITIONS;
 
 export function mcpCrmToolDefinitions() {
-  return crmReadTools;
+  return [...crmReadTools, ...crmWriteTools];
 }
 
 export function internalAiToolDefinitions() {

@@ -91,5 +91,5 @@ test("CRM protected resource is /mcp/crm", () => {
   const meta = crmProtectedResourceMetadata();
   assert.ok(String(meta.resource).endsWith("/mcp/crm"));
   assert.ok(Array.isArray(meta.authorization_servers) && meta.authorization_servers.length === 1);
-  assert.deepEqual(meta.scopes_supported, ["crm:read"]);
+  assert.deepEqual(meta.scopes_supported, ["crm:read", "crm:write", "campaigns:read", "campaigns:write"]);
 });

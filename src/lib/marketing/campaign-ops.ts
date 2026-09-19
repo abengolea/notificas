@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { MARKETING_CAMPAIGNS, MARKETING_CONTACTS, MARKETING_SENDS } from "./collections";
+import { MarketingConflictError, MarketingNotFoundError } from "./errors";
 import { serializeAdminDoc } from "./events";
 import { emptyCampaignStats, marketingFromEmail, marketingFromName } from "./types";
 
@@ -14,6 +15,32 @@ export function copyCampaignName(name: string): string {
 
 export function isCampaignArchived(camp: { archivedAt?: unknown }): boolean {
   return Boolean(camp.archivedAt);
+}
+
+export function assertDraftForContentEdit(status: string): void {
+  const current = String(status || "").trim() || "draft";
+  if (current !== "draft") {
+    throw new MarketingConflictError(
+      `CAMPAIGN_NOT_DRAFT: solo se puede editar el contenido de un borrador. Estado actual: ${current}.`,
+    );
+  }
+}
+
+export function pauseCampaignStatus(current: string): "paused" {
+  if (String(current || "") !== "sending") {
+    throw new MarketingConflictError("Solo se puede pausar una campaña que está en envío (sending).");
+  }
+  return "paused";
+}
+
+export function resumeCampaignStatus(current: string, archived: boolean): "sending" {
+  if (archived) {
+    throw new MarketingConflictError("Restaurá la campaña para reanudar el envío.");
+  }
+  if (String(current || "") !== "paused") {
+    throw new MarketingConflictError("Solo se puede reanudar una campaña pausada.");
+  }
+  return "sending";
 }
 
 export function shouldSkipFailedRetry(stage: string): boolean {
@@ -64,13 +91,10 @@ export function copiedCampaignFields(
 }
 
 export async function copyMarketingCampaign(campaignId: string): Promise<{ campaign: Record<string, unknown> }> {
-  const db = getAdminDb();
-  const snap = await db.collection(MARKETING_CAMPAIGNS).doc(campaignId).get();
-  if (!snap.exists) throw Object.assign(new Error("Campaña no encontrada"), { status: 404 });
-  const source = snap.data() || {};
+  const { db, id: sourceId, data: source } = await requireMarketingCampaign(campaignId);
   const ref = db.collection(MARKETING_CAMPAIGNS).doc();
   await ref.set({
-    ...copiedCampaignFields(source, campaignId),
+    ...copiedCampaignFields(source, sourceId),
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
@@ -149,4 +173,25 @@ export async function retryFailedCampaignSends(campaignId: string): Promise<{ re
   });
 
   return { retried, skipped };
+}
+
+export async function requireMarketingCampaign(campaignId: string) {
+  const db = getAdminDb();
+  const ref = db.collection(MARKETING_CAMPAIGNS).doc(campaignId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new MarketingNotFoundError("Campaña", campaignId);
+  return { db, ref, id: snap.id, data: snap.data() || {} };
+}
+
+export async function patchMarketingCampaign(
+  campaignId: string,
+  patch: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const { ref } = await requireMarketingCampaign(campaignId);
+  await ref.update({
+    ...patch,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  const next = await ref.get();
+  return serializeAdminDoc(next.id, next.data() || {});
 }

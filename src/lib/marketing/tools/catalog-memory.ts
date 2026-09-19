@@ -1,5 +1,21 @@
 import { clampMarketingLimit, encodeMarketingCursor, decodeMarketingCursor } from "../pagination";
-import type { CampaignListCatalog, CampaignListSummary, CampaignDetail } from "./types";
+import {
+  assertDraftForContentEdit,
+  copyCampaignName,
+  isCampaignArchived,
+  pauseCampaignStatus,
+  resumeCampaignStatus,
+} from "../campaign-ops";
+import { MarketingNotFoundError, MarketingValidationError } from "../errors";
+import { emptyCampaignStats } from "../types";
+import type {
+  CampaignDetail,
+  CampaignDraftChanges,
+  CampaignListCatalog,
+  CampaignListSummary,
+  CampaignPreview,
+  CampaignSummary,
+} from "./types";
 
 function page<T extends { id: string }>(
   rows: T[],
@@ -19,6 +35,47 @@ function page<T extends { id: string }>(
   return {
     items,
     nextCursor: extra && last ? encodeMarketingCursor({ t: "", id: last.id }) : undefined,
+  };
+}
+
+function requireCampaign(campaigns: CampaignDetail[], id: string): CampaignDetail {
+  const row = campaigns.find((c) => c.id === id);
+  if (!row) throw new MarketingNotFoundError("Campaña", id);
+  return row;
+}
+
+function toSummary(row: CampaignDetail): CampaignSummary {
+  return {
+    id: row.id,
+    name: row.name,
+    country: row.country,
+    status: row.status,
+    listId: row.listId,
+    listName: row.listName,
+    subject: row.subject,
+    contactCount: row.contactCount,
+    archivedAt: row.archivedAt ?? null,
+    stats: row.stats,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function previewOf(row: CampaignDetail): CampaignPreview {
+  return {
+    campaignId: row.id,
+    name: row.name,
+    status: row.status,
+    subject: row.subject,
+    htmlPreview: (row.htmlPreview || row.htmlBody || "").slice(0, 1_500),
+    textPreview: (row.textPreview || "").slice(0, 1_500),
+    sent: false,
+    audience: {
+      total: row.audience?.total ?? row.contactCount,
+      eligible: row.audience?.eligible ?? row.contactCount,
+      skipped: row.audience?.skipped ?? 0,
+      sample: [],
+    },
   };
 }
 
@@ -46,6 +103,10 @@ export function createMemoryCampaignCatalog(seed?: {
     async getCampaign(id) {
       return campaigns.find((c) => c.id === id) || null;
     },
+    async previewCampaign(id) {
+      const row = campaigns.find((c) => c.id === id);
+      return row ? previewOf(row) : null;
+    },
     async searchLists(input) {
       let rows = lists;
       if (input.query) {
@@ -71,25 +132,100 @@ export function createMemoryCampaignCatalog(seed?: {
       return row;
     },
     async createCampaignDraft(input) {
-      const list = lists.find((l) => l.id === input.listId);
+      let listId = input.listId;
+      if (!listId && input.industryId && input.country) {
+        const created = await this.createList({
+          name: `CRM ${input.industryId} ${input.country}`,
+          country: input.country,
+        });
+        listId = created.id;
+      }
+      if (!listId) throw new MarketingValidationError("Indicá listId o un segmento CRM para el draft.");
+      const list = lists.find((l) => l.id === listId);
+      const now = new Date().toISOString();
       const row: CampaignDetail = {
         id: `camp_${campaigns.length + 1}`,
         name: input.name.trim(),
         country: input.country || list?.country || "all",
         status: "draft",
-        listId: input.listId,
+        listId,
         listName: list?.name || "",
         subject: input.subject,
         contactCount: list?.contactCount || 0,
-        stats: { queued: 0, sent: 0, delivered: 0, opened: 0, clicked: 0, replied: 0, bounced: 0, failed: 0, unsubscribed: 0 },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        archivedAt: null,
+        stats: emptyCampaignStats(),
+        createdAt: now,
+        updatedAt: now,
         includeStages: input.includeStages || ["new"],
+        htmlBody: input.htmlBody,
         htmlPreview: input.htmlBody.slice(0, 500),
         textPreview: (input.textBody || "").slice(0, 500),
+        industryId: input.industryId || null,
+        useCaseIds: input.useCaseIds || (input.useCaseId ? [input.useCaseId] : []),
+        audience: { total: list?.contactCount || 0, eligible: list?.contactCount || 0, skipped: 0 },
       };
       campaigns.push(row);
-      return row;
+      return toSummary(row);
+    },
+    async updateCampaignDraft(id, changes: CampaignDraftChanges) {
+      const row = requireCampaign(campaigns, id);
+      assertDraftForContentEdit(row.status);
+      if (changes.name) row.name = changes.name.trim();
+      if (changes.subject) row.subject = changes.subject.trim();
+      if (changes.htmlBody) {
+        row.htmlBody = changes.htmlBody;
+        row.htmlPreview = changes.htmlBody.slice(0, 500);
+      }
+      if (changes.textBody !== undefined) row.textPreview = changes.textBody.slice(0, 500);
+      if (changes.includeStages) row.includeStages = changes.includeStages;
+      if (changes.listId) {
+        const list = lists.find((l) => l.id === changes.listId);
+        row.listId = changes.listId;
+        row.listName = list?.name || row.listName;
+      }
+      row.updatedAt = new Date().toISOString();
+      return toSummary(row);
+    },
+    async copyCampaign(id) {
+      const source = requireCampaign(campaigns, id);
+      const now = new Date().toISOString();
+      const row: CampaignDetail = {
+        ...source,
+        id: `camp_${campaigns.length + 1}`,
+        name: copyCampaignName(source.name),
+        status: "draft",
+        archivedAt: null,
+        stats: emptyCampaignStats(),
+        createdAt: now,
+        updatedAt: now,
+      };
+      campaigns.push(row);
+      return toSummary(row);
+    },
+    async archiveCampaign(id) {
+      const row = requireCampaign(campaigns, id);
+      row.archivedAt = new Date().toISOString();
+      if (row.status === "sending") row.status = "paused";
+      row.updatedAt = new Date().toISOString();
+      return toSummary(row);
+    },
+    async restoreCampaign(id) {
+      const row = requireCampaign(campaigns, id);
+      row.archivedAt = null;
+      row.updatedAt = new Date().toISOString();
+      return toSummary(row);
+    },
+    async pauseCampaign(id) {
+      const row = requireCampaign(campaigns, id);
+      row.status = pauseCampaignStatus(row.status);
+      row.updatedAt = new Date().toISOString();
+      return toSummary(row);
+    },
+    async resumeCampaign(id) {
+      const row = requireCampaign(campaigns, id);
+      row.status = resumeCampaignStatus(row.status, isCampaignArchived(row));
+      row.updatedAt = new Date().toISOString();
+      return toSummary(row);
     },
     async countCampaigns() {
       return campaigns.length;

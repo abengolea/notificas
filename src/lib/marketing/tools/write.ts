@@ -7,6 +7,8 @@ import { clarificationResult, resolveCompanyByName } from "./helpers";
 import { sanitizeCrmPayload } from "./sanitize";
 import {
   addContactToListSchema,
+  campaignIdSchema,
+  cancelTaskSchema,
   completeTaskSchema,
   createCampaignDraftSchema,
   createCompanySchema,
@@ -15,6 +17,7 @@ import {
   createNoteSchema,
   createOpportunitySchema,
   createTaskSchema,
+  updateCampaignDraftSchema,
   updateCompanySchema,
   updateContactSchema,
   updateOpportunitySchema,
@@ -233,6 +236,19 @@ export async function completeTask(
   );
 }
 
+export async function cancelTask(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof cancelTaskSchema>,
+): Promise<CrmToolSuccess> {
+  const task = await runtime.services.tasks.cancelTask(ctx, input.taskId);
+  return ok(
+    "cancel_task",
+    { task: { id: task.id, title: task.title, status: task.status } },
+    { entityType: "task", entityIds: [task.id], summary: `Tarea cancelada: ${task.title}` },
+  );
+}
+
 export async function createList(
   runtime: CrmToolRuntime,
   ctx: CrmToolContext,
@@ -354,36 +370,150 @@ export async function createCampaignDraft(
   ctx: CrmToolContext,
   input: z.infer<typeof createCampaignDraftSchema>,
 ): Promise<CrmToolSuccess> {
-  void ctx;
-  let listId = input.listId;
-  if (!listId && input.listName) {
-    const created = await runtime.catalog.createList({
-      name: input.listName,
-      country: input.countryCode,
-    });
-    listId = created.id;
-  }
-  if (!listId) throw new MarketingValidationError("Indicá listId o listName para el draft de campaña.");
-  const htmlBody =
-    input.htmlBody?.trim() ||
-    `<p>Borrador generado por el asistente CRM. Revisar antes de enviar.</p><p>${input.subject}</p>`;
-  const campaign = await runtime.catalog.createCampaignDraft({
-    name: input.name,
-    listId,
-    subject: input.subject,
-    htmlBody,
-    textBody: input.textBody,
-    country: input.countryCode,
-    includeStages: input.includeStages,
-  });
-  return ok(
+  const key = crmIdempotencyKey([
+    ctx.workspaceId,
     "create_campaign_draft",
+    ctx.idempotencyKey,
+    input.idempotencyKey,
+    ctx.conversationId,
+    input.name,
+    input.listId,
+    input.subject,
+    input.industryId,
+  ]);
+  return remember(runtime, key, async () => {
+    let listId = input.listId;
+    if (!listId && input.listName) {
+      const created = await runtime.catalog.createList({
+        name: input.listName,
+        country: input.countryCode,
+      });
+      listId = created.id;
+    }
+    const htmlBody =
+      input.htmlBody?.trim() ||
+      `<p>Borrador generado por el asistente CRM. Revisar antes de enviar.</p><p>${input.subject}</p>`;
+    const campaign = await runtime.catalog.createCampaignDraft({
+      name: input.name,
+      listId,
+      subject: input.subject,
+      htmlBody,
+      textBody: input.textBody,
+      country: input.countryCode,
+      includeStages: input.includeStages,
+      industryId: input.industryId,
+      useCaseId: input.useCaseId,
+      useCaseIds: input.useCaseIds,
+    });
+    return ok(
+      "create_campaign_draft",
+      { campaign: { ...campaign, status: "draft" }, sent: false },
+      {
+        entityType: "campaign",
+        entityIds: [campaign.id],
+        summary: `Borrador de campaña creado: ${campaign.name}. No se envió.`,
+      },
+    );
+  });
+}
+
+export async function updateCampaignDraft(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof updateCampaignDraftSchema>,
+): Promise<CrmToolSuccess> {
+  void ctx;
+  const campaign = await runtime.catalog.updateCampaignDraft(input.campaignId, input.changes);
+  return ok(
+    "update_campaign_draft",
     { campaign, sent: false },
     {
       entityType: "campaign",
       entityIds: [campaign.id],
-      summary: `Borrador de campaña creado: ${campaign.name}. No se envió.`,
+      summary: `Borrador actualizado: ${campaign.name}. No se envió.`,
     },
+  );
+}
+
+export async function copyCampaign(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof campaignIdSchema>,
+): Promise<CrmToolSuccess> {
+  const key = crmIdempotencyKey([
+    ctx.workspaceId,
+    "copy_campaign",
+    ctx.idempotencyKey,
+    input.idempotencyKey,
+    input.campaignId,
+  ]);
+  return remember(runtime, key, async () => {
+    const campaign = await runtime.catalog.copyCampaign(input.campaignId);
+    return ok(
+      "copy_campaign",
+      { campaign, sent: false },
+      {
+        entityType: "campaign",
+        entityIds: [campaign.id],
+        summary: `Copia en borrador: ${campaign.name}. No se envió.`,
+      },
+    );
+  });
+}
+
+export async function archiveCampaign(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof campaignIdSchema>,
+): Promise<CrmToolSuccess> {
+  void ctx;
+  const campaign = await runtime.catalog.archiveCampaign(input.campaignId);
+  return ok(
+    "archive_campaign",
+    { campaign },
+    { entityType: "campaign", entityIds: [campaign.id], summary: `Campaña archivada: ${campaign.name}` },
+  );
+}
+
+export async function restoreCampaign(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof campaignIdSchema>,
+): Promise<CrmToolSuccess> {
+  void ctx;
+  const campaign = await runtime.catalog.restoreCampaign(input.campaignId);
+  return ok(
+    "restore_campaign",
+    { campaign },
+    { entityType: "campaign", entityIds: [campaign.id], summary: `Campaña restaurada: ${campaign.name}` },
+  );
+}
+
+export async function pauseCampaign(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof campaignIdSchema>,
+): Promise<CrmToolSuccess> {
+  void ctx;
+  const campaign = await runtime.catalog.pauseCampaign(input.campaignId);
+  return ok(
+    "pause_campaign",
+    { campaign },
+    { entityType: "campaign", entityIds: [campaign.id], summary: `Campaña pausada: ${campaign.name}` },
+  );
+}
+
+export async function resumeCampaign(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof campaignIdSchema>,
+): Promise<CrmToolSuccess> {
+  void ctx;
+  const campaign = await runtime.catalog.resumeCampaign(input.campaignId);
+  return ok(
+    "resume_campaign",
+    { campaign },
+    { entityType: "campaign", entityIds: [campaign.id], summary: `Campaña reanudada: ${campaign.name}` },
   );
 }
 
@@ -394,10 +524,17 @@ export const CRM_WRITE_HANDLERS = {
   update_contact: { schema: updateContactSchema, run: updateContact },
   create_task: { schema: createTaskSchema, run: createTask },
   complete_task: { schema: completeTaskSchema, run: completeTask },
+  cancel_task: { schema: cancelTaskSchema, run: cancelTask },
   create_list: { schema: createListSchema, run: createList },
   add_contact_to_list: { schema: addContactToListSchema, run: addContactToList },
   create_note: { schema: createNoteSchema, run: createNote },
   create_opportunity: { schema: createOpportunitySchema, run: createOpportunity },
   update_opportunity: { schema: updateOpportunitySchema, run: updateOpportunity },
   create_campaign_draft: { schema: createCampaignDraftSchema, run: createCampaignDraft },
+  update_campaign_draft: { schema: updateCampaignDraftSchema, run: updateCampaignDraft },
+  copy_campaign: { schema: campaignIdSchema, run: copyCampaign },
+  archive_campaign: { schema: campaignIdSchema, run: archiveCampaign },
+  restore_campaign: { schema: campaignIdSchema, run: restoreCampaign },
+  pause_campaign: { schema: campaignIdSchema, run: pauseCampaign },
+  resume_campaign: { schema: campaignIdSchema, run: resumeCampaign },
 } as const;

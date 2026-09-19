@@ -26,7 +26,7 @@ export const CRM_READ_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     inputSchema: obj({
       query: { type: "string", description: "Company name or website/domain." },
       countryCode: { type: "string", description: "ISO-2 country code, e.g. UY, AR, CL, CO, PE." },
-      industryId: { type: "string", description: "Industry catalog key, e.g. seguros, gas, carteras_credito." },
+      industryId: { type: "string", description: "Singular industry catalog key to filter search, e.g. gas. Distinct from create_company.industryIds." },
       useCaseId: { type: "string", description: "Use-case catalog key, e.g. aviso_corte, cesion_credito. Not an industry." },
       commercialStageId: { type: "string", description: "Commercial pipeline id, not email engagement stage." },
       limit,
@@ -66,7 +66,7 @@ export const CRM_READ_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     name: "search_campaigns",
     access: "read",
     description:
-      "Search Notificas commercial email campaigns. Read-only. Does not return individual deliveries.",
+      "Search Notificas commercial CRM email campaigns (marketing, not certified product campaigns). Read-only. Does not return individual deliveries and never sends email.",
     inputSchema: obj({
       query: { type: "string" },
       countryCode: { type: "string" },
@@ -79,7 +79,7 @@ export const CRM_READ_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     name: "get_campaign",
     access: "read",
     description:
-      "Get one campaign: metadata, audience totals, template/subject snapshot and aggregated stats. Read-only. Never returns thousands of deliveries.",
+      "Get one commercial CRM campaign: metadata, audience totals, subject/HTML snapshot and aggregated stats. Read-only. Never returns thousands of deliveries and never sends email.",
     inputSchema: obj({ campaignId: { type: "string" } }, ["campaignId"]),
   },
   {
@@ -139,6 +139,41 @@ export const CRM_READ_TOOL_DEFINITIONS: CrmToolDefinition[] = [
       "Workspace totals for companies, contacts, countries, campaigns, pending tasks, new contacts and replies. Read-only. Uses counts, not full-table dumps.",
     inputSchema: obj({}),
   },
+  {
+    name: "list_taxonomy",
+    access: "read",
+    description:
+      "List the canonical CRM catalog: countries, industry keys (rubros), use-case keys and commercial pipeline stages. Read-only. Use these keys in search and create tools instead of inventing labels.",
+    inputSchema: obj({}),
+  },
+  {
+    name: "search_opportunities",
+    access: "read",
+    description:
+      "Search commercial CRM opportunities (pipeline deals), not email campaigns. Read-only. Paginated. Filter by company, country, commercialStageId or status.",
+    inputSchema: obj({
+      query: { type: "string", description: "Opportunity name." },
+      companyId: { type: "string" },
+      countryCode: { type: "string" },
+      commercialStageId: { type: "string", description: "Commercial pipeline id, not email engagement stage." },
+      status: { type: "string", enum: ["open", "won", "lost", "paused"] },
+      limit,
+      cursor,
+    }),
+  },
+  {
+    name: "get_opportunity",
+    access: "read",
+    description: "Get one commercial CRM opportunity by id. Read-only.",
+    inputSchema: obj({ opportunityId: { type: "string" } }, ["opportunityId"]),
+  },
+  {
+    name: "preview_campaign",
+    access: "read",
+    description:
+      "Preview a commercial CRM campaign without sending: subject, HTML snapshot and audience counts. Read-only. Never enqueues email.",
+    inputSchema: obj({ campaignId: { type: "string" } }, ["campaignId"]),
+  },
 ];
 
 export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
@@ -146,13 +181,17 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     name: "create_company",
     access: "write",
     description:
-      "Create a company in the internal Notificas CRM. Always report duplicateWarnings to the user. Never merge duplicates.",
+      "Create a company in the internal Notificas CRM. Companies use industryIds (array of catalog keys), matching the domain model. Do not send industryId — that singular field is only for search_companies filters and campaign segments. Always report duplicateWarnings. Never merge duplicates.",
     inputSchema: obj(
       {
         name: { type: "string" },
         countryCode: { type: "string" },
         website: { type: "string" },
-        industryIds: { type: "array", items: { type: "string" } },
+        industryIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "Company industry catalog keys, e.g. [\"gas\"]. Domain field is industryIds, not industryId.",
+        },
         useCaseIds: { type: "array", items: { type: "string" } },
         notes: { type: "string" },
       },
@@ -263,6 +302,12 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     inputSchema: obj({ taskId: { type: "string" } }, ["taskId"]),
   },
   {
+    name: "cancel_task",
+    access: "write",
+    description: "Cancel an existing CRM task. Does not delete the task record.",
+    inputSchema: obj({ taskId: { type: "string" } }, ["taskId"]),
+  },
+  {
     name: "create_list",
     access: "write",
     description: "Create a named CRM recipient list. Does not add hundreds of contacts in one call.",
@@ -342,20 +387,83 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     name: "create_campaign_draft",
     access: "write",
     description:
-      "Create an email campaign DRAFT only. Never sends. Explain the audience. Sending is not available from AI or ChatGPT.",
+      "Create a commercial CRM email campaign DRAFT only. Never sends, schedules or changes status away from draft. Provide either listId/listName or a CRM segment (countryCode + industryId + useCaseIds). Sending is a separate tool that is not available.",
     inputSchema: obj(
       {
         name: { type: "string" },
-        listId: { type: "string" },
+        listId: { type: "string", description: "Named recipient list id. Do not send in this call." },
         listName: { type: "string" },
         countryCode: { type: "string" },
+        industryId: { type: "string", description: "Industry catalog key for a CRM segment audience." },
+        useCaseId: { type: "string" },
+        useCaseIds: { type: "array", items: { type: "string" } },
         subject: { type: "string" },
         htmlBody: { type: "string" },
         textBody: { type: "string" },
         includeStages: { type: "array", items: { type: "string" } },
+        idempotencyKey: { type: "string" },
       },
       ["name", "subject"],
     ),
+  },
+  {
+    name: "update_campaign_draft",
+    access: "write",
+    description:
+      "Update subject, HTML, list or name of an existing campaign ONLY if status is draft. Fails with CAMPAIGN_NOT_DRAFT otherwise. Never sends email.",
+    inputSchema: obj(
+      {
+        campaignId: { type: "string" },
+        changes: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            name: { type: "string" },
+            subject: { type: "string" },
+            htmlBody: { type: "string" },
+            textBody: { type: "string" },
+            listId: { type: "string" },
+            includeStages: { type: "array", items: { type: "string" } },
+          },
+        },
+        idempotencyKey: { type: "string" },
+      },
+      ["campaignId", "changes"],
+    ),
+  },
+  {
+    name: "copy_campaign",
+    access: "write",
+    description:
+      "Copy an existing commercial CRM campaign into a new DRAFT. The copy is never sent. Use this instead of recreating the audience and copy by hand.",
+    inputSchema: obj({ campaignId: { type: "string" }, idempotencyKey: { type: "string" } }, ["campaignId"]),
+  },
+  {
+    name: "archive_campaign",
+    access: "write",
+    description:
+      "Archive a commercial CRM campaign. If it is sending, it is paused then archived. Does not delete history and does not send email.",
+    inputSchema: obj({ campaignId: { type: "string" }, idempotencyKey: { type: "string" } }, ["campaignId"]),
+  },
+  {
+    name: "restore_campaign",
+    access: "write",
+    description: "Restore an archived commercial CRM campaign. Does not send email.",
+    inputSchema: obj({ campaignId: { type: "string" }, idempotencyKey: { type: "string" } }, ["campaignId"]),
+  },
+  {
+    name: "pause_campaign",
+    access: "write",
+    description:
+      "Pause a commercial CRM campaign that is currently sending. Cannot start a draft. Does not send email.",
+    inputSchema: obj({ campaignId: { type: "string" }, idempotencyKey: { type: "string" } }, ["campaignId"]),
+  },
+  {
+    name: "resume_campaign",
+    access: "write",
+    description:
+      "Resume a paused commercial CRM campaign (status paused → sending). Cannot be used on a draft. Restore first if archived.",
+    inputSchema: obj({ campaignId: { type: "string" }, idempotencyKey: { type: "string" } }, ["campaignId"]),
   },
 ];
 

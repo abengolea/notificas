@@ -1,4 +1,4 @@
-# MCP CRM read-only (ChatGPT)
+# MCP CRM (ChatGPT Work)
 
 Endpoint interno de **CRM comercial**, separado del MCP de **producto certificado**.
 
@@ -7,49 +7,67 @@ Endpoint interno de **CRM comercial**, separado del MCP de **producto certificad
 | URL | `POST /mcp` | `POST /mcp/crm` |
 | Flag | `MCP_ENABLED` | `CRM_MCP` |
 | Recurso OAuth | `{base}/mcp` | `{base}/mcp/crm` |
-| Scopes | `account:read`, `notifications:*`, `campaigns:*`, … | `crm:read` |
-| Tools | envío certificado, certificados | solo lectura CRM |
+| Scopes | `account:read`, `notifications:*`, `campaigns:*`, … | `crm:read`, `crm:write`, `campaigns:read`, `campaigns:write` |
+| Tools | envío certificado, certificados | CRM interno + borradores de campañas comerciales |
 | Tenant | `orgId` de cliente | `workspaceId` de config (`notificas-internal`) |
 | Auditoría | `mcp_audit_logs` | `marketing_mcp_audit` |
 
 Una credencial de cliente del producto **no** entra al CRM: el token de `/mcp` tiene `resource` distinto y se rechaza en `/mcp/crm`. El registry de tools no se comparte.
 
-El MCP CRM **no** llama a Firestore. Usa los mismos handlers que el asistente interno, en modo `read`.
+El MCP CRM **no** llama a Firestore. Usa los mismos handlers que el asistente interno.
+
+**No hay envío de email** desde este servidor: `send_campaign`, `retry_failed_sends`, `cancel_campaign` y `schedule_campaign` no están registrados.
 
 ## Endpoint
 
 - JSON-RPC Streamable HTTP: `POST /mcp/crm`
-- Salud: `GET /mcp/crm/health` → `{ ok, service, readOnly, enabled }` (sin secretos)
+- Salud: `GET /mcp/crm/health` → `{ ok, service, readOnly, sendForbidden, enabled }` (sin secretos)
 - Metadata: `GET /.well-known/oauth-protected-resource/mcp/crm`
-- Token client-credentials (opcional): `POST /mcp/crm/oauth/token`
+- Token client-credentials (opcional): `POST /mcp/crm/oauth/token` — **solo `crm:read`**
 
 Workspace: siempre `getMarketingWorkspaceId()`. El modelo no puede mandar `workspaceId`.
 
 ## Auth
 
-1. Token OAuth cuyo `resource` sea exactamente `{base}/mcp/crm` y scope `crm:read`. Es el mecanismo para ChatGPT.
-2. Bearer `CRM_MCP_TOKEN` (timing-safe), opcional para diagnóstico o clientes controlados.
+1. Token OAuth cuyo `resource` sea exactamente `{base}/mcp/crm` y al menos un scope CRM. Es el mecanismo para ChatGPT.
+2. Bearer `CRM_MCP_TOKEN` (timing-safe), opcional para diagnóstico: **siempre `crm:read`**, nunca write.
 3. Rechazo: API keys `ntf_live_` / `ntf_test_`, tokens del MCP de producto, tokens de otro resource.
 
-Scopes CRM: solo `crm:read`. No hay `crm:write`.
+Un scope **omitido o vacío** cae a `crm:read`. Un scope **explícito desconocido** (o una mezcla con uno desconocido) responde `invalid_scope` en authorize/consent y en `/oauth/token` si se envía `scope` contra el resource CRM. Nunca se reescribe un token inventado a `crm:read`.
 
-## Tools (todas read-only)
+Los tokens ya emitidos con solo `crm:read` siguen funcionando. Para escrituras hay que **volver a autorizar** ChatGPT y conceder `crm:write` y/o `campaigns:write`.
 
-`search_companies`, `get_company`, `search_contacts`, `get_contact`, `search_campaigns`, `get_campaign`, `search_lists`, `get_list`, `search_templates`, `get_template`, `get_company_activity`, `get_contact_activity`, `get_pending_tasks`, `get_crm_stats`.
+## Tools
 
-Paginación: default 20, máximo 100, cursor opaco de los services. `get_*` recorta listas relacionadas (~8 ítems). No hay `execute_crm_query`.
+Lectura (`crm:read`, y campañas también con `campaigns:read`):
+
+`search_companies`, `get_company`, `search_contacts`, `get_contact`, `search_campaigns`, `get_campaign`, `preview_campaign`, `search_lists`, `get_list`, `search_templates`, `get_template`, `get_company_activity`, `get_contact_activity`, `get_pending_tasks`, `get_crm_stats`, `list_taxonomy`, `search_opportunities`, `get_opportunity`.
+
+Escritura CRM (`crm:write`):
+
+`create_company`, `update_company`, `create_contact`, `update_contact`, `create_task`, `complete_task`, `cancel_task`, `create_note`, `create_opportunity`, `update_opportunity`, `create_list`, `add_contact_to_list`.
+
+Escritura campañas (`campaigns:write`):
+
+`create_campaign_draft`, `update_campaign_draft` (solo `status=draft`), `copy_campaign`, `archive_campaign`, `restore_campaign`.
+
+`pause_campaign`, `resume_campaign`, `send_campaign`, `retry_failed_sends` y `cancel_campaign` quedan para Fase B con scope `campaigns:send` y **no están publicadas**.
+
+Empresas: `create_company` / `update_company` usan `industryIds` (array), igual que el servicio de dominio. `search_companies` y segmentos de campaña usan `industryId` (singular).
+
+`create_campaign_draft` no acepta `send`, `status` ni programación. `tools/list` filtra por los scopes del token: un conector ya conectado con solo `crm:read` no ve tools de escritura.
+
+Paginación: default 20, máximo 100, cursor opaco. `get_*` recorta listas relacionadas (~8 ítems). No hay `execute_crm_query`.
 
 No se devuelven secrets, API keys, tokens OAuth, credenciales Gmail ni datos del producto certificado.
-
-## Garantía read-only
-
-El registry MCP no registra tools de escritura. `create_*`, `update_*`, `send_*` responden `FEATURE_NOT_AVAILABLE` / `forbidden_tool`.
 
 ## Auditoría
 
 `marketing_mcp_audit`: actor, tool, workspace, timestamp, success/failure, duration. Sin prompt completo ni secretos.
 
-Rate limit: mismo mecanismo que el MCP de producto, cubeta `crmws:{workspaceId}` para no mezclar con `orgId` de clientes.
+Rate limit: cubeta `crmws:{workspaceId}`. Lecturas `read`, escrituras `write`.
+
+Idempotencia: header `Idempotency-Key` o campo `idempotencyKey` en create/copy.
 
 ## Cómo conectar ChatGPT
 
@@ -59,32 +77,22 @@ Rate limit: mismo mecanismo que el MCP de producto, cubeta `crmws:{workspaceId}`
 4. En ChatGPT Business, modo desarrollador / complemento MCP:
    - Server URL: `https://<host>/mcp/crm`
    - Auth: OAuth 2.1 con PKCE mediante la metadata publicada
-5. Probar: «¿Cuántas empresas tenemos en el CRM?» (usa `get_crm_stats`) y «Mostrame las empresas de Argentina» (`search_companies`).
-
-Opcional para diagnóstico o clientes controlados: `CRM_MCP_TOKEN`, o `CRM_MCP_CLIENT_ID` + `CRM_MCP_CLIENT_SECRET` contra `POST /mcp/crm/oauth/token`. ChatGPT usa el flujo OAuth 2.1 con PKCE publicado por el servidor.
+5. Tras un deploy con scopes nuevos, **reconectar** el conector para consentir `crm:write` / `campaigns:write`.
 
 ## Configuración
 
 ```
 CRM_MCP=true
-CRM_MCP_TOKEN=
+CRM_MCP_TOKEN=              # diagnóstico, solo lectura
 CRM_MCP_CLIENT_ID=          # opcional
-CRM_MCP_CLIENT_SECRET=      # opcional
-CRM_MCP_ALLOWED_USERS=      # opcional; vacío = el token estático alcanza
+CRM_MCP_CLIENT_SECRET=      # opcional; client-credentials también es solo crm:read
+CRM_MCP_ALLOWED_USERS=
 MARKETING_WORKSPACE_ID=notificas-internal
 MCP_BASE_URL=https://notificas.com.ar
 ```
 
-`CRM_MCP` default off. No comparte `MCP_ENABLED` ni la allowlist de usuarios del producto.
+No comparte `MCP_ENABLED` ni la allowlist de usuarios del producto. No hay variables nuevas para la Fase A.
 
 ## Testing
 
-`src/mcp/crm/crm.test.ts` y `src/lib/marketing/tools/tools.test.ts`: tools read-only, workspace fijo, paginación, sin writes, cruzado invisible.
-
-## Preguntas típicas
-
-- «¿Qué empresas tenemos en seguros de Uruguay?» → `search_companies` country + industry
-- «¿A cuáles ya contactamos?» / «¿Quién respondió?» → compañías/contactos por `commercialStageId` o `get_crm_stats.responses`
-- «¿Qué campañas hicimos en Chile?» → `search_campaigns`
-- «¿Qué tenemos pendiente esta semana?» → `get_pending_tasks`
-- «¿Qué contactos tenemos de Naturgy?» → `search_companies` + `search_contacts`
+`src/mcp/crm/crm.test.ts` y `src/lib/marketing/tools/tools.test.ts`.
