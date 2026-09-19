@@ -127,6 +127,26 @@ function main() {
     }
   }
 
+  const allowedRaw = map.get("ADMIN_ALLOWED_EMAILS");
+  if (allowedRaw !== undefined) {
+    const extras = allowedRaw
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    if (extras.length === 0) {
+      console.log("⚠️  ADMIN_ALLOWED_EMAILS: definida pero vacía");
+    } else {
+      const invalid = extras.filter((e) => !looksLikeEmail(e));
+      console.log(`✅ ADMIN_ALLOWED_EMAILS: ${extras.join(", ")}`);
+      if (invalid.length) {
+        console.log(`   ⚠️  Formato dudoso: ${invalid.join(", ")}`);
+        issues.push("ADMIN_ALLOWED_EMAILS formato dudoso");
+      }
+    }
+  } else {
+    console.log("ℹ️  ADMIN_ALLOWED_EMAILS: no definida (Google solo para ADMIN_PANEL_EMAIL)");
+  }
+
   const dupKeys = ADMIN_KEYS.filter((k) => {
     return (
       raw.split("\n").filter((l) => {

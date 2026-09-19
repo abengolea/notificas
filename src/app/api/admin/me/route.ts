@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminPanelConfig,
-  verifyAdminSessionToken,
+  readAdminSessionEmail,
 } from "@/lib/admin-session";
 
 export async function GET(request: NextRequest) {
@@ -12,12 +12,10 @@ export async function GET(request: NextRequest) {
   }
 
   const raw = request.cookies.get(ADMIN_SESSION_COOKIE)?.value;
-  if (
-    !raw ||
-    !verifyAdminSessionToken(raw, cfg.secret, cfg.email)
-  ) {
+  const email = raw ? readAdminSessionEmail(raw, cfg.secret, cfg.email) : null;
+  if (!email) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 
-  return NextResponse.json({ ok: true, email: cfg.email });
+  return NextResponse.json({ ok: true, email });
 }

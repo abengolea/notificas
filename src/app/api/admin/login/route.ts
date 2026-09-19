@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  ADMIN_SESSION_COOKIE,
-  ADMIN_SESSION_MAX_AGE_SEC,
+  applyAdminSessionCookie,
   getAdminPanelConfig,
-  signAdminSession,
 } from "@/lib/admin-session";
 
 export async function POST(request: NextRequest) {
@@ -31,15 +29,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Credenciales incorrectas" }, { status: 401 });
   }
 
-  const token = signAdminSession(email, cfg.secret);
   const res = NextResponse.json({ ok: true });
-  const secure = process.env.NODE_ENV === "production";
-  res.cookies.set(ADMIN_SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure,
-    sameSite: "lax",
-    path: "/",
-    maxAge: ADMIN_SESSION_MAX_AGE_SEC,
-  });
+  applyAdminSessionCookie(res, email, cfg.secret);
   return res;
 }
