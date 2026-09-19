@@ -36,7 +36,9 @@ Workspace: siempre `getMarketingWorkspaceId()`. El modelo no puede mandar `works
 
 Un scope **omitido o vacío** cae a `crm:read`. Un scope **explícito desconocido** (o una mezcla con uno desconocido) responde `invalid_scope` en authorize/consent y en `/oauth/token` si se envía `scope` contra el resource CRM. Nunca se reescribe un token inventado a `crm:read`.
 
-Los tokens ya emitidos con solo `crm:read` siguen funcionando. Para escrituras hay que **volver a autorizar** ChatGPT y conceder `crm:write` y/o `campaigns:write`.
+Los tokens ya emitidos con solo `crm:read` siguen pudiendo **ejecutar** lecturas. `tools/list` anónimo publica las 35 tools de Fase A con `securitySchemes`; ChatGPT pide OAuth al llamar una tool.
+
+`POST /mcp/crm` permite sin Bearer: `initialize`, `notifications/initialized`, `ping` y `tools/list` (solo el menú: nombre, descripción, schema, annotations, securitySchemes). **No** lee ni escribe CRM. `tools/call` exige OAuth: Bearer, resource `{base}/mcp/crm`, allowlist `CRM_MCP_ALLOWED_USERS` y el scope de esa tool. Si falta token o scope, responde JSON-RPC 200 `isError` con `_meta["mcp/www_authenticate"]` (no corta el transporte con HTTP 401).
 
 ## Tools
 
@@ -56,7 +58,7 @@ Escritura campañas (`campaigns:write`):
 
 Empresas: `create_company` / `update_company` usan `industryIds` (array), igual que el servicio de dominio. `search_companies` y segmentos de campaña usan `industryId` (singular).
 
-`create_campaign_draft` no acepta `send`, `status` ni programación. `tools/list` filtra por los scopes del token: un conector ya conectado con solo `crm:read` no ve tools de escritura.
+`create_campaign_draft` no acepta `send`, `status` ni programación. `tools/list` anónimo muestra las 35 tools de Fase A; la autorización se aplica en `tools/call` según el scope del token.
 
 Paginación: default 20, máximo 100, cursor opaco. `get_*` recorta listas relacionadas (~8 ítems). No hay `execute_crm_query`.
 

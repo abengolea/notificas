@@ -97,6 +97,11 @@ test("Fase A write scopes never publish pause, resume or send", () => {
   }
   const create = listAllCrmMcpTools().find((t) => t.name === "create_campaign_draft");
   assert.deepEqual(create?.securitySchemes, [{ type: "oauth2", scopes: ["campaigns:write"] }]);
+  assert.deepEqual(create?._meta.securitySchemes, create?.securitySchemes);
+  const campaignRead = listAllCrmMcpTools().find((t) => t.name === "search_campaigns");
+  assert.deepEqual(campaignRead?.securitySchemes, [{ type: "oauth2", scopes: ["campaigns:read"] }]);
+  assert.equal(crmMcpCanCallTool("search_campaigns", ["crm:read"]), true);
+  assert.equal(crmMcpCanCallTool("search_campaigns", ["campaigns:read"]), true);
   assert.equal(create?.annotations.readOnlyHint, false);
 });
 

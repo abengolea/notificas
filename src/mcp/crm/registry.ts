@@ -3,6 +3,7 @@ import { McpToolError } from "@/mcp/errors";
 import { executeCrmTool, isCrmWriteTool } from "@/lib/marketing/tools/execute";
 import { getLiveCrmToolRuntime } from "@/lib/marketing/tools/runtime";
 import { marketingContext } from "@/lib/marketing/context";
+import type { CrmToolRuntime } from "@/lib/marketing/tools/types";
 import type { CrmMcpAuthContext } from "./auth";
 import {
   advertisedScopeForTool,
@@ -13,14 +14,50 @@ import {
 } from "./policy";
 import type { CrmMcpScope } from "./scopes";
 
-export function listAllCrmMcpTools() {
-  return mcpExposedCrmToolDefinitions().map((t) => ({
-    name: t.name,
-    description: t.description,
-    inputSchema: t.inputSchema,
-    annotations: annotationsFor(t.access === "read" ? "read" : "write"),
-    securitySchemes: [{ type: "oauth2" as const, scopes: [advertisedScopeForTool(t.name)] }],
-  }));
+export type CrmMcpOauthScheme = { type: "oauth2"; scopes: [CrmMcpScope] };
+
+export type CrmMcpToolDescriptor = {
+  name: string;
+  description: string;
+  inputSchema: unknown;
+  annotations: ReturnType<typeof annotationsFor>;
+  securitySchemes: CrmMcpOauthScheme[];
+  _meta: { securitySchemes: CrmMcpOauthScheme[] };
+};
+
+let testRuntime: CrmToolRuntime | undefined;
+let executeCallCount = 0;
+
+export function setCrmMcpToolRuntimeForTests(runtime: CrmToolRuntime | undefined): void {
+  testRuntime = runtime;
+}
+
+export function crmMcpExecuteCallCount(): number {
+  return executeCallCount;
+}
+
+export function resetCrmMcpExecuteCallCount(): void {
+  executeCallCount = 0;
+}
+
+export function isCrmMcpTestRuntime(): boolean {
+  return Boolean(testRuntime);
+}
+
+export function listAllCrmMcpTools(): CrmMcpToolDescriptor[] {
+  return mcpExposedCrmToolDefinitions().map((t) => {
+    const securitySchemes: CrmMcpOauthScheme[] = [
+      { type: "oauth2", scopes: [advertisedScopeForTool(t.name)] },
+    ];
+    return {
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema,
+      annotations: annotationsFor(t.access === "read" ? "read" : "write"),
+      securitySchemes,
+      _meta: { securitySchemes },
+    };
+  });
 }
 
 export function listCrmMcpTools(scopes: readonly string[] | CrmMcpScope[] = ["crm:read"]) {
@@ -49,8 +86,9 @@ export function assertCrmMcpToolAllowed(name: string, scopes: readonly string[] 
 
 export async function callCrmMcpTool(ctx: CrmMcpAuthContext, name: string, args: unknown): Promise<unknown> {
   assertCrmMcpToolAllowed(name, ctx.scopes);
+  executeCallCount += 1;
   const result = await executeCrmTool({
-    runtime: getLiveCrmToolRuntime(),
+    runtime: testRuntime ?? getLiveCrmToolRuntime(),
     ctx: marketingContext(ctx.workspaceId, {
       actorType: "system",
       actorId: ctx.actor,

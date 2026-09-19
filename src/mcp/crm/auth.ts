@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { bearerFromAuthorization, isApiKeyOnMcp } from "@/mcp/auth/bearer";
-import { lookupAccessToken } from "@/mcp/auth/tokens";
+import { lookupAccessToken, type AccessTokenRecord } from "@/mcp/auth/tokens";
 import { inferMcpClientFromUserAgent } from "@/mcp/auth/client-name";
 import { McpToolError } from "@/mcp/errors";
 import { mcpResourceUrl } from "@/mcp/config";
@@ -35,9 +35,29 @@ function tokenEquals(provided: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-export function crmWwwAuthenticate(error: string, description: string): string {
-  const meta = `${crmMcpResourceUrl().replace(/\/mcp\/crm$/, "")}/.well-known/oauth-protected-resource/mcp/crm`;
-  return `Bearer realm="notificas-crm-mcp", error="${error}", error_description="${description.replace(/"/g, "")}", resource_metadata="${meta}"`;
+const testAccessTokens = new Map<string, AccessTokenRecord>();
+
+export function setCrmMcpTestAccessToken(token: string, rec: AccessTokenRecord | null): void {
+  if (rec) testAccessTokens.set(token, rec);
+  else testAccessTokens.delete(token);
+}
+
+export function clearCrmMcpTestAccessTokens(): void {
+  testAccessTokens.clear();
+}
+
+export function crmProtectedResourceMetadataUrl(): string {
+  return `${crmMcpResourceUrl().replace(/\/mcp\/crm$/, "")}/.well-known/oauth-protected-resource/mcp/crm`;
+}
+
+export function crmWwwAuthenticate(error: string, description: string, scope?: string): string {
+  const parts = [
+    `Bearer resource_metadata="${crmProtectedResourceMetadataUrl()}"`,
+    `error="${error.replace(/"/g, "")}"`,
+    `error_description="${description.replace(/"/g, "")}"`,
+  ];
+  if (scope) parts.push(`scope="${scope.replace(/"/g, "")}"`);
+  return parts.join(", ");
 }
 
 export async function authenticateCrmMcpRequest(request: Request, requestId: string): Promise<CrmMcpAuthContext> {
@@ -67,8 +87,11 @@ export async function authenticateCrmMcpRequest(request: Request, requestId: str
     };
   }
 
-  const rec = await lookupAccessToken(token);
-  if (!rec) {
+  const rec = testAccessTokens.get(token) ?? (await lookupAccessToken(token));
+  if (!rec || rec.revoked === true) {
+    throw new McpToolError("UNAUTHORIZED", "Invalid or expired CRM MCP token.", 401);
+  }
+  if (typeof rec.expiresAtMs === "number" && rec.expiresAtMs < Date.now()) {
     throw new McpToolError("UNAUTHORIZED", "Invalid or expired CRM MCP token.", 401);
   }
   if (rec.resource === mcpResourceUrl()) {

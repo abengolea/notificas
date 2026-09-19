@@ -13,8 +13,29 @@ import {
 } from "./config";
 import { authenticateCrmMcpRequest, crmWwwAuthenticate, type CrmMcpAuthContext } from "./auth";
 import { writeCrmMcpAudit } from "./audit";
-import { callCrmMcpTool, listCrmMcpTools } from "./registry";
-import { crmMcpToolIsWrite } from "./policy";
+import {
+  callCrmMcpTool,
+  isCrmMcpTestRuntime,
+  listAllCrmMcpTools,
+} from "./registry";
+import { advertisedScopeForTool, crmMcpToolIsWrite } from "./policy";
+
+type CrmMcpHandled = {
+  body: unknown;
+  tool?: string;
+  errorCode?: string;
+  actor?: string;
+  client?: string;
+  wwwAuthenticate?: string;
+};
+
+const DISCOVERY_METHODS = new Set([
+  "initialize",
+  "notifications/initialized",
+  "notifications/cancelled",
+  "ping",
+  "tools/list",
+]);
 
 function protocolVersion(requested: unknown): string {
   if (typeof requested === "string" && (CRM_MCP_PROTOCOL_VERSIONS as readonly string[]).includes(requested)) {
@@ -33,10 +54,40 @@ export function crmMcpDisabledResponse(): Response {
   return jsonResponse({ error: { code: "MCP_DISABLED", message: "Notificas CRM MCP is not enabled." } }, 503);
 }
 
-async function handleOne(
-  rpc: JsonRpcRequest,
-  ctx: CrmMcpAuthContext,
-): Promise<{ body: unknown; tool?: string; errorCode?: string }> {
+function challengeForAuthError(err: McpToolError, toolName?: string): { error: string; description: string; scope?: string } {
+  if (err.code === "INSUFFICIENT_SCOPE") {
+    return {
+      error: "insufficient_scope",
+      description: err.message,
+      scope: toolName ? advertisedScopeForTool(toolName) : undefined,
+    };
+  }
+  return { error: "invalid_token", description: "Authentication required" };
+}
+
+function authChallengeToolResult(
+  id: JsonRpcId,
+  requestId: string,
+  err: McpToolError,
+  toolName?: string,
+): { body: unknown; tool?: string; errorCode: string; wwwAuthenticate: string } {
+  const { error, description, scope } = challengeForAuthError(err, toolName);
+  const challenge = crmWwwAuthenticate(error, description, scope);
+  const payload = toolErrorPayload(err, requestId);
+  return {
+    body: jsonRpcResult(id, {
+      content: [{ type: "text", text: JSON.stringify(payload) }],
+      structuredContent: payload,
+      isError: true,
+      _meta: { "mcp/www_authenticate": [challenge] },
+    }),
+    tool: toolName,
+    errorCode: err.code,
+    wwwAuthenticate: challenge,
+  };
+}
+
+function handleDiscovery(rpc: JsonRpcRequest): CrmMcpHandled {
   const id = (rpc.id ?? null) as JsonRpcId;
   const method = rpc.method;
 
@@ -63,50 +114,75 @@ async function handleOne(
   }
 
   if (method === "tools/list") {
-    return { body: jsonRpcResult(id, { tools: listCrmMcpTools(ctx.scopes) }), tool: "tools/list" };
+    return { body: jsonRpcResult(id, { tools: listAllCrmMcpTools() }), tool: "tools/list" };
   }
 
-  if (method === "tools/call") {
-    const params = (rpc.params && typeof rpc.params === "object" ? rpc.params : {}) as {
-      name?: string;
-      arguments?: unknown;
-    };
-    if (!params.name) {
-      return { body: jsonRpcError(id, JSONRPC.INVALID_PARAMS, "Missing tool name."), tool: undefined };
-    }
-    try {
+  return { body: jsonRpcError(id, JSONRPC.METHOD_NOT_FOUND, `Method not found: ${method}`) };
+}
+
+async function handleToolsCall(
+  rpc: JsonRpcRequest,
+  request: Request,
+  requestId: string,
+): Promise<CrmMcpHandled> {
+  const id = (rpc.id ?? null) as JsonRpcId;
+  const params = (rpc.params && typeof rpc.params === "object" ? rpc.params : {}) as {
+    name?: string;
+    arguments?: unknown;
+  };
+  if (!params.name) {
+    return { body: jsonRpcError(id, JSONRPC.INVALID_PARAMS, "Missing tool name.") };
+  }
+
+  let ctx: CrmMcpAuthContext;
+  try {
+    ctx = await authenticateCrmMcpRequest(request, requestId);
+    const idem = request.headers.get("Idempotency-Key")?.trim();
+    if (idem && idem.length <= 128) ctx.idempotencyKey = idem;
+  } catch (e) {
+    const err = e instanceof McpToolError ? e : new McpToolError("UNAUTHORIZED", "Unauthorized.", 401);
+    return { ...authChallengeToolResult(id, requestId, err, params.name), actor: undefined, client: undefined };
+  }
+
+  try {
+    if (!isCrmMcpTestRuntime()) {
       await consumeMcpRateLimit({
         userId: ctx.actor,
         orgId: `crmws:${ctx.workspaceId}`,
         bucket: crmMcpToolIsWrite(params.name) ? "write" : "read",
       });
-      const result = await callCrmMcpTool(ctx, params.name, params.arguments);
-      return {
-        body: jsonRpcResult(id, {
-          content: [{ type: "text", text: JSON.stringify(result) }],
-          structuredContent: result,
-          isError: false,
-        }),
-        tool: params.name,
-      };
-    } catch (e) {
-      const err = e instanceof McpToolError ? e : new McpToolError("INTERNAL_ERROR", "An internal error occurred.", 500);
-      if (!(e instanceof McpToolError) || err.code === "INTERNAL_ERROR") {
-        console.error("crm mcp tool", ctx.requestId, e instanceof Error ? e.message : e);
-      }
-      return {
-        body: jsonRpcResult(id, {
-          content: [{ type: "text", text: JSON.stringify(toolErrorPayload(err, ctx.requestId)) }],
-          structuredContent: toolErrorPayload(err, ctx.requestId),
-          isError: true,
-        }),
-        tool: params.name,
-        errorCode: err.code,
-      };
     }
+    const result = await callCrmMcpTool(ctx, params.name, params.arguments);
+    return {
+      body: jsonRpcResult(id, {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+        structuredContent: result,
+        isError: false,
+      }),
+      tool: params.name,
+      actor: ctx.actor,
+      client: ctx.client,
+    };
+  } catch (e) {
+    const err = e instanceof McpToolError ? e : new McpToolError("INTERNAL_ERROR", "An internal error occurred.", 500);
+    if (err.code === "UNAUTHORIZED" || err.code === "INSUFFICIENT_SCOPE" || err.code === "FORBIDDEN") {
+      return { ...authChallengeToolResult(id, requestId, err, params.name), actor: ctx.actor, client: ctx.client };
+    }
+    if (err.code === "INTERNAL_ERROR") {
+      console.error("crm mcp tool", requestId, e instanceof Error ? e.message : e);
+    }
+    return {
+      body: jsonRpcResult(id, {
+        content: [{ type: "text", text: JSON.stringify(toolErrorPayload(err, requestId)) }],
+        structuredContent: toolErrorPayload(err, requestId),
+        isError: true,
+      }),
+      tool: params.name,
+      errorCode: err.code,
+      actor: ctx.actor,
+      client: ctx.client,
+    };
   }
-
-  return { body: jsonRpcError(id, JSONRPC.METHOD_NOT_FOUND, `Method not found: ${method}`) };
 }
 
 export async function handleCrmMcpHttp(request: Request): Promise<Response> {
@@ -130,26 +206,6 @@ export async function handleCrmMcpHttp(request: Request): Promise<Response> {
     return jsonResponse({ error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." } }, 405);
   }
 
-  let ctx: CrmMcpAuthContext;
-  try {
-    ctx = await authenticateCrmMcpRequest(request, requestId);
-    const idem = request.headers.get("Idempotency-Key")?.trim();
-    if (idem && idem.length <= 128) ctx.idempotencyKey = idem;
-  } catch (e) {
-    const err = e instanceof McpToolError ? e : new McpToolError("UNAUTHORIZED", "Unauthorized.", 401);
-    void writeCrmMcpAudit({
-      requestId,
-      workspaceId: crmMcpWorkspaceId(),
-      result: "denied",
-      durationMs: Date.now() - started,
-      errorCode: err.code,
-    });
-    return jsonResponse(toolErrorPayload(err, requestId), err.httpStatus, {
-      "WWW-Authenticate": crmWwwAuthenticate("invalid_token", err.message),
-      "X-Request-Id": requestId,
-    });
-  }
-
   let parsed: unknown;
   try {
     parsed = await request.json();
@@ -168,24 +224,37 @@ export async function handleCrmMcpHttp(request: Request): Promise<Response> {
     });
   }
 
-  const handled = await handleOne(parsed, ctx);
+  const isDiscovery = DISCOVERY_METHODS.has(parsed.method);
+  const handled: CrmMcpHandled = isDiscovery
+    ? handleDiscovery(parsed)
+    : parsed.method === "tools/call"
+      ? await handleToolsCall(parsed, request, requestId)
+      : { body: jsonRpcError((parsed.id ?? null) as JsonRpcId, JSONRPC.METHOD_NOT_FOUND, `Method not found: ${parsed.method}`) };
+
   const body = handled.body;
   const isError = Boolean(handled.errorCode) || (body && typeof body === "object" && "error" in (body as object));
-  void writeCrmMcpAudit({
-    requestId,
-    actor: ctx.actor,
-    tool: handled.tool,
-    workspaceId: ctx.workspaceId,
-    result: isError ? "error" : "ok",
-    durationMs: Date.now() - started,
-    errorCode: handled.errorCode,
-    client: ctx.client,
-  });
+  if (!isDiscovery && !isCrmMcpTestRuntime()) {
+    void writeCrmMcpAudit({
+      requestId,
+      actor: handled.actor,
+      tool: handled.tool,
+      workspaceId: crmMcpWorkspaceId(),
+      result: isError ? "error" : "ok",
+      durationMs: Date.now() - started,
+      errorCode: handled.errorCode,
+      client: handled.client,
+    });
+  }
+
+  const extra: Record<string, string> = { "X-Request-Id": requestId };
+  if (handled.wwwAuthenticate) {
+    extra["WWW-Authenticate"] = handled.wwwAuthenticate;
+  }
 
   if (handled.body == null) {
-    return new Response(null, { status: 202, headers: { ...mcpCorsHeaders(), "X-Request-Id": requestId } });
+    return new Response(null, { status: 202, headers: { ...mcpCorsHeaders(), ...extra } });
   }
-  return jsonResponse(handled.body, 200, { "X-Request-Id": requestId });
+  return jsonResponse(handled.body, 200, extra);
 }
 
 export function crmMcpHealthPayload() {

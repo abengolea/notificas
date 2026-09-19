@@ -80,7 +80,11 @@ export function crmMcpCanCallTool(name: string, scopes: readonly string[] | unde
 
 export function advertisedScopeForTool(name: string): CrmMcpScope {
   const needed = crmMcpToolScopes(name);
-  return (needed?.[0] || "crm:read") as CrmMcpScope;
+  if (!needed?.length) return "crm:read";
+  if (needed.includes("campaigns:read") && !needed.includes("campaigns:write") && !needed.includes("crm:write")) {
+    return "campaigns:read";
+  }
+  return needed[0];
 }
 
 export function mcpExposedCrmToolDefinitions() {
