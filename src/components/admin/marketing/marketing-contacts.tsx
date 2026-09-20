@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, Download } from "lucide-react";
+import { downloadCsv } from "@/lib/marketing/export-csv";
 import { MarketingSubnav } from "./marketing-subnav";
 import { StageBadge } from "./stage-badge";
 import { MarketingListUpload } from "./marketing-list-upload";
@@ -247,7 +248,31 @@ export function MarketingContacts() {
               ))}
             </TableBody>
           </Table>
-          <p className="px-4 py-2 text-sm text-muted-foreground">{rows.length} de {total}</p>
+          <div className="flex items-center justify-between px-4 py-2">
+            <p className="text-sm text-muted-foreground">{rows.length} de {total}</p>
+            {rows.length > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs"
+                onClick={() =>
+                  downloadCsv(rows, "contactos.csv", [
+                    { key: "email", label: "Email" },
+                    { key: "name", label: "Nombre" },
+                    { key: "company", label: "Empresa" },
+                    { key: "title", label: "Cargo" },
+                    { key: "country", label: "País" },
+                    { key: "stage", label: "Etapa" },
+                    { key: "lastSentAt", label: "Último envío" },
+                    { key: "lastRepliedAt", label: "Última respuesta" },
+                  ])
+                }
+              >
+                <Download className="mr-1 h-3 w-3" />
+                Exportar CSV
+              </Button>
+            )}
+          </div>
         </div>
           )}
         </TabsContent>

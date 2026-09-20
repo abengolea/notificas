@@ -46,6 +46,60 @@ function statusBadge(status: string): string {
   return "new";
 }
 
+function CampaignStatPills({ stats, status }: {
+  stats?: Campaign["stats"];
+  status: string;
+}) {
+  if (!stats) return null;
+  const sent = stats.sent || 0;
+  const delivered = stats.delivered || 0;
+  const opened = stats.opened || 0;
+  const replied = stats.replied || 0;
+  const failed = stats.failed || 0;
+  const openRate = sent > 0 ? Math.round((opened / sent) * 100) : 0;
+  const replyRate = sent > 0 ? Math.round((replied / sent) * 100) : 0;
+
+  if (sent === 0 && status === "draft") return null;
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      {sent > 0 && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+          {sent.toLocaleString("es-AR")} env.
+        </span>
+      )}
+      {delivered > 0 && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+          {delivered.toLocaleString("es-AR")} recibidos
+        </span>
+      )}
+      {opened > 0 && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-xs text-violet-700 dark:bg-violet-950 dark:text-violet-300">
+          {openRate}% abiertos
+        </span>
+      )}
+      {replied > 0 && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+          {replyRate}% resp.
+        </span>
+      )}
+      {failed > 0 && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs text-destructive">
+          {failed} fallidos
+        </span>
+      )}
+      {sent > 0 && (
+        <div className="flex-1 min-w-[80px] max-w-[160px] rounded-full bg-muted h-1.5 overflow-hidden">
+          <div
+            className="h-1.5 rounded-full bg-emerald-500"
+            style={{ width: `${Math.max(openRate, openRate > 0 ? 3 : 0)}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 type ListOption = {
   id: string;
   name: string;
@@ -252,25 +306,12 @@ export function MarketingCampaigns() {
                     </span>
                   </span>
                 </div>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <p className="mt-0.5 text-sm text-muted-foreground">
                   {c.country && c.country !== "all" ? countryName(c.country) : "Varios países"}
-                  {c.industryId ? ` · ${industryName.get(c.industryId) || c.industryId}` : ""}
-                  {(() => {
-                    const keys = c.useCaseIds?.length ? c.useCaseIds : c.useCaseId ? [c.useCaseId] : [];
-                    const names = keys.map((key) => useCaseName.get(key) || key).filter(Boolean);
-                    return names.length ? ` · ${names.join(" · ")}` : "";
-                  })()}
                   {c.listName ? ` · ${c.listName}` : ""}
                   {` · ${c.subject}`}
-                  {c.stats?.sent ? ` · ${c.stats.sent} enviados` : " · sin envíos"}
-                  {c.stats?.delivered ? ` · ${c.stats.delivered} recibidos` : ""}
-                  {c.stats?.opened ? ` · ${c.stats.opened} abiertos` : ""}
-                  {c.stats?.clicked ? ` · ${c.stats.clicked} clics` : ""}
-                  {c.stats?.replied ? ` · ${c.stats.replied} respuestas` : ""}
-                  {c.stats?.bounced ? ` · ${c.stats.bounced} rebotes` : ""}
-                  {failedCount ? ` · ${failedCount} fallidos` : ""}
-                  {c.stats?.unsubscribed ? ` · ${c.stats.unsubscribed} bajas` : ""}
                 </p>
+                <CampaignStatPills stats={c.stats} status={c.status} />
               </Link>
               <div className="mt-3">
                 <MarketingCampaignActions
