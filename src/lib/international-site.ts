@@ -24,7 +24,7 @@ export function localeForPublicPath(pathname: string): "pt-BR" | "es-CO" | "es-A
 export const INTERNATIONAL_TITLE =
   "Notificas | Comunicaciones digitales verificables";
 export const INTERNATIONAL_DESCRIPTION =
-  "Comunicaciones digitales verificables por WhatsApp y email. Argentina, Brasil y Colombia están online.";
+  "Comunicaciones digitales verificables por WhatsApp y email. Evidencia de qué se comunicó, cuándo y a quién.";
 
 export const INTERNATIONAL_HOSTS = ["notificas.com", "www.notificas.com"] as const;
 export const ARGENTINA_HOSTS = ["notificas.com.ar", "www.notificas.com.ar"] as const;

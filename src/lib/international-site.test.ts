@@ -217,6 +217,13 @@ test("notificas.com sirve la landing en / y manda el SPA viejo al archivo", () =
   );
 });
 
+test("la landing internacional no usa banderas", () => {
+  const src = fs.readFileSync(path.join(here, "../components/international-landing.tsx"), "utf8");
+  assert.doesNotMatch(src, /CountryFlagImage/);
+  assert.doesNotMatch(src, /intl-flag/);
+  assert.match(src, /Coordinar una demostración/);
+});
+
 test("la preview /intl no entra al sitemap y redirige al canónico", () => {
   assert.equal(
     (PRIVATE_PATH_PREFIXES as readonly string[]).includes("/intl"),

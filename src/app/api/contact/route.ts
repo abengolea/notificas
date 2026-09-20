@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { sendEmailCfHeaders } from "@/lib/cf-send-auth";
+import { countryName } from "@/lib/marketing/countries";
 import { createMailDocumentAdmin } from "@/lib/email-server";
 import {
   DEFAULT_CONTACT_FROM_EMAIL,
@@ -46,6 +47,7 @@ const bodySchema = z.object({
     .optional()
     .default("general"),
   mercado: z.enum(["AR", "BR", "CO"]).optional().default("AR"),
+  pais: z.string().trim().max(80).optional().default(""),
   cnpj: z.string().trim().max(32).optional().default(""),
   cargo: z.string().trim().max(120).optional().default(""),
   tipoOrganizacion: tipoOrganizacionSchema.optional(),
@@ -106,6 +108,7 @@ export async function POST(request: NextRequest) {
     tipoOrganizacion,
     finalidade,
     aceptoPrivacidad,
+    pais,
   } = parsed.data;
 
   if (mercado === "CO" && !aceptoPrivacidad) {
@@ -156,7 +159,13 @@ export async function POST(request: NextRequest) {
     servicios: "Servicios",
     otra: "Otra",
   };
-  const mercadoLabel = isBrazil ? "Brasil" : isColombia ? "Colombia" : "Argentina";
+  const mercadoLabel = pais
+    ? countryName(pais) || pais
+    : isBrazil
+      ? "Brasil"
+      : isColombia
+        ? "Colombia"
+        : "Argentina";
   const fullName = apellido ? `${nombre} ${apellido}` : nombre;
 
   const htmlLines = [
