@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { MARKETING_CAMPAIGNS, MARKETING_CONTACTS, MARKETING_SENDS } from "./collections";
 import { countryName } from "./countries";
+import { isFullCampaignEmailHtml, snapshotFieldsForCampaign } from "./campaign-email";
 import { assembleMarketingHtml } from "./html";
 import { recordMarketingEvent } from "./events";
 import { namedRecipientSource, contactMatchesSource } from "./lists";
@@ -121,12 +122,17 @@ export async function tickMarketingCampaign(campaignId: string): Promise<{
     const rawHtml = String(camp.htmlBody || "");
     const assembled = assembleMarketingHtml({
       bodyHtml: rawHtml.includes("<") ? rawHtml : `<p>${rawHtml.replace(/\n/g, "<br/>")}</p>`,
+      textBody: String(camp.textBody || ""),
       sendId: doc.id,
       contactId: String(send.contactId),
       fields,
+      emailContent: isFullCampaignEmailHtml(rawHtml)
+        ? null
+        : camp.emailContent && typeof camp.emailContent === "object"
+          ? camp.emailContent
+          : null,
     });
-    const customText = String(camp.textBody || "").trim();
-    const text = customText ? `${customText}\n\nBaja: ${marketingUnsubUrl(String(send.contactId))}` : assembled.text;
+    const text = assembled.text;
 
     const result = await sendMarketingEmailViaResend({
       to: String(send.email),
@@ -273,9 +279,16 @@ export async function enqueueCampaignSends(campaignId: string): Promise<{ queued
     return { queued: 0 };
   }
 
+  const snapshot = snapshotFieldsForCampaign(camp);
   await campRef.update({
     status: "sending",
     contactCount: queued,
+    htmlBody: snapshot.htmlBody,
+    textBody: snapshot.textBody,
+    emailContent: snapshot.emailContent,
+    templateId: snapshot.templateId,
+    templateVersion: snapshot.templateVersion,
+    htmlSnapshotAt: FieldValue.serverTimestamp(),
     "stats.queued": FieldValue.increment(queued),
     startedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),

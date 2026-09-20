@@ -11,6 +11,8 @@ import { MarketingError } from "@/lib/marketing/errors";
 import { serializeAdminDoc } from "@/lib/marketing/events";
 import { namedRecipientSource } from "@/lib/marketing/lists";
 import { isMarketingStage } from "@/lib/marketing/stages";
+import { persistCampaignEmail } from "@/lib/marketing/campaign-email";
+import { campaignEmailContentSchema, campaignHtmlBodySchema } from "@/lib/marketing/campaign-email-input";
 import { emptyCampaignStats, marketingFromEmail, marketingFromName } from "@/lib/marketing/types";
 
 const postSchema = z
@@ -24,8 +26,9 @@ const postSchema = z
     useCaseIds: z.array(z.string().min(1).max(80)).max(20).optional(),
     country: z.string().min(2).max(12).optional(),
     subject: z.string().min(2).max(200),
-    htmlBody: z.string().min(8).max(50_000),
+    htmlBody: campaignHtmlBodySchema.optional(),
     textBody: z.string().max(20_000).optional().default(""),
+    emailContent: campaignEmailContentSchema.optional(),
     includeStages: z.array(z.string()).optional(),
   })
   .superRefine((value, ctx) => {
@@ -38,6 +41,9 @@ const postSchema = z
       return;
     }
     if (!value.listId) ctx.addIssue({ code: "custom", message: "Cargá o elegí una lista", path: ["listId"] });
+    if (!value.emailContent && !value.htmlBody) {
+      ctx.addIssue({ code: "custom", message: "Completá el contenido del correo", path: ["emailContent"] });
+    }
   });
 
 export async function GET(request: NextRequest) {
@@ -137,6 +143,14 @@ export async function POST(request: NextRequest) {
     if (namedRecipientSource({ listId: list.listId }).kind !== "list") {
       return NextResponse.json({ error: "Cargá o elegí una lista de destinatarios (CSV). No se envía a todos los contactos del CRM." }, { status: 400 });
     }
+    const snapshot = persistCampaignEmail({
+      ...(parsed.data.emailContent || {}),
+      htmlBody: parsed.data.htmlBody,
+      name: parsed.data.name,
+      subject: parsed.data.subject,
+      title: parsed.data.emailContent?.title || parsed.data.subject,
+      campaignName: parsed.data.emailContent?.campaignName || parsed.data.name,
+    });
     const db = getAdminDb();
     const ref = db.collection(MARKETING_CAMPAIGNS).doc();
     await ref.set({
@@ -145,8 +159,12 @@ export async function POST(request: NextRequest) {
       listId: list.listId,
       listName: list.listName,
       subject: parsed.data.subject.trim(),
-      htmlBody: parsed.data.htmlBody,
-      textBody: parsed.data.textBody || "",
+      htmlBody: snapshot.htmlBody,
+      textBody: snapshot.textBody || parsed.data.textBody || "",
+      emailContent: snapshot.emailContent,
+      templateId: snapshot.templateId,
+      templateVersion: snapshot.templateVersion,
+      htmlSnapshotAt: FieldValue.serverTimestamp(),
       fromEmail: marketingFromEmail(),
       fromName: marketingFromName(),
       status: "draft",

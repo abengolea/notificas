@@ -9,9 +9,8 @@ import { MarketingListUpload } from "./marketing-list-upload";
 import { MarketingRecipientPreview, type PreviewContact } from "./marketing-recipient-preview";
 import { MarketingTaxonomyFields, type TaxonomyCatalog } from "./marketing-taxonomy-fields";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -19,7 +18,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { MarketingEmailEditor } from "./marketing-email-editor";
 import { useToast } from "@/hooks/use-toast";
+import { blankCampaignEmailContent, paragraphsToText, type CampaignEmailContent } from "@/lib/marketing/campaign-email";
 
 const INCLUDE_STAGES = ["new", "sent", "opened", "clicked", "replied"];
 
@@ -54,8 +55,8 @@ export function MarketingCampaignForm() {
   const [form, setForm] = useState({
     name: "",
     subject: "",
-    htmlBody: "",
   });
+  const [emailContent, setEmailContent] = useState<CampaignEmailContent>(blankCampaignEmailContent());
 
   const namedLists = useMemo(() => (lists || []).filter((l) => !l.virtual), [lists]);
   const canSubmit = source === "crm" ? Boolean(countryCode && industryId && useCaseIds.length) : Boolean(listId);
@@ -143,8 +144,8 @@ export function MarketingCampaignForm() {
       toast({ title: "Cargá un CSV de destinatarios o elegí una lista", variant: "destructive" });
       return;
     }
-    if (!form.htmlBody.trim()) {
-      toast({ title: "Escribí el texto del correo", variant: "destructive" });
+    if (!emailContent.title.trim() || paragraphsToText(emailContent.paragraphs).trim().length < 8) {
+      toast({ title: "Completá el título y los párrafos del correo", variant: "destructive" });
       return;
     }
     setSaving(true);
@@ -155,6 +156,7 @@ export function MarketingCampaignForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          emailContent: { ...emailContent, campaignName: form.name },
           source,
           listId: source === "list" ? listId : undefined,
           countryCode: source === "crm" ? countryCode : undefined,
@@ -183,7 +185,7 @@ export function MarketingCampaignForm() {
   return (
     <div className="space-y-6">
       <MarketingSubnav />
-      <form onSubmit={onSubmit} className="max-w-3xl space-y-5 rounded-lg border bg-background p-4">
+      <form onSubmit={onSubmit} className="max-w-6xl space-y-5 rounded-lg border bg-background p-4">
         <div className="space-y-1">
           <Label htmlFor="camp-name">Nombre interno</Label>
           <Input id="camp-name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Chile — intro marzo" />
@@ -282,23 +284,13 @@ export function MarketingCampaignForm() {
           )}
         </div>
 
-        <div className="space-y-1">
-          <Label htmlFor="camp-subj">Asunto</Label>
-          <Input id="camp-subj" required value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="Notificas para {{empresa}}" />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="camp-body">Texto del correo</Label>
-          <Textarea
-            id="camp-body"
-            required
-            rows={14}
-            value={form.htmlBody}
-            onChange={(e) => setForm({ ...form, htmlBody: e.target.value })}
-            placeholder={"Hola {{nombre}},\n\nTe escribo desde Notificas…\n\nVariables: {{nombre}} {{empresa}} {{pais}} {{cargo}} {{email}}"}
-            className="font-sans text-sm"
-          />
-          <p className="text-sm text-muted-foreground">Podés pegar HTML o texto. Variables: {"{{nombre}} {{empresa}} {{pais}} {{cargo}} {{email}}"}</p>
-        </div>
+        <MarketingEmailEditor
+          value={emailContent}
+          onChange={setEmailContent}
+          subject={form.subject}
+          onSubjectChange={(subject) => setForm({ ...form, subject })}
+          onTestResult={(ok, message) => toast({ title: message, variant: ok ? "default" : "destructive" })}
+        />
         <Button type="submit" disabled={saving || !canSubmit}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar borrador"}
         </Button>

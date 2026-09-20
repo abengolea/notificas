@@ -21,8 +21,8 @@ test("el correo de marketing lleva un solo wordmark público", () => {
     assert.equal((html.match(/notificasLogo\.png/g) || []).length, 0);
     assert.equal((html.match(/notificas-wordmark\.png/g) || []).length, 1);
     assert.match(html, /Hola Adrián/);
-    assert.match(html, /contacto@notificas\.com/);
-    assert.doesNotMatch(html, /contacto@notificas\.com\.ar/);
+    assert.match(html, /#F4F8FD/);
+    assert.match(html, /Darse de baja/);
     assert.equal(/localhost/.test(html), false);
   } finally {
     if (prevFrom === undefined) delete process.env.MARKETING_FROM_EMAIL;

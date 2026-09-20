@@ -86,6 +86,8 @@ export function copiedCampaignFields(
   if (source.templateId) fields.templateId = source.templateId;
   if (source.templateVersion) fields.templateVersion = source.templateVersion;
   if (source.templateSnapshot) fields.templateSnapshot = source.templateSnapshot;
+  if (source.emailContent) fields.emailContent = source.emailContent;
+  if (source.htmlSnapshotAt) fields.htmlSnapshotAt = source.htmlSnapshotAt;
   if (Array.isArray(source.industryIds) && source.industryIds.length) fields.industryIds = source.industryIds;
   return fields;
 }

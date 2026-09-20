@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, Download } from "lucide-react";
+import { downloadCsv } from "@/lib/marketing/export-csv";
 import { MarketingSubnav } from "./marketing-subnav";
 import { StageBadge } from "./stage-badge";
 import { MarketingListUpload } from "./marketing-list-upload";
@@ -11,10 +12,9 @@ import { MarketingRecipientPreview, type PreviewContact } from "./marketing-reci
 import { countryName } from "@/lib/marketing/countries";
 import { CAMPAIGN_OUTCOME_LABEL, CAMPAIGN_OUTCOMES, sendMatchesOutcome } from "@/lib/marketing/admin-filters";
 import { MarketingCampaignActions } from "./marketing-campaign-actions";
+import { MarketingEmailEditor } from "./marketing-email-editor";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -30,8 +30,24 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import {
+  blankCampaignEmailContent,
+  contentFromLegacyHtml,
+  parseCampaignEmailContent,
+  type CampaignEmailContent,
+} from "@/lib/marketing/campaign-email";
 
 type Send = {
   id: string;
@@ -59,6 +75,9 @@ type Campaign = {
   status: string;
   subject: string;
   htmlBody: string;
+  textBody?: string;
+  emailContent?: CampaignEmailContent | null;
+  templateId?: string | null;
   fromEmail?: string;
   archivedAt?: string | null;
   stats?: Record<string, number>;
@@ -72,6 +91,49 @@ type Audience = {
   contacts: PreviewContact[];
 };
 
+function ConversionFunnel({ stats }: { stats: Record<string, number> }) {
+  const steps = [
+    { key: "sent", label: "Enviados" },
+    { key: "delivered", label: "Recibidos" },
+    { key: "opened", label: "Abiertos" },
+    { key: "clicked", label: "Con clics" },
+    { key: "replied", label: "Respondieron" },
+  ];
+  const base = stats.sent || 0;
+  if (base === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      {steps.map((step, i) => {
+        const val = stats[step.key] || 0;
+        const pct = base === 0 ? 0 : Math.round((val / base) * 100);
+        const prevVal = i === 0 ? base : (stats[steps[i - 1].key] || 0);
+        const stepPct = prevVal === 0 ? 0 : Math.round((val / prevVal) * 100);
+        return (
+          <div key={step.key} className="flex items-center gap-3 text-sm">
+            <span className="w-24 shrink-0 text-xs text-muted-foreground">{step.label}</span>
+            <div className="flex-1 rounded-full bg-muted h-2 overflow-hidden">
+              <div
+                className={`h-2 rounded-full transition-all ${
+                  step.key === "replied" ? "bg-emerald-500" :
+                  step.key === "opened" || step.key === "clicked" ? "bg-blue-500" :
+                  "bg-primary/60"
+                }`}
+                style={{ width: `${Math.max(pct, pct > 0 ? 2 : 0)}%` }}
+              />
+            </div>
+            <span className="w-16 text-right tabular-nums text-xs">
+              <span className="font-medium">{val.toLocaleString("es-AR")}</span>
+              {i > 0 && stepPct < 100 && (
+                <span className="text-muted-foreground ml-1">({stepPct}%)</span>
+              )}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) {
   const { toast } = useToast();
   const router = useRouter();
@@ -81,7 +143,8 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"send" | "tick" | "pause" | "save" | "copy" | "retry" | "archive" | null>(null);
   const [subject, setSubject] = useState("");
-  const [htmlBody, setHtmlBody] = useState("");
+  const [emailContent, setEmailContent] = useState<CampaignEmailContent>(blankCampaignEmailContent());
+  const [confirmSend, setConfirmSend] = useState(false);
   const [sendOutcome, setSendOutcome] = useState("all");
 
   const load = useCallback(async () => {
@@ -92,7 +155,14 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
     setSends(data.sends || []);
     setAudience(data.audience || null);
     setSubject(String(data.campaign?.subject || ""));
-    setHtmlBody(String(data.campaign?.htmlBody || ""));
+    const parsed = parseCampaignEmailContent(data.campaign?.emailContent);
+    setEmailContent(
+      parsed ||
+        contentFromLegacyHtml(String(data.campaign?.htmlBody || ""), {
+          title: String(data.campaign?.subject || ""),
+          campaignName: String(data.campaign?.name || ""),
+        }),
+    );
   }, [campaignId]);
 
   useEffect(() => {
@@ -142,10 +212,10 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
   async function saveCopy() {
     setBusy("save");
     try {
-      if (!subject.trim() || htmlBody.trim().length < 8) {
-        throw new Error("Completá asunto y texto del correo");
+      if (!subject.trim() || !emailContent.title.trim()) {
+        throw new Error("Completá asunto y título del correo");
       }
-      await patch({ subject: subject.trim(), htmlBody });
+      await patch({ subject: subject.trim(), emailContent: { ...emailContent, campaignName: campaign?.name || "" } });
       toast({ title: "Texto guardado" });
       await load();
     } catch (e) {
@@ -171,8 +241,8 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
   async function startSend() {
     setBusy("send");
     try {
-      if (subject !== campaign?.subject || htmlBody !== campaign?.htmlBody) {
-        await patch({ subject: subject.trim(), htmlBody });
+      if (subject !== campaign?.subject || JSON.stringify(emailContent) !== JSON.stringify(campaign.emailContent || {})) {
+        await patch({ subject: subject.trim(), emailContent: { ...emailContent, campaignName: campaign?.name || "" } });
       }
       const res = await fetch(`/api/admin/marketing/campaigns/${campaignId}/send`, { method: "POST", credentials: "include" });
       const data = await res.json();
@@ -260,7 +330,7 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
   const archived = Boolean(campaign.archivedAt);
   const failedCount = sends.filter((row) => row.status === "failed").length || stats.failed || 0;
   const hasNamedList = Boolean(audience && audience.total > 0);
-  const canSend = isDraft && !archived && hasNamedList && (audience?.eligible || 0) > 0 && htmlBody.trim().length >= 8 && subject.trim().length >= 2;
+  const canSend = isDraft && !archived && hasNamedList && (audience?.eligible || 0) > 0 && emailContent.title.trim().length >= 2 && subject.trim().length >= 2;
   const filteredSends = sendOutcome === "all" ? sends : sends.filter((row) => sendMatchesOutcome(row, sendOutcome));
   const statTiles: Array<{ label: string; value: number; outcome: string }> = [
     { label: "En cola", value: stats.queued || 0, outcome: "unsent" },
@@ -290,8 +360,8 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
         </div>
         <div className="flex flex-wrap gap-2">
           {isDraft ? (
-            <Button onClick={() => void startSend()} disabled={busy !== null || !canSend}>
-              {busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enviar ahora"}
+            <Button onClick={() => setConfirmSend(true)} disabled={busy !== null || !canSend}>
+              {busy === "send" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enviar campaña"}
             </Button>
           ) : null}
           {campaign.status === "sending" || campaign.status === "paused" ? (
@@ -343,44 +413,61 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
 
       {isDraft ? (
         <div className="space-y-3 rounded-lg border bg-background p-4">
-          <h4 className="text-sm font-medium">Texto del correo</h4>
-          <div className="space-y-1">
-            <Label htmlFor="camp-subj">Asunto</Label>
-            <Input id="camp-subj" value={subject} onChange={(e) => setSubject(e.target.value)} />
+          <div>
+            <h4 className="text-sm font-medium">Correo institucional</h4>
+            <p className="text-sm text-muted-foreground">
+              El preview y el envío de prueba usan la misma plantilla que el envío real. La campaña permanece en borrador hasta que confirmes “Enviar campaña”.
+            </p>
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="camp-body">Cuerpo</Label>
-            <Textarea id="camp-body" rows={12} value={htmlBody} onChange={(e) => setHtmlBody(e.target.value)} className="font-sans text-sm" />
-            <p className="text-sm text-muted-foreground">Variables: {"{{nombre}} {{empresa}} {{pais}} {{cargo}} {{email}}"}</p>
-          </div>
+          <MarketingEmailEditor
+            value={emailContent}
+            onChange={setEmailContent}
+            subject={subject}
+            onSubjectChange={setSubject}
+            campaignId={campaignId}
+            onTestResult={(ok, message) => toast({ title: message, variant: ok ? "default" : "destructive" })}
+          />
           <Button type="button" variant="outline" onClick={() => void saveCopy()} disabled={busy !== null}>
             {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar texto"}
           </Button>
         </div>
       ) : (
-        <div className="space-y-2 rounded-lg border bg-background p-4">
-          <h4 className="text-sm font-medium">Texto enviado</h4>
+        <div className="space-y-3 rounded-lg border bg-background p-4">
+          <h4 className="text-sm font-medium">Correo enviado</h4>
           <p className="text-sm font-medium">{campaign.subject}</p>
-          <div className="whitespace-pre-wrap text-sm text-muted-foreground">{campaign.htmlBody}</div>
+          <p className="text-sm text-muted-foreground">
+            Snapshot histórico de la plantilla al momento del envío. Un cambio futuro del diseño no altera este registro.
+          </p>
+          <iframe
+            title="HTML enviado"
+            srcDoc={campaign.htmlBody}
+            sandbox="allow-popups allow-popups-to-escape-sandbox"
+            className="h-[820px] w-full rounded-lg border bg-[#F4F8FD]"
+          />
         </div>
       )}
 
-      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-4">
-        {statTiles.map((tile) => (
-          <button
-            key={tile.label}
-            type="button"
-            className={`bg-background px-4 py-3 text-left ${sendOutcome === tile.outcome ? "ring-1 ring-inset ring-foreground/20" : ""}`}
-            onClick={() => setSendOutcome(sendOutcome === tile.outcome ? "all" : tile.outcome)}
-          >
-            <dt className="text-sm text-muted-foreground">{tile.label}</dt>
-            <dd className="text-xl font-semibold tabular-nums">{tile.value}</dd>
-          </button>
-        ))}
-      </dl>
-      <p className="text-sm text-muted-foreground">
-        Marketing no se certifica en Polygon. Solo se registra si el correo llegó y si se abrió.
-      </p>
+      {/* stats: funnel + tiles */}
+      <div className="rounded-lg border bg-background p-4 space-y-4">
+        <h4 className="text-sm font-medium">Resultados</h4>
+        <ConversionFunnel stats={stats} />
+        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-4 mt-2">
+          {statTiles.map((tile) => (
+            <button
+              key={tile.label}
+              type="button"
+              className={`bg-background px-3 py-2.5 text-left transition-colors ${sendOutcome === tile.outcome ? "ring-1 ring-inset ring-foreground/20 bg-muted/40" : "hover:bg-muted/20"}`}
+              onClick={() => setSendOutcome(sendOutcome === tile.outcome ? "all" : tile.outcome)}
+            >
+              <dt className="text-xs text-muted-foreground">{tile.label}</dt>
+              <dd className="text-lg font-semibold tabular-nums">{tile.value}</dd>
+            </button>
+          ))}
+        </dl>
+        <p className="text-xs text-muted-foreground">
+          Hacé clic en un tile para filtrar la tabla. La apertura se registra solo cuando el servidor de correo notifica.
+        </p>
+      </div>
 
       {campaign.status === "sending" ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -394,17 +481,44 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
           <p className="text-sm text-muted-foreground">
             {filteredSends.length} de {sends.length} destinatarios
           </p>
-          <div className="w-56 space-y-1">
-            <Label>Filtrar envíos</Label>
-            <Select value={sendOutcome} onValueChange={setSendOutcome}>
-              <SelectTrigger><SelectValue placeholder="Resultado" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                {CAMPAIGN_OUTCOMES.map((row) => (
-                  <SelectItem key={row} value={row}>{CAMPAIGN_OUTCOME_LABEL[row]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex items-end gap-2">
+            <div className="w-56 space-y-1">
+              <Label>Filtrar envíos</Label>
+              <Select value={sendOutcome} onValueChange={setSendOutcome}>
+                <SelectTrigger><SelectValue placeholder="Resultado" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {CAMPAIGN_OUTCOMES.map((row) => (
+                    <SelectItem key={row} value={row}>{CAMPAIGN_OUTCOME_LABEL[row]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {filteredSends.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 shrink-0"
+                onClick={() =>
+                  downloadCsv(filteredSends, `${campaign.name}-envios.csv`, [
+                    { key: "email", label: "Email" },
+                    { key: "name", label: "Nombre" },
+                    { key: "company", label: "Empresa" },
+                    { key: "status", label: "Estado" },
+                    { key: "sentAt", label: "Enviado" },
+                    { key: "deliveredAt", label: "Recibido" },
+                    { key: "openedAt", label: "Abierto" },
+                    { key: "openCount", label: "Aperturas" },
+                    { key: "clickedAt", label: "Clic" },
+                    { key: "repliedAt", label: "Respondió" },
+                    { key: "replySnippet", label: "Respuesta" },
+                  ])
+                }
+              >
+                <Download className="h-3.5 w-3.5 mr-1.5" />
+                CSV
+              </Button>
+            )}
           </div>
         </div>
         <div className="rounded-lg border bg-background overflow-x-auto">
@@ -449,6 +563,30 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
         </div>
       </div>
       )}
+      <AlertDialog open={confirmSend} onOpenChange={setConfirmSend}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Enviar la campaña real?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esto envía el correo institucional a {audience?.eligible || 0} destinatarios desde {campaign.fromEmail || "contacto@notificas.com"}.
+              No es una prueba. La campaña dejará de ser un borrador.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy !== null}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy !== null}
+              onClick={(e) => {
+                e.preventDefault();
+                setConfirmSend(false);
+                void startSend();
+              }}
+            >
+              Confirmar envío real
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

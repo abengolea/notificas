@@ -11,6 +11,7 @@ import {
   requireMarketingCampaign,
   resumeCampaignStatus,
 } from "../campaign-ops";
+import { persistCampaignEmail } from "../campaign-email";
 import { MARKETING_CAMPAIGNS } from "../collections";
 import { serializeAdminDoc } from "../events";
 import { namedRecipientSource } from "../lists";
@@ -233,6 +234,13 @@ export function createLiveCampaignCatalog(): CampaignListCatalog {
           "Elegí una lista nominada de destinatarios. No se crea un draft contra todo el CRM ni listas virtuales de país.",
         );
       }
+      const snapshot = persistCampaignEmail({
+        htmlBody: input.htmlBody,
+        name: input.name,
+        subject: input.subject,
+        title: input.subject,
+        campaignName: input.name,
+      });
       const db = getAdminDb();
       const ref = db.collection(MARKETING_CAMPAIGNS).doc();
       await ref.set({
@@ -241,8 +249,12 @@ export function createLiveCampaignCatalog(): CampaignListCatalog {
         listId: list.listId,
         listName: list.listName,
         subject: input.subject.trim(),
-        htmlBody: input.htmlBody,
-        textBody: input.textBody || "",
+        htmlBody: snapshot.htmlBody,
+        textBody: snapshot.textBody || input.textBody || "",
+        emailContent: snapshot.emailContent,
+        templateId: snapshot.templateId,
+        templateVersion: snapshot.templateVersion,
+        htmlSnapshotAt: FieldValue.serverTimestamp(),
         fromEmail: marketingFromEmail(),
         fromName: marketingFromName(),
         status: "draft",
@@ -267,8 +279,22 @@ export function createLiveCampaignCatalog(): CampaignListCatalog {
       const patch: Record<string, unknown> = {};
       if (changes.name) patch.name = changes.name.trim();
       if (changes.subject) patch.subject = changes.subject.trim();
-      if (changes.htmlBody) patch.htmlBody = changes.htmlBody;
-      if (changes.textBody !== undefined) patch.textBody = changes.textBody;
+      if (changes.htmlBody) {
+        const snapshot = persistCampaignEmail({
+          htmlBody: changes.htmlBody,
+          name: String(data.name || ""),
+          subject: String(changes.subject || data.subject || ""),
+          title: String(changes.subject || data.subject || ""),
+          campaignName: String(changes.name || data.name || ""),
+        });
+        patch.htmlBody = snapshot.htmlBody;
+        patch.textBody = snapshot.textBody;
+        patch.emailContent = snapshot.emailContent;
+        patch.templateId = snapshot.templateId;
+        patch.templateVersion = snapshot.templateVersion;
+        patch.htmlSnapshotAt = FieldValue.serverTimestamp();
+      }
+      if (changes.textBody !== undefined && !changes.htmlBody) patch.textBody = changes.textBody;
       if (changes.includeStages) {
         const stages = changes.includeStages.filter(isMarketingStage);
         patch.includeStages = stages.length ? stages : ["new"];

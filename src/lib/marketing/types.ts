@@ -12,6 +12,7 @@ export const MARKETING_CONTACT_EMAIL_DEFAULT = "contacto@notificas.com";
 export const MARKETING_FROM_NAME_DEFAULT = "Notificas";
 export const MARKETING_REPLY_TO_DEFAULT = "adrianbengolea@notificas.com";
 export const MARKETING_GMAIL_EMAIL_DEFAULT = "adrianbengolea@notificas.com";
+export const MARKETING_TEST_EMAIL_DEFAULT = "abengolea1@gmail.com";
 
 export type MarketingCampaignStatus = "draft" | "sending" | "paused" | "sent" | "cancelled";
 
@@ -186,4 +187,8 @@ export function marketingGmailEmail(): string {
 
 export function marketingFromHeader(): string {
   return `${marketingFromName()} <${marketingFromEmail()}>`;
+}
+
+export function marketingTestEmail(): string {
+  return (process.env.MARKETING_TEST_EMAIL || MARKETING_TEST_EMAIL_DEFAULT).trim().toLowerCase();
 }

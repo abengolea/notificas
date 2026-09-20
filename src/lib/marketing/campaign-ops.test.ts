@@ -50,6 +50,19 @@ test("copia queda en borrador sin stats ni envíos", () => {
   });
   assert.equal(copied.subject, "Aviso a comitentes");
   assert.equal(copied.listId, "lista-1");
+  const withTemplate = copiedCampaignFields(
+    {
+      name: "Original",
+      subject: "Asunto",
+      htmlBody: "<p>Hola</p>",
+      emailContent: { title: "Hola", paragraphs: ["Uno"], benefits: [] },
+      templateId: "institutional_v1",
+      templateVersion: 1,
+    },
+    "camp-2",
+  );
+  assert.equal(withTemplate.templateId, "institutional_v1");
+  assert.equal((withTemplate.emailContent as { title: string }).title, "Hola");
 });
 
 test("no reenviar fallidos a bajas o rebotes", () => {

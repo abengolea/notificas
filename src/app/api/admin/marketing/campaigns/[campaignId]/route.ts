@@ -5,14 +5,17 @@ import { assertAdminSession } from "@/lib/assert-admin-session";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { audienceForCampaign, resolveListLabel } from "@/lib/marketing/audience";
 import { MARKETING_CAMPAIGNS, MARKETING_SENDS } from "@/lib/marketing/collections";
+import { persistCampaignEmail, parseCampaignEmailContent } from "@/lib/marketing/campaign-email";
+import { campaignEmailContentSchema, campaignHtmlBodySchema } from "@/lib/marketing/campaign-email-input";
 import { serializeAdminDoc } from "@/lib/marketing/events";
 import { namedRecipientSource } from "@/lib/marketing/lists";
 
 const patchSchema = z.object({
   name: z.string().min(2).max(160).optional(),
   subject: z.string().min(2).max(200).optional(),
-  htmlBody: z.string().min(8).max(50_000).optional(),
+  htmlBody: campaignHtmlBodySchema.optional(),
   textBody: z.string().max(20_000).optional(),
+  emailContent: campaignEmailContentSchema.optional(),
   listId: z.string().min(1).max(80).optional(),
   status: z.enum(["paused", "cancelled", "sending"]).optional(),
   archived: z.boolean().optional(),
@@ -32,6 +35,7 @@ export async function GET(
     const sendsSnap = await db.collection(MARKETING_SENDS).where("campaignId", "==", campaignId).limit(500).get();
     const sends = sendsSnap.docs
       .map((d) => serializeAdminDoc(d.id, d.data()))
+      .filter((row) => !row.testSend)
       .sort((a, b) => String(b.sentAt || b.createdAt || "").localeCompare(String(a.sentAt || a.createdAt || "")));
     const campaign = serializeAdminDoc(snap.id, snap.data() || {});
     const audience =
@@ -68,8 +72,30 @@ export async function PATCH(
     const d = parsed.data;
     if (d.name) updates.name = d.name.trim();
     if (d.subject) updates.subject = d.subject.trim();
-    if (d.htmlBody) updates.htmlBody = d.htmlBody;
-    if (d.textBody !== undefined) updates.textBody = d.textBody;
+    if (d.emailContent || d.htmlBody) {
+      if (current !== "draft") {
+        return NextResponse.json({ error: "Solo se puede editar el contenido de un borrador." }, { status: 409 });
+      }
+      const currentData = snap.data() || {};
+      const currentContent = parseCampaignEmailContent(currentData.emailContent);
+      const snapshot = persistCampaignEmail({
+        ...(currentContent || {}),
+        ...(d.emailContent || {}),
+        htmlBody: d.htmlBody || String(currentData.htmlBody || ""),
+        name: String(d.name || currentData.name || ""),
+        subject: String(d.subject || currentData.subject || ""),
+        title: d.emailContent?.title || currentContent?.title || String(d.subject || currentData.subject || ""),
+        campaignName: d.emailContent?.campaignName || currentContent?.campaignName || String(d.name || currentData.name || ""),
+      });
+      updates.htmlBody = snapshot.htmlBody;
+      updates.textBody = snapshot.textBody;
+      updates.emailContent = snapshot.emailContent;
+      updates.templateId = snapshot.templateId;
+      updates.templateVersion = snapshot.templateVersion;
+      updates.htmlSnapshotAt = FieldValue.serverTimestamp();
+    } else if (d.textBody !== undefined) {
+      updates.textBody = d.textBody;
+    }
     if (d.listId) {
       if (current !== "draft" && current !== "paused") {
         return NextResponse.json({ error: "Solo se puede cambiar la lista en un borrador." }, { status: 409 });
