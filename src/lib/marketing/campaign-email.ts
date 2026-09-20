@@ -367,9 +367,15 @@ export function campaignEmailToText(content: CampaignEmailContent): string {
   if (data.callToActionLabel && data.callToActionUrl) {
     lines.push("", `${data.callToActionLabel}: ${data.callToActionUrl}`);
   }
-  lines.push("", data.senderName, data.senderRole, data.companyName, websiteLabel(data.website));
+  lines.push(
+    "",
+    data.senderName || DEFAULT_SENDER.senderName,
+    data.senderRole || DEFAULT_SENDER.senderRole,
+    data.companyName || DEFAULT_SENDER.companyName,
+    websiteLabel(data.website || DEFAULT_SENDER.website),
+  );
   if (data.receivedWhy) lines.push("", data.receivedWhy);
-  lines.push("", websiteHref(data.website));
+  lines.push("", websiteHref(data.website || DEFAULT_SENDER.website));
   if (data.unsubscribeUrl && data.unsubscribeUrl !== "{{unsubscribeUrl}}") {
     lines.push(`Darse de baja: ${data.unsubscribeUrl}`);
   }
@@ -380,8 +386,12 @@ export function renderCampaignEmail(input: CampaignEmailContent): { html: string
   const data = normalizeCampaignEmailContent(input);
   const c = CAMPAIGN_EMAIL_COLORS;
   const unsub = data.unsubscribeUrl || "{{unsubscribeUrl}}";
-  const site = websiteHref(data.website);
-  const siteLabel = websiteLabel(data.website);
+  const website = data.website || DEFAULT_SENDER.website;
+  const senderName = data.senderName || DEFAULT_SENDER.senderName;
+  const senderRole = data.senderRole || DEFAULT_SENDER.senderRole;
+  const companyName = data.companyName || DEFAULT_SENDER.companyName;
+  const site = websiteHref(website);
+  const siteLabel = websiteLabel(website);
   const benefitsRows = data.benefits
     .map((row) => {
       const label = row.title ? `<strong>${escapeEmailText(row.title)}.</strong> ` : "";
@@ -443,7 +453,7 @@ export function renderCampaignEmail(input: CampaignEmailContent): { html: string
 </head>
 <body style="margin:0;padding:0;background:${c.page};">
   <!-- ${CAMPAIGN_EMAIL_MARKER} -->
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;">${escapeEmailText(data.preheader)}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;">${escapeEmailText(data.preheader || "")}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:${c.page};">
     <tr>
       <td align="center" style="padding:24px 12px;">
@@ -469,9 +479,9 @@ export function renderCampaignEmail(input: CampaignEmailContent): { html: string
               ${fragment}
               ${benefitsBlock}
               ${cta}
-              <p style="margin:0 0 4px;font-family:${BODY_FONT};font-size:16px;line-height:1.55;color:${c.text};">${escapeEmailText(data.senderName)}</p>
-              <p style="margin:0 0 2px;font-family:${BODY_FONT};font-size:16px;line-height:1.55;color:${c.muted};">${escapeEmailText(data.senderRole)}</p>
-              <p style="margin:0;font-family:${BODY_FONT};font-size:16px;line-height:1.55;color:${c.muted};">${escapeEmailText(data.companyName)}</p>
+              <p style="margin:0 0 4px;font-family:${BODY_FONT};font-size:16px;line-height:1.55;color:${c.text};">${escapeEmailText(senderName)}</p>
+              <p style="margin:0 0 2px;font-family:${BODY_FONT};font-size:16px;line-height:1.55;color:${c.muted};">${escapeEmailText(senderRole)}</p>
+              <p style="margin:0;font-family:${BODY_FONT};font-size:16px;line-height:1.55;color:${c.muted};">${escapeEmailText(companyName)}</p>
             </td>
           </tr>
           <tr>
