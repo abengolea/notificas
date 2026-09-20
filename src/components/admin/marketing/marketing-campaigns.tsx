@@ -18,6 +18,16 @@ import { CAMPAIGN_STATUS_LABEL, isCampaignAdminStatus } from "@/lib/marketing/ad
 import { countryName } from "@/lib/marketing/countries";
 import { MarketingCampaignActions } from "./marketing-campaign-actions";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 
@@ -25,9 +35,11 @@ type Campaign = {
   id: string;
   name: string;
   country: string;
+  listId?: string | null;
   listName?: string;
   status: string;
   subject: string;
+  fromEmail?: string | null;
   industryId?: string | null;
   useCaseId?: string | null;
   useCaseIds?: string[] | null;
@@ -37,6 +49,15 @@ type Campaign = {
   stats?: { sent?: number; delivered?: number; opened?: number; clicked?: number; replied?: number; bounced?: number; failed?: number; unsubscribed?: number };
   createdAt?: string | null;
 };
+
+function canSendCampaign(row: Campaign): boolean {
+  return (
+    row.status === "draft" &&
+    !row.archivedAt &&
+    Boolean(row.listId || row.listName) &&
+    (row.subject || "").trim().length >= 2
+  );
+}
 
 function statusBadge(status: string): string {
   if (status === "draft") return "new";
@@ -120,6 +141,7 @@ export function MarketingCampaigns() {
   const [lists, setLists] = useState<ListOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [confirmSend, setConfirmSend] = useState<Campaign | null>(null);
 
   const industryName = useMemo(() => new Map((catalog?.industries || []).map((row) => [row.key, row.name])), [catalog]);
   const useCaseName = useMemo(() => new Map((catalog?.useCases || []).map((row) => [row.key, row.name])), [catalog]);
@@ -132,6 +154,24 @@ export function MarketingCampaigns() {
         if (!res.ok) throw new Error(data.error || "Error");
         setRows(data.campaigns || []);
       });
+  }
+
+  async function sendCampaign(row: Campaign) {
+    setBusyId(row.id);
+    try {
+      const res = await fetch(`/api/admin/marketing/campaigns/${row.id}/send`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "No se pudo enviar");
+      toast({ title: data.queued ? `${data.queued} correos en cola` : "Nada para enviar" });
+      await reload();
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
+    } finally {
+      setBusyId(null);
+    }
   }
 
   async function copyCampaign(id: string) {
@@ -260,7 +300,7 @@ export function MarketingCampaigns() {
         <div>
           <h3 className="text-lg font-semibold">Acciones de campaña</h3>
           <p className="text-sm text-muted-foreground">
-            Copiá para reusar el texto, reenviá los correos que fallaron, o archivá las que ya no querés ver.
+            Enviá el correo real desde acá, copiá para reusar el texto, reenviá los que fallaron, o archivá las que ya no querés ver.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -318,7 +358,9 @@ export function MarketingCampaigns() {
                   archived={Boolean(c.archivedAt)}
                   failedCount={failedCount}
                   canRetry={c.status !== "draft" && failedCount > 0}
+                  canSend={canSendCampaign(c)}
                   busy={busyId === c.id}
+                  onSend={() => setConfirmSend(c)}
                   onCopy={() => void copyCampaign(c.id)}
                   onRetry={() => void retryFailed(c)}
                   onArchive={() => void toggleArchive(c)}
@@ -329,6 +371,34 @@ export function MarketingCampaigns() {
           })}
         </ul>
       )}
+      <AlertDialog open={Boolean(confirmSend)} onOpenChange={(open) => { if (!open) setConfirmSend(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Enviar la campaña real?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esto envía el correo institucional
+              {confirmSend?.name ? ` de “${confirmSend.name}”` : ""}
+              {confirmSend?.contactCount ? ` a ${confirmSend.contactCount.toLocaleString("es-AR")} destinatarios` : ""}
+              {" "}desde {confirmSend?.fromEmail || "contacto@notificas.com"}.
+              No es una prueba. La campaña dejará de ser un borrador.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busyId !== null}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busyId !== null || !confirmSend}
+              onClick={(e) => {
+                e.preventDefault();
+                const row = confirmSend;
+                setConfirmSend(null);
+                if (row) void sendCampaign(row);
+              }}
+            >
+              Confirmar envío real
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

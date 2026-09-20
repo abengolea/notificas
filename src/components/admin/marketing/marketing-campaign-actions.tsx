@@ -10,6 +10,8 @@ export function MarketingCampaignActions({
   onCopy,
   onRetry,
   onArchive,
+  canSend,
+  onSend,
 }: {
   archived: boolean;
   failedCount: number;
@@ -18,9 +20,16 @@ export function MarketingCampaignActions({
   onCopy: () => void;
   onRetry: () => void;
   onArchive: () => void;
+  canSend?: boolean;
+  onSend?: () => void;
 }) {
   return (
     <div className="flex flex-wrap gap-2">
+      {onSend ? (
+        <Button type="button" disabled={busy || !canSend} onClick={onSend}>
+          Enviar campaña
+        </Button>
+      ) : null}
       <Button type="button" variant="secondary" disabled={busy} onClick={onCopy}>
         Copiar campaña
       </Button>
