@@ -11,6 +11,7 @@ import { isMarketingStage } from "@/lib/marketing/stages";
 const patchSchema = z.object({
   name: z.string().max(200).optional(),
   company: z.string().max(200).optional(),
+  companyId: z.string().max(80).nullable().optional(),
   title: z.string().max(200).optional(),
   country: z.string().min(2).max(2).optional(),
   notes: z.string().max(4000).optional(),
@@ -68,6 +69,7 @@ export async function PATCH(
     const d = parsed.data;
     if (d.name !== undefined) updates.name = d.name.trim();
     if (d.company !== undefined) updates.company = d.company.trim();
+    if (d.companyId !== undefined) updates.companyId = d.companyId ?? null;
     if (d.title !== undefined) updates.title = d.title.trim();
     if (d.notes !== undefined) updates.notes = d.notes.trim();
     if (d.tags) updates.tags = d.tags;

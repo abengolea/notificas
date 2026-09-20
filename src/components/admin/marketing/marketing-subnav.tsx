@@ -6,6 +6,7 @@ import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAssistantDrawer } from "./assistant-drawer";
 import { useTaskBadge } from "./use-task-badge";
+import { MarketingSearch } from "./marketing-search";
 
 const links = [
   { href: "/admin/marketing", label: "Resumen" },
@@ -53,16 +54,19 @@ export function MarketingSubnav() {
           </Link>
         );
       })}
-      <button
-        type="button"
-        onClick={toggle}
-        title="Asistente IA (⌘K)"
-        className="ml-auto flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-      >
-        <Sparkles className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline">IA</span>
-        <kbd className="hidden lg:inline text-[10px] font-mono bg-muted rounded px-1">⌘K</kbd>
-      </button>
+      <div className="ml-auto flex items-center gap-2">
+        <MarketingSearch />
+        <button
+          type="button"
+          onClick={toggle}
+          title="Asistente IA (⌘K)"
+          className="flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">IA</span>
+          <kbd className="hidden lg:inline text-[10px] font-mono bg-muted rounded px-1">⌘K</kbd>
+        </button>
+      </div>
     </nav>
   );
 }

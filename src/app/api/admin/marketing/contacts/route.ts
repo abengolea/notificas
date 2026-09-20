@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldPath, FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { assertAdminSession } from "@/lib/assert-admin-session";
 import { getAdminDb } from "@/lib/firebase-admin";
@@ -36,13 +36,28 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.get("useCaseIds") || request.nextUrl.searchParams.get("useCaseId"),
   );
   const outcome = parseAdminFilterValue(request.nextUrl.searchParams.get("outcome"));
+  const companyId = parseAdminFilterValue(request.nextUrl.searchParams.get("companyId"));
+  const idsParam = (request.nextUrl.searchParams.get("ids") || "").trim();
   const q = (request.nextUrl.searchParams.get("q") || "").trim().toLowerCase();
   const limit = Math.min(500, Math.max(1, Number(request.nextUrl.searchParams.get("limit") || 200) || 200));
+  const offset = Math.max(0, Number(request.nextUrl.searchParams.get("offset") || 0) || 0);
 
   try {
     const db = getAdminDb();
+
+    // fast path: fetch specific contact IDs (e.g. from opportunity contactIds)
+    if (idsParam) {
+      const ids = idsParam.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 10);
+      if (ids.length === 0) return NextResponse.json({ contacts: [] });
+      const snap = await db.collection(MARKETING_CONTACTS).where(FieldPath.documentId(), "in", ids).get();
+      const contacts = snap.docs.map((d) => serializeAdminDoc(d.id, d.data()));
+      return NextResponse.json({ contacts, total: contacts.length });
+    }
+
     let query: FirebaseFirestore.Query = db.collection(MARKETING_CONTACTS);
-    if (country && isMarketingCountryCode(country)) {
+    if (companyId) {
+      query = query.where("companyId", "==", companyId);
+    } else if (country && isMarketingCountryCode(country)) {
       query = query.where("country", "==", country);
     }
     const snap = await query.limit(2000).get();
@@ -84,7 +99,7 @@ export async function GET(request: NextRequest) {
       });
     }
     contacts.sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
-    return NextResponse.json({ contacts: contacts.slice(0, limit), total: contacts.length });
+    return NextResponse.json({ contacts: contacts.slice(offset, offset + limit), total: contacts.length, hasMore: contacts.length > offset + limit });
   } catch (e) {
     console.error("GET /api/admin/marketing/contacts", e);
     return NextResponse.json({ error: "Error interno" }, { status: 500 });

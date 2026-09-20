@@ -15,10 +15,12 @@ import { useToast } from "@/hooks/use-toast";
 type Task = {
   id: string;
   title?: string;
-  taskType?: string;
+  type?: string;
   priority?: string;
   companyId?: string | null;
+  companyName?: string | null;
   contactId?: string | null;
+  contactName?: string | null;
   dueAt?: string | null;
   status?: string;
 };
@@ -153,9 +155,9 @@ export function MarketingFollowup() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium">{task.title || "Tarea"}</p>
                         <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                          {task.taskType && (
+                          {task.type && (
                             <span className="text-xs text-muted-foreground">
-                              {TASK_TYPE_LABELS[task.taskType] || task.taskType}
+                              {TASK_TYPE_LABELS[task.type!] || task.type}
                             </span>
                           )}
                           {task.priority === "high" && (
@@ -163,7 +165,12 @@ export function MarketingFollowup() {
                           )}
                           {task.companyId && (
                             <Link href={`/admin/marketing/empresas/${task.companyId}`} className="text-xs text-muted-foreground hover:underline hover:text-foreground">
-                              ver empresa
+                              {task.companyName || "ver empresa"}
+                            </Link>
+                          )}
+                          {task.contactId && (
+                            <Link href={`/admin/marketing/contactos/${task.contactId}`} className="text-xs text-muted-foreground hover:underline hover:text-foreground">
+                              {task.contactName || "ver contacto"}
                             </Link>
                           )}
                         </div>

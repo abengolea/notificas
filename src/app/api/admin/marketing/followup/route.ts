@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertAdminSession } from "@/lib/assert-admin-session";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { MARKETING_COMPANIES, MARKETING_TASKS } from "@/lib/marketing/collections";
+import { MARKETING_COMPANIES, MARKETING_CONTACTS, MARKETING_TASKS } from "@/lib/marketing/collections";
 import { serializeAdminDoc } from "@/lib/marketing/events";
 
 export async function GET(request: NextRequest) {
@@ -15,10 +15,15 @@ export async function GET(request: NextRequest) {
     todayEnd.setHours(23, 59, 59, 999);
     const todayEndStr = todayEnd.toISOString();
 
-    const [tasksSnap, companiesSnap] = await Promise.all([
+    const [tasksSnap, companiesSnap, contactsSnap] = await Promise.all([
       db.collection(MARKETING_TASKS).where("status", "==", "open").limit(500).get(),
       db.collection(MARKETING_COMPANIES).where("deletedAt", "==", null).limit(2000).get(),
+      db.collection(MARKETING_CONTACTS).limit(2000).get(),
     ]);
+
+    const allCompanies = companiesSnap.docs.map((d) => serializeAdminDoc(d.id, d.data()));
+    const companyNameMap = new Map(allCompanies.map((c) => [c.id as string, c.name as string | undefined]));
+    const contactNameMap = new Map(contactsSnap.docs.map((d) => [d.id, (d.data().name || d.data().email) as string | undefined]));
 
     // tasks due today or already overdue
     const tasks = tasksSnap.docs
@@ -27,11 +32,15 @@ export async function GET(request: NextRequest) {
         const due = String(t.dueAt || "");
         return due && due <= todayEndStr;
       })
-      .sort((a, b) => String(a.dueAt || "").localeCompare(String(b.dueAt || "")));
+      .sort((a, b) => String(a.dueAt || "").localeCompare(String(b.dueAt || "")))
+      .map((t) => ({
+        ...t,
+        companyName: t.companyId ? (companyNameMap.get(t.companyId as string) ?? null) : null,
+        contactName: t.contactId ? (contactNameMap.get(t.contactId as string) ?? null) : null,
+      }));
 
     // companies with overdue follow-up
-    const companies = companiesSnap.docs
-      .map((d) => serializeAdminDoc(d.id, d.data()))
+    const companies = allCompanies
       .filter((c) => {
         const fu = String(c.nextFollowUpAt || "");
         return fu && fu <= now;

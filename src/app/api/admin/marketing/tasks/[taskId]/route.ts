@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { assertAdminSession } from "@/lib/assert-admin-session";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { MARKETING_TASKS } from "@/lib/marketing/collections";
+import { MARKETING_ACTIVITIES, MARKETING_TASKS } from "@/lib/marketing/collections";
 import { serializeAdminDoc } from "@/lib/marketing/events";
 
 const patchSchema = z.object({
@@ -38,13 +38,32 @@ export async function PATCH(
 
     const payload: Record<string, unknown> = { ...parsed.data, updatedAt: FieldValue.serverTimestamp() };
 
-    if (parsed.data.status === "completed" && existing.data()?.status !== "completed") {
+    const wasCompleted = existing.data()?.status === "completed";
+    if (parsed.data.status === "completed" && !wasCompleted) {
       payload.completedAt = FieldValue.serverTimestamp();
     }
 
     Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 
     await ref.update(payload);
+
+    // log activity when a task transitions to completed
+    if (parsed.data.status === "completed" && !wasCompleted) {
+      const d = existing.data() || {};
+      const actRef = db.collection(MARKETING_ACTIVITIES).doc();
+      await actRef.set({
+        type: "task_completed",
+        taskId,
+        companyId: d.companyId || null,
+        contactId: d.contactId || null,
+        opportunityId: d.opportunityId || null,
+        actorType: "user",
+        title: `Tarea completada: ${d.title || "Sin título"}`,
+        metadata: { taskType: d.type || null },
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+
     const snap = await ref.get();
     return NextResponse.json({ task: serializeAdminDoc(snap.id, snap.data() || {}) });
   } catch (e) {

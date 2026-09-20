@@ -4,7 +4,7 @@ import { z } from "zod";
 import { assertAdminSession } from "@/lib/assert-admin-session";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { parseAdminFilterValue } from "@/lib/marketing/admin-filters";
-import { MARKETING_ACTIVITIES, MARKETING_OPPORTUNITIES } from "@/lib/marketing/collections";
+import { MARKETING_ACTIVITIES, MARKETING_COMPANIES, MARKETING_OPPORTUNITIES } from "@/lib/marketing/collections";
 import { serializeAdminDoc } from "@/lib/marketing/events";
 import { isMarketingCommercialStageId } from "@/lib/marketing/domain/commercial-stages";
 import { isMarketingCountryCode } from "@/lib/marketing/countries";
@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
 
   const commercialStageId = parseAdminFilterValue(request.nextUrl.searchParams.get("commercialStageId"));
   const companyId = parseAdminFilterValue(request.nextUrl.searchParams.get("companyId"));
+  const contactId = parseAdminFilterValue(request.nextUrl.searchParams.get("contactId"));
   const statusFilter = parseAdminFilterValue(request.nextUrl.searchParams.get("status"));
   const country = parseAdminFilterValue(request.nextUrl.searchParams.get("country"));
   const q = (request.nextUrl.searchParams.get("q") || "").trim().toLowerCase();
@@ -37,7 +38,9 @@ export async function GET(request: NextRequest) {
     const db = getAdminDb();
     let query: FirebaseFirestore.Query = db.collection(MARKETING_OPPORTUNITIES);
 
-    if (statusFilter && ["open", "won", "lost", "paused"].includes(statusFilter)) {
+    if (statusFilter === "all") {
+      // no status filter — return all statuses (used by admin view)
+    } else if (statusFilter && ["open", "won", "lost", "paused"].includes(statusFilter)) {
       query = query.where("status", "==", statusFilter);
     } else {
       query = query.where("status", "==", "open");
@@ -54,6 +57,22 @@ export async function GET(request: NextRequest) {
 
     if (q) {
       opps = opps.filter((o) => String(o.name || "").toLowerCase().includes(q));
+    }
+    if (contactId) {
+      opps = opps.filter((o) => Array.isArray(o.contactIds) && (o.contactIds as string[]).includes(contactId));
+    }
+
+    // enrich with company names (batch fetch unique companyIds)
+    const companyIds = [...new Set(opps.map((o) => o.companyId).filter(Boolean) as string[])];
+    if (companyIds.length > 0) {
+      const companySnaps = await Promise.all(
+        companyIds.map((id) => db.collection(MARKETING_COMPANIES).doc(id).get())
+      );
+      const companyNames = new Map(companySnaps.map((s) => [s.id, s.data()?.name as string | undefined]));
+      opps = opps.map((o) => ({
+        ...o,
+        companyName: o.companyId ? (companyNames.get(o.companyId as string) ?? null) : null,
+      }));
     }
 
     return NextResponse.json({ opportunities: opps, total: opps.length });

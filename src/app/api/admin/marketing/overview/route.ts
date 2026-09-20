@@ -89,7 +89,16 @@ export async function GET(request: NextRequest) {
       return due && due >= now && due <= todayEnd.toISOString();
     }).length;
 
-    const recentActivities = activitiesSnap.docs.map((d) => serializeAdminDoc(d.id, d.data()));
+    const companyNameMap = new Map(companiesSnap.docs.map((d) => [d.id, d.data().name as string | undefined]));
+    const contactNameMap = new Map(contactsSnap.docs.map((d) => [d.id, (d.data().name || d.data().email) as string | undefined]));
+    const recentActivities = activitiesSnap.docs.map((d) => {
+      const a = serializeAdminDoc(d.id, d.data());
+      return {
+        ...a,
+        companyName: a.companyId ? (companyNameMap.get(a.companyId as string) ?? null) : null,
+        contactName: a.contactId ? (contactNameMap.get(a.contactId as string) ?? null) : null,
+      };
+    });
 
     const pipelineValue = opportunitiesSnap.docs.reduce((sum, d) => {
       const v = Number(d.data().estimatedValue || 0);

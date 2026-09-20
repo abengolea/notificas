@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Building2, Download, Phone, Mic } from "lucide-react";
+import { Loader2, Building2, Download, Phone, Mic, Bookmark, BookmarkCheck, X } from "lucide-react";
 import { downloadCsv } from "@/lib/marketing/export-csv";
 import { MarketingSubnav } from "./marketing-subnav";
 import { CommercialStageBadge, CommercialStageSelect } from "./commercial-stage-badge";
@@ -115,6 +115,50 @@ export function MarketingCompanies() {
   const [savingAct, setSavingAct] = useState(false);
 
   const [editingStageCompanyId, setEditingStageCompanyId] = useState<string | null>(null);
+
+  // saved searches
+  const [savedSearches, setSavedSearches] = useState<{ id: string; name: string; filters: Filters }[]>([]);
+  const [savingSearch, setSavingSearch] = useState(false);
+  const [saveSearchName, setSaveSearchName] = useState("");
+  const [showSaveSearch, setShowSaveSearch] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/admin/marketing/saved-searches?entityType=company")
+      .then((r) => r.ok ? r.json() : { searches: [] })
+      .then((body) => setSavedSearches(
+        (body.searches || []).map((s: { id: string; name?: string; filters?: unknown }) => ({
+          id: s.id,
+          name: s.name || "Sin nombre",
+          filters: (s.filters || {}) as Filters,
+        }))
+      ))
+      .catch(() => {});
+  }, []);
+
+  async function saveSearch() {
+    if (!saveSearchName.trim()) return;
+    setSavingSearch(true);
+    try {
+      const res = await fetch("/api/admin/marketing/saved-searches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: saveSearchName.trim(), entityType: "company", filters }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSavedSearches((prev) => [{ id: data.search.id, name: data.search.name, filters }, ...prev]);
+        setSaveSearchName("");
+        setShowSaveSearch(false);
+        toast({ title: "Búsqueda guardada" });
+      }
+    } finally {
+      setSavingSearch(false); }
+  }
+
+  async function deleteSearch(id: string) {
+    await fetch(`/api/admin/marketing/saved-searches/${id}`, { method: "DELETE" });
+    setSavedSearches((prev) => prev.filter((s) => s.id !== id));
+  }
 
   const load = useCallback(async (f: Filters) => {
     setLoading(true);
@@ -292,6 +336,72 @@ export function MarketingCompanies() {
             </button>
           )}
         </div>
+      )}
+
+      {/* saved searches */}
+      {(savedSearches.length > 0 || showSaveSearch) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {savedSearches.map((s) => (
+            <div key={s.id} className="flex items-center gap-0.5 rounded-full border bg-background pl-2.5 pr-1 py-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setFilters({ ...EMPTY, ...s.filters })}
+                className="font-medium text-foreground hover:text-primary transition-colors"
+              >
+                {s.name}
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteSearch(s.id)}
+                className="ml-0.5 text-muted-foreground hover:text-destructive transition-colors p-0.5"
+                title="Eliminar búsqueda"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+          {showSaveSearch ? (
+            <form
+              onSubmit={(e) => { e.preventDefault(); void saveSearch(); }}
+              className="flex items-center gap-1"
+            >
+              <input
+                autoFocus
+                value={saveSearchName}
+                onChange={(e) => setSaveSearchName(e.target.value)}
+                placeholder="Nombre de la búsqueda"
+                className="h-7 rounded-md border bg-background px-2 text-xs outline-none focus:border-ring"
+              />
+              <Button type="submit" size="sm" className="h-7 px-2 text-xs" disabled={savingSearch || !saveSearchName.trim()}>
+                {savingSearch ? <Loader2 className="h-3 w-3 animate-spin" /> : <BookmarkCheck className="h-3 w-3" />}
+              </Button>
+              <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setShowSaveSearch(false)}>
+                <X className="h-3 w-3" />
+              </Button>
+            </form>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowSaveSearch(true)}
+              className="flex items-center gap-1 rounded-full border border-dashed px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+            >
+              <Bookmark className="h-3 w-3" />
+              Guardar filtros
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* show save button when no saved searches yet and filters are active */}
+      {savedSearches.length === 0 && !showSaveSearch && dirty && (
+        <button
+          type="button"
+          onClick={() => setShowSaveSearch(true)}
+          className="flex w-fit items-center gap-1 rounded-full border border-dashed px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+        >
+          <Bookmark className="h-3 w-3" />
+          Guardar esta búsqueda
+        </button>
       )}
 
       {/* filter bar */}

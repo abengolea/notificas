@@ -27,8 +27,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/use-toast";
 
 type Company = Record<string, unknown>;
-type Opportunity = { id: string; name?: string; value?: number; commercialStageId?: string; status?: string; dueAt?: string | null };
-type Task = { id: string; title?: string; taskType?: string; priority?: string; status?: string; dueAt?: string | null };
+type Opportunity = { id: string; name?: string; estimatedValue?: number; commercialStageId?: string; status?: string; dueAt?: string | null };
+type Task = { id: string; title?: string; type?: string; priority?: string; status?: string; dueAt?: string | null };
+type Contact = { id: string; name?: string; email?: string; title?: string; stage?: string };
 
 const COMPANY_SIZES = [
   { value: "micro", label: "Micro (1-10)" },
@@ -58,14 +59,19 @@ export function MarketingCompanyDetail({ companyId }: { companyId: string }) {
   const [oppDialog, setOppDialog] = useState(false);
   const [oppForm, setOppForm] = useState({ name: "", commercialStageId: "interesado", estimatedValue: "", nextStep: "" });
   const [savingOpp, setSavingOpp] = useState(false);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contactDialog, setContactDialog] = useState(false);
+  const [contactForm, setContactForm] = useState({ name: "", email: "", title: "", country: "AR" });
+  const [savingContact, setSavingContact] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [compRes, oppRes, taskRes] = await Promise.all([
+      const [compRes, oppRes, taskRes, contactsRes] = await Promise.all([
         fetch(`/api/admin/marketing/companies/${companyId}`),
         fetch(`/api/admin/marketing/opportunities?companyId=${companyId}&status=open`),
         fetch(`/api/admin/marketing/tasks?companyId=${companyId}&status=open`),
+        fetch(`/api/admin/marketing/contacts?companyId=${companyId}&limit=50`),
       ]);
       if (compRes.ok) {
         const data = await compRes.json();
@@ -80,6 +86,10 @@ export function MarketingCompanyDetail({ companyId }: { companyId: string }) {
       if (taskRes.ok) {
         const data = await taskRes.json();
         setTasks(data.tasks ?? []);
+      }
+      if (contactsRes.ok) {
+        const data = await contactsRes.json();
+        setContacts(data.contacts ?? []);
       }
     } finally {
       setLoading(false);
@@ -114,6 +124,42 @@ export function MarketingCompanyDetail({ companyId }: { companyId: string }) {
       toast({ title: "Error al guardar", variant: "destructive" });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function createContact(e: React.FormEvent) {
+    e.preventDefault();
+    if (!contactForm.email.trim()) return;
+    setSavingContact(true);
+    try {
+      const companyName = company ? field(company, "name") : "";
+      const res = await fetch("/api/admin/marketing/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: contactForm.email.trim(),
+          name: contactForm.name.trim(),
+          title: contactForm.title.trim(),
+          country: contactForm.country,
+          company: companyName,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      // link companyId via PATCH
+      await fetch(`/api/admin/marketing/contacts/${data.contact.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId }),
+      });
+      setContacts((prev) => [{ ...data.contact, companyId }, ...prev]);
+      setContactForm({ name: "", email: "", title: "", country: "AR" });
+      setContactDialog(false);
+      toast({ title: "Contacto creado" });
+    } catch {
+      toast({ title: "Error al crear contacto", variant: "destructive" });
+    } finally {
+      setSavingContact(false);
     }
   }
 
@@ -154,7 +200,7 @@ export function MarketingCompanyDetail({ companyId }: { companyId: string }) {
     try {
       const body: Record<string, unknown> = {
         title: taskForm.title.trim(),
-        taskType: taskForm.taskType,
+        type: taskForm.taskType,
         priority: taskForm.priority,
         companyId,
       };
@@ -220,23 +266,49 @@ export function MarketingCompanyDetail({ companyId }: { companyId: string }) {
     <div className="space-y-6">
       <MarketingSubnav />
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <Link href="/admin/marketing/empresas" className="text-sm text-muted-foreground hover:text-foreground">
-          ← Empresas
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <h1 className="text-lg font-semibold">{field(company, "name")}</h1>
-        <CommercialStageBadge stageId={field(company, "commercialStageId")} />
-        {website && (
-          <a
-            href={website.startsWith("http") ? website : `https://${website}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-          >
-            {website} <ExternalLink className="h-3 w-3" />
-          </a>
-        )}
+      {/* breadcrumb + header */}
+      <div className="space-y-1">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Link href="/admin/marketing/empresas" className="hover:text-foreground flex items-center gap-1">
+            <span>← Empresas</span>
+          </Link>
+          <span>/</span>
+          <span className="text-foreground font-medium">{field(company, "name")}</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-xl font-semibold">{field(company, "name")}</h1>
+          <CommercialStageBadge stageId={field(company, "commercialStageId")} />
+          {website && (
+            <a
+              href={website.startsWith("http") ? website : `https://${website}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            >
+              {website} <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
+        </div>
+        {/* quick stats */}
+        <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+          {opportunities.length > 0 && (
+            <span>
+              <span className="font-medium text-foreground">{opportunities.length}</span> {opportunities.length === 1 ? "oportunidad" : "oportunidades"}
+              {(() => {
+                const v = opportunities.reduce((n, o) => n + (o.estimatedValue || 0), 0);
+                return v > 0 ? ` · ${new Intl.NumberFormat("es-AR", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(v)}` : "";
+              })()}
+            </span>
+          )}
+          {tasks.length > 0 && (
+            <span>
+              <span className="font-medium text-foreground">{tasks.length}</span> {tasks.length === 1 ? "tarea abierta" : "tareas abiertas"}
+            </span>
+          )}
+          {field(company, "countryCode") && (
+            <span>{field(company, "countryCode")}</span>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
@@ -345,9 +417,9 @@ export function MarketingCompanyDetail({ companyId }: { companyId: string }) {
                         )}
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        {opp.value != null && (
+                        {opp.estimatedValue != null && (
                           <span className="font-medium text-foreground">
-                            {new Intl.NumberFormat("es-AR", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(opp.value)}
+                            {new Intl.NumberFormat("es-AR", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(opp.estimatedValue)}
                           </span>
                         )}
                         {opp.dueAt && (
@@ -359,6 +431,41 @@ export function MarketingCompanyDetail({ companyId }: { companyId: string }) {
                     </li>
                   );
                 })}
+              </ul>
+            )}
+          </div>
+
+          {/* Contactos */}
+          <div className="rounded-lg border bg-background">
+            <div className="flex items-center justify-between border-b px-4 py-2.5">
+              <h2 className="text-sm font-medium">Contactos</h2>
+              <button
+                type="button"
+                onClick={() => setContactDialog(true)}
+                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Nuevo
+              </button>
+            </div>
+            {contacts.length === 0 ? (
+              <p className="px-4 py-3 text-xs text-muted-foreground">Sin contactos vinculados a esta empresa.</p>
+            ) : (
+              <ul className="divide-y">
+                {contacts.map((c) => (
+                  <li key={c.id} className="px-4 py-2.5 text-sm">
+                    <Link
+                      href={`/admin/marketing/contactos/${c.id}`}
+                      className="flex items-center justify-between hover:text-primary transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <span className="font-medium truncate block">{c.name || c.email || c.id}</span>
+                        {c.title && <span className="text-xs text-muted-foreground truncate block">{c.title}</span>}
+                      </div>
+                      <span className="shrink-0 text-xs text-muted-foreground ml-2">{c.email}</span>
+                    </Link>
+                  </li>
+                ))}
               </ul>
             )}
           </div>
@@ -399,8 +506,8 @@ export function MarketingCompanyDetail({ companyId }: { companyId: string }) {
                       </button>
                       <div className="flex-1 min-w-0">
                         <span className="truncate">{task.title || "Tarea"}</span>
-                        {task.taskType && (
-                          <span className="ml-2 text-xs text-muted-foreground">{task.taskType}</span>
+                        {task.type && (
+                          <span className="ml-2 text-xs text-muted-foreground">{task.type}</span>
                         )}
                       </div>
                       {task.dueAt && (
@@ -544,6 +651,64 @@ export function MarketingCompanyDetail({ companyId }: { companyId: string }) {
               <Button type="button" variant="ghost" size="sm" onClick={() => setOppDialog(false)}>Cancelar</Button>
               <Button type="submit" size="sm" disabled={savingOpp || !oppForm.name.trim()}>
                 {savingOpp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Crear oportunidad"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* nuevo contacto */}
+      <Dialog open={contactDialog} onOpenChange={setContactDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Nuevo contacto</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={createContact} className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="cd-email">Email *</Label>
+              <Input
+                id="cd-email"
+                type="email"
+                required
+                autoFocus
+                value={contactForm.email}
+                onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                placeholder="juan@empresa.com"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="cd-name">Nombre</Label>
+              <Input
+                id="cd-name"
+                value={contactForm.name}
+                onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                placeholder="Juan Pérez"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="cd-title">Cargo</Label>
+              <Input
+                id="cd-title"
+                value={contactForm.title}
+                onChange={(e) => setContactForm({ ...contactForm, title: e.target.value })}
+                placeholder="Director Comercial"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>País</Label>
+              <Select value={contactForm.country} onValueChange={(v) => setContactForm({ ...contactForm, country: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {MARKETING_COUNTRIES.map((c) => (
+                    <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setContactDialog(false)}>Cancelar</Button>
+              <Button type="submit" size="sm" disabled={savingContact || !contactForm.email.trim()}>
+                {savingContact ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Crear contacto"}
               </Button>
             </div>
           </form>

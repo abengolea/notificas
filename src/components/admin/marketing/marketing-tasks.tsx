@@ -39,7 +39,9 @@ type Task = {
   priority: string;
   status: string;
   companyId?: string | null;
+  companyName?: string | null;
   contactId?: string | null;
+  contactName?: string | null;
   opportunityId?: string | null;
   assignedTo?: string | null;
   dueAt?: string | null;
@@ -311,12 +313,12 @@ export function MarketingTasks() {
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {task.companyId ? (
-                          <Link href={`/admin/marketing/empresas/${task.companyId}`} className="hover:underline">
-                            ver empresa
+                          <Link href={`/admin/marketing/empresas/${task.companyId}`} className="hover:underline hover:text-foreground">
+                            {task.companyName || "ver empresa"}
                           </Link>
                         ) : task.contactId ? (
-                          <Link href={`/admin/marketing/contactos/${task.contactId}`} className="hover:underline">
-                            ver contacto
+                          <Link href={`/admin/marketing/contactos/${task.contactId}`} className="hover:underline hover:text-foreground">
+                            {task.contactName || "ver contacto"}
                           </Link>
                         ) : "-"}
                       </TableCell>

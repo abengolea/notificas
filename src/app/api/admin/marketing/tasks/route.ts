@@ -4,7 +4,7 @@ import { z } from "zod";
 import { assertAdminSession } from "@/lib/assert-admin-session";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { parseAdminFilterValue } from "@/lib/marketing/admin-filters";
-import { MARKETING_TASKS } from "@/lib/marketing/collections";
+import { MARKETING_COMPANIES, MARKETING_CONTACTS, MARKETING_TASKS } from "@/lib/marketing/collections";
 import { serializeAdminDoc } from "@/lib/marketing/events";
 
 const TASK_TYPES = ["call", "email", "research", "meeting", "demo", "follow_up", "proposal", "data_completion", "other"] as const;
@@ -28,6 +28,8 @@ export async function GET(request: NextRequest) {
 
   const status = parseAdminFilterValue(request.nextUrl.searchParams.get("status"));
   const companyId = parseAdminFilterValue(request.nextUrl.searchParams.get("companyId"));
+  const contactId = parseAdminFilterValue(request.nextUrl.searchParams.get("contactId"));
+  const opportunityId = parseAdminFilterValue(request.nextUrl.searchParams.get("opportunityId"));
   const assignedTo = parseAdminFilterValue(request.nextUrl.searchParams.get("assignedTo"));
   const dueBefore = parseAdminFilterValue(request.nextUrl.searchParams.get("dueBefore"));
   const dueAfter = parseAdminFilterValue(request.nextUrl.searchParams.get("dueAfter"));
@@ -44,6 +46,10 @@ export async function GET(request: NextRequest) {
     }
     if (companyId) {
       query = query.where("companyId", "==", companyId);
+    } else if (contactId) {
+      query = query.where("contactId", "==", contactId);
+    } else if (opportunityId) {
+      query = query.where("opportunityId", "==", opportunityId);
     }
     if (assignedTo) {
       query = query.where("assignedTo", "==", assignedTo);
@@ -65,6 +71,21 @@ export async function GET(request: NextRequest) {
       if (b.dueAt) return 1;
       return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
     });
+
+    // enrich with company + contact names
+    const companyIds = [...new Set(tasks.map((t) => t.companyId).filter(Boolean) as string[])];
+    const contactIds = [...new Set(tasks.map((t) => t.contactId).filter(Boolean) as string[])];
+    const [compSnaps, contactSnaps] = await Promise.all([
+      companyIds.length > 0 ? Promise.all(companyIds.map((id) => db.collection(MARKETING_COMPANIES).doc(id).get())) : Promise.resolve([]),
+      contactIds.length > 0 ? Promise.all(contactIds.map((id) => db.collection(MARKETING_CONTACTS).doc(id).get())) : Promise.resolve([]),
+    ]);
+    const companyNames = new Map(compSnaps.map((s) => [s.id, s.data()?.name as string | undefined]));
+    const contactNames = new Map(contactSnaps.map((s) => [s.id, (s.data()?.name || s.data()?.email) as string | undefined]));
+    tasks = tasks.map((t) => ({
+      ...t,
+      companyName: t.companyId ? (companyNames.get(t.companyId as string) ?? null) : null,
+      contactName: t.contactId ? (contactNames.get(t.contactId as string) ?? null) : null,
+    }));
 
     return NextResponse.json({ tasks: tasks.slice(0, limit), total: tasks.length });
   } catch (e) {

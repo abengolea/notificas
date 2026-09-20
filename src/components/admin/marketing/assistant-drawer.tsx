@@ -49,7 +49,12 @@ function AssistantChat() {
         body: JSON.stringify({ conversationId, message }),
       });
       const body = await res.json();
-      if (!res.ok) throw new Error(body.error || "No se pudo consultar el asistente");
+      if (!res.ok) {
+        if (body.code === "CRM_AI_DISABLED" || body.code === "AI_NOT_CONFIGURED") {
+          throw new Error("El asistente IA no está habilitado en este entorno. Podés consultar los datos directamente en las secciones del CRM.");
+        }
+        throw new Error(body.error || "No se pudo consultar el asistente");
+      }
       setConversationId(body.conversationId);
       const actions: Action[] = Array.isArray(body.actions) ? body.actions : [];
       if (actions.some((a) => a.write)) setBusy("writing");

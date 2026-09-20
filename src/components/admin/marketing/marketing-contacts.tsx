@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Download } from "lucide-react";
+import { Bookmark, BookmarkCheck, Download, Loader2, X } from "lucide-react";
 import { downloadCsv } from "@/lib/marketing/export-csv";
 import { MarketingSubnav } from "./marketing-subnav";
 import { StageBadge } from "./stage-badge";
@@ -47,6 +47,7 @@ type Contact = {
   email: string;
   name: string;
   company: string;
+  companyId?: string | null;
   title: string;
   country: string;
   stage: MarketingStage;
@@ -82,6 +83,8 @@ export function MarketingContacts() {
   const [lists, setLists] = useState<ListOption[]>([]);
   const [catalog, setCatalog] = useState<TaxonomyCatalog | null>(null);
   const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<ContactsTab>(() => (params.get("tab") === "manual" ? "manual" : "listas"));
@@ -95,6 +98,52 @@ export function MarketingContacts() {
     listId: "",
   });
 
+  const [savedSearches, setSavedSearches] = useState<{ id: string; name: string; filters: MarketingFilterValues }[]>([]);
+  const [savingSearch, setSavingSearch] = useState(false);
+  const [saveSearchName, setSaveSearchName] = useState("");
+  const [showSaveSearch, setShowSaveSearch] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/admin/marketing/saved-searches?entityType=contact")
+      .then((r) => r.ok ? r.json() : { searches: [] })
+      .then((body) => setSavedSearches(
+        (body.searches || []).map((s: { id: string; name?: string; filters?: unknown }) => ({
+          id: s.id,
+          name: s.name || "Sin nombre",
+          filters: (s.filters || {}) as MarketingFilterValues,
+        }))
+      ))
+      .catch(() => {});
+  }, []);
+
+  async function saveSearch() {
+    if (!saveSearchName.trim()) return;
+    setSavingSearch(true);
+    try {
+      const res = await fetch("/api/admin/marketing/saved-searches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: saveSearchName.trim(), entityType: "contact", filters }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSavedSearches((prev) => [{ id: data.search.id, name: data.search.name, filters }, ...prev]);
+        setSaveSearchName("");
+        setShowSaveSearch(false);
+        toast({ title: "Búsqueda guardada" });
+      }
+    } finally {
+      setSavingSearch(false);
+    }
+  }
+
+  async function deleteSearch(id: string) {
+    await fetch(`/api/admin/marketing/saved-searches/${id}`, { method: "DELETE" });
+    setSavedSearches((prev) => prev.filter((s) => s.id !== id));
+  }
+
+  const dirty = JSON.stringify(filters) !== JSON.stringify(EMPTY_MARKETING_FILTERS);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -104,12 +153,31 @@ export function MarketingContacts() {
       if (!res.ok) throw new Error(data.error || "Error");
       setRows(data.contacts || []);
       setTotal(data.total || 0);
+      setHasMore(data.hasMore ?? false);
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
     } finally {
       setLoading(false);
     }
   }, [filters, toast]);
+
+  const loadMore = useCallback(async () => {
+    setLoadingMore(true);
+    try {
+      const sp = filtersToSearchParams(filters);
+      sp.set("offset", String(rows.length));
+      const res = await fetch(`/api/admin/marketing/contacts?${sp}`, { credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error");
+      setRows((prev) => [...prev, ...(data.contacts || [])]);
+      setTotal(data.total || 0);
+      setHasMore(data.hasMore ?? false);
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [filters, rows.length, toast]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -196,6 +264,70 @@ export function MarketingContacts() {
             }}
           />
 
+          {/* saved searches */}
+          {(savedSearches.length > 0 || showSaveSearch) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {savedSearches.map((s) => (
+                <div key={s.id} className="flex items-center gap-0.5 rounded-full border bg-background pl-2.5 pr-1 py-1 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setFilters({ ...EMPTY_MARKETING_FILTERS, ...s.filters })}
+                    className="font-medium text-foreground hover:text-primary transition-colors"
+                  >
+                    {s.name}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteSearch(s.id)}
+                    className="ml-0.5 text-muted-foreground hover:text-destructive transition-colors p-0.5"
+                    title="Eliminar búsqueda"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              {showSaveSearch ? (
+                <form
+                  onSubmit={(e) => { e.preventDefault(); void saveSearch(); }}
+                  className="flex items-center gap-1"
+                >
+                  <input
+                    autoFocus
+                    value={saveSearchName}
+                    onChange={(e) => setSaveSearchName(e.target.value)}
+                    placeholder="Nombre de la búsqueda"
+                    className="h-7 rounded-md border bg-background px-2 text-xs outline-none focus:border-ring"
+                  />
+                  <button type="submit" className="flex items-center justify-center h-7 w-7 rounded-md border bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50" disabled={savingSearch || !saveSearchName.trim()}>
+                    {savingSearch ? <Loader2 className="h-3 w-3 animate-spin" /> : <BookmarkCheck className="h-3 w-3" />}
+                  </button>
+                  <button type="button" className="flex items-center justify-center h-7 w-7 rounded-md border bg-background hover:bg-muted" onClick={() => setShowSaveSearch(false)}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowSaveSearch(true)}
+                  className="flex items-center gap-1 rounded-full border border-dashed px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+                >
+                  <Bookmark className="h-3 w-3" />
+                  Guardar filtros
+                </button>
+              )}
+            </div>
+          )}
+          {savedSearches.length === 0 && !showSaveSearch && dirty && (
+            <button
+              type="button"
+              onClick={() => setShowSaveSearch(true)}
+              className="flex w-fit items-center gap-1 rounded-full border border-dashed px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+            >
+              <Bookmark className="h-3 w-3" />
+              Guardar esta búsqueda
+            </button>
+          )}
+
           <MarketingFilterBar
             catalog={catalog}
             lists={lists}
@@ -226,9 +358,13 @@ export function MarketingContacts() {
               {rows.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell>
-                    <Link href={`/admin/marketing/contactos/${r.id}`} className="font-medium hover:underline">
-                      {r.company || "—"}
-                    </Link>
+                    {r.companyId ? (
+                      <Link href={`/admin/marketing/empresas/${r.companyId}`} className="font-medium hover:underline">
+                        {r.company || "—"}
+                      </Link>
+                    ) : (
+                      <span className="font-medium">{r.company || "—"}</span>
+                    )}
                     {r.title ? <div className="text-sm text-muted-foreground">{r.title}</div> : null}
                   </TableCell>
                   <TableCell>
@@ -249,7 +385,21 @@ export function MarketingContacts() {
             </TableBody>
           </Table>
           <div className="flex items-center justify-between px-4 py-2">
-            <p className="text-sm text-muted-foreground">{rows.length} de {total}</p>
+            <div className="flex items-center gap-3">
+              <p className="text-sm text-muted-foreground">{rows.length} de {total}</p>
+              {hasMore && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                >
+                  {loadingMore && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                  Cargar más
+                </Button>
+              )}
+            </div>
             {rows.length > 0 && (
               <Button
                 size="sm"

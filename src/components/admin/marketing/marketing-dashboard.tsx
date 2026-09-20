@@ -59,9 +59,12 @@ type Overview = {
   recentActivities?: Array<{
     id: string;
     type?: string;
-    summary?: string;
+    title?: string;
+    opportunityId?: string;
     companyId?: string;
+    companyName?: string;
     contactId?: string;
+    contactName?: string;
     actorName?: string;
     createdAt?: string;
   }>;
@@ -155,6 +158,8 @@ const ACTIVITY_ICON: Record<string, React.ElementType> = {
   note_added: FileText,
   won: Star,
   status_changed: GitBranch,
+  opportunity_status_changed: GitBranch,
+  task_completed: CheckSquare,
 };
 
 const ACTIVITY_COLOR: Record<string, string> = {
@@ -166,6 +171,8 @@ const ACTIVITY_COLOR: Record<string, string> = {
   note_added: "text-muted-foreground bg-muted",
   won: "text-yellow-600 bg-yellow-100 dark:bg-yellow-900 dark:text-yellow-300",
   status_changed: "text-orange-600 bg-orange-100 dark:bg-orange-900 dark:text-orange-300",
+  opportunity_status_changed: "text-orange-600 bg-orange-100 dark:bg-orange-900 dark:text-orange-300",
+  task_completed: "text-emerald-600 bg-emerald-100 dark:bg-emerald-900 dark:text-emerald-300",
 };
 
 function ActivityFeed({ activities }: {
@@ -184,11 +191,13 @@ function ActivityFeed({ activities }: {
         {activities.map((a) => {
           const Icon = ACTIVITY_ICON[a.type ?? ""] ?? RefreshCw;
           const color = ACTIVITY_COLOR[a.type ?? ""] ?? "text-muted-foreground bg-muted";
-          const href = a.companyId
-            ? `/admin/marketing/empresas/${a.companyId}`
-            : a.contactId
-              ? `/admin/marketing/contactos/${a.contactId}`
-              : "#";
+          const href = a.opportunityId
+            ? `/admin/marketing/oportunidades/${a.opportunityId}`
+            : a.companyId
+              ? `/admin/marketing/empresas/${a.companyId}`
+              : a.contactId
+                ? `/admin/marketing/contactos/${a.contactId}`
+                : "#";
           const rel = a.createdAt
             ? formatDistanceToNow(new Date(a.createdAt), { addSuffix: true, locale: es })
             : "";
@@ -199,7 +208,7 @@ function ActivityFeed({ activities }: {
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm leading-snug">
-                  {a.summary || a.type || "Actividad"}
+                  {a.title || a.type || "Actividad"}
                 </p>
                 {a.actorName && (
                   <p className="text-xs text-muted-foreground">{a.actorName}</p>
@@ -209,7 +218,7 @@ function ActivityFeed({ activities }: {
                 <span className="text-xs text-muted-foreground">{rel}</span>
                 {href !== "#" && (
                   <Link href={href} className="text-xs text-muted-foreground hover:text-foreground hover:underline">
-                    ver →
+                    {a.companyName || a.contactName || "ver →"}
                   </Link>
                 )}
               </div>
