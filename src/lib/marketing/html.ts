@@ -1,5 +1,6 @@
 import { marketingClickUrl, marketingOpenUrl, marketingUnsubUrl } from "./tokens";
 import { marketingContactEmail } from "./types";
+import { applyMergeFields, type MergeFields } from "./merge-fields";
 import {
   contentFromLegacyHtml,
   isFullCampaignEmailHtml,
@@ -11,26 +12,7 @@ import {
 } from "./campaign-email";
 
 export { MARKETING_ASSET_ORIGIN, MARKETING_LOGO_WORDMARK_URL };
-
-const MERGE_KEYS = ["nombre", "empresa", "pais", "cargo", "email"] as const;
-
-export type MergeFields = {
-  nombre: string;
-  empresa: string;
-  pais: string;
-  cargo: string;
-  email: string;
-};
-
-export function applyMergeFields(template: string, fields: MergeFields): string {
-  return template.replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g, (full, key: string) => {
-    const k = key.toLowerCase();
-    if ((MERGE_KEYS as readonly string[]).includes(k)) {
-      return fields[k as keyof MergeFields] || "";
-    }
-    return full;
-  });
-}
+export { applyMergeFields, type MergeFields } from "./merge-fields";
 
 function wrapHref(href: string, sendId: string): string {
   const trimmed = href.trim();
@@ -109,8 +91,9 @@ export function assembleMarketingHtml(input: {
     sourceHtml = rendered.html;
     sourceText = String(input.textBody || "").trim() || rendered.text;
   }
-  const mergedHtml = applyMergeFields(sourceHtml, input.fields).replace(/\{\{\s*unsubscribeUrl\s*\}\}/g, unsubUrl);
-  const mergedText = applyMergeFields(sourceText, input.fields);
+  const fields: MergeFields = { ...input.fields, unsubscribeUrl: unsubUrl };
+  const mergedHtml = applyMergeFields(sourceHtml, fields, { escapeHtml: true });
+  const mergedText = applyMergeFields(sourceText, fields);
   const tracked = input.trackLinks === false ? mergedHtml : wrapTrackedLinks(mergedHtml, input.sendId);
   const html = input.injectPixel === false ? tracked : injectOpenPixel(tracked, input.sendId);
   const text = `${mergedText}\n\n—\nNotificas · ${fromEmail}\nBaja: ${unsubUrl}`;

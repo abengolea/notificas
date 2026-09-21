@@ -17,6 +17,7 @@ import {
   type CampaignEmailContent,
 } from "@/lib/marketing/campaign-email";
 import { MARKETING_TEST_EMAIL_DEFAULT } from "@/lib/marketing/types";
+import { MERGE_FIELD_HINT } from "@/lib/marketing/merge-fields";
 
 export function MarketingEmailEditor({
   value,
@@ -101,7 +102,10 @@ export function MarketingEmailEditor({
         </div>
         <div className="space-y-1">
           <Label htmlFor="camp-intro">Bajada / saludo</Label>
-          <Input id="camp-intro" value={value.introduction || ""} onChange={(e) => onChange({ ...value, introduction: e.target.value })} />
+          <Input id="camp-intro" value={value.introduction || ""} onChange={(e) => onChange({ ...value, introduction: e.target.value })} placeholder="Hola {{firstName}}," />
+          <p className="text-sm text-muted-foreground">
+            Si falta el nombre, {"Hola {{firstName}},"} queda {"Hola,"}.
+          </p>
         </div>
         <div className="space-y-1">
           <Label htmlFor="camp-paragraphs">Párrafos</Label>
@@ -113,7 +117,9 @@ export function MarketingEmailEditor({
             onChange={(e) => onChange({ ...value, paragraphs: textToParagraphs(e.target.value) })}
             className="font-sans text-sm"
           />
-          <p className="text-sm text-muted-foreground">Separá párrafos con una línea vacía. Variables: {"{{nombre}} {{empresa}} {{pais}} {{cargo}} {{email}}"}</p>
+          <p className="text-sm text-muted-foreground">
+            Separá párrafos con una línea vacía. Variables: {MERGE_FIELD_HINT}
+          </p>
         </div>
         <div className="space-y-1">
           <div className="flex items-center justify-between gap-2">

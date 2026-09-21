@@ -10,6 +10,12 @@
  * FINISH: el HTML del preview es el HTML enviado, menos pixel y wrapping de clics.
  */
 
+import {
+  applyMergeFields,
+  buildMergeFields,
+  PREVIEW_SAMPLE_CONTACT,
+} from "./merge-fields";
+
 export const CAMPAIGN_EMAIL_TEMPLATE_ID = "institutional_v1";
 export const CAMPAIGN_EMAIL_TEMPLATE_VERSION = 1;
 export const CAMPAIGN_EMAIL_MARKER = `notificas-campaign-email:${CAMPAIGN_EMAIL_TEMPLATE_ID}`;
@@ -60,13 +66,9 @@ export type CampaignEmailContent = {
 
 export const PREVIEW_UNSUBSCRIBE_URL = "https://notificas.com.ar/api/marketing/u/preview";
 
-export const PREVIEW_MERGE_FIELDS = {
-  nombre: "Adrián",
-  empresa: "su empresa",
-  pais: "Argentina",
-  cargo: "",
-  email: "contacto@empresa.com",
-};
+export const PREVIEW_MERGE_FIELDS = buildMergeFields(PREVIEW_SAMPLE_CONTACT);
+
+export { PREVIEW_SAMPLE_CONTACT, PREVIEW_SAMPLE_CONTACT_WITHOUT_NAME } from "./merge-fields";
 
 export const DEFAULT_SENDER = {
   senderName: "Adrián Bengolea",
@@ -113,7 +115,7 @@ export function blankCampaignEmailContent(partial?: Partial<CampaignEmailContent
     preheader: "",
     eyebrow: "",
     title: "",
-    introduction: "Hola {{nombre}},",
+    introduction: "Hola {{firstName}},",
     paragraphs: [""],
     benefits: [],
     receivedWhy: "",
@@ -153,11 +155,7 @@ export function textToBenefits(value: string): CampaignEmailBenefit[] {
 }
 
 export function applyCampaignMergeFields(template: string, fields: Record<string, string>): string {
-  return template.replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g, (full, key: string) => {
-    const k = key.toLowerCase();
-    if (Object.prototype.hasOwnProperty.call(fields, k)) return fields[k] || "";
-    return full;
-  });
+  return applyMergeFields(template, fields);
 }
 
 export function previewCampaignEmail(
@@ -169,8 +167,8 @@ export function previewCampaignEmail(
     unsubscribeUrl: input.unsubscribeUrl || PREVIEW_UNSUBSCRIBE_URL,
   });
   return {
-    html: applyCampaignMergeFields(rendered.html, fields),
-    text: applyCampaignMergeFields(rendered.text, fields),
+    html: applyMergeFields(rendered.html, fields, { escapeHtml: true }),
+    text: applyMergeFields(rendered.text, fields),
   };
 }
 

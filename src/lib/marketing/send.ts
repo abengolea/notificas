@@ -1,9 +1,10 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { MARKETING_CAMPAIGNS, MARKETING_CONTACTS, MARKETING_SENDS } from "./collections";
+import { MARKETING_CAMPAIGNS, MARKETING_COMPANIES, MARKETING_CONTACTS, MARKETING_SENDS } from "./collections";
 import { countryName } from "./countries";
 import { isFullCampaignEmailHtml, snapshotFieldsForCampaign } from "./campaign-email";
 import { assembleMarketingHtml } from "./html";
+import { applyMergeFields, buildMergeFields } from "./merge-fields";
 import { recordMarketingEvent } from "./events";
 import { namedRecipientSource, contactMatchesSource } from "./lists";
 import { marketingFromHeader, marketingFromName, marketingReplyTo } from "./types";
@@ -104,21 +105,29 @@ export async function tickMarketingCampaign(campaignId: string): Promise<{
 
   let processed = 0;
   let errors = 0;
+  const companyNameById = new Map<string, string>();
   for (const doc of queuedSnap.docs) {
     const send = doc.data();
     const contactSnap = await db.collection(MARKETING_CONTACTS).doc(String(send.contactId)).get();
     const contact = contactSnap.data() || {};
-    const fields = {
-      nombre: String(contact.name || send.name || ""),
-      empresa: String(contact.company || send.company || ""),
-      pais: countryName(String(send.country || contact.country || "")),
-      cargo: String(contact.title || ""),
+    const companyId = String(contact.companyId || send.companyId || "").trim();
+    let linkedCompanyName = "";
+    if (companyId) {
+      if (!companyNameById.has(companyId)) {
+        const companySnap = await db.collection(MARKETING_COMPANIES).doc(companyId).get();
+        companyNameById.set(companyId, String(companySnap.data()?.name || "").trim());
+      }
+      linkedCompanyName = companyNameById.get(companyId) || "";
+    }
+    const fields = buildMergeFields({
+      name: String(contact.name || send.name || ""),
+      company: String(contact.company || send.company || ""),
+      companyName: linkedCompanyName,
+      title: String(contact.title || ""),
+      countryName: countryName(String(send.country || contact.country || "")),
       email: String(send.email || ""),
-    };
-    const subject = String(camp.subject || send.subject || "").replace(
-      /\{\{\s*([a-zA-Z_]+)\s*\}\}/g,
-      (_m, key: string) => fields[key.toLowerCase() as keyof typeof fields] || "",
-    );
+    });
+    const subject = applyMergeFields(String(camp.subject || send.subject || ""), fields);
     const rawHtml = String(camp.htmlBody || "");
     const assembled = assembleMarketingHtml({
       bodyHtml: rawHtml.includes("<") ? rawHtml : `<p>${rawHtml.replace(/\n/g, "<br/>")}</p>`,

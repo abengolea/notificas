@@ -397,9 +397,20 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
         industryId: { type: "string", description: "Industry catalog key for a CRM segment audience." },
         useCaseId: { type: "string" },
         useCaseIds: { type: "array", items: { type: "string" } },
-        subject: { type: "string" },
-        htmlBody: { type: "string" },
-        textBody: { type: "string" },
+        subject: {
+          type: "string",
+          description:
+            "Subject template. Merge fields like {{firstName}} or {{companyName}} are substituted per recipient at send time, not when saving the draft.",
+        },
+        htmlBody: {
+          type: "string",
+          description:
+            "HTML template. Use {{firstName}} {{fullName}} {{companyName}} {{jobTitle}} (legacy: {{nombre}} {{empresa}} {{cargo}}). Substituted per recipient at send time. If firstName is missing, Hola {{firstName}}, becomes Hola,. Never invent missing CRM data.",
+        },
+        textBody: {
+          type: "string",
+          description: "Plain-text template. Same merge fields as htmlBody; substituted per recipient at send time.",
+        },
         includeStages: { type: "array", items: { type: "string" } },
         idempotencyKey: { type: "string" },
       },
@@ -419,9 +430,19 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
           additionalProperties: false,
           properties: {
             name: { type: "string" },
-            subject: { type: "string" },
-            htmlBody: { type: "string" },
-            textBody: { type: "string" },
+            subject: {
+              type: "string",
+              description: "Subject template. Merge fields are substituted per recipient at send time.",
+            },
+            htmlBody: {
+              type: "string",
+              description:
+                "HTML template. Merge fields: {{firstName}} {{fullName}} {{companyName}} {{jobTitle}}. Substituted per recipient at send time.",
+            },
+            textBody: {
+              type: "string",
+              description: "Plain-text template. Same merge fields as htmlBody.",
+            },
             listId: { type: "string" },
             includeStages: { type: "array", items: { type: "string" } },
           },
