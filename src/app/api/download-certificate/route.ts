@@ -13,6 +13,10 @@ function certificateStoragePath(messageId: string) {
   return `certificates/${messageId}/certificado-lectura.pdf`;
 }
 
+function layoutCorrectionStoragePath(messageId: string) {
+  return `certificates/${messageId}/certificado-lectura-completo-${Date.now()}.pdf`;
+}
+
 function parseIssuedAt(value: unknown): Date | null {
   if (!value) return null;
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
@@ -88,7 +92,9 @@ export async function POST(request: NextRequest) {
     const { decoded, errorResponse } = await verifyAuthToken(request);
     if (errorResponse) return errorResponse;
 
-    const { messageId } = await request.json();
+    const body = await request.json();
+    const messageId = typeof body?.messageId === 'string' ? body.messageId : '';
+    const correctLayout = body?.correctLayout === true;
 
     if (!messageId) {
       return NextResponse.json({ error: 'messageId es requerido' }, { status: 400 });
@@ -115,14 +121,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No autorizado para descargar este certificado' }, { status: 403 });
     }
 
-    const storagePath =
+    const currentStoragePath =
       (typeof mailData.certificateStoragePath === 'string' && mailData.certificateStoragePath) ||
       certificateStoragePath(messageId);
 
-    const storedPdf = await readStoredPdf(storagePath);
-    if (storedPdf) {
+    const storedPdf = await readStoredPdf(currentStoragePath);
+    const alreadyIssued = Boolean(
+      storedPdf ||
+        parseIssuedAt(mailData.certificateIssuedAt) ||
+        parseIssuedAt(mailData.tracking?.certificateGeneratedAt)
+    );
+
+    if (correctLayout && alreadyIssued && mailData?.createdBy !== decoded.uid) {
+      return NextResponse.json(
+        { error: 'Solo el remitente puede pedir el ejemplar con el texto completo.' },
+        { status: 403 }
+      );
+    }
+
+    const doLayoutCorrection = correctLayout && alreadyIssued && mailData?.createdBy === decoded.uid;
+
+    if (storedPdf && !doLayoutCorrection) {
       return pdfResponse(messageId, storedPdf);
     }
+
+    const storagePath = doLayoutCorrection
+      ? layoutCorrectionStoragePath(messageId)
+      : currentStoragePath;
 
     const freeze = await adminDb.runTransaction(async (tx) => {
       const snap = await tx.get(messageRef);
@@ -203,6 +228,7 @@ export async function POST(request: NextRequest) {
       messageId,
       issuedAt: parseIssuedAt(mailDataFresh.certificateIssuedAt) || issuedAt,
       evidenceSealed: Boolean(snapshot),
+      layoutCorrection: doLayoutCorrection,
       whatsappSent: describeWhatsAppSentContent(
         snapshot?.whatsapp.requestSnapshot ?? sealedMail.waRequestSnapshot,
         snapshot?.whatsapp.templateVariables ??
@@ -262,7 +288,7 @@ export async function POST(request: NextRequest) {
       console.warn('⚠️ No se pudo guardar certificateHash:', e instanceof Error ? e.message : e);
     }
 
-    if (!mailDataFresh.polygonCertifications?.certificate) {
+    if (doLayoutCorrection || !mailDataFresh.polygonCertifications?.certificate) {
       void (async () => {
         try {
           const sendTxHash = mailDataFresh.polygonCertifications?.send as string | undefined;

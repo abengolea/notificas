@@ -97,6 +97,8 @@ interface CertificateData {
   issuedAt?: Date;
   /** True si identidad y texto salen de evidence_snapshots (WORM). */
   evidenceSealed?: boolean;
+  /** Ejemplar que reescribe un PDF cuya diagramación cortaba el cuerpo. Mismos hechos. */
+  layoutCorrection?: boolean;
   whatsappSent?: WhatsAppSentContent | null;
   waDeliveredWebhookPreserved?: boolean;
   waReadWebhookPreserved?: boolean;
@@ -300,24 +302,86 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     options: { bold?: boolean; color?: [number, number, number]; italics?: boolean; monospace?: boolean } = {}
   ) => {
     if (!text) return;
-    const fontFamily = options.monospace ? 'courier' : 'helvetica';
-    doc.setFont(fontFamily, options.bold ? 'bold' : options.italics ? 'italic' : 'normal');
-    doc.setFontSize(fontSize);
-    setTextColor(options.color || COLORS.textMain);
+    const applyFont = () => {
+      const fontFamily = options.monospace ? 'courier' : 'helvetica';
+      doc.setFont(fontFamily, options.bold ? 'bold' : options.italics ? 'italic' : 'normal');
+      doc.setFontSize(fontSize);
+      setTextColor(options.color || COLORS.textMain);
+    };
+    applyFont();
 
     // Para campos monospace (URLs, IDs), permitir corte en cualquier carácter
-    const lines = options.monospace 
+    const lines = options.monospace
       ? doc.splitTextToSize(text, contentWidth - 20)
       : doc.splitTextToSize(text, contentWidth);
-    const blockHeight = lines.length * lineHeight;
-    ensureSpace(blockHeight + 6);
 
     lines.forEach((line: string) => {
+      if (yPosition + lineHeight > contentBottom) {
+        doc.addPage();
+        drawPageHeader(false, doc.getNumberOfPages());
+        applyFont();
+      }
       doc.text(line, margin + (options.monospace ? 10 : 0), yPosition);
       yPosition += lineHeight;
     });
 
     yPosition += 6;
+  };
+
+  /** Cuerpo intimado: un recuadro por página. Un solo box más alto que la hoja recorta el texto. */
+  const writeQuotedContent = (text: string) => {
+    const padding = 14;
+    const lineHeight = 14;
+    const innerWidth = contentWidth - padding * 2 - 8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    const lines = doc.splitTextToSize(text, innerWidth);
+    const minBox = padding * 2 + lineHeight + 8;
+
+    let i = 0;
+    let continued = false;
+    while (i < lines.length) {
+      if (yPosition + minBox > contentBottom) {
+        doc.addPage();
+        drawPageHeader(false, doc.getNumberOfPages());
+      }
+
+      const boxTop = yPosition;
+      const headerNote = continued ? 16 : 0;
+      const usable = contentBottom - boxTop - padding * 2 - 8 - headerNote;
+      const maxLines = Math.max(1, Math.floor(usable / lineHeight));
+      const chunk = lines.slice(i, i + maxLines);
+      const boxHeight = chunk.length * lineHeight + padding * 2 + 8 + headerNote;
+
+      doc.setDrawColor(...COLORS.textMain);
+      doc.setLineWidth(1);
+      drawBox(margin, boxTop, contentWidth, boxHeight, false);
+
+      let msgY = boxTop + padding + 12;
+      if (continued) {
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(8);
+        setTextColor(COLORS.textMuted);
+        doc.text('(continuación del texto intimado)', margin + padding + 4, msgY);
+        msgY += 16;
+      }
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      setTextColor(COLORS.textMain);
+      chunk.forEach((line: string) => {
+        doc.text(line, margin + padding + 4, msgY);
+        msgY += lineHeight;
+      });
+
+      yPosition = boxTop + boxHeight + 8;
+      i += chunk.length;
+      if (i < lines.length) {
+        doc.addPage();
+        drawPageHeader(false, doc.getNumberOfPages());
+        continued = true;
+      }
+    }
   };
 
   const drawSectionTitle = (title: string, level: 1 | 2 = 1) => {
@@ -408,9 +472,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     const headerHeight = 22;
     const rowPadding = 8;
 
-    // Calcular altura total aproximada de la tabla para evitar cortes
-    const estimatedHeight = headerHeight + rows.length * 28 + 12;
-    ensureSpace(estimatedHeight + 20);
+    ensureSpace(headerHeight + 28);
 
     doc.setFillColor(...COLORS.bgSoft);
     doc.rect(margin, yPosition - 6, contentWidth, headerHeight + 6, 'F');
@@ -1013,32 +1075,16 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   const cleanedContent = rawContent ? sanitizeHtml(typeof rawContent === 'string' ? rawContent : '') : '';
   if (cleanedContent) {
     drawSectionTitle(hasWhatsApp ? 'Contenido enviado por correo (lector)' : 'Contenido del mensaje certificado');
-    
-    const padding = 14;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    const contentLines = doc.splitTextToSize(cleanedContent, contentWidth - padding * 2 - 8); // Margen interno adicional
-    const contentHeight = contentLines.length * 14 + padding * 2 + 8;
-    
-    ensureSpace(contentHeight + 8);
-    
-    // Caja tipo cita con bordes visibles
-    doc.setDrawColor(...COLORS.textMain);
-    doc.setLineWidth(1); // Borde más visible
-    drawBox(margin, yPosition, contentWidth, contentHeight, false);
-    
-    let msgY = yPosition + padding + 12;
-    
-    // Contenido del mensaje - estilo cita (con comillas visuales implícitas por el recuadro)
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    setTextColor(COLORS.textMain);
-    contentLines.forEach((line: string) => {
-      doc.text(line, margin + padding + 4, msgY);
-      msgY += 14;
-    });
-    
-    yPosition += contentHeight + 16;
+    if (data.layoutCorrection) {
+      writeTextBlock(
+        'Este ejemplar corrige la diagramación de uno anterior: el cuerpo intimado no cabía en una sola página y quedaba cortado. La fecha de emisión, el snapshot y los hechos congelados no cambian.',
+        9,
+        12,
+        { italics: true, color: COLORS.textMuted }
+      );
+    }
+    writeQuotedContent(cleanedContent);
+    yPosition += 8;
   }
 
   if (whatsappSent) {

@@ -111,7 +111,7 @@ export function MailMessageDetail({
   const [trackingStopped, setTrackingStopped] = useState(false);
   const appOpenTrackedRef = useRef(false);
 
-  const handleDownloadCertificate = async () => {
+  const handleDownloadCertificate = async (opts?: { correctLayout?: boolean }) => {
     if (!messageId) return;
 
     const token = await auth.currentUser?.getIdToken();
@@ -121,7 +121,7 @@ export function MailMessageDetail({
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ messageId }),
+      body: JSON.stringify({ messageId, correctLayout: opts?.correctLayout === true }),
     });
 
     if (!response.ok) {
@@ -248,7 +248,7 @@ export function MailMessageDetail({
                 </div>
                 <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
                   {trackingStopped
-                    ? "El PDF ya se emitió. Podés bajar la misma copia. No se le agregan lecturas ni rebotes nuevos."
+                    ? "El PDF ya se emitió. Podés bajar la misma copia. No se le agregan lecturas ni rebotes nuevos. Si el texto del correo quedó cortado, pedí el ejemplar completo: mismos hechos, cuerpo entero."
                     : "Se saca una sola vez, como una foto de este momento. Si todavía esperás una lectura o un rebote, esperá."}
                 </p>
                 {messageId ? (

@@ -18,7 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 
 interface DownloadCertificateProps {
   messageId: string;
-  onDownload: () => Promise<void>;
+  onDownload: (opts?: { correctLayout?: boolean }) => Promise<void>;
   disabled?: boolean;
   /** Ya existe el PDF emitido: misma copia, no se recertifica. */
   alreadyIssued?: boolean;
@@ -30,17 +30,25 @@ export function DownloadCertificate({
   alreadyIssued = false,
 }: DownloadCertificateProps) {
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isCorrecting, setIsCorrecting] = useState(false);
   const { toast } = useToast();
 
-  const handleDownload = async () => {
-    setIsDownloading(true);
+  const handleDownload = async (correctLayout = false) => {
+    const pending = correctLayout ? setIsCorrecting : setIsDownloading;
+    pending(true);
     try {
-      await onDownload();
+      await onDownload(correctLayout ? { correctLayout: true } : undefined);
       toast({
-        title: alreadyIssued ? "Certificado descargado" : "Certificado emitido",
-        description: alreadyIssued
-          ? "Es la misma copia lacrada. No se volvió a certificar."
-          : "Este PDF quedó emitido. No se vuelve a generar con eventos posteriores.",
+        title: correctLayout
+          ? "Ejemplar completo descargado"
+          : alreadyIssued
+            ? "Certificado descargado"
+            : "Certificado emitido",
+        description: correctLayout
+          ? "Mismos hechos y misma fecha. El texto intimado ahora entra completo. El PDF anterior se conserva."
+          : alreadyIssued
+            ? "Es la misma copia lacrada. No se volvió a certificar."
+            : "Este PDF quedó emitido. No se vuelve a generar con eventos posteriores.",
         variant: "default",
       });
     } catch (error: any) {
@@ -50,17 +58,18 @@ export function DownloadCertificate({
         variant: "destructive",
       });
     } finally {
-      setIsDownloading(false);
+      pending(false);
     }
   };
 
   return (
+    <div className="space-y-2">
     <AlertDialog>
       <AlertDialogTrigger asChild>
         <Button 
           variant="outline" 
           className="w-full"
-          disabled={disabled || isDownloading}
+          disabled={disabled || isDownloading || isCorrecting}
         >
           {isDownloading ? (
             <>
@@ -128,7 +137,7 @@ export function DownloadCertificate({
         <AlertDialogFooter>
           <AlertDialogCancel>{alreadyIssued ? "Cerrar" : "Esperar más eventos"}</AlertDialogCancel>
           <AlertDialogAction 
-            onClick={handleDownload}
+            onClick={() => handleDownload(false)}
             className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Download className="mr-2 h-4 w-4" />
@@ -137,5 +146,59 @@ export function DownloadCertificate({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    {alreadyIssued ? (
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button
+            variant="ghost"
+            className="w-full text-muted-foreground"
+            disabled={disabled || isDownloading || isCorrecting}
+          >
+            {isCorrecting ? (
+              <>
+                <FileText className="mr-2 h-4 w-4 animate-pulse" />
+                Armando ejemplar completo…
+              </>
+            ) : (
+              <>
+                <FileText className="mr-2 h-4 w-4" />
+                Si el texto quedó cortado, bajar ejemplar completo
+              </>
+            )}
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-primary" />
+              Ejemplar con el texto completo
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-foreground">
+                <p>
+                  Esto no cambia la fecha ni los hechos. Reescribe el PDF para que el texto intimado entre completo.
+                  El ejemplar anterior se conserva.
+                </p>
+                <p className="text-muted-foreground">
+                  Lecturas o rebotes posteriores no entran. Solo el remitente puede pedir esta corrección.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => handleDownload(true)}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Bajar ejemplar completo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    ) : null}
+    </div>
   );
 }
