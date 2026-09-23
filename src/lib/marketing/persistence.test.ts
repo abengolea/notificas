@@ -35,3 +35,17 @@ test("mapea instantes anidados de primer nivel", () => {
   assert.equal(decoded.createdAt, iso);
   assert.equal(decoded.deletedAt, null);
 });
+
+test("mapea instantes de campañas LinkedIn", () => {
+  const iso = "2026-09-23T12:00:00.000Z";
+  const encoded = timestampsToFirestore({
+    activatedAt: iso,
+    connectionSentAt: iso,
+    linkedinNextActionAt: iso,
+  });
+  assert.ok(encoded.activatedAt instanceof Timestamp);
+  assert.ok(encoded.connectionSentAt instanceof Timestamp);
+  assert.ok(encoded.linkedinNextActionAt instanceof Timestamp);
+  const decoded = timestampsFromFirestore(encoded);
+  assert.equal(decoded.connectionSentAt, iso);
+});

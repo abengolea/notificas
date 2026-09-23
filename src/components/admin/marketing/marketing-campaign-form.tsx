@@ -186,6 +186,10 @@ export function MarketingCampaignForm() {
     <div className="space-y-6">
       <MarketingSubnav />
       <form onSubmit={onSubmit} className="max-w-6xl space-y-5 rounded-lg border bg-background p-4">
+        <div>
+          <h3 className="text-lg font-semibold">Nueva campaña email</h3>
+          <p className="text-sm text-muted-foreground">Prepará los destinatarios y el correo institucional.</p>
+        </div>
         <div className="space-y-1">
           <Label htmlFor="camp-name">Nombre interno</Label>
           <Input id="camp-name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Chile — intro marzo" />

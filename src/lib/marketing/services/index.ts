@@ -6,6 +6,7 @@ import { createContactService } from "./contact";
 import { createCountryService } from "./country";
 import { createIndustryService } from "./industry";
 import { createMembershipService } from "./membership";
+import { createLinkedInCampaignService } from "./linkedin-campaign";
 import { createOpportunityService } from "./opportunity";
 import { createSourceService } from "./source";
 import { createTagService } from "./tag";
@@ -23,6 +24,13 @@ export function createMarketingServices(repos: MarketingRepositories) {
     tags: createTagService(repos.tags),
     sources: createSourceService(repos.sources),
     memberships: createMembershipService(repos.memberships),
+    linkedInCampaigns: createLinkedInCampaignService({
+      campaigns: repos.linkedInCampaigns,
+      members: repos.linkedInCampaignMembers,
+      contacts: repos.contacts,
+      companies: repos.companies,
+      activities: repos.activities,
+    }),
     templates: createTemplateService(repos.templates),
     activities: createActivityService(repos.activities),
     tasks: createTaskService(repos.tasks),
@@ -47,6 +55,7 @@ export {
   createCountryService,
   createIndustryService,
   createMembershipService,
+  createLinkedInCampaignService,
   createOpportunityService,
   createSourceService,
   createTagService,

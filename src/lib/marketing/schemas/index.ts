@@ -72,8 +72,41 @@ export const marketingActivityTypeSchema = z.enum([
   "status_changed",
   "follow_up_created",
   "follow_up_completed",
+  "linkedin_connection_sent",
+  "linkedin_connected",
+  "linkedin_message_sent",
+  "linkedin_follow_up_sent",
+  "linkedin_replied",
+  "linkedin_interested",
+  "linkedin_not_interested",
   "system_event",
   "ai_event",
+]);
+export const marketingLinkedInCampaignStatusSchema = z.enum([
+  "draft",
+  "active",
+  "paused",
+  "completed",
+  "archived",
+]);
+export const marketingLinkedInMessageTypeSchema = z.enum([
+  "connection_request",
+  "direct_message",
+  "multistep",
+]);
+export const marketingLinkedInMemberStatusSchema = z.enum([
+  "not_contacted",
+  "connection_ready",
+  "connection_sent",
+  "connected",
+  "message_ready",
+  "message_sent",
+  "follow_up_due",
+  "follow_up_sent",
+  "replied",
+  "interested",
+  "not_interested",
+  "do_not_contact",
 ]);
 export const marketingTaskTypeSchema = z.enum([
   "call",
@@ -292,7 +325,7 @@ export const marketingDuplicateCandidateSchema = z.object({
  */
 export const marketingContactDocumentSchema = z
   .object({
-    email: z.string().min(3).max(254),
+    email: z.string().max(254).optional().default(""),
     emailKey: z.string().max(254).optional(),
     normalizedEmail: z.string().max(254).optional(),
     name: z.string().max(200).optional().default(""),
@@ -331,6 +364,26 @@ export const marketingContactDocumentSchema = z
     deletedBy: z.string().max(128).nullable().optional(),
     createdBy: z.string().max(128).optional(),
     updatedBy: z.string().max(128).optional(),
+    linkedinUrl: z.string().max(500).optional(),
+    linkedinStatus: z.enum([
+      "not_contacted",
+      "connection_ready",
+      "connection_sent",
+      "connected",
+      "message_ready",
+      "message_sent",
+      "follow_up_due",
+      "follow_up_sent",
+      "replied",
+      "interested",
+      "not_interested",
+      "do_not_contact",
+      "not_found",
+    ]).optional(),
+    linkedinLastContactAt: optionalInstant,
+    linkedinNextActionAt: optionalInstant,
+    linkedinNotes: z.string().max(8000).optional(),
+    prospectingSource: z.enum(["clay", "linkedin", "web", "manual", "association", "other"]).optional(),
   })
   .passthrough()
   .superRefine((value, ctx) => {
@@ -345,6 +398,7 @@ export const marketingContactDocumentSchema = z
 
 export const marketingCampaignV2FieldsSchema = z.object({
   workspaceId: marketingWorkspaceIdSchema.optional(),
+  channel: z.literal("email").optional(),
   templateId: marketingEntityIdSchema.optional(),
   templateVersion: z.number().int().positive().optional(),
   templateSnapshot: marketingMessageSnapshotSchema.optional(),

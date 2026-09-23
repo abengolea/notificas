@@ -18,6 +18,17 @@ export const MARKETING_INSTANT_KEYS = [
   "repliedAt",
   "bouncedAt",
   "startedAt",
+  "activatedAt",
+  "archivedAt",
+  "connectionSentAt",
+  "connectedAt",
+  "messageSentAt",
+  "followUpSentAt",
+  "interestedAt",
+  "notInterestedAt",
+  "doNotContactAt",
+  "linkedinLastContactAt",
+  "linkedinNextActionAt",
 ] as const;
 
 export type MarketingInstantKey = (typeof MARKETING_INSTANT_KEYS)[number];

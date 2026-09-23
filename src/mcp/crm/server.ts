@@ -99,7 +99,7 @@ function handleDiscovery(rpc: JsonRpcRequest): CrmMcpHandled {
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: CRM_MCP_SERVER_NAME, version: CRM_MCP_SERVER_VERSION },
         instructions:
-          "Notificas CRM MCP is the internal commercial CRM (not the certified product). Use search_* then get_*. Workspace is fixed by the server. Writes require crm:write or campaigns:write. create_campaign_draft never sends. Sending, scheduling, deleting and bulk import are not available.",
+          "Notificas CRM MCP is the internal commercial CRM (not the certified product). Use search_* then get_*. Workspace is fixed by the server. Writes require crm:write, campaigns:write or linkedin:write. LinkedIn tools are records for manual organization only and never automate, send, connect, message or scrape. Sending, scheduling, deleting and bulk import are not available.",
       }),
       tool: "initialize",
     };

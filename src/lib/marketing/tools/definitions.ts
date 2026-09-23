@@ -44,13 +44,14 @@ export const CRM_READ_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     name: "search_contacts",
     access: "read",
     description:
-      "Search internal Notificas CRM contacts. Read-only. Filter by text, company, country, commercial stage or email presence. Paginated.",
+      "Search internal Notificas CRM contacts. Read-only. Filter by text, company, country, commercial stage, email presence or LinkedIn presence. Returns optional email and LinkedIn prospecting fields. Paginated.",
     inputSchema: obj({
       query: { type: "string", description: "Name, email or free text." },
       companyId: { type: "string" },
       countryCode: { type: "string" },
       commercialStageId: { type: "string" },
       hasEmail: { type: "boolean" },
+      hasLinkedin: { type: "boolean" },
       limit,
       cursor,
     }),
@@ -59,7 +60,7 @@ export const CRM_READ_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     name: "get_contact",
     access: "read",
     description:
-      "Get one CRM contact by id with company, email engagement stage, commercial stage, recent activity and tasks. Read-only.",
+      "Get one CRM contact by id with company, optional email, LinkedIn prospecting fields, email engagement stage, commercial stage, recent activity and tasks. Read-only.",
     inputSchema: obj({ contactId: { type: "string" } }, ["contactId"]),
   },
   {
@@ -174,6 +175,44 @@ export const CRM_READ_TOOL_DEFINITIONS: CrmToolDefinition[] = [
       "Preview a commercial CRM campaign without sending: subject, HTML snapshot and audience counts. Read-only. Never enqueues email.",
     inputSchema: obj({ campaignId: { type: "string" } }, ["campaignId"]),
   },
+  {
+    name: "search_linkedin_campaigns",
+    access: "read",
+    description:
+      "Search internal CRM LinkedIn campaign records for manual organization only. Read-only; never automates, sends, connects, messages, or scrapes LinkedIn. Paginated and bounded.",
+    inputSchema: obj({
+      query: { type: "string" },
+      status: { type: "string", enum: ["draft", "active", "paused", "completed", "archived"] },
+      countryCode: { type: "string" },
+      archived: { type: "string", enum: ["exclude", "include", "only"] },
+      limit,
+      cursor,
+    }),
+  },
+  {
+    name: "get_linkedin_campaign",
+    access: "read",
+    description:
+      "Get one internal CRM LinkedIn campaign record for manual organization only. Read-only; never automates, sends, connects, messages, or scrapes LinkedIn.",
+    inputSchema: obj({ campaignId: { type: "string" } }, ["campaignId"]),
+  },
+  {
+    name: "preview_linkedin_campaign",
+    access: "read",
+    description:
+      "Preview one internal CRM LinkedIn campaign and its bounded member workflow summary for manual organization only. Never automates, sends, connects, messages, or scrapes LinkedIn.",
+    inputSchema: obj({ campaignId: { type: "string" } }, ["campaignId"]),
+  },
+  {
+    name: "search_linkedin_pending_actions",
+    access: "read",
+    description:
+      "Search bounded due LinkedIn follow-up records in the internal CRM for manual organization only. Filters by dueBefore. Never automates, sends, connects, messages, or scrapes LinkedIn.",
+    inputSchema: obj({
+      dueBefore: { type: "string", description: "ISO-8601 inclusive due-date upper bound. Defaults to now." },
+      limit,
+    }),
+  },
 ];
 
 export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
@@ -233,10 +272,16 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     name: "create_contact",
     access: "write",
     description:
-      "Create a CRM contact. If company is given by name, search first. If several companies match, return clarification instead of guessing. Never invent an email.",
+      "Create a CRM contact with an email, a LinkedIn URL, or both. LinkedIn-only contacts are supported. If company is given by name, search first. Never invent an email and never automates, sends, or scrapes LinkedIn.",
     inputSchema: obj(
       {
-        email: { type: "string" },
+        email: { type: "string", description: "Optional when linkedinUrl is supplied." },
+        linkedinUrl: { type: "string" },
+        linkedinStatus: { type: "string" },
+        linkedinLastContactAt: { type: "string" },
+        linkedinNextActionAt: { type: "string" },
+        linkedinNotes: { type: "string" },
+        prospectingSource: { type: "string", enum: ["clay", "linkedin", "web", "manual", "association", "other"] },
         name: { type: "string" },
         companyId: { type: "string" },
         companyName: { type: "string" },
@@ -244,7 +289,7 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
         countryCode: { type: "string" },
         notes: { type: "string" },
       },
-      ["email"],
+      [],
     ),
   },
   {
@@ -259,6 +304,7 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
           additionalProperties: false,
           properties: {
             name: { type: "string" },
+            email: { type: "string" },
             title: { type: "string" },
             company: { type: "string" },
             companyId: { type: "string" },
@@ -266,6 +312,12 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
             notes: { type: "string" },
             commercialStageId: { type: "string" },
             tags: { type: "array", items: { type: "string" } },
+            linkedinUrl: { type: "string" },
+            linkedinStatus: { type: "string" },
+            linkedinLastContactAt: { type: "string" },
+            linkedinNextActionAt: { type: "string" },
+            linkedinNotes: { type: "string" },
+            prospectingSource: { type: "string", enum: ["clay", "linkedin", "web", "manual", "association", "other"] },
           },
         },
       },
@@ -485,6 +537,145 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     description:
       "Resume a paused commercial CRM campaign (status paused → sending). Cannot be used on a draft. Restore first if archived.",
     inputSchema: obj({ campaignId: { type: "string" }, idempotencyKey: { type: "string" } }, ["campaignId"]),
+  },
+  {
+    name: "create_linkedin_campaign_draft",
+    access: "write",
+    description:
+      "Create an internal CRM LinkedIn campaign record in draft status for manual organization only, with targeting metadata and connection/direct/follow-up templates. Never automates, sends, connects, messages, or scrapes LinkedIn.",
+    inputSchema: obj(
+      {
+        name: { type: "string" },
+        description: { type: "string" },
+        countryCode: { type: "string" },
+        industryIds: { type: "array", items: { type: "string" } },
+        useCaseIds: { type: "array", items: { type: "string" } },
+        listId: { type: "string" },
+        commercialInitiativeId: { type: "string" },
+        messageType: { type: "string", enum: ["connection_request", "direct_message", "multistep"] },
+        connectionMessage: { type: "string" },
+        directMessage: { type: "string" },
+        followUpMessage: { type: "string" },
+        notes: { type: "string" },
+        idempotencyKey: { type: "string" },
+      },
+      ["name"],
+    ),
+  },
+  {
+    name: "update_linkedin_campaign",
+    access: "write",
+    description:
+      "Update internal CRM LinkedIn campaign metadata, templates, or draft/active/paused/completed/archived workflow status for manual organization only. Never automates, sends, connects, messages, or scrapes LinkedIn.",
+    inputSchema: obj(
+      {
+        campaignId: { type: "string" },
+        changes: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            name: { type: "string" },
+            description: { type: "string" },
+            countryCode: { type: "string" },
+            industryIds: { type: "array", items: { type: "string" } },
+            useCaseIds: { type: "array", items: { type: "string" } },
+            listId: { type: "string" },
+            commercialInitiativeId: { type: "string" },
+            messageType: { type: "string", enum: ["connection_request", "direct_message", "multistep"] },
+            connectionMessage: { type: "string" },
+            directMessage: { type: "string" },
+            followUpMessage: { type: "string" },
+            notes: { type: "string" },
+            status: { type: "string", enum: ["draft", "active", "paused", "completed", "archived"] },
+          },
+        },
+        idempotencyKey: { type: "string" },
+      },
+      ["campaignId", "changes"],
+    ),
+  },
+  {
+    name: "add_contact_to_linkedin_campaign",
+    access: "write",
+    description:
+      "Add one existing LinkedIn-profile contact to an internal campaign record, optionally with personalized connection/direct/follow-up text, status and nextActionAt, for manual organization only. Never automates, sends, connects, messages, or scrapes LinkedIn.",
+    inputSchema: obj(
+      {
+        campaignId: { type: "string" },
+        contactId: { type: "string" },
+        member: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            status: { type: "string" },
+            connectionMessage: { type: "string" },
+            directMessage: { type: "string" },
+            followUpMessage: { type: "string" },
+            notes: { type: "string" },
+            nextActionAt: { type: "string" },
+          },
+        },
+        idempotencyKey: { type: "string" },
+      },
+      ["campaignId", "contactId"],
+    ),
+  },
+  {
+    name: "remove_contact_from_linkedin_campaign",
+    access: "write",
+    description:
+      "Remove one member record from an internal CRM LinkedIn campaign for manual organization only. Never automates, sends, disconnects, messages, or scrapes LinkedIn.",
+    inputSchema: obj(
+      { campaignId: { type: "string" }, memberId: { type: "string" }, idempotencyKey: { type: "string" } },
+      ["campaignId", "memberId"],
+    ),
+  },
+  {
+    name: "update_linkedin_campaign_member",
+    access: "write",
+    description:
+      "Update one internal LinkedIn campaign member's personalized connection/direct/follow-up text, workflow status or nextActionAt for manual organization only. Never automates, sends, connects, messages, or scrapes LinkedIn.",
+    inputSchema: obj(
+      {
+        campaignId: { type: "string" },
+        memberId: { type: "string" },
+        changes: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            status: { type: "string" },
+            connectionMessage: { type: "string" },
+            directMessage: { type: "string" },
+            followUpMessage: { type: "string" },
+            notes: { type: "string" },
+            nextActionAt: { type: "string" },
+          },
+        },
+        idempotencyKey: { type: "string" },
+      },
+      ["campaignId", "memberId", "changes"],
+    ),
+  },
+  {
+    name: "record_linkedin_action",
+    access: "write",
+    description:
+      "Record a manually completed LinkedIn action in the internal CRM with occurredAt, notes and nextActionAt. Manual organization only: this records history and never automates, sends, connects, messages, or scrapes LinkedIn.",
+    inputSchema: obj(
+      {
+        campaignId: { type: "string" },
+        memberId: { type: "string" },
+        action: {
+          type: "string",
+          enum: ["connection_sent", "connected", "message_sent", "followup_sent", "replied", "interested", "not_interested"],
+        },
+        occurredAt: { type: "string" },
+        notes: { type: "string" },
+        nextActionAt: { type: "string" },
+        idempotencyKey: { type: "string" },
+      },
+      ["campaignId", "memberId", "action"],
+    ),
   },
 ];
 

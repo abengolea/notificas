@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MarketingSubnav } from "./marketing-subnav";
@@ -142,9 +142,6 @@ export function MarketingCampaigns() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmSend, setConfirmSend] = useState<Campaign | null>(null);
-
-  const industryName = useMemo(() => new Map((catalog?.industries || []).map((row) => [row.key, row.name])), [catalog]);
-  const useCaseName = useMemo(() => new Map((catalog?.useCases || []).map((row) => [row.key, row.name])), [catalog]);
 
   function reload() {
     const sp = filtersToSearchParams(filters);
@@ -298,7 +295,7 @@ export function MarketingCampaigns() {
       <MarketingSubnav />
       <div className="flex flex-col gap-3 rounded-lg border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-lg font-semibold">Acciones de campaña</h3>
+          <h3 className="text-lg font-semibold">Campañas email</h3>
           <p className="text-sm text-muted-foreground">
             Enviá el correo real desde acá, copiá para reusar el texto, reenviá los que fallaron, o archivá las que ya no querés ver.
           </p>
@@ -312,7 +309,7 @@ export function MarketingCampaigns() {
             {filters.archived === "only" ? "Ver activas" : "Ver archivadas"}
           </Button>
           <Button asChild>
-            <Link href="/admin/marketing/campanas/nueva">Nueva campaña</Link>
+            <Link href="/admin/marketing/campanas/nueva">Nueva campaña email</Link>
           </Button>
         </div>
       </div>
@@ -327,7 +324,7 @@ export function MarketingCampaigns() {
         <Skeleton className="h-40 w-full" />
       ) : rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No hay campañas con esos filtros. Cargá una lista en Contactos o armá una audiencia desde el CRM.
+          No hay campañas email con esos filtros. Cargá una lista en Contactos o armá una audiencia desde el CRM.
         </p>
       ) : (
         <ul className="divide-y rounded-lg border bg-background">

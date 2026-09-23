@@ -167,6 +167,7 @@ export async function POST(request: NextRequest) {
       htmlSnapshotAt: FieldValue.serverTimestamp(),
       fromEmail: marketingFromEmail(),
       fromName: marketingFromName(),
+      channel: "email",
       status: "draft",
       includeStages: includeStages.length ? includeStages : ["new"],
       contactCount: materialized?.eligible || 0,

@@ -26,6 +26,7 @@ export const searchContactsSchema = z.object({
   countryCode: optStr(8),
   commercialStageId: optStr(80),
   hasEmail: z.boolean().optional(),
+  hasLinkedin: z.boolean().optional(),
   limit: toolLimitSchema,
   cursor: toolCursorSchema,
 });
@@ -146,21 +147,53 @@ export const updateCompanySchema = z.object({
     .strict(),
 });
 
-export const createContactSchema = z.object({
-  email: z.string().min(3).max(254),
-  name: optStr(200),
-  companyId: optStr(128),
-  companyName: optStr(200),
-  title: optStr(200),
-  countryCode: optStr(8),
-  notes: optStr(4000),
-});
+const linkedinStatusSchema = z.enum([
+  "not_contacted",
+  "connection_ready",
+  "connection_sent",
+  "connected",
+  "message_ready",
+  "message_sent",
+  "follow_up_due",
+  "follow_up_sent",
+  "replied",
+  "interested",
+  "not_interested",
+  "do_not_contact",
+  "not_found",
+]);
+
+const prospectingSourceSchema = z.enum(["clay", "linkedin", "web", "manual", "association", "other"]);
+
+export const createContactSchema = z
+  .object({
+    email: optStr(254),
+    linkedinUrl: optStr(500),
+    linkedinStatus: linkedinStatusSchema.optional(),
+    linkedinLastContactAt: z.string().datetime().nullable().optional(),
+    linkedinNextActionAt: z.string().datetime().nullable().optional(),
+    linkedinNotes: optStr(8000),
+    prospectingSource: prospectingSourceSchema.optional(),
+    name: optStr(200),
+    companyId: optStr(128),
+    companyName: optStr(200),
+    title: optStr(200),
+    countryCode: optStr(8),
+    notes: optStr(4000),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (!value.email?.trim() && !value.linkedinUrl?.trim()) {
+      ctx.addIssue({ code: "custom", message: "email or linkedinUrl is required", path: ["email"] });
+    }
+  });
 
 export const updateContactSchema = z.object({
   contactId: idSchema,
   changes: z
     .object({
       name: optStr(200),
+      email: optStr(254),
       title: optStr(200),
       company: optStr(200),
       companyId: optStr(128),
@@ -168,6 +201,12 @@ export const updateContactSchema = z.object({
       notes: optStr(4000),
       commercialStageId: optStr(80),
       tags: z.array(z.string().max(40)).max(20).optional(),
+      linkedinUrl: optStr(500),
+      linkedinStatus: linkedinStatusSchema.optional(),
+      linkedinLastContactAt: z.string().datetime().nullable().optional(),
+      linkedinNextActionAt: z.string().datetime().nullable().optional(),
+      linkedinNotes: optStr(8000),
+      prospectingSource: prospectingSourceSchema.optional(),
     })
     .strict(),
 });
@@ -281,5 +320,141 @@ export const campaignIdSchema = z
   .object({
     campaignId: idSchema,
     idempotencyKey: idempotencyKeySchema,
+  })
+  .strict();
+
+const linkedinCampaignStatusSchema = z.enum(["draft", "active", "paused", "completed", "archived"]);
+const linkedinMessageTypeSchema = z.enum(["connection_request", "direct_message", "multistep"]);
+const linkedinMemberStatusSchema = z.enum([
+  "not_contacted",
+  "connection_ready",
+  "connection_sent",
+  "connected",
+  "message_ready",
+  "message_sent",
+  "follow_up_due",
+  "follow_up_sent",
+  "replied",
+  "interested",
+  "not_interested",
+  "do_not_contact",
+]);
+const linkedinActionSchema = z.enum([
+  "connection_sent",
+  "connected",
+  "message_sent",
+  "followup_sent",
+  "replied",
+  "interested",
+  "not_interested",
+]);
+
+export const searchLinkedinCampaignsSchema = z.object({
+  query: optStr(200),
+  status: linkedinCampaignStatusSchema.optional(),
+  countryCode: optStr(8),
+  archived: z.enum(["exclude", "include", "only"]).optional(),
+  limit: toolLimitSchema,
+  cursor: toolCursorSchema,
+});
+
+export const getLinkedinCampaignSchema = z.object({ campaignId: idSchema }).strict();
+export const previewLinkedinCampaignSchema = z.object({ campaignId: idSchema }).strict();
+
+export const createLinkedinCampaignDraftSchema = z
+  .object({
+    name: z.string().min(2).max(160),
+    description: optStr(4000),
+    countryCode: z.string().min(2).max(40).nullable().optional(),
+    industryIds: z.array(z.string().min(1).max(128)).max(50).optional(),
+    useCaseIds: z.array(z.string().min(1).max(128)).max(50).optional(),
+    listId: optStr(128),
+    commercialInitiativeId: optStr(128),
+    messageType: linkedinMessageTypeSchema.optional(),
+    connectionMessage: optStr(3000),
+    directMessage: optStr(8000),
+    followUpMessage: optStr(8000),
+    notes: optStr(8000),
+    idempotencyKey: idempotencyKeySchema,
+  })
+  .strict();
+
+export const updateLinkedinCampaignSchema = z
+  .object({
+    campaignId: idSchema,
+    changes: z
+      .object({
+        name: z.string().min(2).max(160).optional(),
+        description: optStr(4000),
+        countryCode: z.string().min(2).max(40).nullable().optional(),
+        industryIds: z.array(z.string().min(1).max(128)).max(50).optional(),
+        useCaseIds: z.array(z.string().min(1).max(128)).max(50).optional(),
+        listId: optStr(128),
+        commercialInitiativeId: optStr(128),
+        messageType: linkedinMessageTypeSchema.optional(),
+        connectionMessage: optStr(3000),
+        directMessage: optStr(8000),
+        followUpMessage: optStr(8000),
+        notes: optStr(8000),
+        status: linkedinCampaignStatusSchema.optional(),
+      })
+      .strict(),
+    idempotencyKey: idempotencyKeySchema,
+  })
+  .strict();
+
+const linkedinMemberChangesSchema = z
+  .object({
+    status: linkedinMemberStatusSchema.optional(),
+    connectionMessage: optStr(3000),
+    directMessage: optStr(8000),
+    followUpMessage: optStr(8000),
+    notes: optStr(8000),
+    nextActionAt: z.string().datetime().nullable().optional(),
+  })
+  .strict();
+
+export const addContactToLinkedinCampaignSchema = z
+  .object({
+    campaignId: idSchema,
+    contactId: idSchema,
+    member: linkedinMemberChangesSchema.optional(),
+    idempotencyKey: idempotencyKeySchema,
+  })
+  .strict();
+
+export const removeContactFromLinkedinCampaignSchema = z
+  .object({
+    campaignId: idSchema,
+    memberId: idSchema,
+    idempotencyKey: idempotencyKeySchema,
+  })
+  .strict();
+
+export const updateLinkedinCampaignMemberSchema = z
+  .object({
+    campaignId: idSchema,
+    memberId: idSchema,
+    changes: linkedinMemberChangesSchema,
+    idempotencyKey: idempotencyKeySchema,
+  })
+  .strict();
+
+export const recordLinkedinActionSchema = z
+  .object({
+    campaignId: idSchema,
+    memberId: idSchema,
+    action: linkedinActionSchema,
+    occurredAt: z.string().datetime().optional(),
+    notes: optStr(8000),
+    nextActionAt: z.string().datetime().nullable().optional(),
+    idempotencyKey: idempotencyKeySchema,
+  })
+  .strict();
+
+export const searchLinkedinPendingActionsSchema = z
+  .object({
+    dueBefore: z.string().datetime().optional(),
+    limit: toolLimitSchema,
   })
   .strict();

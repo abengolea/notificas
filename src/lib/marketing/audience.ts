@@ -7,6 +7,7 @@ import {
   contactMatchesSource,
   countryListKey,
   decorateRecipient,
+  hasValidRecipientEmail,
   includeStageSet,
   listNameKey,
   namedRecipientSource,
@@ -194,6 +195,7 @@ export async function loadMarketingListCatalog(): Promise<MarketingList[]> {
   let all = 0;
   for (const doc of contactsSnap.docs) {
     const data = doc.data();
+    if (!hasValidRecipientEmail(data)) continue;
     all += 1;
     const country = String(data.country || "").toUpperCase();
     if (country) countryCounts.set(country, (countryCounts.get(country) || 0) + 1);

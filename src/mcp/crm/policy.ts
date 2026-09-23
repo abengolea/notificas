@@ -40,6 +40,16 @@ export const CRM_MCP_TOOL_SCOPES: Record<string, readonly CrmMcpScope[]> = {
   copy_campaign: ["campaigns:write"],
   archive_campaign: ["campaigns:write"],
   restore_campaign: ["campaigns:write"],
+  search_linkedin_campaigns: ["linkedin:read"],
+  get_linkedin_campaign: ["linkedin:read"],
+  preview_linkedin_campaign: ["linkedin:read"],
+  search_linkedin_pending_actions: ["linkedin:read"],
+  create_linkedin_campaign_draft: ["linkedin:write"],
+  update_linkedin_campaign: ["linkedin:write"],
+  add_contact_to_linkedin_campaign: ["linkedin:write"],
+  remove_contact_from_linkedin_campaign: ["linkedin:write"],
+  update_linkedin_campaign_member: ["linkedin:write"],
+  record_linkedin_action: ["linkedin:write"],
 };
 
 /** Prepared for Fase B. Not published. When enabled they must require campaigns:send. */

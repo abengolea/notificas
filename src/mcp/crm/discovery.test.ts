@@ -25,6 +25,8 @@ const PHASE_B = [
   "pause_campaign",
   "resume_campaign",
   "schedule_campaign",
+  "send_linkedin_message",
+  "send_linkedin_campaign",
 ];
 
 function restoreEnv(name: string, previous: string | undefined) {
@@ -117,8 +119,8 @@ test("ChatGPT discovery is public; tools/call stays OAuth-gated", async () => {
     const listed = await crmRpc({ jsonrpc: "2.0", id: 2, method: "tools/list" });
     assert.equal(listed.status, 200);
     const tools = (listed.json.result as { tools: Array<Record<string, unknown>> }).tools;
-    assert.equal(tools.length, 35);
-    assert.equal(listAllCrmMcpTools().length, 35);
+    assert.equal(tools.length, 45);
+    assert.equal(listAllCrmMcpTools().length, 45);
     for (const banned of PHASE_B) assert.equal(tools.some((t) => t.name === banned), false);
 
     const byName = Object.fromEntries(tools.map((t) => [String(t.name), t]));
@@ -126,6 +128,8 @@ test("ChatGPT discovery is public; tools/call stays OAuth-gated", async () => {
     assert.deepEqual(byName.create_company.securitySchemes, [{ type: "oauth2", scopes: ["crm:write"] }]);
     assert.deepEqual(byName.search_campaigns.securitySchemes, [{ type: "oauth2", scopes: ["campaigns:read"] }]);
     assert.deepEqual(byName.create_campaign_draft.securitySchemes, [{ type: "oauth2", scopes: ["campaigns:write"] }]);
+    assert.deepEqual(byName.search_linkedin_campaigns.securitySchemes, [{ type: "oauth2", scopes: ["linkedin:read"] }]);
+    assert.deepEqual(byName.create_linkedin_campaign_draft.securitySchemes, [{ type: "oauth2", scopes: ["linkedin:write"] }]);
     for (const tool of tools) {
       assert.deepEqual(tool.securitySchemes, (tool._meta as { securitySchemes: unknown }).securitySchemes);
       const schemes = tool.securitySchemes as Array<{ type: string; scopes: string[] }>;
@@ -217,6 +221,112 @@ test("ChatGPT discovery is public; tools/call stays OAuth-gated", async () => {
     assert.equal(crmMcpExecuteCallCount(), 2);
 
     assert.ok(crmProtectedResourceMetadataUrl().endsWith("/.well-known/oauth-protected-resource/mcp/crm"));
+
+    setCrmMcpTestAccessToken(
+      "ntf_atk_linkedin",
+      fakeToken(["crm:write", "linkedin:read", "linkedin:write"]),
+    );
+    const linkedinHeaders = { authorization: "Bearer ntf_atk_linkedin" };
+    const createdContact = await crmRpc(
+      {
+        jsonrpc: "2.0",
+        id: 9,
+        method: "tools/call",
+        params: {
+          name: "create_contact",
+          arguments: {
+            name: "MCP LinkedIn",
+            linkedinUrl: "https://linkedin.com/in/mcp-linkedin-flow",
+            countryCode: "AR",
+            prospectingSource: "linkedin",
+          },
+        },
+      },
+      linkedinHeaders,
+    );
+    assert.equal((createdContact.json.result as { isError?: boolean }).isError, false);
+    const contactId = ((createdContact.json.result as { structuredContent: { contact: { id: string } } })
+      .structuredContent.contact.id);
+
+    const createdCampaign = await crmRpc(
+      {
+        jsonrpc: "2.0",
+        id: 10,
+        method: "tools/call",
+        params: {
+          name: "create_linkedin_campaign_draft",
+          arguments: {
+            name: "MCP manual LinkedIn",
+            directMessage: "Manual template",
+            connectionMessage: "Manual connection",
+            followUpMessage: "Manual follow-up",
+          },
+        },
+      },
+      linkedinHeaders,
+    );
+    assert.equal((createdCampaign.json.result as { isError?: boolean }).isError, false);
+    const campaignId = ((createdCampaign.json.result as {
+      structuredContent: { campaign: { id: string; status: string } };
+    }).structuredContent.campaign.id);
+
+    const addedMember = await crmRpc(
+      {
+        jsonrpc: "2.0",
+        id: 11,
+        method: "tools/call",
+        params: {
+          name: "add_contact_to_linkedin_campaign",
+          arguments: {
+            campaignId,
+            contactId,
+            member: { status: "connection_ready", nextActionAt: "2026-09-23T10:00:00.000Z" },
+          },
+        },
+      },
+      linkedinHeaders,
+    );
+    assert.equal((addedMember.json.result as { isError?: boolean }).isError, false);
+    const memberId = ((addedMember.json.result as { structuredContent: { member: { id: string } } })
+      .structuredContent.member.id);
+
+    const recordedAction = await crmRpc(
+      {
+        jsonrpc: "2.0",
+        id: 12,
+        method: "tools/call",
+        params: {
+          name: "record_linkedin_action",
+          arguments: {
+            campaignId,
+            memberId,
+            action: "connection_sent",
+            occurredAt: "2026-09-23T12:00:00.000Z",
+            nextActionAt: "2026-09-24T10:00:00.000Z",
+          },
+        },
+      },
+      linkedinHeaders,
+    );
+    assert.equal((recordedAction.json.result as { isError?: boolean }).isError, false);
+
+    const pendingActions = await crmRpc(
+      {
+        jsonrpc: "2.0",
+        id: 13,
+        method: "tools/call",
+        params: {
+          name: "search_linkedin_pending_actions",
+          arguments: { dueBefore: "2026-09-25T00:00:00.000Z", limit: 10 },
+        },
+      },
+      linkedinHeaders,
+    );
+    assert.deepEqual(
+      (pendingActions.json.result as { structuredContent: { items: Array<{ id: string }> } })
+        .structuredContent.items.map((item) => item.id),
+      [memberId],
+    );
   } finally {
     setCrmMcpToolRuntimeForTests(undefined);
     clearCrmMcpTestAccessTokens();

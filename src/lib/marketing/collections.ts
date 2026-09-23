@@ -25,6 +25,8 @@ export const MARKETING_TASKS = "marketing_tasks";
 export const MARKETING_SAVED_SEARCHES = "marketing_saved_searches";
 export const MARKETING_DUPLICATE_CANDIDATES = "marketing_duplicate_candidates";
 export const MARKETING_STATS = "marketing_stats";
+export const MARKETING_LINKEDIN_CAMPAIGNS = "marketing_linkedin_campaigns";
+export const MARKETING_LINKEDIN_CAMPAIGN_MEMBERS = "marketing_linkedin_campaign_members";
 
 /** Posteriores. Constantes listas; no hay servicios ni UI en esta etapa. */
 export const MARKETING_AI_INBOX = "marketing_ai_inbox";

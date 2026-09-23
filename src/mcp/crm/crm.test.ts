@@ -30,13 +30,17 @@ test("CRM MCP is disabled by default and isolated from product resource", () => 
 });
 
 test("CRM MCP scopes: empty defaults to crm:read; unknown is invalid_scope", () => {
-  assert.deepEqual([...CRM_MCP_SCOPES], ["crm:read", "crm:write", "campaigns:read", "campaigns:write"]);
+  assert.deepEqual(
+    [...CRM_MCP_SCOPES],
+    ["crm:read", "crm:write", "campaigns:read", "campaigns:write", "linkedin:read", "linkedin:write"],
+  );
   assert.deepEqual(parseCrmScopeString(""), ["crm:read"]);
   assert.deepEqual(parseCrmScopeString(null), ["crm:read"]);
   assert.deepEqual(parseCrmScopeString("   "), ["crm:read"]);
   assert.deepEqual(parseCrmScopeString("crm:read"), ["crm:read"]);
   assert.deepEqual(parseCrmScopeString("crm:write"), ["crm:write"]);
   assert.deepEqual(parseCrmScopeString("crm:read crm:write"), ["crm:read", "crm:write"]);
+  assert.deepEqual(parseCrmScopeString("linkedin:read linkedin:write"), ["linkedin:read", "linkedin:write"]);
   assert.throws(() => parseCrmScopeString("invented:scope"), CrmInvalidScopeError);
   assert.throws(() => parseCrmScopeString("crm:read invented:scope"), CrmInvalidScopeError);
   assert.throws(() => parseCrmScopeString("campaigns:send"), CrmInvalidScopeError);
@@ -121,4 +125,48 @@ test("tools published per scope combination", () => {
   assert.equal(all.includes("resume_campaign"), false);
   assert.equal(all.includes("pause_campaign"), false);
   assert.equal(all.includes("send_campaign"), false);
+});
+
+test("LinkedIn tools require dedicated read and write scopes", () => {
+  const crmRead = namesFor(["crm:read"]);
+  const linkedinRead = namesFor(["linkedin:read"]);
+  const linkedinWrite = namesFor(["linkedin:write"]);
+  const readNames = [
+    "search_linkedin_campaigns",
+    "get_linkedin_campaign",
+    "preview_linkedin_campaign",
+    "search_linkedin_pending_actions",
+  ];
+  const writeNames = [
+    "create_linkedin_campaign_draft",
+    "update_linkedin_campaign",
+    "add_contact_to_linkedin_campaign",
+    "remove_contact_from_linkedin_campaign",
+    "update_linkedin_campaign_member",
+    "record_linkedin_action",
+  ];
+  for (const name of readNames) {
+    assert.equal(crmRead.includes(name), false);
+    assert.equal(linkedinRead.includes(name), true);
+    assert.equal(linkedinWrite.includes(name), false);
+  }
+  for (const name of writeNames) {
+    assert.equal(crmRead.includes(name), false);
+    assert.equal(linkedinRead.includes(name), false);
+    assert.equal(linkedinWrite.includes(name), true);
+  }
+  for (const name of ["send_linkedin_message", "send_linkedin_campaign"]) {
+    assert.equal(isCrmMcpForbiddenTool(name), true);
+    assert.equal(crmMcpCanCallTool(name, CRM_MCP_SCOPES), false);
+    assert.throws(() => assertCrmMcpToolAllowed(name, CRM_MCP_SCOPES), McpToolError);
+  }
+  const descriptors = listAllCrmMcpTools();
+  assert.deepEqual(
+    descriptors.find((tool) => tool.name === "search_linkedin_campaigns")?.securitySchemes,
+    [{ type: "oauth2", scopes: ["linkedin:read"] }],
+  );
+  assert.deepEqual(
+    descriptors.find((tool) => tool.name === "record_linkedin_action")?.securitySchemes,
+    [{ type: "oauth2", scopes: ["linkedin:write"] }],
+  );
 });

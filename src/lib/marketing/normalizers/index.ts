@@ -102,6 +102,19 @@ export function normalizeMarketingUrl(value: string): string | null {
   }
 }
 
+export function normalizeLinkedInUrl(value: string): string | null {
+  const normalized = normalizeMarketingUrl(value);
+  if (!normalized) return null;
+  const url = new URL(normalized);
+  const host = url.hostname.replace(/^www\./, "");
+  if (host !== "linkedin.com" || !/^\/in\/[^/]+\/?$/i.test(url.pathname)) return null;
+  url.protocol = "https:";
+  url.hostname = "linkedin.com";
+  url.search = "";
+  url.pathname = url.pathname.replace(/\/+$/, "").toLowerCase();
+  return url.toString().replace(/\/$/, "");
+}
+
 export function normalizeMarketingPhone(value: string): string | null {
   const raw = value.trim();
   if (!raw) return null;

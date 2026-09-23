@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Building2, CheckCircle2, Circle, Link2, Loader2, Plus, Unlink } from "lucide-react";
+import { AlertTriangle, Building2, Circle, ExternalLink, Link2, Loader2, Plus, Unlink } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { MarketingSubnav } from "./marketing-subnav";
@@ -27,6 +27,12 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import {
+  LINKEDIN_MEMBER_STATUS_LABEL,
+  toIsoDateTime,
+  toLocalDateTime,
+} from "@/lib/marketing/linkedin-ui";
+import type { MarketingLinkedInMemberStatus } from "@/lib/marketing/domain/types";
 
 type Detail = {
   contact: {
@@ -39,6 +45,15 @@ type Detail = {
     country: string;
     notes: string;
     stage: string;
+    doNotContact?: boolean;
+    unsubscribed?: boolean;
+    lastRepliedAt?: string | null;
+    linkedinUrl?: string | null;
+    linkedinStatus?: MarketingLinkedInMemberStatus | "not_found";
+    linkedinLastContactAt?: string | null;
+    linkedinNextActionAt?: string | null;
+    linkedinNotes?: string;
+    prospectingSource?: "clay" | "linkedin" | "web" | "manual" | "association" | "other";
   };
   sends: Array<{
     id: string;
@@ -57,6 +72,16 @@ type Detail = {
 
 type Opportunity = { id: string; name?: string; estimatedValue?: number; commercialStageId?: string; status?: string };
 type Task = { id: string; title?: string; type?: string; priority?: string; status?: string; dueAt?: string | null };
+
+const LINKEDIN_STATUSES = Object.keys(LINKEDIN_MEMBER_STATUS_LABEL) as MarketingLinkedInMemberStatus[];
+const PROSPECTING_SOURCES = [
+  ["manual", "Manual"],
+  ["linkedin", "LinkedIn"],
+  ["clay", "Clay"],
+  ["web", "Web"],
+  ["association", "Asociación"],
+  ["other", "Otro"],
+] as const;
 
 export function MarketingContactDetail({ contactId }: { contactId: string }) {
   const { toast } = useToast();
@@ -243,6 +268,20 @@ export function MarketingContactDetail({ contactId }: { contactId: string }) {
   }
 
   const c = data.contact;
+  const warningMessages = [
+    c.doNotContact || c.unsubscribed || c.linkedinStatus === "do_not_contact"
+      ? "No contactar: el contacto tiene una restricción activa. Revisala antes de cualquier acción comercial."
+      : null,
+    c.stage === "replied" || c.lastRepliedAt
+      ? "Respondió por email. Revisá el historial antes de iniciar otro contacto."
+      : null,
+    c.linkedinStatus === "replied" || c.linkedinStatus === "interested"
+      ? `Respondió por LinkedIn${c.linkedinStatus === "interested" ? " y fue marcado como interesado" : ""}.`
+      : null,
+    ["connected", "message_sent", "follow_up_due", "follow_up_sent"].includes(c.linkedinStatus || "")
+      ? "Hay una conversación activa en LinkedIn. Coordiná la próxima acción con el resto del seguimiento."
+      : null,
+  ].filter((message): message is string => Boolean(message));
 
   return (
     <div className="space-y-6">
@@ -258,6 +297,20 @@ export function MarketingContactDetail({ contactId }: { contactId: string }) {
           </>
         )}
       </div>
+      {warningMessages.length > 0 && (
+        <div className="space-y-2" aria-label="Alertas comerciales">
+          {warningMessages.map((message) => (
+            <div
+              key={message}
+              role="alert"
+              className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"
+            >
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{message}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         {/* left: form + opportunities + tasks */}
         <div className="space-y-4">
@@ -373,8 +426,106 @@ export function MarketingContactDetail({ contactId }: { contactId: string }) {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-4 border-t pt-4 md:col-span-2">
+              <div>
+                <h3 className="font-semibold">LinkedIn</h3>
+                <p className="text-sm text-muted-foreground">
+                  Datos opcionales para prospección y seguimiento manual.
+                </p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-1 md:col-span-2">
+                  <Label htmlFor="contact-linkedin-url">URL de LinkedIn</Label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      id="contact-linkedin-url"
+                      type="url"
+                      value={c.linkedinUrl || ""}
+                      onChange={(e) => setData({ ...data, contact: { ...c, linkedinUrl: e.target.value || null } })}
+                      placeholder="https://www.linkedin.com/in/..."
+                    />
+                    {c.linkedinUrl ? (
+                      <Button asChild type="button" variant="outline" className="shrink-0">
+                        <a href={c.linkedinUrl} target="_blank" rel="noopener noreferrer">
+                          Abrir <ExternalLink className="ml-1.5 h-4 w-4" aria-hidden="true" />
+                        </a>
+                      </Button>
+                    ) : (
+                      <Button type="button" variant="outline" disabled className="shrink-0">
+                        Abrir
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label>Estado LinkedIn</Label>
+                  <Select
+                    value={c.linkedinStatus || "not_contacted"}
+                    onValueChange={(value) => setData({ ...data, contact: { ...c, linkedinStatus: value as MarketingLinkedInMemberStatus | "not_found" } })}
+                  >
+                    <SelectTrigger aria-label="Estado de LinkedIn"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {LINKEDIN_STATUSES.map((value) => (
+                        <SelectItem key={value} value={value}>{LINKEDIN_MEMBER_STATUS_LABEL[value]}</SelectItem>
+                      ))}
+                      <SelectItem value="not_found">Perfil no encontrado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Fuente de prospección</Label>
+                  <Select
+                    value={c.prospectingSource || "manual"}
+                    onValueChange={(value) => setData({
+                      ...data,
+                      contact: { ...c, prospectingSource: value as Detail["contact"]["prospectingSource"] },
+                    })}
+                  >
+                    <SelectTrigger aria-label="Fuente de prospección"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {PROSPECTING_SOURCES.map(([value, label]) => (
+                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="linkedin-last-contact">Último contacto LinkedIn</Label>
+                  <Input
+                    id="linkedin-last-contact"
+                    type="datetime-local"
+                    value={toLocalDateTime(c.linkedinLastContactAt)}
+                    onChange={(e) => setData({
+                      ...data,
+                      contact: { ...c, linkedinLastContactAt: toIsoDateTime(e.target.value) },
+                    })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="linkedin-next-action">Próxima acción LinkedIn</Label>
+                  <Input
+                    id="linkedin-next-action"
+                    type="datetime-local"
+                    value={toLocalDateTime(c.linkedinNextActionAt)}
+                    onChange={(e) => setData({
+                      ...data,
+                      contact: { ...c, linkedinNextActionAt: toIsoDateTime(e.target.value) },
+                    })}
+                  />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <Label htmlFor="linkedin-notes">Notas de LinkedIn</Label>
+                  <Textarea
+                    id="linkedin-notes"
+                    rows={3}
+                    value={c.linkedinNotes || ""}
+                    onChange={(e) => setData({ ...data, contact: { ...c, linkedinNotes: e.target.value } })}
+                  />
+                </div>
+              </div>
+            </div>
             <div className="md:col-span-2 space-y-1">
-              <Label>Notas</Label>
+              <Label>Notas generales</Label>
               <Textarea rows={4} value={c.notes || ""} onChange={(e) => setData({ ...data, contact: { ...c, notes: e.target.value } })} />
             </div>
             <div>
@@ -456,15 +607,18 @@ export function MarketingContactDetail({ contactId }: { contactId: string }) {
           </div>
         </div>
 
-        {/* right: activity timeline */}
+        {/* right: email and LinkedIn activity */}
         <div className="rounded-lg border bg-background p-4">
           <MarketingActivityTimeline contactId={contactId} />
         </div>
       </div>
 
-      {/* sends — full width below */}
+      {/* email sends — full width below */}
       <section className="space-y-3">
-        <h3 className="text-lg font-semibold">Envíos</h3>
+        <div>
+          <h3 className="text-lg font-semibold">Historial de email</h3>
+          <p className="text-sm text-muted-foreground">Envíos y respuestas de campañas email.</p>
+        </div>
         {data.sends.length === 0 ? (
           <p className="text-sm text-muted-foreground">Todavía no recibió campañas de marketing.</p>
         ) : (

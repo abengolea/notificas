@@ -21,6 +21,10 @@ export const CRM_READ_TOOL_NAMES = [
   "search_opportunities",
   "get_opportunity",
   "preview_campaign",
+  "search_linkedin_campaigns",
+  "get_linkedin_campaign",
+  "preview_linkedin_campaign",
+  "search_linkedin_pending_actions",
 ] as const;
 
 export const CRM_WRITE_TOOL_NAMES = [
@@ -43,6 +47,12 @@ export const CRM_WRITE_TOOL_NAMES = [
   "restore_campaign",
   "pause_campaign",
   "resume_campaign",
+  "create_linkedin_campaign_draft",
+  "update_linkedin_campaign",
+  "add_contact_to_linkedin_campaign",
+  "remove_contact_from_linkedin_campaign",
+  "update_linkedin_campaign_member",
+  "record_linkedin_action",
 ] as const;
 
 export const CRM_FORBIDDEN_TOOL_NAMES = [
@@ -58,6 +68,8 @@ export const CRM_FORBIDDEN_TOOL_NAMES = [
   "execute_crm_query",
   "merge_companies",
   "import_contacts_csv",
+  "send_linkedin_message",
+  "send_linkedin_campaign",
 ] as const;
 
 export type CrmReadToolName = (typeof CRM_READ_TOOL_NAMES)[number];

@@ -3,10 +3,12 @@ import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { assertAdminSession } from "@/lib/assert-admin-session";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { MARKETING_CONTACTS, MARKETING_EVENTS, MARKETING_SENDS } from "@/lib/marketing/collections";
+import { MARKETING_ACTIVITIES, MARKETING_CONTACTS, MARKETING_EVENTS, MARKETING_SENDS } from "@/lib/marketing/collections";
 import { isMarketingCountryCode } from "@/lib/marketing/countries";
 import { serializeAdminDoc } from "@/lib/marketing/events";
 import { isMarketingStage } from "@/lib/marketing/stages";
+import { normalizeLinkedInUrl } from "@/lib/marketing/normalizers";
+import { getMarketingWorkspaceId } from "@/lib/marketing/workspace";
 
 const patchSchema = z.object({
   name: z.string().max(200).optional(),
@@ -17,6 +19,16 @@ const patchSchema = z.object({
   notes: z.string().max(4000).optional(),
   stage: z.string().optional(),
   tags: z.array(z.string().max(40)).optional(),
+  linkedinUrl: z.string().max(500).nullable().optional(),
+  linkedinStatus: z.enum([
+    "not_contacted", "connection_ready", "connection_sent", "connected", "message_ready",
+    "message_sent", "follow_up_due", "follow_up_sent", "replied", "interested",
+    "not_interested", "do_not_contact", "not_found",
+  ]).optional(),
+  linkedinLastContactAt: z.string().datetime().nullable().optional(),
+  linkedinNextActionAt: z.string().datetime().nullable().optional(),
+  linkedinNotes: z.string().max(8000).optional(),
+  prospectingSource: z.enum(["clay", "linkedin", "web", "manual", "association", "other"]).optional(),
 });
 
 export async function GET(
@@ -28,11 +40,21 @@ export async function GET(
   const { contactId } = await params;
   try {
     const db = getAdminDb();
+    const workspaceId = getMarketingWorkspaceId();
     const snap = await db.collection(MARKETING_CONTACTS).doc(contactId).get();
     if (!snap.exists) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
-    const [sendsSnap, eventsSnap] = await Promise.all([
+    if (String(snap.data()?.workspaceId || workspaceId) !== workspaceId) {
+      return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+    }
+    const [sendsSnap, eventsSnap, activitiesSnap] = await Promise.all([
       db.collection(MARKETING_SENDS).where("contactId", "==", contactId).limit(50).get(),
       db.collection(MARKETING_EVENTS).where("contactId", "==", contactId).limit(80).get(),
+      db.collection(MARKETING_ACTIVITIES)
+        .where("workspaceId", "==", workspaceId)
+        .where("contactId", "==", contactId)
+        .orderBy("createdAt", "desc")
+        .limit(80)
+        .get(),
     ]);
     const sends = sendsSnap.docs
       .map((d) => serializeAdminDoc(d.id, d.data()))
@@ -44,6 +66,7 @@ export async function GET(
       contact: serializeAdminDoc(snap.id, snap.data() || {}),
       sends,
       events,
+      activities: activitiesSnap.docs.map((d) => serializeAdminDoc(d.id, d.data())),
     });
   } catch (e) {
     console.error("GET marketing contact", e);
@@ -65,7 +88,14 @@ export async function PATCH(
     const ref = db.collection(MARKETING_CONTACTS).doc(contactId);
     const snap = await ref.get();
     if (!snap.exists) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
-    const updates: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
+    const workspaceId = getMarketingWorkspaceId();
+    if (String(snap.data()?.workspaceId || workspaceId) !== workspaceId) {
+      return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+    }
+    const updates: Record<string, unknown> = {
+      workspaceId,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
     const d = parsed.data;
     if (d.name !== undefined) updates.name = d.name.trim();
     if (d.company !== undefined) updates.company = d.company.trim();
@@ -73,6 +103,28 @@ export async function PATCH(
     if (d.title !== undefined) updates.title = d.title.trim();
     if (d.notes !== undefined) updates.notes = d.notes.trim();
     if (d.tags) updates.tags = d.tags;
+    if (d.linkedinUrl !== undefined) {
+      if (d.linkedinUrl === null) {
+        updates.linkedinUrl = null;
+      } else {
+        const normalized = normalizeLinkedInUrl(d.linkedinUrl);
+        if (!normalized) return NextResponse.json({ error: "URL de LinkedIn inválida" }, { status: 400 });
+        const duplicate = await db.collection(MARKETING_CONTACTS)
+          .where("workspaceId", "==", workspaceId)
+          .where("linkedinUrl", "==", normalized)
+          .limit(1)
+          .get();
+        if (duplicate.docs.some((doc) => doc.id !== contactId)) {
+          return NextResponse.json({ error: "La URL de LinkedIn ya pertenece a otro contacto" }, { status: 409 });
+        }
+        updates.linkedinUrl = normalized;
+      }
+    }
+    if (d.linkedinStatus !== undefined) updates.linkedinStatus = d.linkedinStatus;
+    if (d.linkedinLastContactAt !== undefined) updates.linkedinLastContactAt = d.linkedinLastContactAt;
+    if (d.linkedinNextActionAt !== undefined) updates.linkedinNextActionAt = d.linkedinNextActionAt;
+    if (d.linkedinNotes !== undefined) updates.linkedinNotes = d.linkedinNotes.trim();
+    if (d.prospectingSource !== undefined) updates.prospectingSource = d.prospectingSource;
     if (d.country) {
       const code = d.country.toUpperCase();
       if (!isMarketingCountryCode(code)) return NextResponse.json({ error: "País no soportado" }, { status: 400 });

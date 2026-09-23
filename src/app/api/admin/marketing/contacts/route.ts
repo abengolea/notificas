@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { FieldPath, FieldValue } from "firebase-admin/firestore";
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { assertAdminSession } from "@/lib/assert-admin-session";
 import { getAdminDb } from "@/lib/firebase-admin";
@@ -13,9 +14,19 @@ import { serializeAdminDoc } from "@/lib/marketing/events";
 import { parseRecipientSource } from "@/lib/marketing/lists";
 import { isMarketingStage } from "@/lib/marketing/stages";
 import { parseCatalogKeyList, storedKeysMatch } from "@/lib/marketing/taxonomy/seed";
+import { normalizeLinkedInUrl } from "@/lib/marketing/normalizers";
+import { getMarketingWorkspaceId } from "@/lib/marketing/workspace";
 
 const postSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().optional(),
+  linkedinUrl: z.string().max(500).optional(),
+  linkedinStatus: z.enum([
+    "not_contacted", "connection_ready", "connection_sent", "connected", "message_ready",
+    "message_sent", "follow_up_due", "follow_up_sent", "replied", "interested",
+    "not_interested", "do_not_contact", "not_found",
+  ]).optional(),
+  linkedinNotes: z.string().max(8000).optional(),
+  prospectingSource: z.enum(["clay", "linkedin", "web", "manual", "association", "other"]).optional(),
   name: z.string().max(200).optional().default(""),
   company: z.string().max(200).optional().default(""),
   title: z.string().max(200).optional().default(""),
@@ -23,6 +34,8 @@ const postSchema = z.object({
   notes: z.string().max(4000).optional().default(""),
   tags: z.array(z.string().max(40)).optional(),
   listId: z.string().max(80).optional(),
+}).refine((value) => Boolean(value.email || value.linkedinUrl), {
+  message: "Se requiere email o linkedinUrl",
 });
 
 export async function GET(request: NextRequest) {
@@ -44,13 +57,16 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = getAdminDb();
+    const workspaceId = getMarketingWorkspaceId();
 
     // fast path: fetch specific contact IDs (e.g. from opportunity contactIds)
     if (idsParam) {
       const ids = idsParam.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 10);
       if (ids.length === 0) return NextResponse.json({ contacts: [] });
       const snap = await db.collection(MARKETING_CONTACTS).where(FieldPath.documentId(), "in", ids).get();
-      const contacts = snap.docs.map((d) => serializeAdminDoc(d.id, d.data()));
+      const contacts = snap.docs
+        .map((d) => serializeAdminDoc(d.id, d.data()))
+        .filter((contact) => String(contact.workspaceId || workspaceId) === workspaceId);
       return NextResponse.json({ contacts, total: contacts.length });
     }
 
@@ -61,7 +77,9 @@ export async function GET(request: NextRequest) {
       query = query.where("country", "==", country);
     }
     const snap = await query.limit(2000).get();
-    let contacts = snap.docs.map((d) => serializeAdminDoc(d.id, d.data()));
+    let contacts = snap.docs
+      .map((d) => serializeAdminDoc(d.id, d.data()))
+      .filter((contact) => String(contact.workspaceId || workspaceId) === workspaceId);
     if (stage && isMarketingStage(stage)) {
       contacts = contacts.filter((c) => c.stage === stage);
     }
@@ -121,14 +139,37 @@ export async function POST(request: NextRequest) {
       const source = parseRecipientSource(parsed.data.listId);
       return source.kind === "list" ? source.listId : "";
     })();
-    const email = normalizeEmail(parsed.data.email);
-    if (!isValidEmail(email)) {
+    const email = parsed.data.email ? normalizeEmail(parsed.data.email) : "";
+    if (email && !isValidEmail(email)) {
       return NextResponse.json({ error: "Email inválido" }, { status: 400 });
     }
-    const id = contactIdForEmail(email);
+    const linkedinUrl = parsed.data.linkedinUrl ? normalizeLinkedInUrl(parsed.data.linkedinUrl) : null;
+    if (parsed.data.linkedinUrl && !linkedinUrl) {
+      return NextResponse.json({ error: "URL de LinkedIn inválida" }, { status: 400 });
+    }
+    const workspaceId = getMarketingWorkspaceId();
     const db = getAdminDb();
+    let linkedInDuplicate: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+    if (linkedinUrl) {
+      const duplicate = await db.collection(MARKETING_CONTACTS)
+        .where("workspaceId", "==", workspaceId)
+        .where("linkedinUrl", "==", linkedinUrl)
+        .limit(1)
+        .get();
+      linkedInDuplicate = duplicate.docs[0];
+    }
+    const id = email ? contactIdForEmail(email) : linkedInDuplicate?.id || randomUUID();
+    if (email && linkedInDuplicate && linkedInDuplicate.id !== id) {
+      return NextResponse.json(
+        { error: "email y linkedinUrl pertenecen a contactos diferentes" },
+        { status: 409 },
+      );
+    }
     const ref = db.collection(MARKETING_CONTACTS).doc(id);
     const existing = await ref.get();
+    if (existing.exists && String(existing.data()?.workspaceId || workspaceId) !== workspaceId) {
+      return NextResponse.json({ error: "El contacto pertenece a otro workspace" }, { status: 409 });
+    }
     const alreadyInList =
       Boolean(namedListId) &&
       existing.exists &&
@@ -137,12 +178,18 @@ export async function POST(request: NextRequest) {
     const payload: Record<string, unknown> = {
       email,
       emailKey: email,
+      normalizedEmail: email,
+      workspaceId,
       name: parsed.data.name.trim(),
       company: parsed.data.company.trim(),
       title: parsed.data.title.trim(),
       country: parsed.data.country.toUpperCase(),
       notes: parsed.data.notes.trim(),
       tags: parsed.data.tags || [],
+      linkedinUrl: linkedinUrl || null,
+      linkedinStatus: parsed.data.linkedinStatus || (linkedinUrl ? "not_contacted" : null),
+      linkedinNotes: parsed.data.linkedinNotes?.trim() || "",
+      prospectingSource: parsed.data.prospectingSource || "manual",
       updatedAt: FieldValue.serverTimestamp(),
     };
     if (namedListId) payload.listIds = FieldValue.arrayUnion(namedListId);

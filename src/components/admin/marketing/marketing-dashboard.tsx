@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Loader2, Building2, CheckSquare, AlertTriangle, BarChart3, Phone, Users, Monitor, Mail, MessageSquare, FileText, Star, GitBranch, RefreshCw } from "lucide-react";
+import { Loader2, Building2, CheckSquare, AlertTriangle, BarChart3, Phone, Users, Monitor, Mail, MessageSquare, FileText, Star, GitBranch, RefreshCw, Linkedin } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { MarketingSubnav } from "./marketing-subnav";
@@ -68,6 +68,19 @@ type Overview = {
     actorName?: string;
     createdAt?: string;
   }>;
+};
+
+type LinkedInOverview = {
+  campaignCount: number;
+  bounded: boolean;
+  metrics: {
+    prospects: number;
+    connectionSent: number;
+    connected: number;
+    messageSent: number;
+    replied: number;
+    interested: number;
+  };
 };
 
 function KpiCard({
@@ -160,6 +173,13 @@ const ACTIVITY_ICON: Record<string, React.ElementType> = {
   status_changed: GitBranch,
   opportunity_status_changed: GitBranch,
   task_completed: CheckSquare,
+  linkedin_connection_sent: Linkedin,
+  linkedin_connected: Linkedin,
+  linkedin_message_sent: Linkedin,
+  linkedin_follow_up_sent: Linkedin,
+  linkedin_replied: Linkedin,
+  linkedin_interested: Linkedin,
+  linkedin_not_interested: Linkedin,
 };
 
 const ACTIVITY_COLOR: Record<string, string> = {
@@ -173,6 +193,13 @@ const ACTIVITY_COLOR: Record<string, string> = {
   status_changed: "text-orange-600 bg-orange-100 dark:bg-orange-900 dark:text-orange-300",
   opportunity_status_changed: "text-orange-600 bg-orange-100 dark:bg-orange-900 dark:text-orange-300",
   task_completed: "text-emerald-600 bg-emerald-100 dark:bg-emerald-900 dark:text-emerald-300",
+  linkedin_connection_sent: "text-sky-600 bg-sky-100 dark:bg-sky-950 dark:text-sky-300",
+  linkedin_connected: "text-blue-600 bg-blue-100 dark:bg-blue-950 dark:text-blue-300",
+  linkedin_message_sent: "text-indigo-600 bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-300",
+  linkedin_follow_up_sent: "text-violet-600 bg-violet-100 dark:bg-violet-950 dark:text-violet-300",
+  linkedin_replied: "text-emerald-600 bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300",
+  linkedin_interested: "text-green-700 bg-green-100 dark:bg-green-950 dark:text-green-300",
+  linkedin_not_interested: "text-muted-foreground bg-muted",
 };
 
 function ActivityFeed({ activities }: {
@@ -235,6 +262,9 @@ export function MarketingDashboard() {
   const params = useSearchParams();
   const [data, setData] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
+  const [linkedIn, setLinkedIn] = useState<LinkedInOverview | null>(null);
+  const [linkedInLoading, setLinkedInLoading] = useState(true);
+  const [linkedInError, setLinkedInError] = useState(false);
 
   useEffect(() => {
     const gmail = params.get("gmail");
@@ -263,6 +293,25 @@ export function MarketingDashboard() {
     return () => { cancelled = true; };
   }, [toast]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setLinkedInLoading(true);
+    setLinkedInError(false);
+    void fetch("/api/admin/marketing/linkedin/overview", { credentials: "include" })
+      .then(async (res) => {
+        const body = await res.json();
+        if (!res.ok) throw new Error();
+        if (!cancelled) setLinkedIn(body);
+      })
+      .catch(() => {
+        if (!cancelled) setLinkedInError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLinkedInLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   const totals = useMemo(() => data?.stages, [data]);
 
   if (loading) {
@@ -286,8 +335,6 @@ export function MarketingDashboard() {
       </div>
     );
   }
-
-  const hasCompanies = (data.companies?.total ?? 0) > 0;
 
   return (
     <div className="space-y-6">
@@ -330,6 +377,52 @@ export function MarketingDashboard() {
           sub={data.tasks?.dueToday ? `${data.tasks.dueToday} vencen hoy` : "sin tareas vencidas"}
         />
       </div>
+
+      <section className="space-y-3 rounded-lg border bg-background p-4" aria-labelledby="linkedin-metrics-title">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 id="linkedin-metrics-title" className="flex items-center gap-2 text-lg font-semibold">
+              <Linkedin className="h-5 w-5" aria-hidden="true" />
+              Actividad LinkedIn
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Registro manual separado de las métricas de campañas email.
+            </p>
+          </div>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/admin/marketing/linkedin/campanas">Ver campañas LinkedIn</Link>
+          </Button>
+        </div>
+        {linkedInLoading ? (
+          <Skeleton className="h-20 w-full" />
+        ) : linkedInError || !linkedIn ? (
+          <p role="alert" className="text-sm text-destructive">
+            No se pudieron cargar las métricas de LinkedIn. Las métricas de email no fueron afectadas.
+          </p>
+        ) : (
+          <>
+            <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3 lg:grid-cols-6">
+              {[
+                ["Prospectos", linkedIn.metrics.prospects],
+                ["Conexión enviada", linkedIn.metrics.connectionSent],
+                ["Conectados", linkedIn.metrics.connected],
+                ["Mensaje enviado", linkedIn.metrics.messageSent],
+                ["Respondieron", linkedIn.metrics.replied],
+                ["Interesados", linkedIn.metrics.interested],
+              ].map(([label, value]) => (
+                <div key={String(label)} className="bg-background px-3 py-3">
+                  <dt className="text-xs text-muted-foreground">{label}</dt>
+                  <dd className="text-xl font-semibold tabular-nums">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="text-xs text-muted-foreground">
+              {linkedIn.campaignCount} campañas activas o visibles.
+              {linkedIn.bounded ? " Totales calculados sobre las primeras 100 campañas." : ""}
+            </p>
+          </>
+        )}
+      </section>
 
       {/* pipeline funnel + contacts table */}
       <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
@@ -421,7 +514,7 @@ export function MarketingDashboard() {
       {/* recent campaigns */}
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-lg font-semibold">Campañas recientes</h3>
+          <h3 className="text-lg font-semibold">Campañas email recientes</h3>
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm" variant="outline">
               <Link href="/admin/marketing/campanas?outcome=unsent">Sin envíos</Link>
@@ -430,12 +523,12 @@ export function MarketingDashboard() {
               <Link href="/admin/marketing/campanas?outcome=replied">Con respuestas</Link>
             </Button>
             <Button asChild size="sm">
-              <Link href="/admin/marketing/campanas/nueva">Nueva campaña</Link>
+              <Link href="/admin/marketing/campanas/nueva">Nueva campaña email</Link>
             </Button>
           </div>
         </div>
         {data.campaigns.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Todavía no hay campañas de marketing.</p>
+          <p className="text-sm text-muted-foreground">Todavía no hay campañas email.</p>
         ) : (
           <ul className="divide-y rounded-lg border bg-background">
             {data.campaigns.map((c) => (

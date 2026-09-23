@@ -1,4 +1,5 @@
 import { countryName, isMarketingCountryCode } from "./countries";
+import { isValidEmail } from "./csv";
 import { isSendableStage } from "./stages";
 
 export const COUNTRY_LIST_PREFIX = "country:";
@@ -46,6 +47,10 @@ export function skipReasonForStage(stage: string | null | undefined): string | n
   return null;
 }
 
+export function hasValidRecipientEmail(contact: { email?: unknown }): boolean {
+  return isValidEmail(String(contact.email || "").trim().toLowerCase());
+}
+
 export function contactMatchesSource(
   contact: { country?: unknown; listIds?: unknown },
   source: RecipientSource,
@@ -71,10 +76,13 @@ export function toRecipientRow(contact: {
   listIds?: unknown;
 }): RecipientRow {
   const stage = String(contact.stage || "new");
-  const skipReason = skipReasonForStage(stage);
+  const email = String(contact.email || "").trim().toLowerCase();
+  const skipReason = !hasValidRecipientEmail(contact)
+    ? "Email inválido o faltante"
+    : skipReasonForStage(stage);
   return {
     id: contact.id,
-    email: String(contact.email || ""),
+    email,
     name: String(contact.name || ""),
     company: String(contact.company || ""),
     title: String(contact.title || ""),
@@ -82,7 +90,7 @@ export function toRecipientRow(contact: {
     stage,
     lastSentAt: typeof contact.lastSentAt === "string" ? contact.lastSentAt : null,
     listIds: Array.isArray(contact.listIds) ? contact.listIds.map(String) : [],
-    eligible: isSendableStage(stage),
+    eligible: !skipReason && isSendableStage(stage),
     skipReason,
   };
 }

@@ -16,6 +16,8 @@ import type {
   MarketingContactRepository,
   MarketingCountryRepository,
   MarketingIndustryRepository,
+  MarketingLinkedInCampaignMemberRepository,
+  MarketingLinkedInCampaignRepository,
   MarketingMembershipRepository,
   MarketingOpportunityRepository,
   MarketingRepositories,
@@ -35,6 +37,8 @@ import type {
   MarketingListMembership,
   MarketingMessageTemplate,
   MarketingMessageTemplateVersion,
+  MarketingLinkedInCampaign,
+  MarketingLinkedInCampaignMember,
   MarketingOpportunity,
   MarketingSource,
   MarketingTag,
@@ -107,6 +111,8 @@ export function createMemoryMarketingRepositories(): MarketingRepositories {
   const activities = new Map<string, MarketingActivity>();
   const tasks = new Map<string, MarketingTask>();
   const opportunities = new Map<string, MarketingOpportunity>();
+  const linkedInCampaigns = new Map<string, MarketingLinkedInCampaign>();
+  const linkedInCampaignMembers = new Map<string, MarketingLinkedInCampaignMember>();
 
   const companyRepo: MarketingCompanyRepository = {
     async create(doc) {
@@ -165,6 +171,12 @@ export function createMemoryMarketingRepositories(): MarketingRepositories {
     async getByEmail(email) {
       const key = email.trim().toLowerCase();
       const doc = [...contacts.values()].find((c) => c.emailKey === key || c.email === key);
+      return doc ? hydrateContact(doc) : null;
+    },
+    async getByLinkedInUrl(workspaceId, linkedinUrl) {
+      const doc = [...contacts.values()].find(
+        (c) => hydrateContact(c).workspaceId === workspaceId && c.linkedinUrl === linkedinUrl && !c.deletedAt,
+      );
       return doc ? hydrateContact(doc) : null;
     },
     async create(doc) {
@@ -464,6 +476,81 @@ export function createMemoryMarketingRepositories(): MarketingRepositories {
     },
   };
 
+  const linkedInCampaignRepo: MarketingLinkedInCampaignRepository = {
+    async create(doc) {
+      linkedInCampaigns.set(doc.id, { ...doc });
+    },
+    async getById(workspaceId, id) {
+      return assertWorkspace(linkedInCampaigns.get(id) || null, workspaceId);
+    },
+    async update(workspaceId, id, patch) {
+      const current = await this.getById(workspaceId, id);
+      if (!current) return;
+      linkedInCampaigns.set(id, { ...current, ...patch, id, workspaceId });
+    },
+    async adjustMemberCount(workspaceId, id, delta, updatedAt) {
+      const current = await this.getById(workspaceId, id);
+      if (!current) return null;
+      const memberCount = Math.max(0, current.memberCount + Math.trunc(delta));
+      linkedInCampaigns.set(id, { ...current, memberCount, updatedAt, id, workspaceId });
+      return memberCount;
+    },
+    async search(workspaceId, filters) {
+      let rows = [...linkedInCampaigns.values()].filter((d) => d.workspaceId === workspaceId);
+      const archived = filters.archived ?? (filters.status === "archived" ? "only" : "exclude");
+      if (archived === "exclude") rows = rows.filter((d) => d.status !== "archived");
+      if (archived === "only") rows = rows.filter((d) => d.status === "archived");
+      if (filters.status) rows = rows.filter((d) => d.status === filters.status);
+      if (filters.countryCode) rows = rows.filter((d) => d.countryCode === filters.countryCode);
+      if (filters.query?.trim()) {
+        const q = filters.query.trim().toLowerCase();
+        rows = rows.filter((d) => d.name.toLowerCase().includes(q));
+      }
+      return paginate(rows, (d) => d.updatedAt, filters.cursor, clampMarketingLimit(filters.limit));
+    },
+  };
+
+  const linkedInCampaignMemberRepo: MarketingLinkedInCampaignMemberRepository = {
+    async create(doc) {
+      if (linkedInCampaignMembers.has(doc.id)) return false;
+      linkedInCampaignMembers.set(doc.id, { ...doc });
+      return true;
+    },
+    async getById(workspaceId, id) {
+      return assertWorkspace(linkedInCampaignMembers.get(id) || null, workspaceId);
+    },
+    async update(workspaceId, id, patch) {
+      const current = await this.getById(workspaceId, id);
+      if (!current) return;
+      linkedInCampaignMembers.set(id, { ...current, ...patch, id, workspaceId });
+    },
+    async remove(workspaceId, id) {
+      const current = await this.getById(workspaceId, id);
+      if (!current) return false;
+      linkedInCampaignMembers.delete(id);
+      return true;
+    },
+    async listAllForCampaign(workspaceId, campaignId) {
+      return [...linkedInCampaignMembers.values()]
+        .filter((d) => d.workspaceId === workspaceId && d.campaignId === campaignId)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id));
+    },
+    async list(workspaceId, filters) {
+      let rows = [...linkedInCampaignMembers.values()].filter((d) => d.workspaceId === workspaceId);
+      if (filters.campaignId) rows = rows.filter((d) => d.campaignId === filters.campaignId);
+      if (filters.status) rows = rows.filter((d) => d.status === filters.status);
+      if (filters.dueBefore) {
+        rows = rows.filter((d) => Boolean(d.nextActionAt && d.nextActionAt <= filters.dueBefore!));
+      }
+      return paginate(
+        rows,
+        (d) => d.nextActionAt || d.updatedAt,
+        filters.cursor,
+        clampMarketingLimit(filters.limit),
+      );
+    },
+  };
+
   return {
     companies: companyRepo,
     contacts: contactRepo,
@@ -477,5 +564,7 @@ export function createMemoryMarketingRepositories(): MarketingRepositories {
     activities: activityRepo,
     tasks: taskRepo,
     opportunities: opportunityRepo,
+    linkedInCampaigns: linkedInCampaignRepo,
+    linkedInCampaignMembers: linkedInCampaignMemberRepo,
   };
 }

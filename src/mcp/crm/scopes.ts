@@ -1,4 +1,11 @@
-export const CRM_MCP_SCOPES = ["crm:read", "crm:write", "campaigns:read", "campaigns:write"] as const;
+export const CRM_MCP_SCOPES = [
+  "crm:read",
+  "crm:write",
+  "campaigns:read",
+  "campaigns:write",
+  "linkedin:read",
+  "linkedin:write",
+] as const;
 export type CrmMcpScope = (typeof CRM_MCP_SCOPES)[number];
 
 const SCOPE_SET = new Set<string>(CRM_MCP_SCOPES);
@@ -78,5 +85,9 @@ export function crmScopeDescriptions(): Record<CrmMcpScope, string> {
     "campaigns:read": "Read commercial CRM email campaigns and preview a draft audience. Does not send.",
     "campaigns:write":
       "Create and edit commercial campaign DRAFTS, copy, archive or restore. Never sends, pauses, resumes or schedules email.",
+    "linkedin:read":
+      "Read internal CRM LinkedIn campaign and follow-up records for manual organization only. Never automates, sends, connects, messages or scrapes LinkedIn.",
+    "linkedin:write":
+      "Create and update internal CRM LinkedIn campaign, member and manual action records, including removing a contact's campaign membership. Cannot delete a contact or campaign and never automates, sends, connects, messages or scrapes LinkedIn.",
   };
 }

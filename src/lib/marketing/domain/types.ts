@@ -58,8 +58,104 @@ export type MarketingActivityType =
   | "status_changed"
   | "follow_up_created"
   | "follow_up_completed"
+  | "linkedin_connection_sent"
+  | "linkedin_connected"
+  | "linkedin_message_sent"
+  | "linkedin_follow_up_sent"
+  | "linkedin_replied"
+  | "linkedin_interested"
+  | "linkedin_not_interested"
   | "system_event"
   | "ai_event";
+
+export type MarketingLinkedInCampaignStatus =
+  | "draft"
+  | "active"
+  | "paused"
+  | "completed"
+  | "archived";
+
+export type MarketingLinkedInMessageType =
+  | "connection_request"
+  | "direct_message"
+  | "multistep";
+
+export type MarketingLinkedInMemberStatus =
+  | "not_contacted"
+  | "connection_ready"
+  | "connection_sent"
+  | "connected"
+  | "message_ready"
+  | "message_sent"
+  | "follow_up_due"
+  | "follow_up_sent"
+  | "replied"
+  | "interested"
+  | "not_interested"
+  | "do_not_contact";
+
+export type MarketingLinkedInResponseType =
+  | "replied"
+  | "interested"
+  | "not_interested"
+  | "do_not_contact";
+
+export type MarketingLinkedInAction =
+  | "connection_sent"
+  | "connected"
+  | "message_sent"
+  | "followup_sent"
+  | "replied"
+  | "interested"
+  | "not_interested";
+
+export type MarketingLinkedInCampaign = MarketingEntityBase & {
+  name: string;
+  description?: string;
+  status: MarketingLinkedInCampaignStatus;
+  countryCode?: string | null;
+  industryIds?: string[];
+  useCaseIds?: string[];
+  listId?: string;
+  commercialInitiativeId?: string;
+  messageType?: MarketingLinkedInMessageType;
+  /** Copy used in the LinkedIn connection request step. */
+  connectionMessage?: string;
+  /** Primary message sent after connecting, or the direct-message copy. */
+  message?: string;
+  /** Follow-up copy for the final multistep stage. */
+  followUpMessage?: string;
+  notes?: string;
+  memberCount: number;
+  activatedAt?: MarketingInstant | null;
+  completedAt?: MarketingInstant | null;
+  archivedAt?: MarketingInstant | null;
+};
+
+export type MarketingLinkedInCampaignMember = MarketingEntityBase & {
+  campaignId: string;
+  contactId: string;
+  companyId?: string;
+  firstName?: string;
+  companyName?: string;
+  jobTitle?: string;
+  linkedinUrl: string;
+  status: MarketingLinkedInMemberStatus;
+  responseType?: MarketingLinkedInResponseType | null;
+  connectionMessage?: string;
+  message?: string;
+  followUpMessage?: string;
+  notes?: string;
+  nextActionAt?: MarketingInstant | null;
+  connectionSentAt?: MarketingInstant | null;
+  connectedAt?: MarketingInstant | null;
+  messageSentAt?: MarketingInstant | null;
+  followUpSentAt?: MarketingInstant | null;
+  repliedAt?: MarketingInstant | null;
+  interestedAt?: MarketingInstant | null;
+  notInterestedAt?: MarketingInstant | null;
+  doNotContactAt?: MarketingInstant | null;
+};
 
 export type MarketingTaskType =
   | "call"
@@ -313,10 +409,17 @@ export type MarketingContactV2Fields = {
   deletedBy?: string | null;
   createdBy?: string;
   updatedBy?: string;
+  linkedinUrl?: string;
+  linkedinStatus?: MarketingLinkedInMemberStatus | "not_found";
+  linkedinLastContactAt?: MarketingInstant | null;
+  linkedinNextActionAt?: MarketingInstant | null;
+  linkedinNotes?: string;
+  prospectingSource?: "clay" | "linkedin" | "web" | "manual" | "association" | "other";
 };
 
 export type MarketingCampaignV2Fields = {
   workspaceId?: string;
+  channel?: "email";
   templateId?: string;
   templateVersion?: number;
   templateSnapshot?: MarketingMessageSnapshot;

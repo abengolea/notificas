@@ -6,6 +6,8 @@ import {
   MARKETING_CONTACTS,
   MARKETING_COUNTRY_COLLECTION,
   MARKETING_INDUSTRIES,
+  MARKETING_LINKEDIN_CAMPAIGN_MEMBERS,
+  MARKETING_LINKEDIN_CAMPAIGNS,
   MARKETING_LIST_MEMBERSHIPS,
   MARKETING_MESSAGE_TEMPLATE_VERSIONS,
   MARKETING_MESSAGE_TEMPLATES,
@@ -35,6 +37,8 @@ import type {
   MarketingContactRepository,
   MarketingCountryRepository,
   MarketingIndustryRepository,
+  MarketingLinkedInCampaignMemberRepository,
+  MarketingLinkedInCampaignRepository,
   MarketingMembershipRepository,
   MarketingOpportunityRepository,
   MarketingRepositories,
@@ -54,6 +58,8 @@ import type {
   MarketingListMembership,
   MarketingMessageTemplate,
   MarketingMessageTemplateVersion,
+  MarketingLinkedInCampaign,
+  MarketingLinkedInCampaignMember,
   MarketingOpportunity,
   MarketingSource,
   MarketingTag,
@@ -172,6 +178,15 @@ export function createFirestoreMarketingRepositories(): MarketingRepositories {
     },
     async getByEmail(email) {
       return this.getById(contactIdForEmail(normalizeMarketingEmail(email)));
+    },
+    async getByLinkedInUrl(workspaceId, linkedinUrl) {
+      const snap = await col(MARKETING_CONTACTS)
+        .where("workspaceId", "==", workspaceId)
+        .where("linkedinUrl", "==", linkedinUrl)
+        .limit(1)
+        .get();
+      if (snap.empty) return null;
+      return hydrateContact(fromFirestoreDocument(snap.docs[0].id, snap.docs[0].data()));
     },
     async create(doc) {
       await createTyped(MARKETING_CONTACTS, doc.id, { ...doc });
@@ -520,6 +535,136 @@ export function createFirestoreMarketingRepositories(): MarketingRepositories {
     },
   };
 
+  const linkedInCampaigns: MarketingLinkedInCampaignRepository = {
+    async create(doc) {
+      await createTyped(MARKETING_LINKEDIN_CAMPAIGNS, doc.id, { ...doc });
+    },
+    async getById(workspaceId, id) {
+      const row = await getTyped<MarketingLinkedInCampaign>(MARKETING_LINKEDIN_CAMPAIGNS, id);
+      return row && row.workspaceId === workspaceId ? row : null;
+    },
+    async update(workspaceId, id, patch) {
+      const current = await this.getById(workspaceId, id);
+      if (!current) return;
+      await updateTyped(MARKETING_LINKEDIN_CAMPAIGNS, id, { ...patch });
+    },
+    async adjustMemberCount(workspaceId, id, delta, updatedAt) {
+      const ref = col(MARKETING_LINKEDIN_CAMPAIGNS).doc(id);
+      return getAdminDb().runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists || String(snap.data()?.workspaceId || "") !== workspaceId) return null;
+        const current = Math.max(0, Number(snap.data()?.memberCount || 0));
+        const memberCount = Math.max(0, current + Math.trunc(delta));
+        tx.update(ref, {
+          memberCount,
+          updatedAt: toFirestoreTimestamp(updatedAt),
+        });
+        return memberCount;
+      });
+    },
+    async search(workspaceId, filters) {
+      const size = clampMarketingLimit(filters.limit);
+      const archived = filters.archived ?? (filters.status === "archived" ? "only" : "exclude");
+      if (
+        (archived === "exclude" && filters.status === "archived") ||
+        (archived === "only" && filters.status && filters.status !== "archived")
+      ) {
+        return { items: [] };
+      }
+      let q: FirebaseFirestore.Query = col(MARKETING_LINKEDIN_CAMPAIGNS)
+        .where("workspaceId", "==", workspaceId);
+      if (archived === "exclude") q = q.where("archivedAt", "==", null);
+      if (archived === "only" && !filters.status) q = q.where("status", "==", "archived");
+      if (filters.status) q = q.where("status", "==", filters.status);
+      if (filters.countryCode) q = q.where("countryCode", "==", filters.countryCode);
+      q = applyCursor(q, filters.cursor, "updatedAt").limit(size + 1);
+      const snap = await q.get();
+      let rows = snap.docs.map(
+        (d) => fromFirestoreDocument(d.id, d.data()) as MarketingLinkedInCampaign,
+      );
+      if (filters.query?.trim()) {
+        const query = filters.query.trim().toLowerCase();
+        rows = rows.filter((row) => row.name.toLowerCase().includes(query));
+      }
+      return asPage(rows, size, (row) => row.updatedAt);
+    },
+  };
+
+  const linkedInCampaignMembers: MarketingLinkedInCampaignMemberRepository = {
+    async create(doc) {
+      const ref = col(MARKETING_LINKEDIN_CAMPAIGN_MEMBERS).doc(doc.id);
+      return getAdminDb().runTransaction(async (tx) => {
+        const current = await tx.get(ref);
+        if (current.exists) return false;
+        tx.create(ref, toFirestoreDocument({ ...doc }));
+        return true;
+      });
+    },
+    async getById(workspaceId, id) {
+      const row = await getTyped<MarketingLinkedInCampaignMember>(
+        MARKETING_LINKEDIN_CAMPAIGN_MEMBERS,
+        id,
+      );
+      return row && row.workspaceId === workspaceId ? row : null;
+    },
+    async update(workspaceId, id, patch) {
+      const current = await this.getById(workspaceId, id);
+      if (!current) return;
+      await updateTyped(MARKETING_LINKEDIN_CAMPAIGN_MEMBERS, id, { ...patch });
+    },
+    async remove(workspaceId, id) {
+      const ref = col(MARKETING_LINKEDIN_CAMPAIGN_MEMBERS).doc(id);
+      return getAdminDb().runTransaction(async (tx) => {
+        const current = await tx.get(ref);
+        if (!current.exists || String(current.data()?.workspaceId || "") !== workspaceId) return false;
+        tx.delete(ref);
+        return true;
+      });
+    },
+    async listAllForCampaign(workspaceId, campaignId) {
+      const snap = await col(MARKETING_LINKEDIN_CAMPAIGN_MEMBERS)
+        .where("workspaceId", "==", workspaceId)
+        .where("campaignId", "==", campaignId)
+        .orderBy("updatedAt", "desc")
+        .get();
+      return snap.docs.map(
+        (d) => fromFirestoreDocument(d.id, d.data()) as MarketingLinkedInCampaignMember,
+      );
+    },
+    async list(workspaceId, filters) {
+      const size = clampMarketingLimit(filters.limit);
+      let q: FirebaseFirestore.Query = col(MARKETING_LINKEDIN_CAMPAIGN_MEMBERS)
+        .where("workspaceId", "==", workspaceId);
+      if (filters.campaignId) q = q.where("campaignId", "==", filters.campaignId);
+      if (filters.status) q = q.where("status", "==", filters.status);
+      if (filters.dueBefore) {
+        if (!filters.status) {
+          q = q.where("status", "in", [
+            "not_contacted",
+            "connection_ready",
+            "connection_sent",
+            "connected",
+            "message_ready",
+            "message_sent",
+            "follow_up_due",
+            "follow_up_sent",
+          ]);
+        }
+        q = q
+          .where("nextActionAt", "<=", toFirestoreTimestamp(filters.dueBefore))
+          .orderBy("nextActionAt", "asc")
+          .limit(size + 1);
+      } else {
+        q = applyCursor(q, filters.cursor, "updatedAt").limit(size + 1);
+      }
+      const snap = await q.get();
+      const rows = snap.docs.map(
+        (d) => fromFirestoreDocument(d.id, d.data()) as MarketingLinkedInCampaignMember,
+      );
+      return asPage(rows, size, (row) => row.nextActionAt || row.updatedAt);
+    },
+  };
+
   return {
     companies,
     contacts,
@@ -533,5 +678,7 @@ export function createFirestoreMarketingRepositories(): MarketingRepositories {
     activities,
     tasks,
     opportunities,
+    linkedInCampaigns,
+    linkedInCampaignMembers,
   };
 }

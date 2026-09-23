@@ -139,7 +139,14 @@ test("CRM protected resource is /mcp/crm", () => {
     const meta = crmProtectedResourceMetadata();
     assert.equal(meta.resource, "https://notificas.com.ar/mcp/crm");
     assert.deepEqual(meta.authorization_servers, [CHATGPT_CRM_ISSUER]);
-    assert.deepEqual(meta.scopes_supported, ["crm:read", "crm:write", "campaigns:read", "campaigns:write"]);
+    assert.deepEqual(
+      meta.scopes_supported,
+      ["crm:read", "crm:write", "campaigns:read", "campaigns:write", "linkedin:read", "linkedin:write"],
+    );
+    assert.match(meta.scope_descriptions["linkedin:read"], /manual organization/i);
+    assert.match(meta.scope_descriptions["linkedin:write"], /never automates/i);
+    assert.match(meta.scope_descriptions["linkedin:write"], /removing a contact's campaign membership/i);
+    assert.match(meta.scope_descriptions["linkedin:write"], /cannot delete a contact or campaign/i);
   } finally {
     restoreEnv("MCP_BASE_URL", prevBase);
     restoreEnv("NEXT_PUBLIC_APP_URL", prevApp);

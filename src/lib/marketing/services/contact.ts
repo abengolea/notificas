@@ -1,16 +1,39 @@
 import { z } from "zod";
 import type { MarketingServiceContext } from "../context";
 import { contactIdForEmail, isValidEmail } from "../csv";
+import { newMarketingEntityId } from "../domain/ids";
 import { isMarketingCommercialStageId } from "../domain/commercial-stages";
 import type { MarketingContactRecord, MarketingContactRepository, MarketingCompanyRepository, ContactSearchFilters } from "../repositories/types";
 import { MarketingValidationError, MarketingWorkspaceMismatchError } from "../errors";
-import { normalizeMarketingCountryCode, normalizeMarketingEmail } from "../normalizers";
+import { normalizeLinkedInUrl, normalizeMarketingCountryCode, normalizeMarketingEmail } from "../normalizers";
 import { isMarketingStage } from "../stages";
 import { nowIso } from "../persistence/timestamps";
 import { assertWorkspaceOwned, createStamps, requireFound, resolveContactWorkspace, updateStamps } from "./scope";
 
-const createSchema = z.object({
-  email: z.string().min(3).max(254),
+const linkedinStatusSchema = z.enum([
+  "not_contacted",
+  "connection_ready",
+  "connection_sent",
+  "connected",
+  "message_ready",
+  "message_sent",
+  "follow_up_due",
+  "follow_up_sent",
+  "replied",
+  "interested",
+  "not_interested",
+  "do_not_contact",
+  "not_found",
+]);
+
+const contactFieldsSchema = z.object({
+  email: z.string().max(254).optional(),
+  linkedinUrl: z.string().max(500).optional(),
+  linkedinStatus: linkedinStatusSchema.optional(),
+  linkedinLastContactAt: z.string().datetime().nullable().optional(),
+  linkedinNextActionAt: z.string().datetime().nullable().optional(),
+  linkedinNotes: z.string().max(8000).optional(),
+  prospectingSource: z.enum(["clay", "linkedin", "web", "manual", "association", "other"]).optional(),
   name: z.string().max(200).optional(),
   company: z.string().max(200).optional(),
   companyId: z.string().max(128).optional(),
@@ -28,7 +51,13 @@ const createSchema = z.object({
   idempotencyKey: z.string().max(80).optional(),
 });
 
-const updateSchema = createSchema.partial().extend({
+const createSchema = contactFieldsSchema.superRefine((value, ctx) => {
+  if (!value.email?.trim() && !value.linkedinUrl?.trim()) {
+    ctx.addIssue({ code: "custom", message: "Se requiere email o linkedinUrl", path: ["email"] });
+  }
+});
+
+const updateSchema = contactFieldsSchema.partial().extend({
   stage: z.string().optional(),
   stageManual: z.boolean().optional(),
 });
@@ -63,14 +92,30 @@ export function createContactService(
       const parsed = createSchema.safeParse(input);
       if (!parsed.success) throw new MarketingValidationError("Contacto inválido", parsed.error.flatten());
       const data = parsed.data;
-      const email = normalizeMarketingEmail(data.email);
-      if (!isValidEmail(email)) throw new MarketingValidationError("Email inválido");
+      const email = data.email?.trim() ? normalizeMarketingEmail(data.email) : "";
+      if (email && !isValidEmail(email)) throw new MarketingValidationError("Email inválido");
+      const linkedinUrl = data.linkedinUrl?.trim() ? normalizeLinkedInUrl(data.linkedinUrl) : null;
+      if (data.linkedinUrl && !linkedinUrl) throw new MarketingValidationError("URL de LinkedIn inválida");
       const country = normalizeMarketingCountryCode(data.countryCode || data.country || "");
       if (!country) throw new MarketingValidationError("País inválido o faltante");
       assertStages("new", data.commercialStageId);
       await assertCompany(ctx, data.companyId);
       const stamps = createStamps(ctx);
-      const existing = await contacts.getByEmail(email);
+      const [emailExisting, linkedinExisting] = await Promise.all([
+        email ? contacts.getByEmail(email) : Promise.resolve(null),
+        linkedinUrl ? contacts.getByLinkedInUrl(ctx.workspaceId, linkedinUrl) : Promise.resolve(null),
+      ]);
+      if (
+        emailExisting &&
+        linkedinExisting &&
+        emailExisting.id !== linkedinExisting.id
+      ) {
+        throw new MarketingValidationError("email y linkedinUrl pertenecen a contactos diferentes");
+      }
+      if (email && linkedinExisting && linkedinExisting.id !== contactIdForEmail(email)) {
+        throw new MarketingValidationError("linkedinUrl ya pertenece a otro contacto");
+      }
+      const existing = emailExisting || linkedinExisting;
       if (existing) {
         const resolved = resolveContactWorkspace(existing.workspaceId);
         if (resolved !== ctx.workspaceId) throw new MarketingWorkspaceMismatchError();
@@ -83,12 +128,18 @@ export function createContactService(
           countryCode: country,
           notes: data.notes?.trim() ?? existing.notes,
           commercialStageId: data.commercialStageId ?? existing.commercialStageId,
+          linkedinUrl: linkedinUrl ?? existing.linkedinUrl,
+          linkedinStatus: data.linkedinStatus ?? existing.linkedinStatus,
+          linkedinLastContactAt: data.linkedinLastContactAt ?? existing.linkedinLastContactAt,
+          linkedinNextActionAt: data.linkedinNextActionAt ?? existing.linkedinNextActionAt,
+          linkedinNotes: data.linkedinNotes?.trim() ?? existing.linkedinNotes,
+          prospectingSource: data.prospectingSource ?? existing.prospectingSource,
           workspaceId: ctx.workspaceId,
           ...updateStamps(ctx),
         });
         return requireFound(await contacts.getById(existing.id), "Contacto", existing.id);
       }
-      const id = contactIdForEmail(email);
+      const id = email ? contactIdForEmail(email) : newMarketingEntityId();
       const doc: MarketingContactRecord = {
         id,
         email,
@@ -118,6 +169,12 @@ export function createContactService(
         useCaseIds: data.useCaseIds,
         tagIds: data.tagIds,
         sourceIds: data.sourceIds,
+        linkedinUrl: linkedinUrl || undefined,
+        linkedinStatus: data.linkedinStatus || (linkedinUrl ? "not_contacted" : undefined),
+        linkedinLastContactAt: data.linkedinLastContactAt,
+        linkedinNextActionAt: data.linkedinNextActionAt,
+        linkedinNotes: data.linkedinNotes?.trim(),
+        prospectingSource: data.prospectingSource,
         deletedAt: null,
         createdAt: stamps.createdAt,
         updatedAt: stamps.updatedAt,
@@ -150,11 +207,37 @@ export function createContactService(
         workspaceId: ctx.workspaceId,
         ...updateStamps(ctx),
       };
+      if (data.email !== undefined) {
+        const email = data.email.trim() ? normalizeMarketingEmail(data.email) : "";
+        if (email && !isValidEmail(email)) throw new MarketingValidationError("Email inválido");
+        if (!email && !current.linkedinUrl) {
+          throw new MarketingValidationError("Se requiere email o linkedinUrl");
+        }
+        if (email) {
+          const duplicate = await contacts.getByEmail(email);
+          if (duplicate && duplicate.id !== id) throw new MarketingValidationError("email ya pertenece a otro contacto");
+        }
+        patch.email = email;
+        patch.emailKey = email;
+        patch.normalizedEmail = email;
+      }
       if (data.name !== undefined) patch.name = data.name.trim();
       if (data.company !== undefined) patch.company = data.company.trim();
       if (data.companyId !== undefined) patch.companyId = data.companyId;
       if (data.title !== undefined) patch.title = data.title.trim();
       if (data.notes !== undefined) patch.notes = data.notes.trim();
+      if (data.linkedinUrl !== undefined) {
+        const linkedinUrl = normalizeLinkedInUrl(data.linkedinUrl);
+        if (!linkedinUrl) throw new MarketingValidationError("URL de LinkedIn inválida");
+        const duplicate = await contacts.getByLinkedInUrl(ctx.workspaceId, linkedinUrl);
+        if (duplicate && duplicate.id !== id) throw new MarketingValidationError("linkedinUrl ya pertenece a otro contacto");
+        patch.linkedinUrl = linkedinUrl;
+      }
+      if (data.linkedinStatus !== undefined) patch.linkedinStatus = data.linkedinStatus;
+      if (data.linkedinLastContactAt !== undefined) patch.linkedinLastContactAt = data.linkedinLastContactAt;
+      if (data.linkedinNextActionAt !== undefined) patch.linkedinNextActionAt = data.linkedinNextActionAt;
+      if (data.linkedinNotes !== undefined) patch.linkedinNotes = data.linkedinNotes.trim();
+      if (data.prospectingSource !== undefined) patch.prospectingSource = data.prospectingSource;
       if (data.commercialStageId !== undefined) patch.commercialStageId = data.commercialStageId;
       if (data.ownerId !== undefined) patch.ownerId = data.ownerId;
       if (data.listIds !== undefined) patch.listIds = data.listIds;

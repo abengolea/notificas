@@ -11,6 +11,18 @@ export function marketingListMembershipId(listId: string, contactId: string, wor
   return createHash("sha256").update(`mbr:${ws}:${listId}:${contactId}`).digest("hex").slice(0, 40);
 }
 
+export function marketingLinkedInCampaignMemberId(
+  campaignId: string,
+  contactId: string,
+  workspaceId?: string,
+): string {
+  const ws = workspaceId || getMarketingWorkspaceId();
+  return createHash("sha256")
+    .update(`linkedin-member:${ws}:${campaignId}:${contactId}`)
+    .digest("hex")
+    .slice(0, 40);
+}
+
 export type MarketingCatalogKind = "country" | "industry" | "use_case" | "tag";
 
 /** Slug estable de catálogo. No es el nombre visible. */

@@ -14,12 +14,16 @@ import {
   getTemplateSchema,
   listTaxonomySchema,
   previewCampaignSchema,
+  previewLinkedinCampaignSchema,
   searchCampaignsSchema,
   searchCompaniesSchema,
   searchContactsSchema,
+  searchLinkedinCampaignsSchema,
+  searchLinkedinPendingActionsSchema,
   searchListsSchema,
   searchOpportunitiesSchema,
   searchTemplatesSchema,
+  getLinkedinCampaignSchema,
 } from "./schemas";
 import { TAXONOMY_INDUSTRIES, TAXONOMY_USE_CASES } from "../taxonomy/seed";
 import { DETAIL_LIMIT, pageLimit, summarizeCompany } from "./helpers";
@@ -142,6 +146,8 @@ export async function searchContacts(
   let items = page.items;
   if (input.hasEmail === true) items = items.filter((c) => Boolean(c.email));
   if (input.hasEmail === false) items = items.filter((c) => !c.email);
+  if (input.hasLinkedin === true) items = items.filter((c) => Boolean(c.linkedinUrl));
+  if (input.hasLinkedin === false) items = items.filter((c) => !c.linkedinUrl);
   return ok("search_contacts", {
     items: items.map((c) => ({
       id: c.id,
@@ -154,6 +160,12 @@ export async function searchContacts(
       commercialStageId: c.commercialStageId || null,
       lastRepliedAt: c.lastRepliedAt,
       lastSentAt: c.lastSentAt,
+      linkedinUrl: c.linkedinUrl || null,
+      linkedinStatus: c.linkedinStatus || null,
+      linkedinLastContactAt: c.linkedinLastContactAt || null,
+      linkedinNextActionAt: c.linkedinNextActionAt || null,
+      linkedinNotes: c.linkedinNotes || null,
+      prospectingSource: c.prospectingSource || null,
     })),
     nextCursor: page.nextCursor,
   });
@@ -188,6 +200,12 @@ export async function getContact(
         notes: contact.notes,
         lastSentAt: contact.lastSentAt,
         lastRepliedAt: contact.lastRepliedAt,
+        linkedinUrl: contact.linkedinUrl || null,
+        linkedinStatus: contact.linkedinStatus || null,
+        linkedinLastContactAt: contact.linkedinLastContactAt || null,
+        linkedinNextActionAt: contact.linkedinNextActionAt || null,
+        linkedinNotes: contact.linkedinNotes || null,
+        prospectingSource: contact.prospectingSource || null,
       },
       company: company ? summarizeCompany(company) : null,
       recentActivity: activities.items.map((a) => ({
@@ -544,6 +562,80 @@ export async function previewCampaign(
   });
 }
 
+function linkedinCampaignView<T extends { message?: string }>(campaign: T) {
+  const { message, ...rest } = campaign;
+  return { ...rest, directMessage: message || null };
+}
+
+function linkedinMemberView<T extends { message?: string }>(member: T) {
+  const { message, ...rest } = member;
+  return { ...rest, directMessage: message || null };
+}
+
+export async function searchLinkedinCampaigns(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof searchLinkedinCampaignsSchema>,
+): Promise<CrmToolSuccess> {
+  const page = await runtime.services.linkedInCampaigns.searchCampaigns(ctx, {
+    query: input.query,
+    status: input.status,
+    countryCode: input.countryCode,
+    archived: input.archived,
+    limit: pageLimit(input.limit),
+    cursor: input.cursor,
+  });
+  return ok("search_linkedin_campaigns", {
+    items: page.items.map(linkedinCampaignView),
+    nextCursor: page.nextCursor,
+  });
+}
+
+export async function getLinkedinCampaign(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof getLinkedinCampaignSchema>,
+): Promise<CrmToolSuccess> {
+  const campaign = await runtime.services.linkedInCampaigns.getCampaign(ctx, input.campaignId);
+  return ok("get_linkedin_campaign", { campaign: linkedinCampaignView(campaign) }, {
+    entityType: "linkedin_campaign",
+    entityIds: [campaign.id],
+    summary: `Campaña LinkedIn ${campaign.name} (${campaign.status}); organización manual`,
+  });
+}
+
+export async function previewLinkedinCampaign(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof previewLinkedinCampaignSchema>,
+): Promise<CrmToolSuccess> {
+  const preview = await runtime.services.linkedInCampaigns.previewCampaign(ctx, input.campaignId);
+  return ok("preview_linkedin_campaign", {
+    campaign: linkedinCampaignView(preview.campaign),
+    members: preview.members.slice(0, 100).map(linkedinMemberView),
+    summary: preview.summary,
+    truncated: preview.members.length > 100,
+    automated: false,
+  }, {
+    entityType: "linkedin_campaign",
+    entityIds: [preview.campaign.id],
+    summary: `Preview manual de ${preview.campaign.name}; no se envió ni automatizó nada`,
+  });
+}
+
+export async function searchLinkedinPendingActions(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof searchLinkedinPendingActionsSchema>,
+): Promise<CrmToolSuccess> {
+  const limit = pageLimit(input.limit);
+  const page = await runtime.services.linkedInCampaigns.pendingActions(ctx, input.dueBefore, limit);
+  return ok("search_linkedin_pending_actions", {
+    items: page.items.slice(0, limit).map(linkedinMemberView),
+    nextCursor: page.nextCursor,
+  });
+}
+
 export const CRM_READ_HANDLERS = {
   search_companies: { schema: searchCompaniesSchema, run: searchCompanies },
   get_company: { schema: getCompanySchema, run: getCompany },
@@ -563,4 +655,11 @@ export const CRM_READ_HANDLERS = {
   search_opportunities: { schema: searchOpportunitiesSchema, run: searchOpportunities },
   get_opportunity: { schema: getOpportunitySchema, run: getOpportunity },
   preview_campaign: { schema: previewCampaignSchema, run: previewCampaign },
+  search_linkedin_campaigns: { schema: searchLinkedinCampaignsSchema, run: searchLinkedinCampaigns },
+  get_linkedin_campaign: { schema: getLinkedinCampaignSchema, run: getLinkedinCampaign },
+  preview_linkedin_campaign: { schema: previewLinkedinCampaignSchema, run: previewLinkedinCampaign },
+  search_linkedin_pending_actions: {
+    schema: searchLinkedinPendingActionsSchema,
+    run: searchLinkedinPendingActions,
+  },
 } as const;

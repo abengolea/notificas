@@ -348,13 +348,13 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
     <div className="space-y-6">
       <MarketingSubnav />
       <p className="text-sm">
-        <Link href="/admin/marketing/campanas" className="text-muted-foreground hover:text-foreground">← Campañas</Link>
+        <Link href="/admin/marketing/campanas" className="text-muted-foreground hover:text-foreground">← Campañas email</Link>
       </p>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h3 className="text-xl font-semibold">{campaign.name}</h3>
           <p className="text-sm text-muted-foreground">
-            {campaign.listName || (campaign.country === "all" ? "Sin lista nominada" : countryName(campaign.country))} · {campaign.subject}
+            Campaña email · {campaign.listName || (campaign.country === "all" ? "Sin lista nominada" : countryName(campaign.country))} · {campaign.subject}
             {archived ? " · Archivada" : ""}
           </p>
         </div>

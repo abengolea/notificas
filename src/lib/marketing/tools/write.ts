@@ -7,6 +7,7 @@ import { clarificationResult, resolveCompanyByName } from "./helpers";
 import { sanitizeCrmPayload } from "./sanitize";
 import {
   addContactToListSchema,
+  addContactToLinkedinCampaignSchema,
   campaignIdSchema,
   cancelTaskSchema,
   completeTaskSchema,
@@ -14,6 +15,7 @@ import {
   createCompanySchema,
   createContactSchema,
   createListSchema,
+  createLinkedinCampaignDraftSchema,
   createNoteSchema,
   createOpportunitySchema,
   createTaskSchema,
@@ -21,6 +23,10 @@ import {
   updateCompanySchema,
   updateContactSchema,
   updateOpportunitySchema,
+  removeContactFromLinkedinCampaignSchema,
+  updateLinkedinCampaignSchema,
+  updateLinkedinCampaignMemberSchema,
+  recordLinkedinActionSchema,
 } from "./schemas";
 
 function ok(
@@ -137,11 +143,18 @@ export async function createContact(
     ctx.idempotencyKey,
     ctx.conversationId,
     input.email,
+    input.linkedinUrl,
     company.id,
   ]);
   return remember(runtime, key, async () => {
     const contact = await runtime.services.contacts.createContact(ctx, {
       email: input.email,
+      linkedinUrl: input.linkedinUrl,
+      linkedinStatus: input.linkedinStatus,
+      linkedinLastContactAt: input.linkedinLastContactAt,
+      linkedinNextActionAt: input.linkedinNextActionAt,
+      linkedinNotes: input.linkedinNotes,
+      prospectingSource: input.prospectingSource,
       name: input.name,
       companyId: company.id || undefined,
       company: company.name,
@@ -158,9 +171,19 @@ export async function createContact(
           name: contact.name,
           email: contact.email,
           companyId: contact.companyId || null,
+          linkedinUrl: contact.linkedinUrl || null,
+          linkedinStatus: contact.linkedinStatus || null,
+          linkedinLastContactAt: contact.linkedinLastContactAt || null,
+          linkedinNextActionAt: contact.linkedinNextActionAt || null,
+          linkedinNotes: contact.linkedinNotes || null,
+          prospectingSource: contact.prospectingSource || null,
         },
       },
-      { entityType: "contact", entityIds: [contact.id], summary: `Contacto creado: ${contact.name || contact.email}` },
+      {
+        entityType: "contact",
+        entityIds: [contact.id],
+        summary: `Contacto creado: ${contact.name || contact.email || contact.linkedinUrl}`,
+      },
     );
   });
 }
@@ -173,8 +196,24 @@ export async function updateContact(
   const updated = await runtime.services.contacts.updateContact(ctx, input.contactId, input.changes);
   return ok(
     "update_contact",
-    { contact: { id: updated.id, name: updated.name, email: updated.email } },
-    { entityType: "contact", entityIds: [updated.id], summary: `Contacto actualizado: ${updated.name || updated.email}` },
+    {
+      contact: {
+        id: updated.id,
+        name: updated.name,
+        email: updated.email,
+        linkedinUrl: updated.linkedinUrl || null,
+        linkedinStatus: updated.linkedinStatus || null,
+        linkedinLastContactAt: updated.linkedinLastContactAt || null,
+        linkedinNextActionAt: updated.linkedinNextActionAt || null,
+        linkedinNotes: updated.linkedinNotes || null,
+        prospectingSource: updated.prospectingSource || null,
+      },
+    },
+    {
+      entityType: "contact",
+      entityIds: [updated.id],
+      summary: `Contacto actualizado: ${updated.name || updated.email || updated.linkedinUrl}`,
+    },
   );
 }
 
@@ -517,6 +556,216 @@ export async function resumeCampaign(
   );
 }
 
+function linkedInMemberChanges(input: {
+  status?: string;
+  connectionMessage?: string;
+  directMessage?: string;
+  followUpMessage?: string;
+  notes?: string;
+  nextActionAt?: string | null;
+}) {
+  return {
+    status: input.status,
+    connectionMessage: input.connectionMessage,
+    message: input.directMessage,
+    followUpMessage: input.followUpMessage,
+    notes: input.notes,
+    nextActionAt: input.nextActionAt,
+  };
+}
+
+function linkedInCampaignResult(campaign: { id: string; name: string; status: string; message?: string; [key: string]: unknown }) {
+  const { message, ...rest } = campaign;
+  return { ...rest, directMessage: message || null, automated: false };
+}
+
+function linkedInMemberResult(member: { id: string; message?: string; [key: string]: unknown }) {
+  const { message, ...rest } = member;
+  return { ...rest, directMessage: message || null, automated: false };
+}
+
+export async function createLinkedinCampaignDraft(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof createLinkedinCampaignDraftSchema>,
+): Promise<CrmToolSuccess> {
+  const key = crmIdempotencyKey([
+    ctx.workspaceId,
+    "create_linkedin_campaign_draft",
+    ctx.idempotencyKey,
+    input.idempotencyKey,
+    ctx.conversationId,
+    input.name,
+  ]);
+  return remember(runtime, key, async () => {
+    const campaign = await runtime.services.linkedInCampaigns.createCampaign(ctx, {
+      name: input.name,
+      description: input.description,
+      countryCode: input.countryCode,
+      industryIds: input.industryIds,
+      useCaseIds: input.useCaseIds,
+      listId: input.listId,
+      commercialInitiativeId: input.commercialInitiativeId,
+      messageType: input.messageType,
+      connectionMessage: input.connectionMessage,
+      message: input.directMessage,
+      followUpMessage: input.followUpMessage,
+      notes: input.notes,
+    });
+    return ok("create_linkedin_campaign_draft", { campaign: linkedInCampaignResult(campaign) }, {
+      entityType: "linkedin_campaign",
+      entityIds: [campaign.id],
+      summary: `Borrador LinkedIn creado para organización manual: ${campaign.name}. No se envió ni automatizó nada.`,
+    });
+  });
+}
+
+export async function updateLinkedinCampaign(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof updateLinkedinCampaignSchema>,
+): Promise<CrmToolSuccess> {
+  const key = crmIdempotencyKey([
+    ctx.workspaceId,
+    "update_linkedin_campaign",
+    ctx.idempotencyKey,
+    input.idempotencyKey,
+    input.campaignId,
+    JSON.stringify(input.changes),
+  ]);
+  return remember(runtime, key, async () => {
+    const { directMessage, ...changes } = input.changes;
+    const campaign = await runtime.services.linkedInCampaigns.updateCampaign(ctx, input.campaignId, {
+      ...changes,
+      message: directMessage,
+    });
+    return ok("update_linkedin_campaign", { campaign: linkedInCampaignResult(campaign) }, {
+      entityType: "linkedin_campaign",
+      entityIds: [campaign.id],
+      summary: `Campaña LinkedIn actualizada para organización manual: ${campaign.name}`,
+    });
+  });
+}
+
+export async function addContactToLinkedinCampaign(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof addContactToLinkedinCampaignSchema>,
+): Promise<CrmToolSuccess> {
+  const key = crmIdempotencyKey([
+    ctx.workspaceId,
+    "add_contact_to_linkedin_campaign",
+    ctx.idempotencyKey,
+    input.idempotencyKey,
+    input.campaignId,
+    input.contactId,
+    JSON.stringify(input.member),
+  ]);
+  return remember(runtime, key, async () => {
+    let member = await runtime.services.linkedInCampaigns.addMember(ctx, input.campaignId, input.contactId);
+    if (input.member && Object.keys(input.member).length) {
+      member = await runtime.services.linkedInCampaigns.updateMember(
+        ctx,
+        input.campaignId,
+        member.id,
+        linkedInMemberChanges(input.member) as never,
+      );
+    }
+    return ok("add_contact_to_linkedin_campaign", { member: linkedInMemberResult(member) }, {
+      entityType: "linkedin_campaign_member",
+      entityIds: [input.campaignId, member.id, input.contactId],
+      summary: "Contacto agregado a campaña LinkedIn para organización manual; no se envió nada",
+    });
+  });
+}
+
+export async function removeContactFromLinkedinCampaign(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof removeContactFromLinkedinCampaignSchema>,
+): Promise<CrmToolSuccess> {
+  const key = crmIdempotencyKey([
+    ctx.workspaceId,
+    "remove_contact_from_linkedin_campaign",
+    ctx.idempotencyKey,
+    input.idempotencyKey,
+    input.campaignId,
+    input.memberId,
+  ]);
+  return remember(runtime, key, async () => {
+    await runtime.services.linkedInCampaigns.removeMember(ctx, input.campaignId, input.memberId);
+    return ok("remove_contact_from_linkedin_campaign", {
+      campaignId: input.campaignId,
+      memberId: input.memberId,
+      removed: true,
+      automated: false,
+    }, {
+      entityType: "linkedin_campaign_member",
+      entityIds: [input.campaignId, input.memberId],
+      summary: "Contacto removido de la organización manual de la campaña LinkedIn",
+    });
+  });
+}
+
+export async function updateLinkedinCampaignMember(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof updateLinkedinCampaignMemberSchema>,
+): Promise<CrmToolSuccess> {
+  const key = crmIdempotencyKey([
+    ctx.workspaceId,
+    "update_linkedin_campaign_member",
+    ctx.idempotencyKey,
+    input.idempotencyKey,
+    input.campaignId,
+    input.memberId,
+    JSON.stringify(input.changes),
+  ]);
+  return remember(runtime, key, async () => {
+    const member = await runtime.services.linkedInCampaigns.updateMember(
+      ctx,
+      input.campaignId,
+      input.memberId,
+      linkedInMemberChanges(input.changes) as never,
+    );
+    return ok("update_linkedin_campaign_member", { member: linkedInMemberResult(member) }, {
+      entityType: "linkedin_campaign_member",
+      entityIds: [input.campaignId, member.id],
+      summary: "Miembro LinkedIn actualizado para organización manual; no se envió nada",
+    });
+  });
+}
+
+export async function recordLinkedinAction(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof recordLinkedinActionSchema>,
+): Promise<CrmToolSuccess> {
+  const key = crmIdempotencyKey([
+    ctx.workspaceId,
+    "record_linkedin_action",
+    ctx.idempotencyKey,
+    input.idempotencyKey,
+    input.campaignId,
+    input.memberId,
+    input.action,
+    input.occurredAt,
+  ]);
+  return remember(runtime, key, async () => {
+    const member = await runtime.services.linkedInCampaigns.recordAction(ctx, input.campaignId, input.memberId, {
+      action: input.action,
+      at: input.occurredAt,
+      notes: input.notes,
+      nextActionAt: input.nextActionAt,
+    });
+    return ok("record_linkedin_action", { member: linkedInMemberResult(member), recorded: true }, {
+      entityType: "linkedin_campaign_member",
+      entityIds: [input.campaignId, member.id],
+      summary: `Acción LinkedIn registrada manualmente: ${input.action}. La herramienta no ejecutó la acción.`,
+    });
+  });
+}
+
 export const CRM_WRITE_HANDLERS = {
   create_company: { schema: createCompanySchema, run: createCompany },
   update_company: { schema: updateCompanySchema, run: updateCompany },
@@ -537,4 +786,22 @@ export const CRM_WRITE_HANDLERS = {
   restore_campaign: { schema: campaignIdSchema, run: restoreCampaign },
   pause_campaign: { schema: campaignIdSchema, run: pauseCampaign },
   resume_campaign: { schema: campaignIdSchema, run: resumeCampaign },
+  create_linkedin_campaign_draft: {
+    schema: createLinkedinCampaignDraftSchema,
+    run: createLinkedinCampaignDraft,
+  },
+  update_linkedin_campaign: { schema: updateLinkedinCampaignSchema, run: updateLinkedinCampaign },
+  add_contact_to_linkedin_campaign: {
+    schema: addContactToLinkedinCampaignSchema,
+    run: addContactToLinkedinCampaign,
+  },
+  remove_contact_from_linkedin_campaign: {
+    schema: removeContactFromLinkedinCampaignSchema,
+    run: removeContactFromLinkedinCampaign,
+  },
+  update_linkedin_campaign_member: {
+    schema: updateLinkedinCampaignMemberSchema,
+    run: updateLinkedinCampaignMember,
+  },
+  record_linkedin_action: { schema: recordLinkedinActionSchema, run: recordLinkedinAction },
 } as const;

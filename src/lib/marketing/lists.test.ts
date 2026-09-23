@@ -43,6 +43,17 @@ test("etapas excluidas no son enviables", () => {
   assert.equal(bounced.eligible, false);
 });
 
+test("contactos sin email válido nunca son elegibles para campañas de email", () => {
+  const linkedinOnly = toRecipientRow({ id: "linkedin", email: "", stage: "new" });
+  assert.equal(linkedinOnly.eligible, false);
+  assert.equal(linkedinOnly.skipReason, "Email inválido o faltante");
+  const malformed = toRecipientRow({ id: "bad", email: "not-an-email", stage: "new" });
+  assert.equal(malformed.eligible, false);
+  const valid = toRecipientRow({ id: "email", email: " VALID@EXAMPLE.COM ", stage: "new" });
+  assert.equal(valid.eligible, true);
+  assert.equal(valid.email, "valid@example.com");
+});
+
 test("nombre de lista se normaliza", () => {
   assert.equal(listNameKey("  Cuba   marzo  "), "cuba marzo");
 });

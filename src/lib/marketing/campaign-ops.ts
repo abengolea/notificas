@@ -70,6 +70,7 @@ export function copiedCampaignFields(
     fromEmail: source.fromEmail || marketingFromEmail(),
     fromName: source.fromName || marketingFromName(),
     status: "draft",
+    channel: "email",
     includeStages: includeStages.length ? includeStages : ["new"],
     contactCount: Number(source.contactCount) || 0,
     stats: emptyCampaignStats(),

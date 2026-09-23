@@ -533,3 +533,165 @@ test("opportunities search and get", async () => {
   assert.equal(got.ok, true);
 });
 
+test("LinkedIn CRM tools run manual campaign, member, action, and pending flows", async () => {
+  const { runtime, ctx } = setup();
+  const contactResult = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "create_contact",
+    args: {
+      name: "LinkedIn Only",
+      linkedinUrl: "https://linkedin.com/in/crm-tool-only",
+      linkedinStatus: "not_contacted",
+      linkedinNextActionAt: "2026-09-23T10:00:00.000Z",
+      prospectingSource: "linkedin",
+      countryCode: "AR",
+    },
+    mode: "readwrite",
+  });
+  assert.equal(contactResult.ok, true);
+  if (!contactResult.ok) return;
+  const contact = (contactResult.data as {
+    contact: { id: string; email: string; linkedinUrl: string; prospectingSource: string };
+  }).contact;
+  assert.equal(contact.email, "");
+  assert.equal(contact.linkedinUrl, "https://linkedin.com/in/crm-tool-only");
+  assert.equal(contact.prospectingSource, "linkedin");
+
+  const draftResult = await executeCrmTool({
+    runtime,
+    ctx: { ...ctx, idempotencyKey: "linkedin-draft-1" },
+    name: "create_linkedin_campaign_draft",
+    args: {
+      name: "Manual outreach",
+      countryCode: "AR",
+      industryIds: ["insurance"],
+      useCaseIds: ["collections"],
+      connectionMessage: "Connection template",
+      directMessage: "Direct template",
+      followUpMessage: "Follow-up template",
+    },
+    mode: "readwrite",
+  });
+  assert.equal(draftResult.ok, true);
+  if (!draftResult.ok) return;
+  const campaign = (draftResult.data as {
+    campaign: { id: string; status: string; directMessage: string; automated: boolean };
+  }).campaign;
+  assert.equal(campaign.status, "draft");
+  assert.equal(campaign.directMessage, "Direct template");
+  assert.equal(campaign.automated, false);
+
+  const addResult = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "add_contact_to_linkedin_campaign",
+    args: {
+      campaignId: campaign.id,
+      contactId: contact.id,
+      member: {
+        connectionMessage: "Personal connection",
+        directMessage: "Personal direct",
+        followUpMessage: "Personal follow-up",
+        status: "connection_ready",
+        nextActionAt: "2026-09-23T11:00:00.000Z",
+      },
+    },
+    mode: "readwrite",
+  });
+  assert.equal(addResult.ok, true);
+  if (!addResult.ok) return;
+  const member = (addResult.data as {
+    member: { id: string; directMessage: string; status: string; nextActionAt: string };
+  }).member;
+  assert.equal(member.directMessage, "Personal direct");
+  assert.equal(member.status, "connection_ready");
+
+  const actionResult = await executeCrmTool({
+    runtime,
+    ctx: { ...ctx, idempotencyKey: "linkedin-action-1" },
+    name: "record_linkedin_action",
+    args: {
+      campaignId: campaign.id,
+      memberId: member.id,
+      action: "connection_sent",
+      occurredAt: "2026-09-23T12:00:00.000Z",
+      notes: "Recorded after manual action",
+      nextActionAt: "2026-09-24T10:00:00.000Z",
+    },
+    mode: "readwrite",
+  });
+  assert.equal(actionResult.ok, true);
+  if (!actionResult.ok) return;
+  assert.equal((actionResult.data as { member: { connectionSentAt: string } }).member.connectionSentAt, "2026-09-23T12:00:00.000Z");
+
+  const pending = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "search_linkedin_pending_actions",
+    args: { dueBefore: "2026-09-25T00:00:00.000Z", limit: 10 },
+    mode: "read",
+  });
+  assert.equal(pending.ok, true);
+  if (!pending.ok) return;
+  assert.deepEqual((pending.data as { items: Array<{ id: string }> }).items.map((item) => item.id), [member.id]);
+
+  for (const [name, args] of [
+    ["search_linkedin_campaigns", { countryCode: "AR" }],
+    ["get_linkedin_campaign", { campaignId: campaign.id }],
+    ["preview_linkedin_campaign", { campaignId: campaign.id }],
+  ] as const) {
+    const result = await executeCrmTool({ runtime, ctx, name, args, mode: "read" });
+    assert.equal(result.ok, true, name);
+  }
+
+  const updatedContact = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "update_contact",
+    args: {
+      contactId: contact.id,
+      changes: {
+        email: "linkedin-only@example.com",
+        linkedinNotes: "Qualified manually",
+        linkedinStatus: "connected",
+      },
+    },
+    mode: "readwrite",
+  });
+  assert.equal(updatedContact.ok, true);
+  if (!updatedContact.ok) return;
+  assert.equal((updatedContact.data as { contact: { email: string } }).contact.email, "linkedin-only@example.com");
+
+  const archived = await executeCrmTool({
+    runtime,
+    ctx: { ...ctx, idempotencyKey: "linkedin-archive-1" },
+    name: "update_linkedin_campaign",
+    args: {
+      campaignId: campaign.id,
+      changes: { status: "archived", countryCode: null },
+    },
+    mode: "readwrite",
+  });
+  assert.equal(archived.ok, true);
+  if (!archived.ok) return;
+  const archivedCampaign = (archived.data as {
+    campaign: { status: string; archivedAt: string; countryCode: string | null };
+  }).campaign;
+  assert.equal(archivedCampaign.status, "archived");
+  assert.ok(archivedCampaign.archivedAt);
+  assert.equal(archivedCampaign.countryCode, null);
+});
+
+test("LinkedIn send tools are absent and forbidden", async () => {
+  const { runtime, ctx } = setup();
+  const listed = mcpCrmToolDefinitions().map((tool) => tool.name);
+  for (const name of ["send_linkedin_message", "send_linkedin_campaign"]) {
+    assert.equal(listed.includes(name as never), false);
+    const result = await executeCrmTool({ runtime, ctx, name, args: {}, mode: "readwrite" });
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.equal(result.error.code, "forbidden_tool");
+  }
+});
+

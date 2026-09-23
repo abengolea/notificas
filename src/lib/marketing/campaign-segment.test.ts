@@ -69,6 +69,13 @@ test("la audiencia CRM filtra país + rubro + caso de uso", async () => {
     companyId: camuzzi.company.id,
     countryCode: "AR",
   });
+  await services.contacts.createContact(ctx, {
+    linkedinUrl: "https://linkedin.com/in/camuzzi-linkedin-only",
+    name: "LinkedIn only",
+    company: "Camuzzi Gas",
+    companyId: camuzzi.company.id,
+    countryCode: "AR",
+  });
   const arGas = await previewCrmCampaignAudience(
     { countryCode: "AR", industryId: "gas", useCaseId: "aviso_corte" },
     ["new", "sent", "opened", "clicked", "replied"],
@@ -76,6 +83,8 @@ test("la audiencia CRM filtra país + rubro + caso de uso", async () => {
   );
   assert.equal(arGas.companyCount, 1);
   assert.equal(arGas.eligible, 1);
+  assert.equal(arGas.total, 2);
+  assert.equal(arGas.skipped, 1);
   assert.equal(arGas.contacts[0]?.email, "ops@camuzzi.test");
 
   const clGas = await previewCrmCampaignAudience(

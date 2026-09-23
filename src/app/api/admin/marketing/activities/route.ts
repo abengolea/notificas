@@ -6,6 +6,7 @@ import { getAdminDb } from "@/lib/firebase-admin";
 import { parseAdminFilterValue } from "@/lib/marketing/admin-filters";
 import { MARKETING_ACTIVITIES } from "@/lib/marketing/collections";
 import { serializeAdminDoc } from "@/lib/marketing/events";
+import { getMarketingWorkspaceId } from "@/lib/marketing/workspace";
 
 const postSchema = z.object({
   type: z.enum(["note_added", "call", "meeting", "demo", "follow_up_created"]).default("note_added"),
@@ -27,7 +28,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = getAdminDb();
-    let query: FirebaseFirestore.Query = db.collection(MARKETING_ACTIVITIES);
+    const workspaceId = getMarketingWorkspaceId();
+    let query: FirebaseFirestore.Query = db
+      .collection(MARKETING_ACTIVITIES)
+      .where("workspaceId", "==", workspaceId);
 
     if (companyId) {
       query = query.where("companyId", "==", companyId);
@@ -60,6 +64,7 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getAdminDb();
+    const workspaceId = getMarketingWorkspaceId();
     const ref = db.collection(MARKETING_ACTIVITIES).doc();
     await ref.set({
       type: parsed.data.type,
@@ -68,6 +73,7 @@ export async function POST(request: NextRequest) {
       companyId: parsed.data.companyId || null,
       contactId: parsed.data.contactId || null,
       opportunityId: parsed.data.opportunityId || null,
+      workspaceId,
       actorType: "user",
       createdAt: FieldValue.serverTimestamp(),
     });

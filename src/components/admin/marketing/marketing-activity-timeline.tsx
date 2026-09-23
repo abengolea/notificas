@@ -5,7 +5,7 @@ import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import {
   Phone, Mail, Users, MonitorPlay, MessageSquare, FileText,
-  CheckCircle2, PlusCircle, AlertCircle, Bot, Loader2,
+  CheckCircle2, PlusCircle, AlertCircle, Bot, Loader2, Linkedin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -41,6 +41,13 @@ const ICONS: Record<string, React.ElementType> = {
   status_changed: AlertCircle,
   ai_event: Bot,
   system_event: Bot,
+  linkedin_connection_sent: Linkedin,
+  linkedin_connected: Linkedin,
+  linkedin_message_sent: Linkedin,
+  linkedin_follow_up_sent: Linkedin,
+  linkedin_replied: Linkedin,
+  linkedin_interested: Linkedin,
+  linkedin_not_interested: Linkedin,
 };
 
 const ICON_COLORS: Record<string, string> = {
@@ -55,6 +62,41 @@ const ICON_COLORS: Record<string, string> = {
   status_changed: "text-indigo-500",
   ai_event: "text-pink-500",
   system_event: "text-muted-foreground",
+  linkedin_connection_sent: "text-sky-600",
+  linkedin_connected: "text-blue-600",
+  linkedin_message_sent: "text-indigo-600",
+  linkedin_follow_up_sent: "text-violet-600",
+  linkedin_replied: "text-emerald-600",
+  linkedin_interested: "text-green-700",
+  linkedin_not_interested: "text-muted-foreground",
+};
+
+const LINKEDIN_TYPES = new Set([
+  "linkedin_connection_sent",
+  "linkedin_connected",
+  "linkedin_message_sent",
+  "linkedin_follow_up_sent",
+  "linkedin_replied",
+  "linkedin_interested",
+  "linkedin_not_interested",
+]);
+
+const EMAIL_TYPES = new Set([
+  "email_sent",
+  "email_delivered",
+  "email_opened",
+  "email_clicked",
+  "email_replied",
+]);
+
+const LINKEDIN_ACTIVITY_LABEL: Record<string, string> = {
+  linkedin_connection_sent: "Solicitud de conexión enviada",
+  linkedin_connected: "Conexión aceptada",
+  linkedin_message_sent: "Mensaje de LinkedIn enviado",
+  linkedin_follow_up_sent: "Seguimiento de LinkedIn enviado",
+  linkedin_replied: "Respondió por LinkedIn",
+  linkedin_interested: "Interesado por LinkedIn",
+  linkedin_not_interested: "No interesado por LinkedIn",
 };
 
 function ActivityIcon({ type }: { type: string }) {
@@ -140,10 +182,37 @@ export function MarketingActivityTimeline({ companyId, contactId, opportunityId 
     }
   }
 
+  const activityGroup = (title: string, rows: Activity[]) => (
+    <section className="space-y-2" aria-label={title}>
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h4>
+      {rows.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Sin actividad registrada.</p>
+      ) : (
+        <ol className="space-y-1">
+          {rows.map((act) => (
+            <li key={act.id} className="flex gap-2.5">
+              <div className="flex flex-col items-center pt-0.5">
+                <ActivityIcon type={act.type} />
+                <div className="mt-1 w-px flex-1 bg-border" />
+              </div>
+              <div className="min-w-0 pb-3">
+                <p className="text-sm leading-snug">{LINKEDIN_ACTIVITY_LABEL[act.type] || act.title}</p>
+                {act.description && (
+                  <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{act.description}</p>
+                )}
+                <p className="mt-0.5 text-xs text-muted-foreground">{relativeTime(act.createdAt)}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium">Actividad</h3>
+        <h3 className="text-sm font-medium">Actividad comercial</h3>
         <Button variant="outline" size="sm" onClick={() => setShowNote((v) => !v)}>
           + Actividad
         </Button>
@@ -188,23 +257,16 @@ export function MarketingActivityTimeline({ companyId, contactId, opportunityId 
       ) : activities.length === 0 ? (
         <p className="text-sm text-muted-foreground">Sin actividad registrada.</p>
       ) : (
-        <ol className="space-y-1">
-          {activities.map((act) => (
-            <li key={act.id} className="flex gap-2.5">
-              <div className="flex flex-col items-center pt-0.5">
-                <ActivityIcon type={act.type} />
-                <div className="mt-1 w-px flex-1 bg-border" />
-              </div>
-              <div className="pb-3 min-w-0">
-                <p className="text-sm leading-snug">{act.title}</p>
-                {act.description && (
-                  <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{act.description}</p>
-                )}
-                <p className="mt-0.5 text-xs text-muted-foreground">{relativeTime(act.createdAt)}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
+        <div className="space-y-5">
+          {activityGroup("LinkedIn", activities.filter((activity) => LINKEDIN_TYPES.has(activity.type)))}
+          {activityGroup("Email", activities.filter((activity) => EMAIL_TYPES.has(activity.type)))}
+          {activityGroup(
+            "Otras actividades",
+            activities.filter(
+              (activity) => !LINKEDIN_TYPES.has(activity.type) && !EMAIL_TYPES.has(activity.type),
+            ),
+          )}
+        </div>
       )}
     </div>
   );

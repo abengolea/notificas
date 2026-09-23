@@ -5,6 +5,8 @@ import type {
   MarketingCountry,
   MarketingIndustry,
   MarketingListMembership,
+  MarketingLinkedInCampaign,
+  MarketingLinkedInCampaignMember,
   MarketingMessageTemplate,
   MarketingMessageTemplateVersion,
   MarketingOpportunity,
@@ -64,6 +66,23 @@ export type ActivityListFilters = {
   cursor?: string;
 };
 
+export type LinkedInCampaignSearchFilters = {
+  query?: string;
+  status?: MarketingLinkedInCampaign["status"];
+  countryCode?: string;
+  archived?: "exclude" | "include" | "only";
+  limit?: number;
+  cursor?: string;
+};
+
+export type LinkedInMemberListFilters = {
+  campaignId?: string;
+  status?: MarketingLinkedInCampaignMember["status"];
+  dueBefore?: string;
+  limit?: number;
+  cursor?: string;
+};
+
 /** Contacto de dominio: workspace hidratado en lectura (v1 sin campo → workspace default). */
 export type MarketingContactRecord = MarketingContact & { workspaceId: string };
 
@@ -79,6 +98,7 @@ export interface MarketingCompanyRepository {
 export interface MarketingContactRepository {
   getById(id: string): Promise<MarketingContactRecord | null>;
   getByEmail(email: string): Promise<MarketingContactRecord | null>;
+  getByLinkedInUrl(workspaceId: string, linkedinUrl: string): Promise<MarketingContactRecord | null>;
   create(doc: MarketingContactRecord): Promise<void>;
   update(id: string, patch: Partial<MarketingContactRecord>): Promise<void>;
   search(workspaceId: string, filters: ContactSearchFilters): Promise<MarketingPage<MarketingContactRecord>>;
@@ -179,6 +199,37 @@ export interface MarketingActivityRepository {
   ): Promise<MarketingPage<MarketingActivity>>;
 }
 
+export interface MarketingLinkedInCampaignRepository {
+  create(doc: MarketingLinkedInCampaign): Promise<void>;
+  getById(workspaceId: string, id: string): Promise<MarketingLinkedInCampaign | null>;
+  update(workspaceId: string, id: string, patch: Partial<MarketingLinkedInCampaign>): Promise<void>;
+  adjustMemberCount(
+    workspaceId: string,
+    id: string,
+    delta: number,
+    updatedAt: string,
+  ): Promise<number | null>;
+  search(
+    workspaceId: string,
+    filters: LinkedInCampaignSearchFilters,
+  ): Promise<MarketingPage<MarketingLinkedInCampaign>>;
+}
+
+export interface MarketingLinkedInCampaignMemberRepository {
+  create(doc: MarketingLinkedInCampaignMember): Promise<boolean>;
+  getById(workspaceId: string, id: string): Promise<MarketingLinkedInCampaignMember | null>;
+  update(workspaceId: string, id: string, patch: Partial<MarketingLinkedInCampaignMember>): Promise<void>;
+  remove(workspaceId: string, id: string): Promise<boolean>;
+  listAllForCampaign(
+    workspaceId: string,
+    campaignId: string,
+  ): Promise<MarketingLinkedInCampaignMember[]>;
+  list(
+    workspaceId: string,
+    filters: LinkedInMemberListFilters,
+  ): Promise<MarketingPage<MarketingLinkedInCampaignMember>>;
+}
+
 export interface MarketingTaskRepository {
   create(doc: MarketingTask): Promise<void>;
   getById(workspaceId: string, id: string): Promise<MarketingTask | null>;
@@ -206,4 +257,6 @@ export type MarketingRepositories = {
   activities: MarketingActivityRepository;
   tasks: MarketingTaskRepository;
   opportunities: MarketingOpportunityRepository;
+  linkedInCampaigns: MarketingLinkedInCampaignRepository;
+  linkedInCampaignMembers: MarketingLinkedInCampaignMemberRepository;
 };

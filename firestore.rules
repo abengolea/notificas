@@ -366,6 +366,8 @@ service cloud.firestore {
     match /marketing_saved_searches/{id} { allow read, write: if false; }
     match /marketing_duplicate_candidates/{id} { allow read, write: if false; }
     match /marketing_stats/{id} { allow read, write: if false; }
+    match /marketing_linkedin_campaigns/{id} { allow read, write: if false; }
+    match /marketing_linkedin_campaign_members/{id} { allow read, write: if false; }
     match /marketing_ai_inbox/{id} { allow read, write: if false; }
     match /marketing_ai_audit_logs/{id} { allow read, write: if false; }
     match /marketing_action_confirmations/{id} { allow read, write: if false; }

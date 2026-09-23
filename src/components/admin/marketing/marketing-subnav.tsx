@@ -16,7 +16,8 @@ const links = [
   { href: "/admin/marketing/contactos", label: "Contactos" },
   { href: "/admin/marketing/tareas", label: "Tareas", badge: true },
   { href: "/admin/marketing/respuestas", label: "Respuestas" },
-  { href: "/admin/marketing/campanas", label: "Campañas" },
+  { href: "/admin/marketing/campanas", label: "Campañas email" },
+  { href: "/admin/marketing/linkedin/campanas", label: "Campañas LinkedIn" },
   { href: "/admin/marketing/catalogo", label: "Catálogo" },
 ] as const;
 

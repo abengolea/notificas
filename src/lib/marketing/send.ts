@@ -9,6 +9,7 @@ import { recordMarketingEvent } from "./events";
 import { namedRecipientSource, contactMatchesSource } from "./lists";
 import { marketingFromHeader, marketingFromName, marketingReplyTo } from "./types";
 import { marketingUnsubUrl } from "./tokens";
+import { isValidEmail } from "./csv";
 
 const BATCH = Math.max(1, Math.min(20, Number(process.env.MARKETING_SEND_BATCH || 8) || 8));
 
@@ -16,6 +17,16 @@ type ResendSendResult = {
   id?: string;
   message_id?: string;
 };
+
+export function assertEmailOnlyMarketingCampaign(campaign: Record<string, unknown>): void {
+  if (campaign.channel !== undefined && campaign.channel !== "email") {
+    throw Object.assign(new Error("La campaña no es de email"), { status: 409 });
+  }
+}
+
+export function canQueueMarketingEmail(contact: Record<string, unknown>): boolean {
+  return isValidEmail(String(contact.email || "").trim().toLowerCase());
+}
 
 export async function sendMarketingEmailViaResend(input: {
   to: string;
@@ -74,6 +85,7 @@ export async function tickMarketingCampaign(campaignId: string): Promise<{
   const campSnap = await campRef.get();
   if (!campSnap.exists) throw Object.assign(new Error("Campaña no encontrada"), { status: 404 });
   const camp = campSnap.data() || {};
+  assertEmailOnlyMarketingCampaign(camp);
   if (camp.archivedAt) {
     return { processed: 0, remaining: 0, done: true, errors: 0 };
   }
@@ -108,6 +120,21 @@ export async function tickMarketingCampaign(campaignId: string): Promise<{
   const companyNameById = new Map<string, string>();
   for (const doc of queuedSnap.docs) {
     const send = doc.data();
+    if (!canQueueMarketingEmail(send)) {
+      errors += 1;
+      await doc.ref.update({
+        status: "failed",
+        lastError: "invalid_or_missing_email",
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      await campRef.update({
+        "stats.queued": FieldValue.increment(-1),
+        "stats.failed": FieldValue.increment(1),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      processed += 1;
+      continue;
+    }
     const contactSnap = await db.collection(MARKETING_CONTACTS).doc(String(send.contactId)).get();
     const contact = contactSnap.data() || {};
     const companyId = String(contact.companyId || send.companyId || "").trim();
@@ -209,6 +236,7 @@ export async function enqueueCampaignSends(campaignId: string): Promise<{ queued
   const campSnap = await campRef.get();
   if (!campSnap.exists) throw Object.assign(new Error("Campaña no encontrada"), { status: 404 });
   const camp = campSnap.data() || {};
+  assertEmailOnlyMarketingCampaign(camp);
   if (camp.archivedAt) {
     throw Object.assign(new Error("La campaña está archivada. Restaurala para enviar."), { status: 409 });
   }
@@ -223,7 +251,7 @@ export async function enqueueCampaignSends(campaignId: string): Promise<{ queued
   if (source.kind !== "list") {
     throw Object.assign(new Error("Cargá una lista de destinatarios en la campaña."), { status: 400 });
   }
-  let q: FirebaseFirestore.Query = db.collection(MARKETING_CONTACTS).where("listIds", "array-contains", source.listId);
+  const q: FirebaseFirestore.Query = db.collection(MARKETING_CONTACTS).where("listIds", "array-contains", source.listId);
   const snap = await q.limit(5000).get();
   const include = new Set<string>(
     Array.isArray(camp.includeStages) && camp.includeStages.length
@@ -246,6 +274,7 @@ export async function enqueueCampaignSends(campaignId: string): Promise<{ queued
 
   for (const doc of snap.docs) {
     const c = doc.data();
+    if (!canQueueMarketingEmail(c)) continue;
     if (!contactMatchesSource(c, source)) continue;
     const stage = String(c.stage || "new");
     if (stage === "unsubscribed" || stage === "bounced" || stage === "not_interested") continue;
