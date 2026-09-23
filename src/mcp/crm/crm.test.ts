@@ -143,16 +143,20 @@ test("LinkedIn tools are available via dedicated scopes and existing crm tokens"
     "preview_linkedin_campaign",
     "search_linkedin_pending_actions",
     "get_linkedin_pending_actions",
+    "search_linkedin_outreach",
   ];
   const writeNames = [
     "create_linkedin_campaign_draft",
     "update_linkedin_campaign",
     "update_linkedin_campaign_draft",
     "add_contact_to_linkedin_campaign",
+    "create_linkedin_outreach",
     "remove_contact_from_linkedin_campaign",
     "update_linkedin_campaign_member",
     "record_linkedin_action",
     "update_linkedin_outreach_status",
+    "archive_linkedin_campaign",
+    "restore_linkedin_campaign",
   ];
   for (const name of readNames) {
     assert.equal(crmRead.includes(name), true);
@@ -174,10 +178,10 @@ test("LinkedIn tools are available via dedicated scopes and existing crm tokens"
   const descriptors = listAllCrmMcpTools();
   assert.deepEqual(
     descriptors.find((tool) => tool.name === "search_linkedin_campaigns")?.securitySchemes,
-    [{ type: "oauth2", scopes: ["linkedin:read"] }],
+    [{ type: "oauth2", scopes: ["crm:read"] }],
   );
   assert.deepEqual(
     descriptors.find((tool) => tool.name === "record_linkedin_action")?.securitySchemes,
-    [{ type: "oauth2", scopes: ["linkedin:write"] }],
+    [{ type: "oauth2", scopes: ["crm:write"] }],
   );
 });

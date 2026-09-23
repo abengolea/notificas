@@ -184,6 +184,7 @@ export const CRM_READ_TOOL_DEFINITIONS: CrmToolDefinition[] = [
       query: { type: "string" },
       status: { type: "string", enum: ["draft", "active", "paused", "completed", "archived"] },
       countryCode: { type: "string" },
+      industryId: { type: "string" },
       archived: { type: "string", enum: ["exclude", "include", "only"] },
       limit,
       cursor,
@@ -193,7 +194,7 @@ export const CRM_READ_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     name: "get_linkedin_campaign",
     access: "read",
     description:
-      "Get one internal CRM LinkedIn campaign record for manual organization only. Read-only; never automates, sends, connects, messages, or scrapes LinkedIn.",
+      "Get one internal CRM LinkedIn campaign with metadata, aggregate prospect counts and a bounded member sample for manual organization only. Read-only; never automates, sends, connects, messages, or scrapes LinkedIn.",
     inputSchema: obj({ campaignId: { type: "string" } }, ["campaignId"]),
   },
   {
@@ -221,6 +222,22 @@ export const CRM_READ_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     inputSchema: obj({
       dueBefore: { type: "string", description: "ISO-8601 inclusive due-date upper bound. Defaults to now." },
       limit,
+    }),
+  },
+  {
+    name: "search_linkedin_outreach",
+    access: "read",
+    description:
+      "Search LinkedIn campaign members/outreach records for manual organization only. Filter by campaignId, companyId, contactId, status (canonical or aliases like invitation_prepared) and due window. Never automates, sends, connects, messages, or scrapes LinkedIn.",
+    inputSchema: obj({
+      campaignId: { type: "string" },
+      companyId: { type: "string" },
+      contactId: { type: "string" },
+      status: { type: "string" },
+      dueBefore: { type: "string" },
+      dueAfter: { type: "string" },
+      limit,
+      cursor,
     }),
   },
 ];
@@ -558,7 +575,9 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
         name: { type: "string" },
         description: { type: "string" },
         countryCode: { type: "string" },
+        industryId: { type: "string" },
         industryIds: { type: "array", items: { type: "string" } },
+        useCaseId: { type: "string" },
         useCaseIds: { type: "array", items: { type: "string" } },
         listId: { type: "string" },
         commercialInitiativeId: { type: "string" },
@@ -650,6 +669,34 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
           additionalProperties: false,
           properties: {
             status: { type: "string" },
+            invitationMessage: { type: "string" },
+            connectionMessage: { type: "string" },
+            directMessage: { type: "string" },
+            followUpMessage: { type: "string" },
+            notes: { type: "string" },
+            nextActionAt: { type: "string" },
+          },
+        },
+        idempotencyKey: { type: "string" },
+      },
+      ["campaignId", "contactId"],
+    ),
+  },
+  {
+    name: "create_linkedin_outreach",
+    access: "write",
+    description:
+      "Alias of add_contact_to_linkedin_campaign. Add one existing LinkedIn-profile contact to an internal campaign with optional invitation/follow-up copy and status (invitation_prepared maps to connection_ready). Never automates, sends, connects, messages, or scrapes LinkedIn.",
+    inputSchema: obj(
+      {
+        campaignId: { type: "string" },
+        contactId: { type: "string" },
+        member: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            status: { type: "string" },
+            invitationMessage: { type: "string" },
             connectionMessage: { type: "string" },
             directMessage: { type: "string" },
             followUpMessage: { type: "string" },
@@ -686,6 +733,7 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
           additionalProperties: false,
           properties: {
             status: { type: "string" },
+            invitationMessage: { type: "string" },
             connectionMessage: { type: "string" },
             directMessage: { type: "string" },
             followUpMessage: { type: "string" },
@@ -723,22 +771,35 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     name: "update_linkedin_outreach_status",
     access: "write",
     description:
-      "Alias of record_linkedin_action. Record a manually completed LinkedIn action in the internal CRM with occurredAt, notes and nextActionAt. Manual organization only: this records history and never automates, sends, connects, messages, or scrapes LinkedIn.",
+      "Record a manual LinkedIn outreach status in the internal CRM only. Accepts canonical statuses or aliases (pending, invitation_prepared, invitation_sent, message_prepared, skipped) and optional action/lastActionAt/nextActionAt/notes. Never automates, sends, connects, messages, or scrapes LinkedIn.",
     inputSchema: obj(
       {
         campaignId: { type: "string" },
         memberId: { type: "string" },
-        action: {
-          type: "string",
-          enum: ["connection_sent", "connected", "message_sent", "followup_sent", "replied", "interested", "not_interested"],
-        },
+        status: { type: "string" },
+        action: { type: "string" },
+        lastActionAt: { type: "string" },
         occurredAt: { type: "string" },
         notes: { type: "string" },
         nextActionAt: { type: "string" },
         idempotencyKey: { type: "string" },
       },
-      ["campaignId", "memberId", "action"],
+      ["campaignId", "memberId"],
     ),
+  },
+  {
+    name: "archive_linkedin_campaign",
+    access: "write",
+    description:
+      "Archive an internal CRM LinkedIn campaign record. Does not delete history and never automates or sends LinkedIn.",
+    inputSchema: obj({ campaignId: { type: "string" }, idempotencyKey: { type: "string" } }, ["campaignId"]),
+  },
+  {
+    name: "restore_linkedin_campaign",
+    access: "write",
+    description:
+      "Restore an archived internal CRM LinkedIn campaign to draft. Never automates or sends LinkedIn.",
+    inputSchema: obj({ campaignId: { type: "string" }, idempotencyKey: { type: "string" } }, ["campaignId"]),
   },
 ];
 

@@ -27,7 +27,14 @@ import {
   updateLinkedinCampaignSchema,
   updateLinkedinCampaignMemberSchema,
   recordLinkedinActionSchema,
+  updateLinkedinOutreachStatusSchema,
 } from "./schemas";
+import {
+  canonicalizeLinkedInAction,
+  canonicalizeLinkedInMemberStatus,
+  linkedInActionForStatus,
+  linkedInOutreachView,
+} from "../linkedin-outreach";
 
 function ok(
   tool: CrmToolSuccess["tool"],
@@ -558,6 +565,7 @@ export async function resumeCampaign(
 
 function linkedInMemberChanges(input: {
   status?: string;
+  invitationMessage?: string;
   connectionMessage?: string;
   directMessage?: string;
   followUpMessage?: string;
@@ -565,8 +573,8 @@ function linkedInMemberChanges(input: {
   nextActionAt?: string | null;
 }) {
   return {
-    status: input.status,
-    connectionMessage: input.connectionMessage,
+    status: canonicalizeLinkedInMemberStatus(input.status),
+    connectionMessage: input.invitationMessage ?? input.connectionMessage,
     message: input.directMessage,
     followUpMessage: input.followUpMessage,
     notes: input.notes,
@@ -579,9 +587,8 @@ function linkedInCampaignResult(campaign: { id: string; name: string; status: st
   return { ...rest, directMessage: message || null, automated: false };
 }
 
-function linkedInMemberResult(member: { id: string; message?: string; [key: string]: unknown }) {
-  const { message, ...rest } = member;
-  return { ...rest, directMessage: message || null, automated: false };
+function linkedInMemberResult(member: { id: string; message?: string; status?: string; [key: string]: unknown }) {
+  return linkedInOutreachView(member);
 }
 
 export async function createLinkedinCampaignDraft(
@@ -602,8 +609,8 @@ export async function createLinkedinCampaignDraft(
       name: input.name,
       description: input.description,
       countryCode: input.countryCode,
-      industryIds: input.industryIds,
-      useCaseIds: input.useCaseIds,
+      industryIds: input.industryIds?.length ? input.industryIds : input.industryId ? [input.industryId] : undefined,
+      useCaseIds: input.useCaseIds?.length ? input.useCaseIds : input.useCaseId ? [input.useCaseId] : undefined,
       listId: input.listId,
       commercialInitiativeId: input.commercialInitiativeId,
       messageType: input.messageType,
@@ -752,8 +759,10 @@ export async function recordLinkedinAction(
     input.occurredAt,
   ]);
   return remember(runtime, key, async () => {
+    const action = canonicalizeLinkedInAction(input.action);
+    if (!action) throw new MarketingValidationError("Acción LinkedIn inválida");
     const member = await runtime.services.linkedInCampaigns.recordAction(ctx, input.campaignId, input.memberId, {
-      action: input.action,
+      action,
       at: input.occurredAt,
       notes: input.notes,
       nextActionAt: input.nextActionAt,
@@ -778,10 +787,94 @@ export async function updateLinkedinCampaignDraft(
 export async function updateLinkedinOutreachStatus(
   runtime: CrmToolRuntime,
   ctx: CrmToolContext,
-  input: z.infer<typeof recordLinkedinActionSchema>,
+  input: z.infer<typeof updateLinkedinOutreachStatusSchema>,
 ): Promise<CrmToolSuccess> {
-  const result = await recordLinkedinAction(runtime, ctx, input);
-  return { ...result, tool: "update_linkedin_outreach_status" };
+  const key = crmIdempotencyKey([
+    ctx.workspaceId,
+    "update_linkedin_outreach_status",
+    ctx.idempotencyKey,
+    input.idempotencyKey,
+    input.campaignId,
+    input.memberId,
+    input.status || "",
+    input.action || "",
+    input.occurredAt || input.lastActionAt || "",
+  ]);
+  return remember(runtime, key, async () => {
+    const status = canonicalizeLinkedInMemberStatus(input.status);
+    const action = canonicalizeLinkedInAction(input.action) || (status ? linkedInActionForStatus(status) : undefined);
+    const at = input.occurredAt || input.lastActionAt;
+    const member = action
+      ? await runtime.services.linkedInCampaigns.recordAction(ctx, input.campaignId, input.memberId, {
+          action,
+          at,
+          notes: input.notes,
+          nextActionAt: input.nextActionAt,
+        })
+      : await runtime.services.linkedInCampaigns.updateMember(ctx, input.campaignId, input.memberId, {
+          status,
+          notes: input.notes,
+          nextActionAt: input.nextActionAt,
+        });
+    return ok("update_linkedin_outreach_status", { member: linkedInMemberResult(member), recorded: true, automated: false }, {
+      entityType: "linkedin_campaign_member",
+      entityIds: [input.campaignId, member.id],
+      summary: `Estado LinkedIn actualizado en CRM: ${status || action}. No se ejecutó LinkedIn.`,
+    });
+  });
+}
+
+export async function createLinkedinOutreach(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof addContactToLinkedinCampaignSchema>,
+): Promise<CrmToolSuccess> {
+  const result = await addContactToLinkedinCampaign(runtime, ctx, input);
+  return { ...result, tool: "create_linkedin_outreach" };
+}
+
+export async function archiveLinkedinCampaign(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof campaignIdSchema>,
+): Promise<CrmToolSuccess> {
+  const key = crmIdempotencyKey([
+    ctx.workspaceId,
+    "archive_linkedin_campaign",
+    ctx.idempotencyKey,
+    input.idempotencyKey,
+    input.campaignId,
+  ]);
+  return remember(runtime, key, async () => {
+    const campaign = await runtime.services.linkedInCampaigns.archiveCampaign(ctx, input.campaignId);
+    return ok("archive_linkedin_campaign", { campaign: linkedInCampaignResult(campaign) }, {
+      entityType: "linkedin_campaign",
+      entityIds: [campaign.id],
+      summary: `Campaña LinkedIn archivada: ${campaign.name}. No se envió ni automatizó nada.`,
+    });
+  });
+}
+
+export async function restoreLinkedinCampaign(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof campaignIdSchema>,
+): Promise<CrmToolSuccess> {
+  const key = crmIdempotencyKey([
+    ctx.workspaceId,
+    "restore_linkedin_campaign",
+    ctx.idempotencyKey,
+    input.idempotencyKey,
+    input.campaignId,
+  ]);
+  return remember(runtime, key, async () => {
+    const campaign = await runtime.services.linkedInCampaigns.restoreCampaign(ctx, input.campaignId);
+    return ok("restore_linkedin_campaign", { campaign: linkedInCampaignResult(campaign) }, {
+      entityType: "linkedin_campaign",
+      entityIds: [campaign.id],
+      summary: `Campaña LinkedIn restaurada a draft: ${campaign.name}. No se envió ni automatizó nada.`,
+    });
+  });
 }
 
 export const CRM_WRITE_HANDLERS = {
@@ -814,6 +907,10 @@ export const CRM_WRITE_HANDLERS = {
     schema: addContactToLinkedinCampaignSchema,
     run: addContactToLinkedinCampaign,
   },
+  create_linkedin_outreach: {
+    schema: addContactToLinkedinCampaignSchema,
+    run: createLinkedinOutreach,
+  },
   remove_contact_from_linkedin_campaign: {
     schema: removeContactFromLinkedinCampaignSchema,
     run: removeContactFromLinkedinCampaign,
@@ -823,5 +920,10 @@ export const CRM_WRITE_HANDLERS = {
     run: updateLinkedinCampaignMember,
   },
   record_linkedin_action: { schema: recordLinkedinActionSchema, run: recordLinkedinAction },
-  update_linkedin_outreach_status: { schema: recordLinkedinActionSchema, run: updateLinkedinOutreachStatus },
+  update_linkedin_outreach_status: {
+    schema: updateLinkedinOutreachStatusSchema,
+    run: updateLinkedinOutreachStatus,
+  },
+  archive_linkedin_campaign: { schema: campaignIdSchema, run: archiveLinkedinCampaign },
+  restore_linkedin_campaign: { schema: campaignIdSchema, run: restoreLinkedinCampaign },
 } as const;

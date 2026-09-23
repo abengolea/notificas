@@ -106,8 +106,9 @@ export function normalizeLinkedInUrl(value: string): string | null {
   const normalized = normalizeMarketingUrl(value);
   if (!normalized) return null;
   const url = new URL(normalized);
-  const host = url.hostname.replace(/^www\./, "");
-  if (host !== "linkedin.com" || !/^\/in\/[^/]+\/?$/i.test(url.pathname)) return null;
+  const host = url.hostname.replace(/^www\./, "").toLowerCase();
+  const linkedinHost = host === "linkedin.com" || host.endsWith(".linkedin.com");
+  if (!linkedinHost || !/^\/in\/[^/]+\/?$/i.test(url.pathname)) return null;
   url.protocol = "https:";
   url.hostname = "linkedin.com";
   url.search = "";

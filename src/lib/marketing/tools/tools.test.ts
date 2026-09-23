@@ -48,6 +48,7 @@ test("MCP CRM registry with crm:read stays additive-read and has no send/write t
   assert.ok(names.includes("list_taxonomy"));
   assert.ok(names.includes("search_linkedin_campaigns"));
   assert.ok(names.includes("get_linkedin_pending_actions"));
+  assert.ok(names.includes("search_linkedin_outreach"));
   assert.equal(
     listCrmMcpTools(["crm:read"]).every((t) => t.annotations.readOnlyHint === true),
     true,
@@ -389,6 +390,26 @@ test("create_campaign_draft never sends and rejects send in the same call", asyn
   assert.equal(preview.ok, true);
   if (!preview.ok) return;
   assert.equal((preview.data as { sent: boolean }).sent, false);
+
+  const again = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "get_campaign",
+    args: { campaignId: campaign.id },
+    mode: "read",
+  });
+  assert.equal(again.ok, true);
+  if (!again.ok) return;
+  assert.equal((again.data as { status: string }).status, "draft");
+  const send = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "send_campaign",
+    args: { campaignId: campaign.id },
+    mode: "readwrite",
+  });
+  assert.equal(send.ok, false);
+  if (!send.ok) assert.equal(send.error.code, "forbidden_tool");
 });
 
 test("update_campaign_draft only works on drafts; copy stays draft", async () => {
@@ -543,7 +564,7 @@ test("LinkedIn CRM tools run manual campaign, member, action, and pending flows"
     name: "create_contact",
     args: {
       name: "LinkedIn Only",
-      linkedinUrl: "https://linkedin.com/in/crm-tool-only",
+      linkedinUrl: "https://sv.linkedin.com/in/crm-tool-only",
       linkedinStatus: "not_contacted",
       linkedinNextActionAt: "2026-09-23T10:00:00.000Z",
       prospectingSource: "linkedin",
@@ -595,7 +616,8 @@ test("LinkedIn CRM tools run manual campaign, member, action, and pending flows"
         connectionMessage: "Personal connection",
         directMessage: "Personal direct",
         followUpMessage: "Personal follow-up",
-        status: "connection_ready",
+        status: "invitation_prepared",
+        invitationMessage: "Personal connection",
         nextActionAt: "2026-09-23T11:00:00.000Z",
       },
     },
@@ -604,10 +626,11 @@ test("LinkedIn CRM tools run manual campaign, member, action, and pending flows"
   assert.equal(addResult.ok, true);
   if (!addResult.ok) return;
   const member = (addResult.data as {
-    member: { id: string; directMessage: string; status: string; nextActionAt: string };
+    member: { id: string; directMessage: string; status: string; statusAlias: string; nextActionAt: string };
   }).member;
   assert.equal(member.directMessage, "Personal direct");
   assert.equal(member.status, "connection_ready");
+  assert.equal(member.statusAlias, "invitation_prepared");
 
   const actionResult = await executeCrmTool({
     runtime,
@@ -666,6 +689,17 @@ test("LinkedIn CRM tools run manual campaign, member, action, and pending flows"
   if (!outreachAlias.ok) return;
   assert.equal(outreachAlias.tool, "update_linkedin_outreach_status");
   assert.equal((outreachAlias.data as { member: { status: string } }).member.status, "connected");
+
+  const outreach = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "search_linkedin_outreach",
+    args: { campaignId: campaign.id, status: "connected", limit: 10 },
+    mode: "read",
+  });
+  assert.equal(outreach.ok, true);
+  if (!outreach.ok) return;
+  assert.equal((outreach.data as { items: Array<{ id: string }> }).items[0]?.id, member.id);
 
   for (const [name, args] of [
     ["search_linkedin_campaigns", { countryCode: "AR" }],

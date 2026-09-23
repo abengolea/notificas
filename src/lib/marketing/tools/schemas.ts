@@ -338,21 +338,29 @@ const linkedinMemberStatusSchema = z.enum([
   "interested",
   "not_interested",
   "do_not_contact",
+  "pending",
+  "invitation_prepared",
+  "invitation_sent",
+  "message_prepared",
+  "skipped",
 ]);
 const linkedinActionSchema = z.enum([
   "connection_sent",
   "connected",
   "message_sent",
   "followup_sent",
+  "follow_up_sent",
   "replied",
   "interested",
   "not_interested",
+  "invitation_sent",
 ]);
 
 export const searchLinkedinCampaignsSchema = z.object({
   query: optStr(200),
   status: linkedinCampaignStatusSchema.optional(),
   countryCode: optStr(8),
+  industryId: optStr(128),
   archived: z.enum(["exclude", "include", "only"]).optional(),
   limit: toolLimitSchema,
   cursor: toolCursorSchema,
@@ -366,7 +374,9 @@ export const createLinkedinCampaignDraftSchema = z
     name: z.string().min(2).max(160),
     description: optStr(4000),
     countryCode: z.string().min(2).max(40).nullable().optional(),
+    industryId: optStr(128),
     industryIds: z.array(z.string().min(1).max(128)).max(50).optional(),
+    useCaseId: optStr(128),
     useCaseIds: z.array(z.string().min(1).max(128)).max(50).optional(),
     listId: optStr(128),
     commercialInitiativeId: optStr(128),
@@ -406,6 +416,7 @@ export const updateLinkedinCampaignSchema = z
 const linkedinMemberChangesSchema = z
   .object({
     status: linkedinMemberStatusSchema.optional(),
+    invitationMessage: optStr(3000),
     connectionMessage: optStr(3000),
     directMessage: optStr(8000),
     followUpMessage: optStr(8000),
@@ -458,3 +469,35 @@ export const searchLinkedinPendingActionsSchema = z
     limit: toolLimitSchema,
   })
   .strict();
+
+export const searchLinkedinOutreachSchema = z
+  .object({
+    campaignId: optStr(128),
+    companyId: optStr(128),
+    contactId: optStr(128),
+    status: linkedinMemberStatusSchema.optional(),
+    dueBefore: z.string().datetime().optional(),
+    dueAfter: z.string().datetime().optional(),
+    limit: toolLimitSchema,
+    cursor: toolCursorSchema,
+  })
+  .strict();
+
+export const updateLinkedinOutreachStatusSchema = z
+  .object({
+    campaignId: idSchema,
+    memberId: idSchema,
+    status: linkedinMemberStatusSchema.optional(),
+    action: linkedinActionSchema.optional(),
+    lastActionAt: z.string().datetime().optional(),
+    occurredAt: z.string().datetime().optional(),
+    notes: optStr(8000),
+    nextActionAt: z.string().datetime().nullable().optional(),
+    idempotencyKey: idempotencyKeySchema,
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (!value.status && !value.action) {
+      ctx.addIssue({ code: "custom", message: "status or action is required", path: ["status"] });
+    }
+  });

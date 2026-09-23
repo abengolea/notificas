@@ -250,6 +250,17 @@ export function createLinkedInCampaignService(deps: {
       return requireCampaign(ctx, id);
     },
 
+    async restoreCampaign(ctx: MarketingServiceContext, id: string) {
+      const current = await requireCampaign(ctx, id);
+      if (current.status !== "archived") return current;
+      await deps.campaigns.update(ctx.workspaceId, id, {
+        status: "draft",
+        archivedAt: null,
+        ...updateStamps(ctx),
+      });
+      return requireCampaign(ctx, id);
+    },
+
     async previewCampaign(ctx: MarketingServiceContext, id: string) {
       const campaign = await requireCampaign(ctx, id);
       const members = await deps.members.listAllForCampaign(ctx.workspaceId, id);
@@ -426,6 +437,10 @@ export function createLinkedInCampaignService(deps: {
         createdAt: at,
       });
       return requireMember(ctx, memberId);
+    },
+
+    async listOutreach(ctx: MarketingServiceContext, filters: LinkedInMemberListFilters = {}) {
+      return deps.members.list(ctx.workspaceId, filters);
     },
 
     async pendingActions(ctx: MarketingServiceContext, dueBefore = nowIso(), limit = 100) {

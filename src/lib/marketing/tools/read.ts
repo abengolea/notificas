@@ -19,6 +19,7 @@ import {
   searchCompaniesSchema,
   searchContactsSchema,
   searchLinkedinCampaignsSchema,
+  searchLinkedinOutreachSchema,
   searchLinkedinPendingActionsSchema,
   searchListsSchema,
   searchOpportunitiesSchema,
@@ -28,6 +29,10 @@ import {
 import { TAXONOMY_INDUSTRIES, TAXONOMY_USE_CASES } from "../taxonomy/seed";
 import { DETAIL_LIMIT, pageLimit, summarizeCompany } from "./helpers";
 import { sanitizeCrmPayload } from "./sanitize";
+import {
+  canonicalizeLinkedInMemberStatus,
+  linkedInOutreachView,
+} from "../linkedin-outreach";
 
 function ok(
   tool: CrmToolSuccess["tool"],
@@ -567,9 +572,8 @@ function linkedinCampaignView<T extends { message?: string }>(campaign: T) {
   return { ...rest, directMessage: message || null };
 }
 
-function linkedinMemberView<T extends { message?: string }>(member: T) {
-  const { message, ...rest } = member;
-  return { ...rest, directMessage: message || null };
+function linkedinMemberView<T extends { message?: string; status?: string }>(member: T) {
+  return linkedInOutreachView(member);
 }
 
 export async function searchLinkedinCampaigns(
@@ -585,8 +589,11 @@ export async function searchLinkedinCampaigns(
     limit: pageLimit(input.limit),
     cursor: input.cursor,
   });
+  const items = input.industryId
+    ? page.items.filter((campaign) => (campaign.industryIds || []).includes(input.industryId!))
+    : page.items;
   return ok("search_linkedin_campaigns", {
-    items: page.items.map(linkedinCampaignView),
+    items: items.map(linkedinCampaignView),
     nextCursor: page.nextCursor,
   });
 }
@@ -596,11 +603,17 @@ export async function getLinkedinCampaign(
   ctx: CrmToolContext,
   input: z.infer<typeof getLinkedinCampaignSchema>,
 ): Promise<CrmToolSuccess> {
-  const campaign = await runtime.services.linkedInCampaigns.getCampaign(ctx, input.campaignId);
-  return ok("get_linkedin_campaign", { campaign: linkedinCampaignView(campaign) }, {
+  const preview = await runtime.services.linkedInCampaigns.previewCampaign(ctx, input.campaignId);
+  return ok("get_linkedin_campaign", {
+    campaign: linkedinCampaignView(preview.campaign),
+    summary: preview.summary,
+    members: preview.members.slice(0, 20).map(linkedinMemberView),
+    truncated: preview.members.length > 20,
+    automated: false,
+  }, {
     entityType: "linkedin_campaign",
-    entityIds: [campaign.id],
-    summary: `Campaña LinkedIn ${campaign.name} (${campaign.status}); organización manual`,
+    entityIds: [preview.campaign.id],
+    summary: `Campaña LinkedIn ${preview.campaign.name} (${preview.campaign.status}); ${preview.summary.total} prospectos; organización manual`,
   });
 }
 
@@ -633,6 +646,33 @@ export async function searchLinkedinPendingActions(
   return ok("search_linkedin_pending_actions", {
     items: page.items.slice(0, limit).map(linkedinMemberView),
     nextCursor: page.nextCursor,
+  });
+}
+
+export async function searchLinkedinOutreach(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof searchLinkedinOutreachSchema>,
+): Promise<CrmToolSuccess> {
+  const status = canonicalizeLinkedInMemberStatus(input.status);
+  const limit = pageLimit(input.limit);
+  const page = await runtime.services.linkedInCampaigns.listOutreach(ctx, {
+    campaignId: input.campaignId,
+    status,
+    dueBefore: input.dueBefore,
+    limit: 100,
+    cursor: input.cursor,
+  });
+  let items = page.items.map(linkedinMemberView);
+  if (input.companyId) items = items.filter((item) => item.companyId === input.companyId);
+  if (input.contactId) items = items.filter((item) => item.contactId === input.contactId);
+  if (input.dueAfter) {
+    items = items.filter((item) => Boolean(item.nextActionAt && String(item.nextActionAt) >= input.dueAfter!));
+  }
+  return ok("search_linkedin_outreach", {
+    items: items.slice(0, limit),
+    nextCursor: page.nextCursor,
+    automated: false,
   });
 }
 
@@ -674,5 +714,9 @@ export const CRM_READ_HANDLERS = {
   get_linkedin_pending_actions: {
     schema: searchLinkedinPendingActionsSchema,
     run: getLinkedinPendingActions,
+  },
+  search_linkedin_outreach: {
+    schema: searchLinkedinOutreachSchema,
+    run: searchLinkedinOutreach,
   },
 } as const;

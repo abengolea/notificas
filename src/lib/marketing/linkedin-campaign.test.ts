@@ -187,6 +187,12 @@ test("LinkedIn-only contacts use UUID and dedupe normalized URL in workspace", a
   assert.equal(first.email, "");
   assert.match(first.id, /^[0-9a-f-]{36}$/);
   assert.equal(first.linkedinUrl, "https://linkedin.com/in/only-linkedin");
+  const regional = await services.contacts.createContact(context, {
+    name: "Jennifer Portillo",
+    linkedinUrl: "https://sv.linkedin.com/in/Jennifer-Portillo/",
+    country: "SV",
+  });
+  assert.equal(regional.linkedinUrl, "https://linkedin.com/in/jennifer-portillo");
 
   const duplicate = await services.contacts.createContact(context, {
     linkedinUrl: "https://linkedin.com/in/only-linkedin",

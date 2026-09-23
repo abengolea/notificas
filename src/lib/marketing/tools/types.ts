@@ -26,6 +26,7 @@ export const CRM_READ_TOOL_NAMES = [
   "preview_linkedin_campaign",
   "search_linkedin_pending_actions",
   "get_linkedin_pending_actions",
+  "search_linkedin_outreach",
 ] as const;
 
 export const CRM_WRITE_TOOL_NAMES = [
@@ -52,10 +53,13 @@ export const CRM_WRITE_TOOL_NAMES = [
   "update_linkedin_campaign",
   "update_linkedin_campaign_draft",
   "add_contact_to_linkedin_campaign",
+  "create_linkedin_outreach",
   "remove_contact_from_linkedin_campaign",
   "update_linkedin_campaign_member",
   "record_linkedin_action",
   "update_linkedin_outreach_status",
+  "archive_linkedin_campaign",
+  "restore_linkedin_campaign",
 ] as const;
 
 export const CRM_FORBIDDEN_TOOL_NAMES = [

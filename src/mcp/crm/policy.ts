@@ -40,19 +40,23 @@ export const CRM_MCP_TOOL_SCOPES: Record<string, readonly CrmMcpScope[]> = {
   copy_campaign: ["campaigns:write"],
   archive_campaign: ["campaigns:write"],
   restore_campaign: ["campaigns:write"],
-  search_linkedin_campaigns: ["linkedin:read", "crm:read"],
-  get_linkedin_campaign: ["linkedin:read", "crm:read"],
-  preview_linkedin_campaign: ["linkedin:read", "crm:read"],
-  search_linkedin_pending_actions: ["linkedin:read", "crm:read"],
-  get_linkedin_pending_actions: ["linkedin:read", "crm:read"],
-  create_linkedin_campaign_draft: ["linkedin:write", "crm:write"],
-  update_linkedin_campaign: ["linkedin:write", "crm:write"],
-  update_linkedin_campaign_draft: ["linkedin:write", "crm:write"],
-  add_contact_to_linkedin_campaign: ["linkedin:write", "crm:write"],
-  remove_contact_from_linkedin_campaign: ["linkedin:write", "crm:write"],
-  update_linkedin_campaign_member: ["linkedin:write", "crm:write"],
-  record_linkedin_action: ["linkedin:write", "crm:write"],
-  update_linkedin_outreach_status: ["linkedin:write", "crm:write"],
+  search_linkedin_campaigns: ["crm:read", "linkedin:read"],
+  get_linkedin_campaign: ["crm:read", "linkedin:read"],
+  preview_linkedin_campaign: ["crm:read", "linkedin:read"],
+  search_linkedin_pending_actions: ["crm:read", "linkedin:read"],
+  get_linkedin_pending_actions: ["crm:read", "linkedin:read"],
+  search_linkedin_outreach: ["crm:read", "linkedin:read"],
+  create_linkedin_campaign_draft: ["crm:write", "linkedin:write"],
+  update_linkedin_campaign: ["crm:write", "linkedin:write"],
+  update_linkedin_campaign_draft: ["crm:write", "linkedin:write"],
+  add_contact_to_linkedin_campaign: ["crm:write", "linkedin:write"],
+  create_linkedin_outreach: ["crm:write", "linkedin:write"],
+  remove_contact_from_linkedin_campaign: ["crm:write", "linkedin:write"],
+  update_linkedin_campaign_member: ["crm:write", "linkedin:write"],
+  record_linkedin_action: ["crm:write", "linkedin:write"],
+  update_linkedin_outreach_status: ["crm:write", "linkedin:write"],
+  archive_linkedin_campaign: ["crm:write", "linkedin:write"],
+  restore_linkedin_campaign: ["crm:write", "linkedin:write"],
 };
 
 /** Prepared for Fase B. Not published. When enabled they must require campaigns:send. */
@@ -97,10 +101,6 @@ export function advertisedScopeForTool(name: string): CrmMcpScope {
   if (needed.includes("campaigns:read") && !needed.includes("campaigns:write") && !needed.includes("crm:write")) {
     return "campaigns:read";
   }
-  if (needed.includes("linkedin:read") && !needed.includes("linkedin:write") && !needed.includes("crm:write")) {
-    return "linkedin:read";
-  }
-  if (needed.includes("linkedin:write")) return "linkedin:write";
   return needed[0];
 }
 
