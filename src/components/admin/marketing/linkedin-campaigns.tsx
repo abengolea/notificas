@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertCircle, Linkedin, Plus, Search, Users } from "lucide-react";
 import { MarketingSubnav } from "./marketing-subnav";
+import { MarketingCampaignChannelTabs } from "./marketing-campaign-channel-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,6 +102,7 @@ export function LinkedInCampaigns() {
   return (
     <div className="space-y-6">
       <MarketingSubnav />
+      <MarketingCampaignChannelTabs channel="linkedin" />
       <div className="flex flex-col gap-3 rounded-lg border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="flex items-center gap-2 text-lg font-semibold">

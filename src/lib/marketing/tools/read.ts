@@ -636,6 +636,15 @@ export async function searchLinkedinPendingActions(
   });
 }
 
+export async function getLinkedinPendingActions(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof searchLinkedinPendingActionsSchema>,
+): Promise<CrmToolSuccess> {
+  const result = await searchLinkedinPendingActions(runtime, ctx, input);
+  return { ...result, tool: "get_linkedin_pending_actions" };
+}
+
 export const CRM_READ_HANDLERS = {
   search_companies: { schema: searchCompaniesSchema, run: searchCompanies },
   get_company: { schema: getCompanySchema, run: getCompany },
@@ -661,5 +670,9 @@ export const CRM_READ_HANDLERS = {
   search_linkedin_pending_actions: {
     schema: searchLinkedinPendingActionsSchema,
     run: searchLinkedinPendingActions,
+  },
+  get_linkedin_pending_actions: {
+    schema: searchLinkedinPendingActionsSchema,
+    run: getLinkedinPendingActions,
   },
 } as const;

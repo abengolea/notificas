@@ -119,8 +119,8 @@ test("ChatGPT discovery is public; tools/call stays OAuth-gated", async () => {
     const listed = await crmRpc({ jsonrpc: "2.0", id: 2, method: "tools/list" });
     assert.equal(listed.status, 200);
     const tools = (listed.json.result as { tools: Array<Record<string, unknown>> }).tools;
-    assert.equal(tools.length, 45);
-    assert.equal(listAllCrmMcpTools().length, 45);
+    assert.equal(tools.length, 48);
+    assert.equal(listAllCrmMcpTools().length, 48);
     for (const banned of PHASE_B) assert.equal(tools.some((t) => t.name === banned), false);
 
     const byName = Object.fromEntries(tools.map((t) => [String(t.name), t]));
@@ -129,7 +129,10 @@ test("ChatGPT discovery is public; tools/call stays OAuth-gated", async () => {
     assert.deepEqual(byName.search_campaigns.securitySchemes, [{ type: "oauth2", scopes: ["campaigns:read"] }]);
     assert.deepEqual(byName.create_campaign_draft.securitySchemes, [{ type: "oauth2", scopes: ["campaigns:write"] }]);
     assert.deepEqual(byName.search_linkedin_campaigns.securitySchemes, [{ type: "oauth2", scopes: ["linkedin:read"] }]);
+    assert.deepEqual(byName.get_linkedin_pending_actions.securitySchemes, [{ type: "oauth2", scopes: ["linkedin:read"] }]);
     assert.deepEqual(byName.create_linkedin_campaign_draft.securitySchemes, [{ type: "oauth2", scopes: ["linkedin:write"] }]);
+    assert.deepEqual(byName.update_linkedin_campaign_draft.securitySchemes, [{ type: "oauth2", scopes: ["linkedin:write"] }]);
+    assert.deepEqual(byName.update_linkedin_outreach_status.securitySchemes, [{ type: "oauth2", scopes: ["linkedin:write"] }]);
     for (const tool of tools) {
       assert.deepEqual(tool.securitySchemes, (tool._meta as { securitySchemes: unknown }).securitySchemes);
       const schemes = tool.securitySchemes as Array<{ type: string; scopes: string[] }>;

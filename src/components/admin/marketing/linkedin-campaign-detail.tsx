@@ -13,6 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { MarketingSubnav } from "./marketing-subnav";
+import { MarketingCampaignChannelTabs } from "./marketing-campaign-channel-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -489,6 +490,7 @@ export function LinkedInCampaignDetail({ campaignId }: { campaignId: string }) {
   return (
     <div className="space-y-6">
       <MarketingSubnav />
+      <MarketingCampaignChannelTabs channel="linkedin" />
       <p className="text-sm">
         <Link href="/admin/marketing/linkedin/campanas" className="text-muted-foreground hover:text-foreground">
           ← Campañas LinkedIn

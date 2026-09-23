@@ -17,6 +17,7 @@ import type { TaxonomyCatalog } from "./marketing-taxonomy-fields";
 import { CAMPAIGN_STATUS_LABEL, isCampaignAdminStatus } from "@/lib/marketing/admin-filters";
 import { countryName } from "@/lib/marketing/countries";
 import { MarketingCampaignActions } from "./marketing-campaign-actions";
+import { MarketingCampaignChannelTabs } from "./marketing-campaign-channel-tabs";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -293,6 +294,7 @@ export function MarketingCampaigns() {
   return (
     <div className="space-y-6">
       <MarketingSubnav />
+      <MarketingCampaignChannelTabs channel="email" />
       <div className="flex flex-col gap-3 rounded-lg border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-lg font-semibold">Campañas email</h3>

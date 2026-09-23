@@ -46,6 +46,8 @@ test("MCP CRM registry with crm:read stays additive-read and has no send/write t
   assert.ok(names.includes("get_crm_stats"));
   assert.ok(names.includes("preview_campaign"));
   assert.ok(names.includes("list_taxonomy"));
+  assert.ok(names.includes("search_linkedin_campaigns"));
+  assert.ok(names.includes("get_linkedin_pending_actions"));
   assert.equal(
     listCrmMcpTools(["crm:read"]).every((t) => t.annotations.readOnlyHint === true),
     true,
@@ -636,6 +638,35 @@ test("LinkedIn CRM tools run manual campaign, member, action, and pending flows"
   if (!pending.ok) return;
   assert.deepEqual((pending.data as { items: Array<{ id: string }> }).items.map((item) => item.id), [member.id]);
 
+  const pendingAlias = await executeCrmTool({
+    runtime,
+    ctx,
+    name: "get_linkedin_pending_actions",
+    args: { dueBefore: "2026-09-25T00:00:00.000Z", limit: 10 },
+    mode: "read",
+  });
+  assert.equal(pendingAlias.ok, true);
+  if (!pendingAlias.ok) return;
+  assert.equal(pendingAlias.tool, "get_linkedin_pending_actions");
+  assert.deepEqual((pendingAlias.data as { items: Array<{ id: string }> }).items.map((item) => item.id), [member.id]);
+
+  const outreachAlias = await executeCrmTool({
+    runtime,
+    ctx: { ...ctx, idempotencyKey: "linkedin-outreach-alias-1" },
+    name: "update_linkedin_outreach_status",
+    args: {
+      campaignId: campaign.id,
+      memberId: member.id,
+      action: "connected",
+      occurredAt: "2026-09-23T13:00:00.000Z",
+    },
+    mode: "readwrite",
+  });
+  assert.equal(outreachAlias.ok, true);
+  if (!outreachAlias.ok) return;
+  assert.equal(outreachAlias.tool, "update_linkedin_outreach_status");
+  assert.equal((outreachAlias.data as { member: { status: string } }).member.status, "connected");
+
   for (const [name, args] of [
     ["search_linkedin_campaigns", { countryCode: "AR" }],
     ["get_linkedin_campaign", { campaignId: campaign.id }],
@@ -666,13 +697,16 @@ test("LinkedIn CRM tools run manual campaign, member, action, and pending flows"
   const archived = await executeCrmTool({
     runtime,
     ctx: { ...ctx, idempotencyKey: "linkedin-archive-1" },
-    name: "update_linkedin_campaign",
+    name: "update_linkedin_campaign_draft",
     args: {
       campaignId: campaign.id,
       changes: { status: "archived", countryCode: null },
     },
     mode: "readwrite",
   });
+  assert.equal(archived.ok, true);
+  if (!archived.ok) return;
+  assert.equal(archived.tool, "update_linkedin_campaign_draft");
   assert.equal(archived.ok, true);
   if (!archived.ok) return;
   const archivedCampaign = (archived.data as {

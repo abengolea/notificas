@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Download } from "lucide-react";
 import { downloadCsv } from "@/lib/marketing/export-csv";
 import { MarketingSubnav } from "./marketing-subnav";
+import { MarketingCampaignChannelTabs } from "./marketing-campaign-channel-tabs";
 import { StageBadge } from "./stage-badge";
 import { MarketingListUpload } from "./marketing-list-upload";
 import { MarketingRecipientPreview, type PreviewContact } from "./marketing-recipient-preview";
@@ -347,6 +348,7 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
   return (
     <div className="space-y-6">
       <MarketingSubnav />
+      <MarketingCampaignChannelTabs channel="email" />
       <p className="text-sm">
         <Link href="/admin/marketing/campanas" className="text-muted-foreground hover:text-foreground">← Campañas email</Link>
       </p>

@@ -213,6 +213,16 @@ export const CRM_READ_TOOL_DEFINITIONS: CrmToolDefinition[] = [
       limit,
     }),
   },
+  {
+    name: "get_linkedin_pending_actions",
+    access: "read",
+    description:
+      "Alias of search_linkedin_pending_actions. Returns due LinkedIn follow-up records in the internal CRM for manual organization only. Never automates, sends, connects, messages, or scrapes LinkedIn.",
+    inputSchema: obj({
+      dueBefore: { type: "string", description: "ISO-8601 inclusive due-date upper bound. Defaults to now." },
+      limit,
+    }),
+  },
 ];
 
 export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
@@ -595,6 +605,38 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     ),
   },
   {
+    name: "update_linkedin_campaign_draft",
+    access: "write",
+    description:
+      "Alias of update_linkedin_campaign. Update internal CRM LinkedIn campaign metadata, templates, or draft/active/paused/completed/archived workflow status for manual organization only. Never automates, sends, connects, messages, or scrapes LinkedIn.",
+    inputSchema: obj(
+      {
+        campaignId: { type: "string" },
+        changes: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            name: { type: "string" },
+            description: { type: "string" },
+            countryCode: { type: "string" },
+            industryIds: { type: "array", items: { type: "string" } },
+            useCaseIds: { type: "array", items: { type: "string" } },
+            listId: { type: "string" },
+            commercialInitiativeId: { type: "string" },
+            messageType: { type: "string", enum: ["connection_request", "direct_message", "multistep"] },
+            connectionMessage: { type: "string" },
+            directMessage: { type: "string" },
+            followUpMessage: { type: "string" },
+            notes: { type: "string" },
+            status: { type: "string", enum: ["draft", "active", "paused", "completed", "archived"] },
+          },
+        },
+        idempotencyKey: { type: "string" },
+      },
+      ["campaignId", "changes"],
+    ),
+  },
+  {
     name: "add_contact_to_linkedin_campaign",
     access: "write",
     description:
@@ -661,6 +703,27 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     access: "write",
     description:
       "Record a manually completed LinkedIn action in the internal CRM with occurredAt, notes and nextActionAt. Manual organization only: this records history and never automates, sends, connects, messages, or scrapes LinkedIn.",
+    inputSchema: obj(
+      {
+        campaignId: { type: "string" },
+        memberId: { type: "string" },
+        action: {
+          type: "string",
+          enum: ["connection_sent", "connected", "message_sent", "followup_sent", "replied", "interested", "not_interested"],
+        },
+        occurredAt: { type: "string" },
+        notes: { type: "string" },
+        nextActionAt: { type: "string" },
+        idempotencyKey: { type: "string" },
+      },
+      ["campaignId", "memberId", "action"],
+    ),
+  },
+  {
+    name: "update_linkedin_outreach_status",
+    access: "write",
+    description:
+      "Alias of record_linkedin_action. Record a manually completed LinkedIn action in the internal CRM with occurredAt, notes and nextActionAt. Manual organization only: this records history and never automates, sends, connects, messages, or scrapes LinkedIn.",
     inputSchema: obj(
       {
         campaignId: { type: "string" },

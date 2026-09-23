@@ -766,6 +766,24 @@ export async function recordLinkedinAction(
   });
 }
 
+export async function updateLinkedinCampaignDraft(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof updateLinkedinCampaignSchema>,
+): Promise<CrmToolSuccess> {
+  const result = await updateLinkedinCampaign(runtime, ctx, input);
+  return { ...result, tool: "update_linkedin_campaign_draft" };
+}
+
+export async function updateLinkedinOutreachStatus(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof recordLinkedinActionSchema>,
+): Promise<CrmToolSuccess> {
+  const result = await recordLinkedinAction(runtime, ctx, input);
+  return { ...result, tool: "update_linkedin_outreach_status" };
+}
+
 export const CRM_WRITE_HANDLERS = {
   create_company: { schema: createCompanySchema, run: createCompany },
   update_company: { schema: updateCompanySchema, run: updateCompany },
@@ -791,6 +809,7 @@ export const CRM_WRITE_HANDLERS = {
     run: createLinkedinCampaignDraft,
   },
   update_linkedin_campaign: { schema: updateLinkedinCampaignSchema, run: updateLinkedinCampaign },
+  update_linkedin_campaign_draft: { schema: updateLinkedinCampaignSchema, run: updateLinkedinCampaignDraft },
   add_contact_to_linkedin_campaign: {
     schema: addContactToLinkedinCampaignSchema,
     run: addContactToLinkedinCampaign,
@@ -804,4 +823,5 @@ export const CRM_WRITE_HANDLERS = {
     run: updateLinkedinCampaignMember,
   },
   record_linkedin_action: { schema: recordLinkedinActionSchema, run: recordLinkedinAction },
+  update_linkedin_outreach_status: { schema: recordLinkedinActionSchema, run: updateLinkedinOutreachStatus },
 } as const;

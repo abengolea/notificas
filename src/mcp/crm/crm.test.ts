@@ -70,6 +70,8 @@ test("crm:read token still sees additive reads and never writes, pause, resume o
   assert.ok(names.includes("preview_campaign"));
   assert.ok(names.includes("list_taxonomy"));
   assert.ok(names.includes("search_opportunities"));
+  assert.ok(names.includes("search_linkedin_campaigns"));
+  assert.ok(names.includes("get_linkedin_pending_actions"));
   assert.equal(crmMcpWriteToolCount(["crm:read"]), 0);
   assert.throws(() => assertCrmMcpToolAllowed("create_company", ["crm:read"]), McpToolError);
   assert.throws(() => assertCrmMcpToolAllowed("send_email", ["crm:read"]), McpToolError);
@@ -122,13 +124,17 @@ test("tools published per scope combination", () => {
   assert.ok(campWrite.includes("create_campaign_draft"));
   assert.equal(campWrite.includes("create_company"), false);
   assert.ok(all.includes("create_company") && all.includes("create_campaign_draft"));
+  assert.ok(crmWrite.includes("create_linkedin_campaign_draft"));
+  assert.ok(crmWrite.includes("update_linkedin_outreach_status"));
+  assert.equal(campWrite.includes("create_linkedin_campaign_draft"), false);
   assert.equal(all.includes("resume_campaign"), false);
   assert.equal(all.includes("pause_campaign"), false);
   assert.equal(all.includes("send_campaign"), false);
 });
 
-test("LinkedIn tools require dedicated read and write scopes", () => {
+test("LinkedIn tools are available via dedicated scopes and existing crm tokens", () => {
   const crmRead = namesFor(["crm:read"]);
+  const crmWrite = namesFor(["crm:write"]);
   const linkedinRead = namesFor(["linkedin:read"]);
   const linkedinWrite = namesFor(["linkedin:write"]);
   const readNames = [
@@ -136,24 +142,29 @@ test("LinkedIn tools require dedicated read and write scopes", () => {
     "get_linkedin_campaign",
     "preview_linkedin_campaign",
     "search_linkedin_pending_actions",
+    "get_linkedin_pending_actions",
   ];
   const writeNames = [
     "create_linkedin_campaign_draft",
     "update_linkedin_campaign",
+    "update_linkedin_campaign_draft",
     "add_contact_to_linkedin_campaign",
     "remove_contact_from_linkedin_campaign",
     "update_linkedin_campaign_member",
     "record_linkedin_action",
+    "update_linkedin_outreach_status",
   ];
   for (const name of readNames) {
-    assert.equal(crmRead.includes(name), false);
+    assert.equal(crmRead.includes(name), true);
     assert.equal(linkedinRead.includes(name), true);
     assert.equal(linkedinWrite.includes(name), false);
+    assert.equal(crmWrite.includes(name), false);
   }
   for (const name of writeNames) {
     assert.equal(crmRead.includes(name), false);
     assert.equal(linkedinRead.includes(name), false);
     assert.equal(linkedinWrite.includes(name), true);
+    assert.equal(crmWrite.includes(name), true);
   }
   for (const name of ["send_linkedin_message", "send_linkedin_campaign"]) {
     assert.equal(isCrmMcpForbiddenTool(name), true);

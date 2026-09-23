@@ -79,9 +79,10 @@ export function crmMcpHasKnownScope(scopes: readonly string[] | undefined): bool
 
 export function crmScopeDescriptions(): Record<CrmMcpScope, string> {
   return {
-    "crm:read": "Read the internal Notificas commercial CRM. Never writes, sends or deletes.",
+    "crm:read":
+      "Read the internal Notificas commercial CRM, including email campaigns and LinkedIn campaign records. Never writes, sends or deletes.",
     "crm:write":
-      "Create and update CRM companies, contacts, tasks, notes, opportunities and recipient lists. Does not send email, delete or merge.",
+      "Create and update CRM companies, contacts, tasks, notes, opportunities, recipient lists and LinkedIn campaign records for manual organization. Does not send email, automate LinkedIn, delete or merge.",
     "campaigns:read": "Read commercial CRM email campaigns and preview a draft audience. Does not send.",
     "campaigns:write":
       "Create and edit commercial campaign DRAFTS, copy, archive or restore. Never sends, pauses, resumes or schedules email.",
