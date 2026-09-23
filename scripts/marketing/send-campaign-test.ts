@@ -108,7 +108,7 @@ async function main() {
   });
 
   const subject = String(camp.subject || "Notificas");
-  const fields = {
+  const fields: Record<string, string> = {
     ...PREVIEW_MERGE_FIELDS,
     email: to,
   };
@@ -120,9 +120,9 @@ async function main() {
     {
       email: to,
       emailKey: to,
-      name: fields.nombre,
-      company: fields.empresa,
-      title: fields.cargo,
+      name: fields.fullName,
+      company: fields.companyName,
+      title: fields.jobTitle,
       country: "AR",
       notes: "Envío de prueba de campaña comercial",
       tags: ["test-send"],
@@ -171,8 +171,8 @@ async function main() {
     contactId,
     email: to,
     country: "AR",
-    company: fields.empresa,
-    name: fields.nombre,
+    company: fields.companyName,
+    name: fields.fullName,
     subject,
     status: "sent",
     testSend: true,

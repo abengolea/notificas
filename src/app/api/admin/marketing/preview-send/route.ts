@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     const contactId = contactIdForEmail(to);
     const sendRef = db.collection(MARKETING_SENDS).doc();
     const now = new Date().toISOString();
-    const fields = {
+    const fields: Record<string, string> = {
       ...PREVIEW_MERGE_FIELDS,
       email: to,
     };
@@ -65,9 +65,9 @@ export async function POST(request: NextRequest) {
       {
         email: to,
         emailKey: to,
-        name: fields.nombre,
-        company: fields.empresa,
-        title: fields.cargo,
+        name: fields.fullName,
+        company: fields.companyName,
+        title: fields.jobTitle,
         country: "AR",
         notes: "Envío de prueba de campaña comercial",
         tags: ["test-send"],
@@ -107,8 +107,8 @@ export async function POST(request: NextRequest) {
       contactId,
       email: to,
       country: "AR",
-      company: fields.empresa,
-      name: fields.nombre,
+      company: fields.companyName,
+      name: fields.fullName,
       subject: parsed.data.subject,
       status: "sent",
       testSend: true,
