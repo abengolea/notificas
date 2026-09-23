@@ -8,7 +8,25 @@ import { formatEvidenceTimestamp, PDF_SCHEMA } from './pdf-evidence-format';
 import { loadNotificasLogoJpeg, PDF_BRAND } from './pdf-brand';
 import { publicCertificateVerifyUrl } from './public-verify-url';
 import { campaignVerifyRef, formatVerifyRefLine } from './verify-hints';
+import { stripRichTextToPlainText } from './rich-text';
 import type { WhatsAppSentContent } from './whatsapp-evidence';
+
+/** Texto intimado del certificado: el mismo plano que entra al hash, no el HTML del editor. */
+export function certificatePlainBody(message?: {
+  content?: string;
+  contentText?: string;
+  html?: string;
+  text?: string;
+} | null): string {
+  const contentText = typeof message?.contentText === 'string' ? message.contentText.trim() : '';
+  if (contentText) return contentText;
+  const text = typeof message?.text === 'string' ? message.text.trim() : '';
+  if (text && !/<\/?[a-z][\s\S]*>/i.test(text)) return text;
+  const html = [message?.content, message?.html, message?.text].find(
+    (value): value is string => typeof value === 'string' && value.trim().length > 0
+  );
+  return html ? stripRichTextToPlainText(html) : '';
+}
 
 interface MailMessageContent {
   html?: string;
@@ -246,17 +264,6 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     return formatted === '—' ? 'No disponible' : formatted;
   };
 
-  const sanitizeHtml = (html?: string) => {
-    if (!html) return '';
-    return html
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  };
-
   const setTextColor = (color: [number, number, number]) => {
     doc.setTextColor(color[0], color[1], color[2]);
   };
@@ -282,7 +289,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
 
   const contentWidth = pageWidth - margin * 2;
   /** Regla + pie del PDF; si es bajo, el cuerpo invade el bloque del footer */
-  const FOOTER_RESERVE_PT = 72;
+  const FOOTER_RESERVE_PT = 90;
   const contentBottom = pageHeight - margin - FOOTER_RESERVE_PT;
   let yPosition = margin + 70;
   let headerPart: 'relato' | 'anexo' = 'relato';
@@ -332,27 +339,43 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   const writeQuotedContent = (text: string) => {
     const padding = 14;
     const lineHeight = 14;
-    const innerWidth = contentWidth - padding * 2 - 8;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    const lines = doc.splitTextToSize(text, innerWidth);
-    const minBox = padding * 2 + lineHeight + 8;
+    const applyBodyFont = () => {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      setTextColor(COLORS.textMain);
+    };
+    applyBodyFont();
+    const lines = doc.splitTextToSize(text, contentWidth - padding * 2 - 8);
+
+    const addContentPage = () => {
+      doc.addPage();
+      drawPageHeader(false, doc.getNumberOfPages());
+      applyBodyFont();
+    };
 
     let i = 0;
     let continued = false;
     while (i < lines.length) {
-      if (yPosition + minBox > contentBottom) {
-        doc.addPage();
-        drawPageHeader(false, doc.getNumberOfPages());
+      if (yPosition + padding + 12 + lineHeight > contentBottom) {
+        addContentPage();
       }
 
       const boxTop = yPosition;
       const headerNote = continued ? 16 : 0;
-      const usable = contentBottom - boxTop - padding * 2 - 8 - headerNote;
-      const maxLines = Math.max(1, Math.floor(usable / lineHeight));
-      const chunk = lines.slice(i, i + maxLines);
-      const boxHeight = chunk.length * lineHeight + padding * 2 + 8 + headerNote;
+      let firstBaseline = boxTop + padding + 12 + headerNote;
+      const pageLines: string[] = [];
+      while (i + pageLines.length < lines.length) {
+        const baseline = firstBaseline + pageLines.length * lineHeight;
+        if (baseline > contentBottom) break;
+        pageLines.push(lines[i + pageLines.length]);
+      }
+      if (pageLines.length === 0) {
+        addContentPage();
+        continued = true;
+        continue;
+      }
 
+      const boxHeight = pageLines.length * lineHeight + padding * 2 + 8 + headerNote;
       doc.setDrawColor(...COLORS.textMain);
       doc.setLineWidth(1);
       drawBox(margin, boxTop, contentWidth, boxHeight, false);
@@ -366,19 +389,16 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
         msgY += 16;
       }
 
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-      setTextColor(COLORS.textMain);
-      chunk.forEach((line: string) => {
+      applyBodyFont();
+      pageLines.forEach((line: string) => {
         doc.text(line, margin + padding + 4, msgY);
         msgY += lineHeight;
       });
 
       yPosition = boxTop + boxHeight + 8;
-      i += chunk.length;
+      i += pageLines.length;
       if (i < lines.length) {
-        doc.addPage();
-        drawPageHeader(false, doc.getNumberOfPages());
+        addContentPage();
         continued = true;
       }
     }
@@ -1066,13 +1086,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   // ========================================
   // SECCIÓN 3: CONTENIDO DEL MENSAJE CERTIFICADO
   // ========================================
-  // Priorizar message.content (contenido real) sobre html/text (template completo del email)
-  const rawContent = (mailData.message as { content?: string })?.content
-    || mailData.message?.contentText
-    || mailData.message?.html
-    || mailData.message?.text
-    || '';
-  const cleanedContent = rawContent ? sanitizeHtml(typeof rawContent === 'string' ? rawContent : '') : '';
+  const cleanedContent = certificatePlainBody(mailData.message);
   if (cleanedContent) {
     drawSectionTitle(hasWhatsApp ? 'Contenido enviado por correo (lector)' : 'Contenido del mensaje certificado');
     if (data.layoutCorrection) {
