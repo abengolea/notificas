@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasAdminSession } from "@/lib/admin-session";
 import { verifyAuthToken } from "@/lib/auth-helper";
-import { getAdminDb } from "@/lib/firebase-admin";
 import { canViewMail } from "@/lib/verify-mail-access";
-import { buildMetaCommunicationReport } from "@/lib/meta-evidence-verification";
+import { buildMetaCommunicationReport, resolveMetaMailId } from "@/lib/meta-evidence-verification";
 import { payloadContainsSecrets } from "@/lib/meta-graph-client";
 
 const SECRET_KEY = /token|secret|authorization|password|cookie|bearer/i;
@@ -20,54 +19,6 @@ function stripSecrets<T>(value: T, depth = 0): T {
     return out as T;
   }
   return value;
-}
-
-function wamidLookupKeys(wamid: string): string[] {
-  const id = wamid.trim();
-  if (!id) return [];
-  const keys = [id];
-  if (id.startsWith("wamid.")) keys.push(id.slice("wamid.".length));
-  else keys.push(`wamid.${id}`);
-  return [...new Set(keys)];
-}
-
-async function resolveMailId(input: { messageId?: string; campaignId?: string }): Promise<string | null> {
-  const db = getAdminDb();
-  const messageId = input.messageId?.trim();
-  if (!messageId) return null;
-  const mail = await db.collection("mail").doc(messageId).get();
-  if (mail.exists) return mail.id;
-  const cm = await db.collection("campaign_messages").doc(messageId).get();
-  if (cm.exists) {
-    const mailId = cm.data()?.mailId;
-    if (typeof mailId === "string" && mailId) return mailId;
-  }
-  if (input.campaignId) {
-    const byCamp = await db
-      .collection("campaign_messages")
-      .where("campaignId", "==", input.campaignId)
-      .where("mailId", "==", messageId)
-      .limit(1)
-      .get();
-    if (!byCamp.empty) {
-      const mailId = byCamp.docs[0].data()?.mailId;
-      if (typeof mailId === "string") return mailId;
-    }
-  }
-  for (const key of wamidLookupKeys(messageId)) {
-    const idDoc = await db.doc(`whatsapp_ids/${key}`).get();
-    if (idDoc.exists) {
-      const mailDocId = idDoc.data()?.mailDocId;
-      if (typeof mailDocId === "string" && mailDocId) return mailDocId;
-    }
-  }
-  for (const key of wamidLookupKeys(messageId)) {
-    const byWamid = await db.collection("mail").where("whatsappMessageId", "==", key).limit(1).get();
-    if (!byWamid.empty) return byWamid.docs[0].id;
-    const byTracking = await db.collection("mail").where("tracking.whatsappMessageId", "==", key).limit(1).get();
-    if (!byTracking.empty) return byTracking.docs[0].id;
-  }
-  return null;
 }
 
 /**
@@ -90,7 +41,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "messageId requerido" }, { status: 400 });
     }
 
-    const mailId = await resolveMailId({ messageId, campaignId });
+    const mailId = await resolveMetaMailId({ messageId, campaignId });
     if (!mailId) {
       return NextResponse.json({ error: "No encontrado" }, { status: 404 });
     }

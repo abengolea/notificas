@@ -22,6 +22,7 @@ import {
   buildRecipientMetaEvidence,
 } from "@/lib/meta-webhook-evidence";
 import { verifyPhoneNumberAgainstMeta } from "@/lib/meta-phone-verification";
+import { messageIdVariants } from "@/lib/resend-webhook";
 
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const FORCE_REFRESH_MIN_MS = 120 * 1000;
@@ -62,6 +63,69 @@ export async function loadWhatsAppMailBundle(mailId: string): Promise<MailBundle
   const mail = snap.data()!;
   const snapshot = await getEvidenceSnapshot(mailId);
   return { mailId, mail, snapshot };
+}
+
+function wamidLookupKeys(wamid: string): string[] {
+  const id = wamid.trim();
+  if (!id) return [];
+  const keys = [id];
+  if (id.startsWith("wamid.")) keys.push(id.slice("wamid.".length));
+  else keys.push(`wamid.${id}`);
+  return [...new Set(keys)];
+}
+
+/** Resuelve el ID interno de `mail` a partir de doc id, WAMID o Message-ID de tracking. */
+export async function resolveMetaMailId(input: {
+  messageId?: string;
+  campaignId?: string;
+}): Promise<string | null> {
+  const db = getAdminDb();
+  const messageId = input.messageId?.trim();
+  if (!messageId) return null;
+
+  const mail = await db.collection("mail").doc(messageId).get();
+  if (mail.exists) return mail.id;
+
+  const cm = await db.collection("campaign_messages").doc(messageId).get();
+  if (cm.exists) {
+    const mailId = cm.data()?.mailId;
+    if (typeof mailId === "string" && mailId) return mailId;
+  }
+
+  if (input.campaignId) {
+    const byCamp = await db
+      .collection("campaign_messages")
+      .where("campaignId", "==", input.campaignId)
+      .where("mailId", "==", messageId)
+      .limit(1)
+      .get();
+    if (!byCamp.empty) {
+      const mailId = byCamp.docs[0].data()?.mailId;
+      if (typeof mailId === "string") return mailId;
+    }
+  }
+
+  for (const key of wamidLookupKeys(messageId)) {
+    const idDoc = await db.doc(`whatsapp_ids/${key}`).get();
+    if (idDoc.exists) {
+      const mailDocId = idDoc.data()?.mailDocId;
+      if (typeof mailDocId === "string" && mailDocId) return mailDocId;
+    }
+  }
+
+  for (const key of wamidLookupKeys(messageId)) {
+    const byWamid = await db.collection("mail").where("whatsappMessageId", "==", key).limit(1).get();
+    if (!byWamid.empty) return byWamid.docs[0].id;
+    const byTracking = await db.collection("mail").where("tracking.whatsappMessageId", "==", key).limit(1).get();
+    if (!byTracking.empty) return byTracking.docs[0].id;
+  }
+
+  for (const variant of messageIdVariants(messageId)) {
+    const byTracking = await db.collection("mail").where("tracking.messageId", "==", variant).limit(1).get();
+    if (!byTracking.empty) return byTracking.docs[0].id;
+  }
+
+  return null;
 }
 
 function evidenceIds(bundle: MailBundle) {

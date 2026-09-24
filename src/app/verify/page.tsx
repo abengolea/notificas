@@ -15,6 +15,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 interface VerificationResult {
   isValid: boolean;
   issuedByNotificas?: boolean;
+  docId?: string;
   messageId?: string;
   senderName?: string;
   recipientEmail?: string;
@@ -57,6 +58,7 @@ function mapVerifyApiData(
       data?.issuedByNotificas === true ||
       data?.isCertificate === true ||
       data?.isCampaignDocument === true,
+    docId: data?.docId as string | undefined,
     messageId: (data?.messageId as string) || (data?.docId as string),
     senderName: data?.senderName as string | undefined,
     recipientEmail: data?.recipientEmail as string | undefined,
@@ -753,7 +755,7 @@ export default function VerifyPage() {
 
         {result?.isValid && (result.hasWhatsApp || result.wamid) && (
           <MetaCommunicationPanel
-            messageId={result.messageId}
+            messageId={result.docId || result.messageId}
             campaignId={result.campaignId}
             enabled
           />
