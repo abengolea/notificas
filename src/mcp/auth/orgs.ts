@@ -34,6 +34,50 @@ export async function listOrgsForUser(uid: string, email?: string | null): Promi
   return [...map.values()];
 }
 
+export async function listOrgsForAdminEmail(email: string | null | undefined): Promise<McpOrgSummary[]> {
+  const emailNorm = email?.trim().toLowerCase();
+  if (!emailNorm) return [];
+  const db = getAdminDb();
+  const snap = await db.collection("organizations").where("adminUserEmail", "==", emailNorm).get();
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      nombre: String(data.nombre || ""),
+      plan: String(data.plan || "starter"),
+      cuit: typeof data.cuit === "string" ? data.cuit : null,
+    };
+  });
+}
+
+/**
+ * Resolve a product company for CRM OAuth without mutating adminUserId/members.
+ * CRM consent authenticates as `admin:{email}`, which must not be written onto the org.
+ */
+export async function resolveOrgForCrmProductScopes(
+  email: string | null | undefined,
+  orgId: string,
+) {
+  const emailNorm = email?.trim().toLowerCase();
+  if (!orgId || !emailNorm) return null;
+  const db = getAdminDb();
+  const ref = db.collection("organizations").doc(orgId);
+  const snap = await ref.get();
+  if (!snap.exists) return null;
+  const data = snap.data() || {};
+  const adminEmail =
+    typeof data.adminUserEmail === "string" ? data.adminUserEmail.trim().toLowerCase() : "";
+  if (adminEmail !== emailNorm) return null;
+  return {
+    id: snap.id,
+    nombre: String(data.nombre || ""),
+    plan: String(data.plan || "starter"),
+    cuit: typeof data.cuit === "string" ? data.cuit : null,
+    adminUserId: String(data.adminUserId || ""),
+    adminUserEmail: String(data.adminUserEmail || email || ""),
+  };
+}
+
 export async function resolveAuthorizedOrg(
   uid: string,
   email: string | null | undefined,

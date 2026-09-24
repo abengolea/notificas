@@ -12,6 +12,7 @@ import {
   isCrmMcpForbiddenTool,
   mcpExposedCrmToolDefinitions,
 } from "./policy";
+import { callCrmProductTool, isCrmMcpProductTool } from "./product-tools";
 import type { CrmMcpScope } from "./scopes";
 
 export type CrmMcpOauthScheme = { type: "oauth2"; scopes: [CrmMcpScope] };
@@ -86,6 +87,9 @@ export function assertCrmMcpToolAllowed(name: string, scopes: readonly string[] 
 
 export async function callCrmMcpTool(ctx: CrmMcpAuthContext, name: string, args: unknown): Promise<unknown> {
   assertCrmMcpToolAllowed(name, ctx.scopes);
+  if (isCrmMcpProductTool(name)) {
+    return callCrmProductTool(ctx, name, args);
+  }
   executeCallCount += 1;
   const result = await executeCrmTool({
     runtime: testRuntime ?? getLiveCrmToolRuntime(),

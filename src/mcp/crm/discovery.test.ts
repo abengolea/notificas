@@ -121,12 +121,17 @@ test("ChatGPT discovery is public; tools/call stays OAuth-gated", async () => {
     const listed = await crmRpc({ jsonrpc: "2.0", id: 2, method: "tools/list" });
     assert.equal(listed.status, 200);
     const tools = (listed.json.result as { tools: Array<Record<string, unknown>> }).tools;
-    assert.equal(tools.length, 52);
-    assert.equal(listAllCrmMcpTools().length, 52);
+    assert.equal(tools.length, 59);
+    assert.equal(listAllCrmMcpTools().length, 59);
     assert.ok(tools.some((t) => t.name === "search_linkedin_campaigns"));
     assert.ok(tools.some((t) => t.name === "create_linkedin_campaign_draft"));
     assert.ok(tools.some((t) => t.name === "search_linkedin_outreach"));
+    assert.ok(tools.some((t) => t.name === "get_notification"));
+    assert.ok(tools.some((t) => t.name === "prepare_whatsapp"));
+    assert.ok(tools.some((t) => t.name === "get_certificate"));
     for (const banned of PHASE_B) assert.equal(tools.some((t) => t.name === banned), false);
+    assert.equal(tools.some((t) => t.name === "send_whatsapp"), false);
+    assert.equal(tools.some((t) => t.name === "send_email"), false);
 
     const byName = Object.fromEntries(tools.map((t) => [String(t.name), t]));
     assert.deepEqual(byName.search_companies.securitySchemes, [{ type: "oauth2", scopes: ["crm:read"] }]);
@@ -139,6 +144,9 @@ test("ChatGPT discovery is public; tools/call stays OAuth-gated", async () => {
     assert.deepEqual(byName.create_linkedin_campaign_draft.securitySchemes, [{ type: "oauth2", scopes: ["crm:write"] }]);
     assert.deepEqual(byName.update_linkedin_campaign_draft.securitySchemes, [{ type: "oauth2", scopes: ["crm:write"] }]);
     assert.deepEqual(byName.update_linkedin_outreach_status.securitySchemes, [{ type: "oauth2", scopes: ["crm:write"] }]);
+    assert.deepEqual(byName.get_notification.securitySchemes, [{ type: "oauth2", scopes: ["notifications:read"] }]);
+    assert.deepEqual(byName.prepare_whatsapp.securitySchemes, [{ type: "oauth2", scopes: ["notifications:prepare"] }]);
+    assert.deepEqual(byName.get_certificate.securitySchemes, [{ type: "oauth2", scopes: ["certificates:read"] }]);
     for (const tool of tools) {
       assert.deepEqual(tool.securitySchemes, (tool._meta as { securitySchemes: unknown }).securitySchemes);
       const schemes = tool.securitySchemes as Array<{ type: string; scopes: string[] }>;
@@ -184,6 +192,83 @@ test("ChatGPT discovery is public; tools/call stays OAuth-gated", async () => {
     assert.equal(readSearch.status, 200);
     assert.equal((readSearch.json.result as { isError?: boolean }).isError, false);
     assert.ok((readSearch.json.result as { structuredContent: unknown }).structuredContent);
+    assert.equal(crmMcpExecuteCallCount(), 1);
+
+    const readList = await crmRpc({ jsonrpc: "2.0", id: "5b", method: "tools/list" }, { authorization: "Bearer ntf_atk_read" });
+    const readListNames = ((readList.json.result as { tools: Array<{ name: string }> }).tools).map((t) => t.name);
+    assert.ok(readListNames.includes("search_companies"));
+    assert.equal(readListNames.includes("get_notification"), false);
+    assert.equal(readListNames.includes("prepare_whatsapp"), false);
+    assert.equal(readListNames.includes("get_certificate"), false);
+    assert.equal(readListNames.includes("send_whatsapp"), false);
+
+    setCrmMcpTestAccessToken(
+      "ntf_atk_chatgpt",
+      fakeToken([
+        "crm:read",
+        "crm:write",
+        "campaigns:read",
+        "campaigns:write",
+        "linkedin:read",
+        "linkedin:write",
+        "notifications:read",
+        "notifications:prepare",
+        "certificates:read",
+      ]),
+    );
+    const chatgptList = await crmRpc(
+      { jsonrpc: "2.0", id: "5c", method: "tools/list" },
+      { authorization: "Bearer ntf_atk_chatgpt" },
+    );
+    const chatgptNames = ((chatgptList.json.result as { tools: Array<{ name: string }> }).tools).map((t) => t.name);
+    assert.ok(chatgptNames.includes("search_companies"));
+    assert.ok(chatgptNames.includes("create_company"));
+    assert.ok(chatgptNames.includes("get_notification"));
+    assert.ok(chatgptNames.includes("prepare_whatsapp"));
+    assert.ok(chatgptNames.includes("get_certificate"));
+    assert.equal(chatgptNames.includes("send_whatsapp"), false);
+    assert.equal(chatgptNames.includes("send_email"), false);
+    assert.equal(chatgptNames.includes("send_campaign"), false);
+
+    const deniedNotification = await crmRpc(
+      {
+        jsonrpc: "2.0",
+        id: "5d",
+        method: "tools/call",
+        params: { name: "get_notification", arguments: { notificationId: "notif-1" } },
+      },
+      { authorization: "Bearer ntf_atk_read" },
+    );
+    assert.equal((deniedNotification.json.result as { isError: boolean }).isError, true);
+    assert.match(challengeList(deniedNotification.json)[0], /error="insufficient_scope"/);
+    assert.match(challengeList(deniedNotification.json)[0], /scope="notifications:read"/);
+    assert.equal(crmMcpExecuteCallCount(), 1);
+
+    const missingCompany = await crmRpc(
+      {
+        jsonrpc: "2.0",
+        id: "5e",
+        method: "tools/call",
+        params: { name: "get_notification", arguments: { notificationId: "notif-1" } },
+      },
+      { authorization: "Bearer ntf_atk_chatgpt" },
+    );
+    assert.equal((missingCompany.json.result as { isError: boolean }).isError, true);
+    const missingPayload = JSON.stringify(missingCompany.json.result);
+    assert.match(missingPayload, /company account/i);
+    assert.match(challengeList(missingCompany.json)[0] || "", /company account/i);
+    assert.equal(crmMcpExecuteCallCount(), 1);
+
+    const deniedSend = await crmRpc(
+      {
+        jsonrpc: "2.0",
+        id: "5f",
+        method: "tools/call",
+        params: { name: "send_whatsapp", arguments: { recipientPhone: "+5491100000000", idempotencyKey: "k1" } },
+      },
+      { authorization: "Bearer ntf_atk_chatgpt" },
+    );
+    assert.equal((deniedSend.json.result as { isError: boolean }).isError, true);
     assert.equal(crmMcpExecuteCallCount(), 1);
 
     const readCreate = await crmRpc(

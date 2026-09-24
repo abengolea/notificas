@@ -32,7 +32,17 @@ test("CRM MCP is disabled by default and isolated from product resource", () => 
 test("CRM MCP scopes: empty defaults to crm:read; unknown is invalid_scope", () => {
   assert.deepEqual(
     [...CRM_MCP_SCOPES],
-    ["crm:read", "crm:write", "campaigns:read", "campaigns:write", "linkedin:read", "linkedin:write"],
+    [
+      "crm:read",
+      "crm:write",
+      "campaigns:read",
+      "campaigns:write",
+      "linkedin:read",
+      "linkedin:write",
+      "notifications:read",
+      "notifications:prepare",
+      "certificates:read",
+    ],
   );
   assert.deepEqual(parseCrmScopeString(""), ["crm:read"]);
   assert.deepEqual(parseCrmScopeString(null), ["crm:read"]);
@@ -41,10 +51,28 @@ test("CRM MCP scopes: empty defaults to crm:read; unknown is invalid_scope", () 
   assert.deepEqual(parseCrmScopeString("crm:write"), ["crm:write"]);
   assert.deepEqual(parseCrmScopeString("crm:read crm:write"), ["crm:read", "crm:write"]);
   assert.deepEqual(parseCrmScopeString("linkedin:read linkedin:write"), ["linkedin:read", "linkedin:write"]);
+  assert.deepEqual(
+    parseCrmScopeString(
+      "crm:read crm:write campaigns:read campaigns:write linkedin:read linkedin:write notifications:read notifications:prepare certificates:read",
+    ),
+    [
+      "crm:read",
+      "crm:write",
+      "campaigns:read",
+      "campaigns:write",
+      "linkedin:read",
+      "linkedin:write",
+      "notifications:read",
+      "notifications:prepare",
+      "certificates:read",
+    ],
+  );
   assert.throws(() => parseCrmScopeString("invented:scope"), CrmInvalidScopeError);
   assert.throws(() => parseCrmScopeString("crm:read invented:scope"), CrmInvalidScopeError);
   assert.throws(() => parseCrmScopeString("campaigns:send"), CrmInvalidScopeError);
+  assert.throws(() => parseCrmScopeString("notifications:send"), CrmInvalidScopeError);
   assert.throws(() => parseCrmScopeString("notifications:send account:read"), CrmInvalidScopeError);
+  assert.throws(() => parseCrmScopeString("account:read"), CrmInvalidScopeError);
   try {
     parseCrmScopeString("crm:read foo");
     assert.fail("expected invalid_scope");
@@ -72,6 +100,9 @@ test("crm:read token still sees additive reads and never writes, pause, resume o
   assert.ok(names.includes("search_opportunities"));
   assert.ok(names.includes("search_linkedin_campaigns"));
   assert.ok(names.includes("get_linkedin_pending_actions"));
+  assert.equal(names.includes("get_notification"), false);
+  assert.equal(names.includes("prepare_whatsapp"), false);
+  assert.equal(names.includes("get_certificate"), false);
   assert.equal(crmMcpWriteToolCount(["crm:read"]), 0);
   assert.throws(() => assertCrmMcpToolAllowed("create_company", ["crm:read"]), McpToolError);
   assert.throws(() => assertCrmMcpToolAllowed("send_email", ["crm:read"]), McpToolError);
@@ -184,4 +215,70 @@ test("LinkedIn tools are available via dedicated scopes and existing crm tokens"
     descriptors.find((tool) => tool.name === "record_linkedin_action")?.securitySchemes,
     [{ type: "oauth2", scopes: ["crm:write"] }],
   );
+});
+
+test("CRM MCP product scopes are explicit and never send", () => {
+  const productTools = [
+    "estimate_notification",
+    "prepare_whatsapp",
+    "prepare_email",
+    "get_notification",
+    "get_delivery_status",
+    "get_certificate",
+    "verify_notification",
+  ];
+  const sendTools = ["send_whatsapp", "send_email", "send_campaign"];
+  const catalog = listAllCrmMcpTools().map((t) => t.name);
+  for (const name of productTools) assert.equal(catalog.includes(name), true);
+  for (const name of sendTools) {
+    assert.equal(catalog.includes(name), false);
+    assert.equal(isCrmMcpForbiddenTool(name), true);
+    assert.equal(crmMcpCanCallTool(name, CRM_MCP_SCOPES), false);
+  }
+
+  const crmRead = namesFor(["crm:read"]);
+  const campaignsRead = namesFor(["campaigns:read"]);
+  for (const name of productTools) {
+    assert.equal(crmRead.includes(name), false);
+    assert.equal(campaignsRead.includes(name), false);
+    assert.throws(() => assertCrmMcpToolAllowed(name, ["crm:read"]), McpToolError);
+    assert.throws(() => assertCrmMcpToolAllowed(name, ["campaigns:read"]), McpToolError);
+  }
+
+  const notifRead = namesFor(["notifications:read"]);
+  assert.deepEqual(
+    notifRead.filter((name) => productTools.includes(name)).sort(),
+    ["get_delivery_status", "get_notification"],
+  );
+  assert.equal(notifRead.includes("search_companies"), false);
+  assert.equal(notifRead.includes("prepare_whatsapp"), false);
+  assert.equal(notifRead.includes("get_certificate"), false);
+
+  const notifPrepare = namesFor(["notifications:prepare"]);
+  assert.deepEqual(
+    notifPrepare.filter((name) => productTools.includes(name)).sort(),
+    ["estimate_notification", "prepare_email", "prepare_whatsapp"],
+  );
+  assert.equal(notifPrepare.includes("get_notification"), false);
+
+  const certRead = namesFor(["certificates:read"]);
+  assert.deepEqual(
+    certRead.filter((name) => productTools.includes(name)).sort(),
+    ["get_certificate", "verify_notification"],
+  );
+
+  const chatgpt = namesFor(CRM_MCP_SCOPES);
+  for (const name of productTools) assert.equal(chatgpt.includes(name), true);
+  for (const name of sendTools) assert.equal(chatgpt.includes(name), false);
+
+  const descriptors = listAllCrmMcpTools();
+  assert.deepEqual(descriptors.find((t) => t.name === "get_notification")?.securitySchemes, [
+    { type: "oauth2", scopes: ["notifications:read"] },
+  ]);
+  assert.deepEqual(descriptors.find((t) => t.name === "prepare_whatsapp")?.securitySchemes, [
+    { type: "oauth2", scopes: ["notifications:prepare"] },
+  ]);
+  assert.deepEqual(descriptors.find((t) => t.name === "get_certificate")?.securitySchemes, [
+    { type: "oauth2", scopes: ["certificates:read"] },
+  ]);
 });

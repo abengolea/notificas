@@ -2,6 +2,7 @@ import { CRM_FORBIDDEN_TOOL_NAMES } from "@/lib/marketing/tools/types";
 import { CRM_READ_TOOL_DEFINITIONS, CRM_WRITE_TOOL_DEFINITIONS } from "@/lib/marketing/tools/definitions";
 import type { CrmMcpScope } from "./scopes";
 import { crmMcpHasAnyScope } from "./scopes";
+import { crmMcpProductToolDefinitions } from "./product-tools";
 
 /** Any of these scopes is enough to call the tool. */
 export const CRM_MCP_TOOL_SCOPES: Record<string, readonly CrmMcpScope[]> = {
@@ -57,6 +58,13 @@ export const CRM_MCP_TOOL_SCOPES: Record<string, readonly CrmMcpScope[]> = {
   update_linkedin_outreach_status: ["crm:write", "linkedin:write"],
   archive_linkedin_campaign: ["crm:write", "linkedin:write"],
   restore_linkedin_campaign: ["crm:write", "linkedin:write"],
+  estimate_notification: ["notifications:prepare"],
+  prepare_whatsapp: ["notifications:prepare"],
+  prepare_email: ["notifications:prepare"],
+  get_notification: ["notifications:read"],
+  get_delivery_status: ["notifications:read"],
+  get_certificate: ["certificates:read"],
+  verify_notification: ["certificates:read"],
 };
 
 /** Prepared for Fase B. Not published. When enabled they must require campaigns:send. */
@@ -105,7 +113,11 @@ export function advertisedScopeForTool(name: string): CrmMcpScope {
 }
 
 export function mcpExposedCrmToolDefinitions() {
-  return [...CRM_READ_TOOL_DEFINITIONS, ...CRM_WRITE_TOOL_DEFINITIONS].filter(
+  const marketing = [...CRM_READ_TOOL_DEFINITIONS, ...CRM_WRITE_TOOL_DEFINITIONS].filter(
     (t) => Boolean(CRM_MCP_TOOL_SCOPES[t.name]) && !isCrmMcpForbiddenTool(t.name),
   );
+  const product = crmMcpProductToolDefinitions().filter(
+    (t) => Boolean(CRM_MCP_TOOL_SCOPES[t.name]) && !isCrmMcpForbiddenTool(t.name),
+  );
+  return [...marketing, ...product];
 }

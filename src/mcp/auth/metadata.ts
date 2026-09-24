@@ -3,6 +3,14 @@ import { mcpIssuer, mcpResourceUrl, MCP_PROTOCOL_VERSION } from "@/mcp/config";
 import { CRM_MCP_SCOPES, crmScopeDescriptions } from "@/mcp/crm/scopes";
 import { crmMcpEnabledSafe } from "@/mcp/crm/config";
 
+function uniqueStrings(values: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const value of values) {
+    if (!out.includes(value)) out.push(value);
+  }
+  return out;
+}
+
 export function protectedResourceMetadata() {
   const resource = mcpResourceUrl();
   const issuer = mcpIssuer();
@@ -17,18 +25,16 @@ export function protectedResourceMetadata() {
   };
 }
 
-export function authorizationServerMetadata() {
+function authorizationServerBody(scopes: readonly string[], descriptions: Record<string, string>) {
   const issuer = mcpIssuer();
-  const scopes = crmMcpEnabledSafe() ? [...ALL_MCP_SCOPES, ...CRM_MCP_SCOPES] : ALL_MCP_SCOPES;
-  const desc = crmMcpEnabledSafe() ? { ...scopeDescriptions(), ...crmScopeDescriptions() } : scopeDescriptions();
   return {
     issuer,
     authorization_endpoint: `${issuer}/oauth/authorize`,
     token_endpoint: `${issuer}/oauth/token`,
     registration_endpoint: `${issuer}/oauth/register`,
     revocation_endpoint: `${issuer}/oauth/revoke`,
-    scopes_supported: scopes,
-    scope_descriptions: desc,
+    scopes_supported: [...scopes],
+    scope_descriptions: descriptions,
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
@@ -36,6 +42,21 @@ export function authorizationServerMetadata() {
     revocation_endpoint_auth_methods_supported: ["none"],
     response_modes_supported: ["query"],
   };
+}
+
+export function authorizationServerMetadata() {
+  const scopes = crmMcpEnabledSafe()
+    ? uniqueStrings([...ALL_MCP_SCOPES, ...CRM_MCP_SCOPES])
+    : [...ALL_MCP_SCOPES];
+  const desc = crmMcpEnabledSafe()
+    ? { ...scopeDescriptions(), ...crmScopeDescriptions() }
+    : scopeDescriptions();
+  return authorizationServerBody(scopes, desc);
+}
+
+/** Path-aware AS for /mcp/crm: CRM scopes only. Never advertises notifications:send. */
+export function crmAuthorizationServerMetadata() {
+  return authorizationServerBody(CRM_MCP_SCOPES, crmScopeDescriptions());
 }
 
 export const OAUTH_CORS = {

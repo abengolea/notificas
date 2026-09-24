@@ -17,8 +17,10 @@ import {
   callCrmMcpTool,
   isCrmMcpTestRuntime,
   listAllCrmMcpTools,
+  listCrmMcpTools,
 } from "./registry";
 import { advertisedScopeForTool, crmMcpToolIsWrite } from "./policy";
+import { bearerFromAuthorization } from "@/mcp/auth/bearer";
 
 type CrmMcpHandled = {
   body: unknown;
@@ -62,6 +64,9 @@ function challengeForAuthError(err: McpToolError, toolName?: string): { error: s
       scope: toolName ? advertisedScopeForTool(toolName) : undefined,
     };
   }
+  if (err.code === "FORBIDDEN") {
+    return { error: "invalid_token", description: err.message };
+  }
   return { error: "invalid_token", description: "Authentication required" };
 }
 
@@ -87,7 +92,7 @@ function authChallengeToolResult(
   };
 }
 
-function handleDiscovery(rpc: JsonRpcRequest): CrmMcpHandled {
+async function handleDiscovery(rpc: JsonRpcRequest, request: Request, requestId: string): Promise<CrmMcpHandled> {
   const id = (rpc.id ?? null) as JsonRpcId;
   const method = rpc.method;
 
@@ -99,7 +104,7 @@ function handleDiscovery(rpc: JsonRpcRequest): CrmMcpHandled {
         capabilities: { tools: { listChanged: true } },
         serverInfo: { name: CRM_MCP_SERVER_NAME, version: CRM_MCP_SERVER_VERSION },
         instructions:
-          "Notificas CRM MCP is the internal commercial CRM (not the certified product). Use search_* then get_*. Workspace is fixed by the server. Writes require crm:write, campaigns:write or linkedin:write. LinkedIn CRM tools: search_linkedin_campaigns, get_linkedin_campaign, preview_linkedin_campaign, search_linkedin_pending_actions, get_linkedin_pending_actions, search_linkedin_outreach, create_linkedin_campaign_draft, update_linkedin_campaign, update_linkedin_campaign_draft, add_contact_to_linkedin_campaign, create_linkedin_outreach, update_linkedin_outreach_status, record_linkedin_action, archive_linkedin_campaign, restore_linkedin_campaign. They are records for manual organization only and never automate, send, connect, message or scrape LinkedIn. Sending, scheduling, deleting and bulk import are not available.",
+          "Notificas CRM MCP is the internal commercial CRM (not the certified product). Use search_* then get_*. Workspace is fixed by the server. Writes require crm:write, campaigns:write or linkedin:write. Certified notification tools (estimate/prepare/get_notification/get_certificate/verify) require notifications:read, notifications:prepare or certificates:read and a selected company account. They never send. LinkedIn CRM tools: search_linkedin_campaigns, get_linkedin_campaign, preview_linkedin_campaign, search_linkedin_pending_actions, get_linkedin_pending_actions, search_linkedin_outreach, create_linkedin_campaign_draft, update_linkedin_campaign, update_linkedin_campaign_draft, add_contact_to_linkedin_campaign, create_linkedin_outreach, update_linkedin_outreach_status, record_linkedin_action, archive_linkedin_campaign, restore_linkedin_campaign. They are records for manual organization only and never automate, send, connect, message or scrape LinkedIn. Sending, scheduling, deleting and bulk import are not available.",
       }),
       tool: "initialize",
     };
@@ -114,6 +119,14 @@ function handleDiscovery(rpc: JsonRpcRequest): CrmMcpHandled {
   }
 
   if (method === "tools/list") {
+    if (bearerFromAuthorization(request.headers.get("Authorization"))) {
+      try {
+        const ctx = await authenticateCrmMcpRequest(request, requestId);
+        return { body: jsonRpcResult(id, { tools: listCrmMcpTools(ctx.scopes) }), tool: "tools/list" };
+      } catch {
+        // Invalid bearer on discovery still returns the advertised catalog.
+      }
+    }
     return { body: jsonRpcResult(id, { tools: listAllCrmMcpTools() }), tool: "tools/list" };
   }
 
@@ -226,7 +239,7 @@ export async function handleCrmMcpHttp(request: Request): Promise<Response> {
 
   const isDiscovery = DISCOVERY_METHODS.has(parsed.method);
   const handled: CrmMcpHandled = isDiscovery
-    ? handleDiscovery(parsed)
+    ? await handleDiscovery(parsed, request, requestId)
     : parsed.method === "tools/call"
       ? await handleToolsCall(parsed, request, requestId)
       : { body: jsonRpcError((parsed.id ?? null) as JsonRpcId, JSONRPC.METHOD_NOT_FOUND, `Method not found: ${parsed.method}`) };

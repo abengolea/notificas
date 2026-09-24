@@ -3,7 +3,7 @@ import { getMarketingWorkspaceId } from "@/lib/marketing/workspace";
 import { mcpBaseUrl, MCP_PROTOCOL_VERSION, MCP_PROTOCOL_VERSIONS } from "@/mcp/config";
 
 export const CRM_MCP_SERVER_NAME = "notificas-mcp-crm";
-export const CRM_MCP_SERVER_VERSION = "1.4.0";
+export const CRM_MCP_SERVER_VERSION = "1.5.0";
 export const CRM_MCP_PROTOCOL_VERSION = MCP_PROTOCOL_VERSION;
 export const CRM_MCP_PROTOCOL_VERSIONS = MCP_PROTOCOL_VERSIONS;
 

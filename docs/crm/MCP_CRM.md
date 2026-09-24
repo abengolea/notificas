@@ -7,12 +7,12 @@ Endpoint interno de **CRM comercial**, separado del MCP de **producto certificad
 | URL | `POST /mcp` | `POST /mcp/crm` |
 | Flag | `MCP_ENABLED` | `CRM_MCP` |
 | Recurso OAuth | `{base}/mcp` | `{base}/mcp/crm` |
-| Scopes | `account:read`, `notifications:*`, `campaigns:*`, … | `crm:read`, `crm:write`, `campaigns:read`, `campaigns:write`, `linkedin:read`, `linkedin:write` |
-| Tools | envío certificado, certificados | CRM interno + borradores de campañas comerciales |
+| Scopes | `account:read`, `notifications:*`, `campaigns:*`, … | `crm:read`, `crm:write`, `campaigns:read`, `campaigns:write`, `linkedin:read`, `linkedin:write`, `notifications:read`, `notifications:prepare`, `certificates:read` (nunca `notifications:send`) |
+| Tools | envío certificado, certificados | CRM interno + borradores comerciales + lectura/preparación certificada de la empresa elegida (sin envío) |
 | Tenant | `orgId` de cliente | `workspaceId` de config (`notificas-internal`) |
 | Auditoría | `mcp_audit_logs` | `marketing_mcp_audit` |
 
-Una credencial de cliente del producto **no** entra al CRM: el token de `/mcp` tiene `resource` distinto y se rechaza en `/mcp/crm`. El registry de tools no se comparte.
+El registry de tools de **envío** (`send_whatsapp`, `send_email`, `send_campaign`) **no** se publica en `/mcp/crm`. Las tools de lectura/preparación certificada sí, y exigen sus scopes explícitos más una empresa (`orgId`) distinta del workspace CRM.
 
 El MCP CRM **no** llama a Firestore. Usa los mismos handlers que el asistente interno.
 
@@ -36,7 +36,7 @@ Workspace: siempre `getMarketingWorkspaceId()`. El modelo no puede mandar `works
 
 Un scope **omitido o vacío** cae a `crm:read`. Un scope **explícito desconocido** (o una mezcla con uno desconocido) responde `invalid_scope` en authorize/consent y en `/oauth/token` si se envía `scope` contra el resource CRM. Nunca se reescribe un token inventado a `crm:read`.
 
-Los tokens ya emitidos con solo `crm:read` siguen pudiendo **ejecutar** lecturas. `tools/list` anónimo publica las 52 tools (CRM + campañas de email + LinkedIn) con `securitySchemes`; ChatGPT pide OAuth al llamar una tool. Tras un deploy que agregue tools, hay que **reconectar** el conector de ChatGPT: `initialize` declara `tools.listChanged=true`, pero ChatGPT no refresca solo.
+Los tokens ya emitidos con solo `crm:read` siguen pudiendo **ejecutar** lecturas CRM. No ganan `notifications:*` ni `certificates:read`. `tools/list` anónimo publica las 59 tools (CRM + campañas de email + LinkedIn + lectura/preparación certificada) con `securitySchemes`; con Bearer válido, `tools/list` filtra al catálogo autorizado por el token. Tras un deploy que agregue tools o scopes, hay que **reconectar** el conector de ChatGPT: `initialize` declara `tools.listChanged=true`, pero ChatGPT no refresca solo.
 
 `POST /mcp/crm` permite sin Bearer: `initialize`, `notifications/initialized`, `ping` y `tools/list` (solo el menú: nombre, descripción, schema, annotations, securitySchemes). **No** lee ni escribe CRM. `tools/call` exige OAuth: Bearer, resource `{base}/mcp/crm`, allowlist `CRM_MCP_ALLOWED_USERS` y el scope de esa tool. Si falta token o scope, responde JSON-RPC 200 `isError` con `_meta["mcp/www_authenticate"]` (no corta el transporte con HTTP 401).
 
@@ -58,7 +58,15 @@ Escritura campañas (`campaigns:write`):
 
 Empresas: `create_company` / `update_company` usan `industryIds` (array), igual que el servicio de dominio. `search_companies` y segmentos de campaña usan `industryId` (singular).
 
-`create_campaign_draft` no acepta `send`, `status` ni programación. LinkedIn: `search_linkedin_campaigns`, `get_linkedin_campaign`, `preview_linkedin_campaign`, `search_linkedin_pending_actions`, `get_linkedin_pending_actions`, `search_linkedin_outreach`, `create_linkedin_campaign_draft`, `update_linkedin_campaign`, `update_linkedin_campaign_draft`, `add_contact_to_linkedin_campaign`, `create_linkedin_outreach`, `remove_contact_from_linkedin_campaign`, `update_linkedin_campaign_member`, `record_linkedin_action`, `update_linkedin_outreach_status`, `archive_linkedin_campaign`, `restore_linkedin_campaign`. Ninguna envía ni automatiza LinkedIn. `tools/list` anónimo muestra las 52 tools; la autorización se aplica en `tools/call` según el scope del token.
+`create_campaign_draft` no acepta `send`, `status` ni programación. LinkedIn: `search_linkedin_campaigns`, `get_linkedin_campaign`, `preview_linkedin_campaign`, `search_linkedin_pending_actions`, `get_linkedin_pending_actions`, `search_linkedin_outreach`, `create_linkedin_campaign_draft`, `update_linkedin_campaign`, `update_linkedin_campaign_draft`, `add_contact_to_linkedin_campaign`, `create_linkedin_outreach`, `remove_contact_from_linkedin_campaign`, `update_linkedin_campaign_member`, `record_linkedin_action`, `update_linkedin_outreach_status`, `archive_linkedin_campaign`, `restore_linkedin_campaign`. Ninguna envía ni automatiza LinkedIn.
+
+Notificaciones certificadas (empresa seleccionada en el consentimiento, no el workspace CRM):
+
+- `notifications:prepare`: `estimate_notification`, `prepare_whatsapp`, `prepare_email`
+- `notifications:read`: `get_notification`, `get_delivery_status`
+- `certificates:read`: `get_certificate`, `verify_notification`
+
+`send_whatsapp` y `send_email` no están publicados. `tools/list` anónimo muestra las 59 tools; con un access token, solo las del scope concedido.
 
 Paginación: default 20, máximo 100, cursor opaco. `get_*` recorta listas relacionadas (~8 ítems). No hay `execute_crm_query`.
 
@@ -80,7 +88,7 @@ Idempotencia: header `Idempotency-Key` o campo `idempotencyKey` en create/copy.
 4. En ChatGPT Business, modo desarrollador / complemento MCP:
    - Server URL: `https://<host>/mcp/crm`
    - Auth: OAuth 2.1 con PKCE mediante la metadata publicada
-5. Tras un deploy con scopes nuevos, **reconectar** el conector para consentir `crm:write` / `campaigns:write`.
+5. Tras un deploy con scopes nuevos, **reconectar** el conector para consentir `crm:write` / `campaigns:write` / `notifications:read` / `notifications:prepare` / `certificates:read`. Si ChatGPT pide scopes de notificación o certificado, el consentimiento exige elegir la empresa Notificas (no el workspace CRM).
 
 ## Configuración
 

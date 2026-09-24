@@ -11,7 +11,7 @@ import {
   registrationResponse,
   summarizeDcrBody,
 } from "./clients";
-import { authorizationServerMetadata } from "./metadata";
+import { authorizationServerMetadata, crmAuthorizationServerMetadata } from "./metadata";
 import { crmProtectedResourceMetadata } from "../crm/metadata";
 import { GET as getAuthorizationServer } from "../../app/.well-known/oauth-authorization-server/route";
 import { GET as getAuthorizationServerMcp } from "../../app/.well-known/oauth-authorization-server/mcp/route";
@@ -141,8 +141,19 @@ test("CRM protected resource is /mcp/crm", () => {
     assert.deepEqual(meta.authorization_servers, [CHATGPT_CRM_ISSUER]);
     assert.deepEqual(
       meta.scopes_supported,
-      ["crm:read", "crm:write", "campaigns:read", "campaigns:write", "linkedin:read", "linkedin:write"],
+      [
+        "crm:read",
+        "crm:write",
+        "campaigns:read",
+        "campaigns:write",
+        "linkedin:read",
+        "linkedin:write",
+        "notifications:read",
+        "notifications:prepare",
+        "certificates:read",
+      ],
     );
+    assert.equal(meta.scopes_supported.includes("notifications:send"), false);
     assert.match(meta.scope_descriptions["linkedin:read"], /manual organization/i);
     assert.match(meta.scope_descriptions["linkedin:write"], /never automates/i);
     assert.match(meta.scope_descriptions["linkedin:write"], /removing a contact's campaign membership/i);
@@ -167,9 +178,15 @@ test("path-aware OAuth AS discovery for /mcp/crm stays published with DCR", asyn
     const product = await readAsJson(getAuthorizationServerMcp());
     const crm = await readAsJson(getAuthorizationServerMcpCrm());
     assert.deepEqual(product, root);
-    assert.deepEqual(crm, root);
+    assert.deepEqual(crm.scopes_supported, crmAuthorizationServerMetadata().scopes_supported);
+    assert.equal((crm.scopes_supported as string[]).includes("notifications:read"), true);
+    assert.equal((crm.scopes_supported as string[]).includes("notifications:prepare"), true);
+    assert.equal((crm.scopes_supported as string[]).includes("certificates:read"), true);
+    assert.equal((crm.scopes_supported as string[]).includes("notifications:send"), false);
+    assert.equal((crm.scopes_supported as string[]).includes("account:read"), false);
     assert.equal(crm.authorization_endpoint, "https://notificas.com.ar/oauth/authorize");
     assert.equal(crm.token_endpoint, "https://notificas.com.ar/oauth/token");
+    assert.equal(crm.registration_endpoint, CHATGPT_DCR_REGISTRATION_ENDPOINT);
   } finally {
     restoreEnv("CRM_MCP", prevCrm);
     restoreEnv("MCP_ENABLED", prevMcp);

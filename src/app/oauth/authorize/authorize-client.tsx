@@ -10,7 +10,7 @@ import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { parseScopeString, scopeDescriptions, type McpScope } from "@/mcp/scopes";
-import { parseCrmScopeString, crmScopeDescriptions, type CrmMcpScope, CrmInvalidScopeError } from "@/mcp/crm/scopes";
+import { parseCrmScopeString, crmMcpRequiresCompanyOrg, crmScopeDescriptions, type CrmMcpScope, CrmInvalidScopeError } from "@/mcp/crm/scopes";
 
 type Org = { id: string; nombre?: string; plan?: string };
 
@@ -36,6 +36,7 @@ export function AuthorizeClient() {
     const loginPath = isCrmResource ? "/admin/login" : "/login";
     return `${loginPath}?next=${encodeURIComponent(`/oauth/authorize?${qs}`)}`;
   }, [isCrmResource, search]);
+  const needsCompanyOrg = isCrmResource && !scopeError && crmMcpRequiresCompanyOrg(scopes);
   const descriptions: Record<string, string> = isCrmResource ? crmScopeDescriptions() : scopeDescriptions();
 
   const [ready, setReady] = useState(false);
@@ -54,7 +55,10 @@ export function AuthorizeClient() {
         try {
           const [sessionRes, clientRes] = await Promise.all([
             fetch("/api/admin/me", { credentials: "include", cache: "no-store" }),
-            fetch(`/oauth/consent?client_id=${encodeURIComponent(clientId)}`),
+            fetch(`/oauth/consent?client_id=${encodeURIComponent(clientId)}`, {
+              credentials: "include",
+              cache: "no-store",
+            }),
           ]);
           if (cancelled) return;
           if (sessionRes.status === 401) {
@@ -65,10 +69,16 @@ export function AuthorizeClient() {
             throw new Error("admin_session_unavailable");
           }
           const sessionJson = (await sessionRes.json().catch(() => ({}))) as { email?: string };
-          const clientJson = (await clientRes.json().catch(() => ({}))) as { client_name?: string };
+          const clientJson = (await clientRes.json().catch(() => ({}))) as {
+            client_name?: string;
+            organizations?: Org[];
+          };
           if (cancelled) return;
           setUserEmail(typeof sessionJson.email === "string" ? sessionJson.email : null);
           if (clientJson.client_name) setClientName(clientJson.client_name);
+          const list = Array.isArray(clientJson.organizations) ? clientJson.organizations : [];
+          setOrgs(list);
+          if (list[0]?.id) setOrgId(list[0].id);
           setReady(true);
         } catch {
           if (!cancelled) {
@@ -179,7 +189,7 @@ export function AuthorizeClient() {
             <p className="text-sm text-destructive">Esta solicitud OAuth no incluye PKCE S256 y no puede autorizarse.</p>
           ) : null}
 
-          {!isCrmResource ? <div>
+          {!isCrmResource || needsCompanyOrg ? <div>
             <p className="mb-2 text-sm font-medium">Empresa</p>
             {orgs.length === 0 ? (
               <p className="text-sm text-muted-foreground">No hay organizaciones asociadas a esta cuenta.</p>
@@ -215,7 +225,7 @@ export function AuthorizeClient() {
 
           <p className="text-xs text-muted-foreground">
             {isCrmResource
-              ? "Si autorizás escritura, ChatGPT puede crear o editar empresas, contactos y borradores de campañas comerciales. No puede enviar email, programar envíos, borrar ni importar CSV masivo."
+              ? "Si autorizás escritura, ChatGPT puede crear o editar empresas, contactos y borradores de campañas comerciales. No puede enviar email, notificaciones certificadas, programar envíos, borrar ni importar CSV masivo."
               : "El envío masivo de campañas no está permitido desde ChatGPT ni Claude. Las notificaciones individuales consumen créditos y quedan registradas con la misma evidencia que en la web."}
           </p>
 
@@ -225,7 +235,7 @@ export function AuthorizeClient() {
             <Button variant="outline" className="flex-1" disabled={busy} onClick={() => void submit(true)}>
               Denegar
             </Button>
-            <Button className="flex-1" disabled={busy || Boolean(scopeError) || (!isCrmResource && !orgId)} onClick={() => void submit(false)}>
+            <Button className="flex-1" disabled={busy || Boolean(scopeError) || ((!isCrmResource || needsCompanyOrg) && !orgId)} onClick={() => void submit(false)}>
               {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Autorizar
             </Button>

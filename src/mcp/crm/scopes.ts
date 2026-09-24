@@ -5,8 +5,19 @@ export const CRM_MCP_SCOPES = [
   "campaigns:write",
   "linkedin:read",
   "linkedin:write",
+  "notifications:read",
+  "notifications:prepare",
+  "certificates:read",
 ] as const;
 export type CrmMcpScope = (typeof CRM_MCP_SCOPES)[number];
+
+/** Product-company scopes. They never imply crm/campaigns/linkedin access, and never include notifications:send. */
+export const CRM_MCP_PRODUCT_SCOPES = [
+  "notifications:read",
+  "notifications:prepare",
+  "certificates:read",
+] as const;
+export type CrmMcpProductScope = (typeof CRM_MCP_PRODUCT_SCOPES)[number];
 
 const SCOPE_SET = new Set<string>(CRM_MCP_SCOPES);
 
@@ -77,6 +88,11 @@ export function crmMcpHasKnownScope(scopes: readonly string[] | undefined): bool
   return crmMcpHasAnyScope(scopes, CRM_MCP_SCOPES);
 }
 
+export function crmMcpRequiresCompanyOrg(scopes: readonly string[] | undefined): boolean {
+  if (!Array.isArray(scopes) || scopes.length === 0) return false;
+  return CRM_MCP_PRODUCT_SCOPES.some((scope) => scopes.includes(scope));
+}
+
 export function crmScopeDescriptions(): Record<CrmMcpScope, string> {
   return {
     "crm:read":
@@ -90,5 +106,11 @@ export function crmScopeDescriptions(): Record<CrmMcpScope, string> {
       "Read internal CRM LinkedIn campaign and follow-up records for manual organization only. Never automates, sends, connects, messages or scrapes LinkedIn.",
     "linkedin:write":
       "Create and update internal CRM LinkedIn campaign, member and manual action records, including removing a contact's campaign membership. Cannot delete a contact or campaign and never automates, sends, connects, messages or scrapes LinkedIn.",
+    "notifications:read":
+      "Read certified notifications and delivery status of the selected Notificas company. Does not send.",
+    "notifications:prepare":
+      "Validate and estimate certified WhatsApp or email notifications for the selected company without sending.",
+    "certificates:read":
+      "Obtain a time-limited URL for a constancia PDF of a notification owned by the selected company. Does not send.",
   };
 }

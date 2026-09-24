@@ -18,6 +18,13 @@ export type CrmMcpAuthContext = {
   requestId: string;
   actor: string;
   workspaceId: string;
+  orgId: string;
+  orgName: string;
+  userId: string;
+  userEmail: string | null;
+  senderUid: string;
+  senderEmail: string;
+  clientId: string;
   scopes: CrmMcpScope[];
   client: string;
   resource: string;
@@ -81,6 +88,13 @@ export async function authenticateCrmMcpRequest(request: Request, requestId: str
       requestId,
       actor: "crm-mcp",
       workspaceId,
+      orgId: workspaceId,
+      orgName: "Notificas CRM",
+      userId: "crm-mcp",
+      userEmail: null,
+      senderUid: "crm-mcp",
+      senderEmail: "",
+      clientId: "crm-static",
       scopes: ["crm:read"],
       client,
       resource: crmMcpResourceUrl(),
@@ -115,6 +129,13 @@ export async function authenticateCrmMcpRequest(request: Request, requestId: str
     requestId,
     actor,
     workspaceId,
+    orgId: rec.orgId,
+    orgName: rec.orgName,
+    userId: rec.userId,
+    userEmail: rec.userEmail,
+    senderUid: rec.senderUid,
+    senderEmail: rec.senderEmail,
+    clientId: rec.clientId,
     scopes: parseStoredCrmScopes(rec.scopes as string[]),
     client: rec.mcpClient || client,
     resource: rec.resource,
