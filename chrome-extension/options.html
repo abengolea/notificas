@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Configuración — Notificas LinkedIn Assistant</title>
+    <link rel="stylesheet" href="popup.css" />
+    <style>
+      body { width: 520px; max-width: 100%; }
+      .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>CONFIGURACIÓN</h1>
+    </header>
+
+    <div class="field">
+      <label for="apiUrl">URL de Notificas (API)</label>
+      <input id="apiUrl" type="url" placeholder="http://localhost:9006" />
+      <p class="hint">En producción: https://tu-dominio-notificas.com</p>
+    </div>
+
+    <div class="field">
+      <label for="token">Token de extensión (Bearer)</label>
+      <input id="token" type="password" autocomplete="off" />
+      <p class="hint">Variable de entorno: LINKEDIN_ASSISTANT_TOKEN</p>
+    </div>
+
+    <div class="field">
+      <label for="connectionReviewDays">Días para revisar invitaciones (referencia local)</label>
+      <input id="connectionReviewDays" type="number" min="1" max="30" value="4" />
+      <p class="hint">El servidor usa LINKEDIN_ASSISTANT_CONNECTION_REVIEW_DAYS</p>
+    </div>
+
+    <div class="field">
+      <label for="maxPerSession">Máximo por sesión</label>
+      <input id="maxPerSession" type="number" min="1" max="500" value="50" />
+    </div>
+
+    <div class="field">
+      <label for="locale">Idioma LinkedIn preferido</label>
+      <select id="locale">
+        <option value="auto">Auto (ES + EN)</option>
+        <option value="es">Español</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+
+    <footer class="actions">
+      <button type="button" id="save" class="primary">GUARDAR</button>
+      <button type="button" id="reset-session" class="secondary">Reiniciar contador de sesión</button>
+      <p id="saved" class="hint hidden">Guardado.</p>
+    </footer>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Notificas LinkedIn Assistant</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>NOTIFICAS LINKEDIN ASSISTANT</h1>
+      <p id="status-banner" class="banner hidden"></p>
+    </header>
+
+    <section class="field">
+      <label for="campaign-select">Campaña</label>
+      <select id="campaign-select">
+        <option value="">Todas las campañas</option>
+      </select>
+    </section>
+
+    <section id="prospect" class="card hidden">
+      <div class="row"><span class="label">Prospecto</span><strong id="prospect-name">—</strong></div>
+      <div class="row"><span class="label">Empresa</span><span id="prospect-company">—</span></div>
+      <div class="row"><span class="label">Cargo</span><span id="prospect-title">—</span></div>
+      <div class="row"><span class="label">Estado</span><span id="prospect-status" class="badge">—</span></div>
+      <div class="field">
+        <label for="message">Mensaje</label>
+        <textarea id="message" rows="6"></textarea>
+      </div>
+    </section>
+
+    <section id="empty" class="empty hidden">
+      <p>No hay acciones pendientes para esta campaña.</p>
+    </section>
+
+    <section id="setup" class="setup hidden">
+      <p>Configurá la URL de Notificas y el token en opciones.</p>
+      <button type="button" id="open-options" class="secondary">Abrir configuración</button>
+    </section>
+
+    <footer class="actions">
+      <button type="button" id="btn-prepare" class="primary" disabled>ABRIR PERFIL Y PREPARAR</button>
+      <button type="button" id="btn-confirm" class="success" disabled>CONFIRMAR QUE LO ENVIÉ</button>
+      <div class="row-actions">
+        <button type="button" id="btn-copy" class="secondary" disabled>COPIAR MENSAJE</button>
+        <button type="button" id="btn-skip" class="secondary" disabled>SALTAR</button>
+        <button type="button" id="btn-next" class="secondary">SIGUIENTE</button>
+      </div>
+    </footer>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Notificas LinkedIn Assistant",
+  "description": "Prepara invitaciones y mensajes de LinkedIn desde el CRM de Notificas. El envío final siempre es manual.",
+  "version": "1.0.0",
+  "permissions": ["storage", "tabs", "activeTab", "clipboardWrite"],
+  "host_permissions": [
+    "https://www.linkedin.com/*",
+    "https://linkedin.com/*",
+    "http://localhost:9006/*",
+    "https://*/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Notificas LinkedIn Assistant"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.linkedin.com/*", "https://linkedin.com/*"],
+      "js": [
+        "lib/safety.js",
+        "lib/linkedinSelectors.js",
+        "lib/linkedinPrepare.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "options.html"
+}

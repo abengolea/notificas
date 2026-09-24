@@ -18,6 +18,7 @@ const links = [
   { href: "/admin/marketing/respuestas", label: "Respuestas" },
   { href: "/admin/marketing/campanas", label: "Campañas email" },
   { href: "/admin/marketing/linkedin/campanas", label: "Campañas LinkedIn" },
+  { href: "/admin/marketing/linkedin/assistant", label: "LinkedIn Assistant" },
   { href: "/admin/marketing/catalogo", label: "Catálogo" },
 ] as const;
 
