@@ -7,7 +7,7 @@ Endpoint interno de **CRM comercial**, separado del MCP de **producto certificad
 | URL | `POST /mcp` | `POST /mcp/crm` |
 | Flag | `MCP_ENABLED` | `CRM_MCP` |
 | Recurso OAuth | `{base}/mcp` | `{base}/mcp/crm` |
-| Scopes | `account:read`, `notifications:*`, `campaigns:*`, … | `crm:read`, `crm:write`, `campaigns:read`, `campaigns:write` |
+| Scopes | `account:read`, `notifications:*`, `campaigns:*`, … | `crm:read`, `crm:write`, `campaigns:read`, `campaigns:write`, `linkedin:read`, `linkedin:write` |
 | Tools | envío certificado, certificados | CRM interno + borradores de campañas comerciales |
 | Tenant | `orgId` de cliente | `workspaceId` de config (`notificas-internal`) |
 | Auditoría | `mcp_audit_logs` | `marketing_mcp_audit` |
@@ -36,7 +36,7 @@ Workspace: siempre `getMarketingWorkspaceId()`. El modelo no puede mandar `works
 
 Un scope **omitido o vacío** cae a `crm:read`. Un scope **explícito desconocido** (o una mezcla con uno desconocido) responde `invalid_scope` en authorize/consent y en `/oauth/token` si se envía `scope` contra el resource CRM. Nunca se reescribe un token inventado a `crm:read`.
 
-Los tokens ya emitidos con solo `crm:read` siguen pudiendo **ejecutar** lecturas. `tools/list` anónimo publica las 35 tools de Fase A con `securitySchemes`; ChatGPT pide OAuth al llamar una tool.
+Los tokens ya emitidos con solo `crm:read` siguen pudiendo **ejecutar** lecturas. `tools/list` anónimo publica las 52 tools (CRM + campañas de email + LinkedIn) con `securitySchemes`; ChatGPT pide OAuth al llamar una tool. Tras un deploy que agregue tools, hay que **reconectar** el conector de ChatGPT: `initialize` declara `tools.listChanged=true`, pero ChatGPT no refresca solo.
 
 `POST /mcp/crm` permite sin Bearer: `initialize`, `notifications/initialized`, `ping` y `tools/list` (solo el menú: nombre, descripción, schema, annotations, securitySchemes). **No** lee ni escribe CRM. `tools/call` exige OAuth: Bearer, resource `{base}/mcp/crm`, allowlist `CRM_MCP_ALLOWED_USERS` y el scope de esa tool. Si falta token o scope, responde JSON-RPC 200 `isError` con `_meta["mcp/www_authenticate"]` (no corta el transporte con HTTP 401).
 
@@ -58,7 +58,7 @@ Escritura campañas (`campaigns:write`):
 
 Empresas: `create_company` / `update_company` usan `industryIds` (array), igual que el servicio de dominio. `search_companies` y segmentos de campaña usan `industryId` (singular).
 
-`create_campaign_draft` no acepta `send`, `status` ni programación. `tools/list` anónimo muestra las 35 tools de Fase A; la autorización se aplica en `tools/call` según el scope del token.
+`create_campaign_draft` no acepta `send`, `status` ni programación. LinkedIn: `search_linkedin_campaigns`, `get_linkedin_campaign`, `preview_linkedin_campaign`, `search_linkedin_pending_actions`, `get_linkedin_pending_actions`, `search_linkedin_outreach`, `create_linkedin_campaign_draft`, `update_linkedin_campaign`, `update_linkedin_campaign_draft`, `add_contact_to_linkedin_campaign`, `create_linkedin_outreach`, `remove_contact_from_linkedin_campaign`, `update_linkedin_campaign_member`, `record_linkedin_action`, `update_linkedin_outreach_status`, `archive_linkedin_campaign`, `restore_linkedin_campaign`. Ninguna envía ni automatiza LinkedIn. `tools/list` anónimo muestra las 52 tools; la autorización se aplica en `tools/call` según el scope del token.
 
 Paginación: default 20, máximo 100, cursor opaco. `get_*` recorta listas relacionadas (~8 ítems). No hay `execute_crm_query`.
 

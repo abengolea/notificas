@@ -96,10 +96,10 @@ function handleDiscovery(rpc: JsonRpcRequest): CrmMcpHandled {
     return {
       body: jsonRpcResult(id, {
         protocolVersion: protocolVersion(params.protocolVersion),
-        capabilities: { tools: { listChanged: false } },
+        capabilities: { tools: { listChanged: true } },
         serverInfo: { name: CRM_MCP_SERVER_NAME, version: CRM_MCP_SERVER_VERSION },
         instructions:
-          "Notificas CRM MCP is the internal commercial CRM (not the certified product). Use search_* then get_*. Workspace is fixed by the server. Writes require crm:write, campaigns:write or linkedin:write. LinkedIn tools are records for manual organization only and never automate, send, connect, message or scrape. Sending, scheduling, deleting and bulk import are not available.",
+          "Notificas CRM MCP is the internal commercial CRM (not the certified product). Use search_* then get_*. Workspace is fixed by the server. Writes require crm:write, campaigns:write or linkedin:write. LinkedIn CRM tools: search_linkedin_campaigns, get_linkedin_campaign, preview_linkedin_campaign, search_linkedin_pending_actions, get_linkedin_pending_actions, search_linkedin_outreach, create_linkedin_campaign_draft, update_linkedin_campaign, update_linkedin_campaign_draft, add_contact_to_linkedin_campaign, create_linkedin_outreach, update_linkedin_outreach_status, record_linkedin_action, archive_linkedin_campaign, restore_linkedin_campaign. They are records for manual organization only and never automate, send, connect, message or scrape LinkedIn. Sending, scheduling, deleting and bulk import are not available.",
       }),
       tool: "initialize",
     };
@@ -258,6 +258,7 @@ export async function handleCrmMcpHttp(request: Request): Promise<Response> {
 }
 
 export function crmMcpHealthPayload() {
+  const tools = listAllCrmMcpTools();
   return {
     ok: true,
     service: CRM_MCP_SERVER_NAME,
@@ -265,5 +266,7 @@ export function crmMcpHealthPayload() {
     enabled: crmMcpEnabledSafe(),
     readOnly: false,
     sendForbidden: true,
+    toolCount: tools.length,
+    linkedinToolCount: tools.filter((tool) => /linkedin|outreach/i.test(tool.name)).length,
   };
 }

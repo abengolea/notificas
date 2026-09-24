@@ -14,7 +14,7 @@ import {
   setCrmMcpToolRuntimeForTests,
 } from "./registry";
 import { advertisedScopeForTool } from "./policy";
-import { crmMcpWorkspaceId } from "./config";
+import { crmMcpWorkspaceId, CRM_MCP_SERVER_VERSION } from "./config";
 import { createMemoryCrmToolRuntime } from "../../lib/marketing/tools/runtime";
 import type { CrmMcpScope } from "./scopes";
 
@@ -104,6 +104,8 @@ test("ChatGPT discovery is public; tools/call stays OAuth-gated", async () => {
     assert.equal(init.json.jsonrpc, "2.0");
     const initResult = init.json.result as Record<string, unknown>;
     assert.equal((initResult.serverInfo as { name: string }).name, "notificas-mcp-crm");
+    assert.equal((initResult.serverInfo as { version: string }).version, CRM_MCP_SERVER_VERSION);
+    assert.equal((initResult.capabilities as { tools: { listChanged: boolean } }).tools.listChanged, true);
     assert.equal(crmMcpExecuteCallCount(), 0);
 
     const notified = await handleCrmMcpHttp(
@@ -121,6 +123,9 @@ test("ChatGPT discovery is public; tools/call stays OAuth-gated", async () => {
     const tools = (listed.json.result as { tools: Array<Record<string, unknown>> }).tools;
     assert.equal(tools.length, 52);
     assert.equal(listAllCrmMcpTools().length, 52);
+    assert.ok(tools.some((t) => t.name === "search_linkedin_campaigns"));
+    assert.ok(tools.some((t) => t.name === "create_linkedin_campaign_draft"));
+    assert.ok(tools.some((t) => t.name === "search_linkedin_outreach"));
     for (const banned of PHASE_B) assert.equal(tools.some((t) => t.name === banned), false);
 
     const byName = Object.fromEntries(tools.map((t) => [String(t.name), t]));
