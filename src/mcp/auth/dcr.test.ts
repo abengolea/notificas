@@ -153,7 +153,7 @@ test("CRM protected resource is /mcp/crm", () => {
         "certificates:read",
       ],
     );
-    assert.equal(meta.scopes_supported.includes("notifications:send"), false);
+    assert.equal((meta.scopes_supported as readonly string[]).includes("notifications:send"), false);
     assert.match(meta.scope_descriptions["linkedin:read"], /manual organization/i);
     assert.match(meta.scope_descriptions["linkedin:write"], /never automates/i);
     assert.match(meta.scope_descriptions["linkedin:write"], /removing a contact's campaign membership/i);

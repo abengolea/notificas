@@ -1,6 +1,6 @@
 import { MCP_TOOLS, callTool } from "@/mcp/tools/registry";
 import type { McpAuthContext } from "@/mcp/auth/context";
-import { isMcpScope } from "@/mcp/scopes";
+import { isMcpScope, type McpScope } from "@/mcp/scopes";
 import { McpToolError } from "@/mcp/errors";
 import { resolveOrgForCrmProductScopes } from "@/mcp/auth/orgs";
 import type { CrmMcpAuthContext } from "./auth";
@@ -17,6 +17,14 @@ export const CRM_MCP_PRODUCT_TOOL_NAMES = [
 ] as const;
 
 const PRODUCT_NAME_SET = new Set<string>(CRM_MCP_PRODUCT_TOOL_NAMES);
+
+function mcpScopesGrantedOnCrm(scopes: readonly string[]): McpScope[] {
+  const out: McpScope[] = [];
+  for (const scope of scopes) {
+    if (isMcpScope(scope)) out.push(scope);
+  }
+  return out;
+}
 
 export function isCrmMcpProductTool(name: string): boolean {
   return PRODUCT_NAME_SET.has(name);
@@ -52,7 +60,7 @@ export async function hydrateCrmProductAuthContext(ctx: CrmMcpAuthContext): Prom
     orgPlan: org.plan,
     senderUid: org.adminUserId,
     senderEmail: org.adminUserEmail,
-    scopes: ctx.scopes.filter(isMcpScope),
+    scopes: mcpScopesGrantedOnCrm(ctx.scopes),
     clientId: ctx.clientId,
     mcpClient: ctx.client,
     resource: ctx.resource,
