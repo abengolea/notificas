@@ -108,3 +108,29 @@ test('el ejemplar de correccion aclara que no cambian los hechos', async () => {
   assert.match(raw, new RegExp(START));
   assert.match(raw, new RegExp(END));
 });
+
+test('señal Resend y reader no se mezclan con pixel Notificas en el resultado', async () => {
+  const blob = await generateCertificatePDF({
+    messageId: 'testEmailEvidenceSplit',
+    issuedAt: new Date('2026-09-24T18:49:37.000Z'),
+    evidenceSealed: true,
+    mailData: {
+      from: 'rem@test.com',
+      recipientEmail: 'dest@test.com',
+      message: { subject: 'Asunto', contentText: 'cuerpo' },
+      delivery: { state: 'DELIVERED', time: '2026-09-24T18:46:22Z' },
+      tracking: { opened: true },
+    },
+    movements: [
+      { type: 'resend_opened_signal', timestamp: '2026-09-24T18:47:00Z' },
+      { type: 'reader_magic_open', timestamp: '2026-09-24T18:48:00Z' },
+    ],
+    attachments: [],
+  });
+  const raw = pdfText(await blob.arrayBuffer());
+  assert.match(raw, /Señal Resend: S/i);
+  assert.match(raw, /Pixel Notificas \(hist\.\): No consta/i);
+  assert.match(raw, /Acceso al reader: S/i);
+  assert.match(raw, /Resultado de la notificaci/i);
+  assert.match(raw, /certificado-lectura\/v4/i);
+});

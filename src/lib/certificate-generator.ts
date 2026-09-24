@@ -4,7 +4,18 @@ import QRCode from 'qrcode';
 import { computeContentHash } from './certification';
 import { POLYGON_CERT_DISPLAY_ORDER, polygonCertLabel } from './polygon-cert-labels';
 import { emailDeliveryLabel } from './email-delivery-label';
-import { formatEvidenceTimestamp, PDF_SCHEMA } from './pdf-evidence-format';
+import {
+  deriveEmailEvidence,
+  emailAppOpenDetected,
+  emailChannelHumanSummary,
+  emailLegacyPixelDetected,
+  emailReaderAccessDetected,
+  emailResendSignalDetected,
+  firstCertificateMovement,
+  formatEvidenceStatus,
+  hasCertificateMovement,
+} from './certificate-email-evidence';
+import { formatEvidenceTimestamp, formatEvidenceTimestampLocal, PDF_SCHEMA } from './pdf-evidence-format';
 import { loadNotificasLogoJpeg, PDF_BRAND } from './pdf-brand';
 import { publicCertificateVerifyUrl } from './public-verify-url';
 import { campaignVerifyRef, formatVerifyRefLine } from './verify-hints';
@@ -130,15 +141,6 @@ type MovementLike = {
   browserVersion?: string;
 };
 
-function firstMovement(movements: MovementLike[], types: string[]): MovementLike | undefined {
-  const set = new Set(types.map((t) => t.toLowerCase()));
-  return movements.find((m) => set.has(String(m.type || '').toLowerCase()));
-}
-
-function hasMovement(movements: MovementLike[], types: string[]): boolean {
-  return Boolean(firstMovement(movements, types));
-}
-
 const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   email_sent: 'Correo enviado',
   resend_sent: 'Correo aceptado para entrega',
@@ -263,6 +265,15 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     const formatted = formatEvidenceTimestamp(value);
     return formatted === '—' ? 'No disponible' : formatted;
   };
+
+  const formatTableDate = (value?: unknown) => {
+    const formatted = formatEvidenceTimestampLocal(value);
+    return formatted === '—' ? 'No consta' : formatted;
+  };
+
+  const firstMovement = (types: string[]) => firstCertificateMovement(movements, types);
+  const hasMovement = (types: string[]) => hasCertificateMovement(movements, types);
+  const emailEvidence = deriveEmailEvidence(movements);
 
   const setTextColor = (color: [number, number, number]) => {
     doc.setTextColor(color[0], color[1], color[2]);
@@ -621,7 +632,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       const freezeNotice = doc.splitTextToSize(
         headerPart === 'anexo'
           ? 'Parte II — Comprobaciones criptográficas, snapshot inalterable y transacciones en Polygon. La inmutabilidad la aportan esas huellas y TX, no este PDF.'
-          : 'Parte I — Relato de la comunicación. Destinado a jueces, abogados y funcionarios. El anexo técnico para perito consta al final. Foto de los hechos al emitir: no se vuelve a emitir.',
+          : 'Parte I — Relato para jueces, abogados y funcionarios. Anexo técnico al final. Se emite una sola vez.',
         contentWidth
       );
       doc.text(freezeNotice, pageWidth / 2, yPosition, { align: 'center' });
@@ -679,150 +690,33 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
 
   drawPageHeader(true, 1);
 
-  // ========================================
-  // SECCIÓN 1: RESUMEN EJECUTIVO
-  // ========================================
-  // Cuadro resumen con datos esenciales para lectura rápida
-  const deliveryState = emailDeliveryLabel(
-    mailData.delivery?.state,
-    (mailData as { emailBounce?: unknown }).emailBounce
-  );
-  const openCount = mailData.tracking?.openCount ?? 0;
-  const attachmentsCount = attachments.length;
-  const emailOpenedPixel =
-    hasMovement(movements, ['email_opened']) || Boolean(mailData.tracking?.opened);
-  const emailOpenedReader = hasMovement(movements, ['reader_magic_open', 'read_confirmed']);
-  const waDelivered =
-    Boolean((mailData.tracking as { whatsappDelivered?: boolean } | undefined)?.whatsappDelivered) ||
-    hasMovement(movements, ['whatsapp_delivered']);
-  const hasWhatsApp = Boolean(
-    mailData.recipientPhone || mailData.whatsappMessageId || hasMovement(movements, ['whatsapp_sent', 'whatsapp_delivered', 'whatsapp_read'])
-  );
-
-  // Datos clave en dos columnas - formato destacado para impresión B&N
-  // Estados en mayúsculas para mejor legibilidad
-  const formatState = (state: string) => {
-    return state.toUpperCase().replace(/_/g, ' ');
-  };
-  
-  const summaryLeft = [
-    { label: 'Fecha de emisión (UTC)', value: utcStamp(emissionDate) },
-    { label: 'Correo — aceptación SMTP', value: formatState(deliveryState) },
-    { label: 'Correo — abierto (pixel)', value: emailOpenedPixel ? 'SÍ' : 'NO CONSTA' },
-    { label: 'Correo — acceso al reader', value: emailOpenedReader ? 'SÍ' : 'NO CONSTA' }
-  ];
-  
-  const summaryRight = [
-    { label: 'Identificador de mensaje', value: messageId, monospace: true },
-    {
-      label: hasWhatsApp ? 'WhatsApp — entregado al dispositivo' : 'Adjuntos certificados',
-      value: hasWhatsApp ? (waDelivered ? 'SÍ (META)' : 'NO CONSTA') : `${attachmentsCount}`
-    },
-    { label: hasWhatsApp ? 'Adjuntos certificados' : 'Aperturas registradas', value: hasWhatsApp ? `${attachmentsCount}` : `${openCount}` }
-  ];
-  
-  // Calcular altura dinámica del cuadro de resumen
-  const colWidth = (contentWidth - 28) / 2;
-  const colSpacing = 14;
-  
-  // Precalcular alturas por fila (evitar solapamiento entre columnas)
-  const leftRows = summaryLeft.map((item) => {
-    const valueLines = doc.splitTextToSize(item.value || 'No disponible', colWidth - 20);
-    return { item, valueLines };
-  });
-  const rightRows = summaryRight.map((item) => {
-    const valueLines = doc.splitTextToSize(item.value || 'No disponible', colWidth - 20);
-    return { item, valueLines };
-  });
-  const maxRows = Math.max(leftRows.length, rightRows.length);
-  let actualSummaryHeight = 24 + 12; // título + línea + padding inicial
-  for (let i = 0; i < maxRows; i++) {
-    const leftH = leftRows[i] ? 12 + (leftRows[i].valueLines.length * 12) + 4 : 0;
-    const rightH = rightRows[i] ? 12 + (rightRows[i].valueLines.length * 12) + 4 : 0;
-    actualSummaryHeight += Math.max(leftH, rightH);
-  }
-  const summaryBoxHeight = actualSummaryHeight;
-  ensureSpace(summaryBoxHeight + 8);
-  
-  // Cuadro destacado con bordes más visibles (tipo acta/banco)
-  doc.setDrawColor(...COLORS.textMain);
-  doc.setLineWidth(1.5);
-  doc.setFillColor(...COLORS.bgSoft);
-  doc.rect(margin, yPosition, contentWidth, summaryBoxHeight, 'FD');
-  
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  setTextColor(COLORS.primaryDark);
-  doc.text('Resumen ejecutivo', pageWidth / 2, yPosition + 20, { align: 'center' });
-  
-  // Línea bajo el título
-  doc.setDrawColor(...COLORS.textMain);
-  doc.setLineWidth(0.5);
-  doc.line(margin + 14, yPosition + 26, pageWidth - margin - 14, yPosition + 26);
-  
-  let summaryY = yPosition + 36;
-  
-  // Dibujar fila por fila (ambas columnas en paralelo) para evitar solapamientos
-  for (let i = 0; i < maxRows; i++) {
-    const left = leftRows[i];
-    const right = rightRows[i];
-    const rowHeight = Math.max(
-      left ? 12 + (left.valueLines.length * 12) + 4 : 0,
-      right ? 12 + (right.valueLines.length * 12) + 4 : 0
-    );
-    
-    if (left) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      setTextColor(COLORS.textMuted);
-      doc.text(`${left.item.label}:`, margin + 14, summaryY);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-      setTextColor(COLORS.textMain);
-      left.valueLines.forEach((line: string, idx: number) => {
-        doc.text(line, margin + 14, summaryY + 12 + (idx * 12));
-      });
-    }
-    
-    if (right) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      setTextColor(COLORS.textMuted);
-      doc.text(`${right.item.label}:`, margin + colWidth + colSpacing + 14, summaryY);
-      doc.setFont(right.item.monospace ? 'courier' : 'helvetica', 'normal');
-      doc.setFontSize(10);
-      setTextColor(COLORS.textMain);
-      right.valueLines.forEach((line: string, idx: number) => {
-        doc.text(line, margin + colWidth + colSpacing + 14, summaryY + 12 + (idx * 12));
-      });
-    }
-    
-    summaryY += rowHeight;
-  }
-  
-  yPosition += summaryBoxHeight + 16;
-
   const sealed = evidenceSealed === true || Boolean(mailData.evidenceSnapshotHash);
   const remitente =
     mailData.orgNombre || mailData.senderName || mailData.from || 'el remitente';
   const destinatario =
     mailData.recipientName || mailData.recipientEmail || 'el destinatario';
-
-  drawSectionTitle('Objeto de esta constancia');
-  writeTextBlock(
-    sealed
-      ? `Notificas.com deja constancia de una comunicación digital enviada por ${remitente}${mailData.orgCuit ? ` (CUIT ${mailData.orgCuit})` : ''} a ${destinatario}. En el instante del envío el sistema guarda una copia inalterable de quién envió, a quién se dirigió y qué se envió. Lo transcrito en las páginas siguientes es esa copia, no una reconstrucción posterior. Los hechos posteriores (aceptación del correo, señales de Resend, o entrega y lectura que informe WhatsApp) se anotan aparte y no modifican el texto original. Este PDF se emite una sola vez: una lectura o un rebote posteriores no aparecen en esta copia.`
-      : `Notificas.com deja constancia técnica del mensaje "${messageId}" según sus registros de envío. No hay copia inalterable (snapshot) de este envío: el texto y las partes se transcriben de los registros del mensaje. El anexo técnico, si hay hashes o transacciones, permite confrontarlos.`,
-    10,
-    14
+  const deliveryState = emailDeliveryLabel(
+    mailData.delivery?.state,
+    (mailData as { emailBounce?: unknown }).emailBounce
   );
+  const attachmentsCount = attachments.length;
+  const waDelivered =
+    Boolean((mailData.tracking as { whatsappDelivered?: boolean } | undefined)?.whatsappDelivered) ||
+    hasMovement(['whatsapp_delivered']);
+  const waRead =
+    Boolean((mailData.tracking as { whatsappRead?: boolean } | undefined)?.whatsappRead) ||
+    hasMovement(['whatsapp_read']);
+  const hasWhatsApp = Boolean(
+    mailData.recipientPhone ||
+      mailData.whatsappMessageId ||
+      hasMovement(['whatsapp_sent', 'whatsapp_delivered', 'whatsapp_read'])
+  );
+  const emailResendSignal = formatEvidenceStatus(emailResendSignalDetected(emailEvidence));
+  const emailLegacyPixel = formatEvidenceStatus(emailLegacyPixelDetected(emailEvidence));
+  const emailReaderAccess = formatEvidenceStatus(emailReaderAccessDetected(emailEvidence));
+  const emailAppOpen = formatEvidenceStatus(emailAppOpenDetected(emailEvidence));
+  const emailHumanLine = emailChannelHumanSummary(emailEvidence);
 
-  // ========================================
-  // SECCIÓN 2: IDENTIFICACIÓN DE LAS PARTES
-  // ========================================
-  drawSectionTitle('Identificación de las partes');
-  
-  // Formato acta: dos columnas visuales (label alineado a la izquierda, valor a la derecha)
   const identificationData = [
     { label: 'Remitente', value: mailData.senderName || mailData.from || 'No especificado' },
     ...(mailData.orgNombre ? [{ label: 'Organización', value: mailData.orgNombre }] : []),
@@ -846,44 +740,171 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
         : 'Registros del mensaje (sin snapshot sellado)',
     },
   ];
-  
-  // Calcular altura (padding inferior extra para que el último renglón no roce el borde)
-  let idBoxHeight = 18;
-  identificationData.forEach((item) => {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(11);
-    const valueLines = doc.splitTextToSize(item.value, contentWidth * 0.65);
-    idBoxHeight += 20 + (valueLines.length - 1) * 14;
-  });
-  idBoxHeight += 18;
-  
-  ensureSpace(idBoxHeight + 8);
-  drawBox(margin, yPosition, contentWidth, idBoxHeight, false);
-  
-  let idY = yPosition + 20;
-  const labelWidth = contentWidth * 0.30; // 30% para labels
-  const valueX = margin + labelWidth + 12; // Espacio entre label y valor
 
-  identificationData.forEach((item) => {
-    // Label (izquierda) - nunca más de una idea por línea
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    setTextColor(COLORS.textMain);
-    doc.text(`${item.label}:`, margin + 14, idY);
-    
-    // Valor (derecha)
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(11);
-    setTextColor(COLORS.textMain);
-    const valueLines = doc.splitTextToSize(item.value, contentWidth * 0.65);
-    valueLines.forEach((line: string, idx: number) => {
-      doc.text(line, valueX, idY + (idx * 14));
+  const drawIdentificationSection = () => {
+    drawSectionTitle('Identificación de las partes');
+    let idBoxHeight = 18;
+    identificationData.forEach((item) => {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      const valueLines = doc.splitTextToSize(item.value, contentWidth * 0.65);
+      idBoxHeight += 20 + (valueLines.length - 1) * 14;
     });
-    
-    idY += 20 + (valueLines.length - 1) * 14;
-  });
+    idBoxHeight += 18;
+    ensureSpace(idBoxHeight + 8);
+    drawBox(margin, yPosition, contentWidth, idBoxHeight, false);
+    let idY = yPosition + 20;
+    const labelWidth = contentWidth * 0.3;
+    const valueX = margin + labelWidth + 12;
+    identificationData.forEach((item) => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      setTextColor(COLORS.textMain);
+      doc.text(`${item.label}:`, margin + 14, idY);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      const valueLines = doc.splitTextToSize(item.value, contentWidth * 0.65);
+      valueLines.forEach((line: string, idx: number) => {
+        doc.text(line, valueX, idY + idx * 14);
+      });
+      idY += 20 + (valueLines.length - 1) * 14;
+    });
+    yPosition += idBoxHeight + 14;
+  };
 
-  yPosition += idBoxHeight + 14;
+  const resultadoMetaLines = [
+    `Emitido: ${formatEvidenceTimestampLocal(emissionDate)}`,
+    `ID: ${messageId}`,
+    `De: ${remitente}`,
+    `Para: ${destinatario}`,
+    `Asunto: ${mailData.message?.subject || 'Sin asunto declarado'}`,
+    `Enviado: ${formatTableDate(mailData.delivery?.time)}`,
+  ];
+  const emailChannelLines = [
+    `Aceptación SMTP: ${deliveryState}`,
+    `Señal Resend: ${emailResendSignal}`,
+    `Pixel Notificas (hist.): ${emailLegacyPixel}`,
+    `Acceso al reader: ${emailReaderAccess}`,
+    ...(emailAppOpen === 'Sí' ? [`Apertura en app web: ${emailAppOpen}`] : []),
+    `Estado correo: ${emailHumanLine}`,
+  ];
+  const waChannelLines = hasWhatsApp
+    ? [
+        `Entregado al dispositivo: ${formatEvidenceStatus(waDelivered)}`,
+        `Leído en WhatsApp: ${formatEvidenceStatus(waRead)}`,
+      ]
+    : [`Adjuntos certificados: ${attachmentsCount}`];
+  const humanSummaryParts: string[] = [];
+  if (hasWhatsApp && waRead) humanSummaryParts.push('WhatsApp leído por el destinatario');
+  else if (hasWhatsApp && waDelivered) humanSummaryParts.push('WhatsApp entregado; lectura no consta');
+  if (emailReaderAccessDetected(emailEvidence)) {
+    humanSummaryParts.push('correo accedido en el lector certificado');
+  } else if (emailResendSignalDetected(emailEvidence) || emailLegacyPixelDetected(emailEvidence)) {
+    humanSummaryParts.push('señal técnica de apertura del correo (no equivale a lectura fehaciente)');
+  } else if (deliveryState.toLowerCase().includes('aceptado')) {
+    humanSummaryParts.push('correo aceptado; apertura no consta a la emisión');
+  }
+  const humanSummaryLine =
+    humanSummaryParts.length > 0
+      ? `${humanSummaryParts[0].charAt(0).toUpperCase()}${humanSummaryParts[0].slice(1)}${humanSummaryParts.length > 1 ? `. ${humanSummaryParts.slice(1).join('. ')}` : ''}.`
+      : 'Sin hechos de entrega o lectura registrados a la emisión.';
+
+  const colWidth = (contentWidth - 28) / 2;
+  const colSpacing = 14;
+  const measureColumn = (lines: string[], width: number) =>
+    lines.reduce((h, line) => {
+      const wrapped = doc.splitTextToSize(line, width - 8);
+      return h + 12 + wrapped.length * 12;
+    }, 0);
+  const metaHeight = resultadoMetaLines.length * 14 + 8;
+  const resultadoBoxHeight =
+    24 + 12 + metaHeight + 16 + Math.max(measureColumn(emailChannelLines, colWidth), measureColumn(waChannelLines, colWidth)) + 36 + 14;
+  ensureSpace(resultadoBoxHeight + 8);
+  doc.setDrawColor(...COLORS.textMain);
+  doc.setLineWidth(1.5);
+  doc.setFillColor(...COLORS.bgSoft);
+  doc.rect(margin, yPosition, contentWidth, resultadoBoxHeight, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  setTextColor(COLORS.primaryDark);
+  doc.text('Resultado de la notificación', pageWidth / 2, yPosition + 20, { align: 'center' });
+  doc.setDrawColor(...COLORS.textMain);
+  doc.setLineWidth(0.5);
+  doc.line(margin + 14, yPosition + 26, pageWidth - margin - 14, yPosition + 26);
+  let boxY = yPosition + 38;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  setTextColor(COLORS.textMain);
+  resultadoMetaLines.forEach((line) => {
+    doc.text(line, margin + 14, boxY);
+    boxY += 14;
+  });
+  boxY += 8;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  setTextColor(COLORS.primaryDark);
+  doc.text('Correo', margin + 14, boxY);
+  doc.text(hasWhatsApp ? 'WhatsApp' : 'Otros', margin + colWidth + colSpacing + 14, boxY);
+  boxY += 14;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  const leftStartY = boxY;
+  let leftY = leftStartY;
+  emailChannelLines.forEach((line) => {
+    doc.splitTextToSize(line, colWidth - 8).forEach((wrapped: string) => {
+      doc.text(wrapped, margin + 14, leftY);
+      leftY += 12;
+    });
+  });
+  let rightY = leftStartY;
+  waChannelLines.forEach((line) => {
+    doc.splitTextToSize(line, colWidth - 8).forEach((wrapped: string) => {
+      doc.text(wrapped, margin + colWidth + colSpacing + 14, rightY);
+      rightY += 12;
+    });
+  });
+  boxY = Math.max(leftY, rightY) + 10;
+  doc.setDrawColor(...COLORS.border);
+  doc.line(margin + 14, boxY, pageWidth - margin - 14, boxY);
+  boxY += 14;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.text('Lectura humana:', margin + 14, boxY);
+  doc.setFont('helvetica', 'normal');
+  doc.splitTextToSize(humanSummaryLine, contentWidth - 100).forEach((line: string, idx: number) => {
+    doc.text(line, margin + 96, boxY + idx * 12);
+  });
+  yPosition += resultadoBoxHeight + 14;
+
+  const simpleChronoRows: string[][] = [];
+  const pushChrono = (movement: MovementLike | undefined, label: string) => {
+    if (!movement?.timestamp) return;
+    simpleChronoRows.push([formatTableDate(movement.timestamp), label]);
+  };
+  pushChrono(firstMovement(['email_sent', 'resend_sent']), 'Correo enviado y aceptado');
+  pushChrono(firstMovement(['resend_delivered']), 'Servidor del destinatario aceptó el correo');
+  pushChrono(emailEvidence.resendSignal, 'Señal técnica de apertura del correo (Resend)');
+  pushChrono(emailEvidence.legacyPixel, 'Correo abierto (pixel Notificas)');
+  pushChrono(emailEvidence.readerOpen || emailEvidence.readConfirmed, 'Acceso al lector certificado');
+  pushChrono(firstMovement(['whatsapp_sent']), 'WhatsApp enviado (Meta)');
+  pushChrono(firstMovement(['whatsapp_delivered']), 'WhatsApp entregado al dispositivo');
+  pushChrono(firstMovement(['whatsapp_read']), 'WhatsApp leído');
+  if (simpleChronoRows.length > 0) {
+    drawSectionTitle('Cronología (hechos congelados al emitir)', 2);
+    drawTable(
+      ['Hora local (ART)', 'Hecho'],
+      simpleChronoRows,
+      [contentWidth * 0.28, contentWidth * 0.72]
+    );
+  }
+  writeTextBlock(
+    sealed
+      ? 'Notificas.com certifica una comunicación digital con copia inalterable al enviar. Este PDF se emite una sola vez: hechos posteriores no entran en esta copia.'
+      : `Notificas.com certifica el mensaje "${messageId}" según sus registros. No hay snapshot sellado; el anexo técnico permite confrontar huellas y transacciones.`,
+    9,
+    12,
+    { color: COLORS.textMuted }
+  );
 
   const contentHashStored = (mailData as any).polygonCertifications?.contentHash;
   const contentHashComputed = await computeContentHash(mailData.message?.contentText || '');
@@ -1128,29 +1149,11 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       writeTextBlock(whatsappSent.renderedFooter, 9, 12, { italics: true, color: COLORS.textMuted });
     }
     writeTextBlock(
-      `Template: ${whatsappSent.templateName} · ${whatsappSent.templateLang}` +
-        (whatsappSent.templateHash ? ` · Template Hash: ${whatsappSent.templateHash}` : '') +
-        (whatsappSent.templateId ? ` · ID ${whatsappSent.templateId}` : ''),
+      'Template, variables y URLs completas del pedido a Meta: ver anexo técnico.',
       8,
       11,
       { color: COLORS.textMuted }
     );
-    if (whatsappSent.variables.length > 0) {
-      drawTable(
-        ['{{n}}', 'Campo', 'Valor enviado a Meta'],
-        whatsappSent.variables.map((v) => [`{{${v.n}}}`, v.field || '—', v.value || '—']),
-        [contentWidth * 0.14, contentWidth * 0.28, contentWidth * 0.58]
-      );
-    }
-    for (const btn of whatsappSent.buttons) {
-      const label = btn.text ? `Botón: ${btn.text}` : 'Botón URL';
-      const dest = btn.url
-        ? `Destino: ${btn.url}`
-        : btn.urlParameter
-          ? `Parámetro enviado a Meta: ${btn.urlParameter}`
-          : null;
-      writeTextBlock(dest ? `${label}. ${dest}` : label, 9, 12);
-    }
   } else if (hasWhatsApp) {
     drawSectionTitle('Contenido enviado por WhatsApp');
     writeTextBlock(
@@ -1267,138 +1270,96 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     yPosition += accesoBoxH + 12;
   }
 
-  const stampOf = (m: MovementLike | undefined) =>
-    m ? formatDate(m.timestamp) : 'No consta a la fecha de esta constancia';
-  const showEmailChrono = Boolean(
-    mailData.recipientEmail ||
-      hasMovement(movements, ['email_sent', 'resend_sent', 'resend_delivered', 'email_opened', 'resend_opened_signal', 'reader_magic_open'])
-  );
-  const chronoRows: string[][] = [];
-  if (showEmailChrono) {
-    chronoRows.push([
-      'Correo aceptado por el proveedor',
-      stampOf(firstMovement(movements, ['email_sent', 'resend_sent'])),
-      'Registrado por el sistema',
-    ]);
-    const delivered = firstMovement(movements, ['resend_delivered']);
-    if (delivered || hasMovement(movements, ['resend_sent'])) {
-      chronoRows.push([
-        'Servidor del destinatario aceptó el correo (Resend)',
-        stampOf(delivered),
-        delivered ? 'Informado por Resend' : 'Pendiente de registro',
-      ]);
+  const drawBitacoraSection = () => {
+    drawSectionTitle('Bitácora de eventos auditables', 2);
+    if (!movements.length) {
+      ensureSpace(24);
+      drawBox(margin, yPosition, contentWidth, 24, false);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      setTextColor(COLORS.textMuted);
+      doc.text('No se registraron eventos posteriores al envío del mensaje.', margin + 14, yPosition + 16);
+      yPosition += 36;
+      return;
     }
-    chronoRows.push([
-      'Señal técnica de apertura (Resend)',
-      stampOf(firstMovement(movements, ['resend_opened_signal'])),
-      firstMovement(movements, ['resend_opened_signal']) ? 'Pixel o proxy; no es acceso al reader' : 'Pendiente de registro',
-    ]);
-    chronoRows.push([
-      'Correo abierto (pixel)',
-      stampOf(firstMovement(movements, ['email_opened'])),
-      firstMovement(movements, ['email_opened']) ? 'Registrado por el sistema' : 'Pendiente de registro',
-    ]);
-    chronoRows.push([
-      'Acceso al reader digital',
-      stampOf(firstMovement(movements, ['reader_magic_open', 'read_confirmed'])),
-      firstMovement(movements, ['reader_magic_open', 'read_confirmed'])
-        ? 'Registrado por el sistema'
-        : 'Pendiente de registro',
-    ]);
-  }
-  if (hasWhatsApp) {
-    const waMetaNote = (preserved?: boolean) =>
-      preserved
-        ? 'Evento informado por Meta. Webhook autenticado y evidencia preservada'
-        : 'Evento informado por Meta y registrado por Notificas';
-    const sent = firstMovement(movements, ['whatsapp_sent']);
-    const deliv = firstMovement(movements, ['whatsapp_delivered']);
-    const read = firstMovement(movements, ['whatsapp_read']);
-    chronoRows.push([
-      'WhatsApp enviado (aceptado por Meta)',
-      stampOf(sent),
-      sent ? waMetaNote() : 'Pendiente de registro',
-    ]);
-    chronoRows.push([
-      'WhatsApp entregado al dispositivo (Meta)',
-      stampOf(deliv),
-      deliv ? waMetaNote(waDeliveredWebhookPreserved) : 'Pendiente de registro',
-    ]);
-    chronoRows.push([
-      'WhatsApp leído (Meta)',
-      stampOf(read),
-      read ? waMetaNote(waReadWebhookPreserved) : 'Pendiente de registro',
-    ]);
-  }
-
-  if (chronoRows.length > 0) {
-    drawSectionTitle('Cronología de los hechos');
-    writeTextBlock(
-      hasWhatsApp
-        ? 'Correo: la aceptación del proveedor no es entrega en la casilla. WhatsApp: enviado / entregado / leído se consignan por separado cuando Meta lo confirma. Un hecho pendiente no niega el envío.'
-        : 'La aceptación del proveedor de correo no significa que el mensaje haya llegado a la casilla. Pixel, señal Resend y acceso al reader son hechos distintos.',
-      9,
-      12,
-      { color: COLORS.textMuted }
-    );
-    drawTable(
-      ['Hecho', 'Fecha y hora', 'Estado'],
-      chronoRows,
-      [contentWidth * 0.34, contentWidth * 0.32, contentWidth * 0.34]
-    );
-  }
-
-  // ========================================
-  // SECCIÓN 5: BITÁCORA DE EVENTOS AUDITABLES
-  // ========================================
-  drawSectionTitle('Bitácora de eventos auditables');
-  if (!movements.length) {
-    ensureSpace(24);
-    drawBox(margin, yPosition, contentWidth, 24, false);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    setTextColor(COLORS.textMuted);
-    doc.text('No se registraron eventos posteriores al envío del mensaje.', margin + 14, yPosition + 16);
-    yPosition += 36;
-  } else {
-    // Tabla con 5 columnas: #, Evento, Fecha y hora, Detalle técnico, Navegador / Dispositivo
     const movementRows = movements.map((movement, index) => {
-      // Unir navegador con versión en una sola línea
       let browserText = getMovementBrowserLabel(movement.browser);
-      if (movement.browser) {
-        if (movement.browserVersion && movement.browser !== 'Server' && movement.browser !== 'WhatsApp Cloud API') {
-          browserText = `${movement.browser} ${movement.browserVersion}`;
-        }
+      if (
+        movement.browser &&
+        movement.browserVersion &&
+        movement.browser !== 'Server' &&
+        movement.browser !== 'WhatsApp Cloud API'
+      ) {
+        browserText = `${movement.browser} ${movement.browserVersion}`;
       }
-      
+      const detail = movement.description || 'Sin descripción';
+      const browserSuffix = browserText !== 'N/A' ? ` · ${browserText}` : '';
       return [
         String(index + 1),
         getMovementLabel(movement.type),
-        formatDate(movement.timestamp ?? movement.timestamp?.seconds),
-        movement.description || 'Sin descripción',
-        browserText
+        formatTableDate(movement.timestamp ?? movement.timestamp?.seconds),
+        `${detail}${browserSuffix}`,
       ];
     });
     drawTable(
-      ['#', 'Evento', 'Fecha y hora', 'Detalle técnico', 'Navegador / Dispositivo'],
+      ['#', 'Evento', 'Fecha (ART)', 'Detalle'],
       movementRows,
-      [
-        contentWidth * 0.05,
-        contentWidth * 0.22,
-        contentWidth * 0.18,
-        contentWidth * 0.34,
-        contentWidth * 0.21
-      ]
+      [contentWidth * 0.05, contentWidth * 0.24, contentWidth * 0.2, contentWidth * 0.51]
     );
-
-    // Nota informativa sobre la trazabilidad
     ensureSpace(16);
     doc.setFont('helvetica', 'italic');
     doc.setFontSize(9);
     setTextColor(COLORS.textMuted);
     doc.text(`Total de eventos registrados: ${movements.length}`, margin, yPosition);
     yPosition += 12;
-  }
+  };
+
+  const drawWhatsAppAnexoSection = () => {
+    if (!whatsappSent) return;
+    drawSectionTitle('WhatsApp — pedido a Meta', 2);
+    writeTextBlock(
+      `Template: ${whatsappSent.templateName} · ${whatsappSent.templateLang}` +
+        (whatsappSent.templateHash ? ` · Template Hash: ${whatsappSent.templateHash}` : '') +
+        (whatsappSent.templateId ? ` · ID ${whatsappSent.templateId}` : ''),
+      9,
+      12
+    );
+    if (whatsappSent.variables.length > 0) {
+      drawTable(
+        ['{{n}}', 'Campo', 'Valor enviado a Meta'],
+        whatsappSent.variables.map((v) => [`{{${v.n}}}`, v.field || '—', v.value || '—']),
+        [contentWidth * 0.14, contentWidth * 0.28, contentWidth * 0.58]
+      );
+    }
+    for (const btn of whatsappSent.buttons) {
+      const label = btn.text ? `Botón: ${btn.text}` : 'Botón URL';
+      const dest = btn.url
+        ? `Destino: ${btn.url}`
+        : btn.urlParameter
+          ? `Parámetro enviado a Meta: ${btn.urlParameter}`
+          : null;
+      writeTextBlock(dest ? `${label}. ${dest}` : label, 9, 12);
+    }
+  };
+
+  drawIdentificationSection();
+
+  drawSectionTitle('Términos usados', 2);
+  const glossary = [
+    'Aceptado (correo): el servidor de correo tomó el mensaje para entrega.',
+    'Señal Resend: apertura técnica informada por el proveedor; no es lectura fehaciente.',
+    'Pixel Notificas (hist.): señal del pixel histórico de Notificas, si existió.',
+    'Reader: visor certificado donde el destinatario lee el contenido.',
+    'Entregado (WhatsApp): Meta confirmó llegada al teléfono.',
+    'Leído (WhatsApp): Meta confirmó lectura en el chat.',
+  ];
+  glossary.forEach((entry) => {
+    writeTextBlock(`• ${entry}`, 9, 13);
+  });
+  writeTextBlock('— Fin de la Parte I — El anexo técnico continúa en las páginas siguientes.', 9, 12, {
+    color: COLORS.textMuted,
+    italics: true,
+  });
 
   // ========================================
   // SECCIÓN 6: ALCANCE
@@ -1472,6 +1433,9 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     });
     yPosition += techHeight + 12;
   }
+
+  drawWhatsAppAnexoSection();
+  drawBitacoraSection();
 
   drawPolygonSection();
 
