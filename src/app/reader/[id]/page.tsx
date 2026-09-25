@@ -86,6 +86,7 @@ export default function ReaderPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const trackingToken = searchParams.get("k");
+  const clickFrom = searchParams.get("from");
   const [mail, setMail] = useState<MailData | null>(null);
   const [loading, setLoading] = useState(true);
   /** Permiso Firestore denegado o enlace incorrecto — mensaje más claro que "no existe". */
@@ -230,11 +231,15 @@ export default function ReaderPage() {
     fetch('/api/track-reader-open', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messageId, k: trackingToken }),
+      body: JSON.stringify({
+        messageId,
+        k: trackingToken,
+        ...(clickFrom === 'whatsapp' || clickFrom === 'email' ? { from: clickFrom } : {}),
+      }),
       signal: controller.signal,
     }).catch(() => {});
     return () => controller.abort();
-  }, [params.id, trackingToken]);
+  }, [params.id, trackingToken, clickFrom]);
 
   useEffect(() => {
     if (!params.id || !trackingToken || !mail?.tracking?.readConfirmed) return;

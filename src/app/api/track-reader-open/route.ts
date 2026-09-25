@@ -4,6 +4,13 @@ import { adminDb } from '@/lib/firebase-admin';
 import { certifyMailHitoIfNeeded } from '@/lib/certification-polygon';
 import { recordEventLeaf } from '@/lib/campaign-integrity';
 import { syncCampaignMessageLinkClick } from '@/lib/campaign-click-sync';
+import {
+  inferClickSourceFromMovements,
+  normalizeClickSourceInput,
+  readerOpenStoredDescription,
+  readerOpenStoredSource,
+  type ClickSource,
+} from '@/lib/movement-display';
 
 function extractBrowserInfo(userAgent: string) {
   const match = userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)\/(\d+)/);
@@ -84,7 +91,7 @@ async function syncCampaignMessageRead(mailId: string): Promise<void> {
  */
 export async function POST(request: NextRequest) {
   try {
-    let body: { messageId?: unknown; k?: unknown };
+    let body: { messageId?: unknown; k?: unknown; from?: unknown };
     try {
       body = await request.json();
     } catch {
@@ -92,6 +99,7 @@ export async function POST(request: NextRequest) {
     }
     const messageId = typeof body.messageId === 'string' ? body.messageId : null;
     const k = typeof body.k === 'string' ? body.k : null;
+    const fromQuery = normalizeClickSourceInput(body.from);
     if (!messageId || !k) {
       return NextResponse.json({ error: 'messageId y k son requeridos' }, { status: 400 });
     }
@@ -110,6 +118,7 @@ export async function POST(request: NextRequest) {
       wasFirstOpen: boolean;
       certify: boolean;
       isCampaign: boolean;
+      clickSource: ClickSource;
     };
     type TxSkip = { skipped: true; reason: string };
     type TxResult = TxOk | TxSkip;
@@ -142,17 +151,26 @@ export async function POST(request: NextRequest) {
       }
 
       const wasFirstOpen = !messageData.tracking?.opened;
+      const openTimestamp = new Date().toISOString();
+      const clickSource: ClickSource =
+        fromQuery !== 'unknown'
+          ? fromQuery
+          : inferClickSourceFromMovements(
+              { type: 'reader_magic_open', timestamp: openTimestamp },
+              existingMovements,
+            );
       const movement = {
         id: generateUUID(),
         type: 'reader_magic_open',
-        description:
-          'El destinatario abrió el mensaje para leerlo (página web de la notificación)',
-        timestamp: new Date().toISOString(),
+        description: readerOpenStoredDescription(clickSource),
+        timestamp: openTimestamp,
         userAgent,
         clientIP,
         browser: extractBrowserInfo(userAgent),
         recipientEmail: messageData.recipientEmail || messageData.to?.[0] || 'Unknown',
-        source: 'reader_email',
+        ...(readerOpenStoredSource(clickSource)
+          ? { source: readerOpenStoredSource(clickSource), clickSource }
+          : {}),
         isFirstOpen: wasFirstOpen,
       };
 
@@ -172,6 +190,7 @@ export async function POST(request: NextRequest) {
         wasFirstOpen,
         certify,
         isCampaign,
+        clickSource,
       };
     });
 
@@ -190,7 +209,14 @@ export async function POST(request: NextRequest) {
 
     if (txResult.wasFirstOpen) {
       await syncCampaignMessageRead(messageId);
-      await syncCampaignMessageLinkClick(messageId, 'auto');
+      await syncCampaignMessageLinkClick(
+        messageId,
+        txResult.clickSource === 'whatsapp'
+          ? 'whatsapp'
+          : txResult.clickSource === 'correo'
+            ? 'email'
+            : 'auto',
+      );
       void (async () => {
         try {
           const msgSnap = await adminDb.collection('campaign_messages').where('mailId', '==', messageId).limit(1).get();

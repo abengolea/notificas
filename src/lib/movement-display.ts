@@ -1,4 +1,95 @@
 export type MovementChannel = "correo" | "whatsapp" | "lectura";
+export type ClickSource = "correo" | "whatsapp" | "unknown";
+
+type MovementLike = {
+  type?: string;
+  timestamp?: unknown;
+  source?: string;
+  clickSource?: string;
+};
+
+export function movementTimestampMs(timestamp: unknown): number {
+  if (!timestamp) return 0;
+  if (typeof timestamp === "object" && timestamp !== null && "seconds" in timestamp) {
+    const seconds = Number((timestamp as { seconds: number }).seconds);
+    return Number.isFinite(seconds) ? seconds * 1000 : 0;
+  }
+  const parsed = new Date(String(timestamp)).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+export function normalizeClickSourceInput(raw: unknown): ClickSource {
+  if (raw === "whatsapp") return "whatsapp";
+  if (raw === "email" || raw === "correo") return "correo";
+  return "unknown";
+}
+
+/** Canal del click según campos guardados en el movimiento. */
+export function resolveClickSource(movement: MovementLike): ClickSource {
+  const raw = movement.clickSource || movement.source;
+  if (raw === "whatsapp" || raw === "reader_whatsapp") return "whatsapp";
+  if (raw === "email" || raw === "reader_email" || raw === "correo") return "correo";
+  if (movement.type === "whatsapp_link_clicked") return "whatsapp";
+  if (movement.type === "link_clicked") return "correo";
+  return "unknown";
+}
+
+/** Infiere el canal del click a partir de movimientos cercanos (p. ej. link_clicked justo antes). */
+export function inferClickSourceFromMovements(
+  target: MovementLike,
+  allMovements: MovementLike[],
+): ClickSource {
+  const direct = resolveClickSource(target);
+  if (direct !== "unknown") return direct;
+
+  if (target.type !== "reader_magic_open") return "unknown";
+
+  const targetMs = movementTimestampMs(target.timestamp);
+  if (!targetMs) return "unknown";
+
+  const windowMs = 120_000;
+  let best: { type: string; delta: number } | null = null;
+
+  for (const movement of allMovements) {
+    if (movement.type !== "link_clicked" && movement.type !== "whatsapp_link_clicked") continue;
+    const movementMs = movementTimestampMs(movement.timestamp);
+    if (!movementMs) continue;
+    const delta = targetMs - movementMs;
+    if (delta < 0 || delta > windowMs) continue;
+    if (!best || delta < best.delta) {
+      best = { type: movement.type, delta };
+    }
+  }
+
+  if (!best) return "unknown";
+  return best.type === "whatsapp_link_clicked" ? "whatsapp" : "correo";
+}
+
+export function readerOpenLabel(clickSource: ClickSource): string {
+  if (clickSource === "correo") return "NOTIFICACIÓN ABIERTA (DESDE CORREO)";
+  if (clickSource === "whatsapp") return "NOTIFICACIÓN ABIERTA (DESDE WHATSAPP)";
+  return "NOTIFICACIÓN ABIERTA (PÁGINA WEB)";
+}
+
+export function readerOpenDescription(clickSource: ClickSource): string {
+  if (clickSource === "correo") {
+    return "El destinatario abrió el mensaje desde el enlace del correo.";
+  }
+  if (clickSource === "whatsapp") {
+    return "El destinatario abrió el mensaje desde el enlace de WhatsApp.";
+  }
+  return "El destinatario abrió el mensaje para leerlo. No se pudo determinar si llegó por correo o WhatsApp.";
+}
+
+export function readerOpenStoredDescription(clickSource: ClickSource): string {
+  return readerOpenDescription(clickSource);
+}
+
+export function readerOpenStoredSource(clickSource: ClickSource): string | undefined {
+  if (clickSource === "correo") return "reader_email";
+  if (clickSource === "whatsapp") return "reader_whatsapp";
+  return undefined;
+}
 
 export function movementChannel(type: string): MovementChannel {
   if (type.startsWith("whatsapp_")) return "whatsapp";
@@ -40,7 +131,7 @@ export const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   whatsapp_delivered: "WHATSAPP ENTREGADO",
   whatsapp_read: "WHATSAPP LEÍDO",
   whatsapp_failed: "WHATSAPP NO ENTREGADO",
-  reader_magic_open: "NOTIFICACIÓN ABIERTA (PÁGINA WEB)",
+  reader_magic_open: "NOTIFICACIÓN ABIERTA (PÁGINA WEB)", // fallback; preferir readerOpenLabel()
 };
 
 const RESEND_DESCRIPTION_REWRITES: Array<[RegExp, string]> = [

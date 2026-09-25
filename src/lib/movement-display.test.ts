@@ -2,10 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   MOVEMENT_TYPE_LABELS,
+  inferClickSourceFromMovements,
   movementChannel,
   movementChannelLabel,
   publicMovementBrowserLabel,
   publicMovementDescription,
+  readerOpenDescription,
+  readerOpenLabel,
 } from "./movement-display";
 
 test("el canal se lee de un vistazo: correo, WhatsApp o página", () => {
@@ -36,4 +39,23 @@ test("las descripciones viejas de Resend se leen en criollo", () => {
 test("el navegador no muestra Resend ni Meta", () => {
   assert.equal(publicMovementBrowserLabel("Resend"), "Servicio de correo");
   assert.equal(publicMovementBrowserLabel("Sistema (WhatsApp de Meta)"), "WhatsApp");
+});
+
+test("reader_magic_open indica si el acceso vino por correo o WhatsApp", () => {
+  const movements = [
+    { type: "link_clicked", timestamp: "2026-09-25T15:10:00.000Z" },
+    { type: "reader_magic_open", timestamp: "2026-09-25T15:10:05.000Z" },
+  ];
+  assert.equal(inferClickSourceFromMovements(movements[1], movements), "correo");
+  assert.equal(readerOpenLabel("correo"), "NOTIFICACIÓN ABIERTA (DESDE CORREO)");
+  assert.match(readerOpenDescription("correo"), /correo/i);
+});
+
+test("reader_magic_open detecta click previo de WhatsApp", () => {
+  const movements = [
+    { type: "whatsapp_link_clicked", timestamp: "2026-09-25T15:10:00.000Z" },
+    { type: "reader_magic_open", timestamp: "2026-09-25T15:10:04.000Z", source: "reader_whatsapp" },
+  ];
+  assert.equal(inferClickSourceFromMovements(movements[1], movements), "whatsapp");
+  assert.equal(readerOpenLabel("whatsapp"), "NOTIFICACIÓN ABIERTA (DESDE WHATSAPP)");
 });

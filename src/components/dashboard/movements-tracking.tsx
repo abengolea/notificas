@@ -20,10 +20,14 @@ import {
 import { filterRecipientVisibleMovements } from '@/lib/tracking-movements';
 import {
   MOVEMENT_TYPE_LABELS,
+  inferClickSourceFromMovements,
   movementChannel,
   movementChannelLabel,
   publicMovementBrowserLabel,
   publicMovementDescription,
+  readerOpenDescription,
+  readerOpenLabel,
+  type ClickSource,
   type MovementChannel,
 } from '@/lib/movement-display';
 
@@ -66,6 +70,8 @@ interface Movement {
   viewerIsSender?: boolean;
   recipientPhone?: string;
   recipientPhoneVerified?: boolean;
+  source?: string;
+  clickSource?: string;
 }
 
 interface MovementsTrackingProps {
@@ -176,9 +182,6 @@ const CHANNEL_CHIP_CLASS: Record<MovementChannel, string> = {
   lectura: 'bg-teal-100 text-teal-800 border-teal-200',
 };
 
-const READER_MAGIC_OPEN_DESCRIPTION =
-  'El destinatario abrió el mensaje para leerlo (página web de la notificación). Pudo llegar desde el correo o desde WhatsApp.';
-
 const MOVEMENT_TYPES_WITH_RECIPIENT_CONTEXT = new Set([
   'whatsapp_link_clicked',
   'whatsapp_sent',
@@ -197,16 +200,43 @@ const MOVEMENT_TYPES_WITH_RECIPIENT_CONTEXT = new Set([
   'app_opened',
 ]);
 
-function getMovementDescription(movement: Movement): string {
-  if (movement.type === 'reader_magic_open') return READER_MAGIC_OPEN_DESCRIPTION;
+function resolveMovementClickSource(movement: Movement, allMovements: Movement[]): ClickSource {
+  return inferClickSourceFromMovements(movement, allMovements);
+}
+
+function getMovementChannelChip(movement: Movement, allMovements: Movement[]): MovementChannel {
+  if (movement.type === 'reader_magic_open') {
+    const clickSource = resolveMovementClickSource(movement, allMovements);
+    if (clickSource === 'correo') return 'correo';
+    if (clickSource === 'whatsapp') return 'whatsapp';
+  }
+  return movementChannel(movement.type);
+}
+
+function getMovementDescription(movement: Movement, allMovements: Movement[]): string {
+  if (movement.type === 'reader_magic_open') {
+    const clickSource = resolveMovementClickSource(movement, allMovements);
+    const stored = publicMovementDescription(String(movement.description || ''));
+    if (
+      stored &&
+      !/pudo llegar desde el correo o desde whatsapp/i.test(stored) &&
+      !/página web de la notificación/i.test(stored)
+    ) {
+      return stored;
+    }
+    return readerOpenDescription(clickSource);
+  }
   return publicMovementDescription(String(movement.description || ''));
 }
 
-function getMovementLabel(movement: Movement): string {
+function getMovementLabel(movement: Movement, allMovements: Movement[]): string {
   if (movement.type === 'app_opened') {
     return movement.viewerIsSender
       ? 'VISITA DEL REMITENTE (DETALLE)'
       : 'APERTURA EN LA WEB (DESTINATARIO)';
+  }
+  if (movement.type === 'reader_magic_open') {
+    return readerOpenLabel(resolveMovementClickSource(movement, allMovements));
   }
   return MOVEMENT_TYPE_LABELS[movement.type] || movement.type.replace(/_/g, ' ').toUpperCase();
 }
@@ -271,20 +301,20 @@ export function MovementsTracking({ movements, recipientEmail }: MovementsTracki
                   </span>
                   <Badge
                     variant="outline"
-                    className={`text-xs ${CHANNEL_CHIP_CLASS[movementChannel(movement.type)]}`}
+                    className={`text-xs ${CHANNEL_CHIP_CLASS[getMovementChannelChip(movement, sortedMovements)]}`}
                   >
-                    {movementChannelLabel(movementChannel(movement.type))}
+                    {movementChannelLabel(getMovementChannelChip(movement, sortedMovements))}
                   </Badge>
                   <Badge 
                     variant="outline" 
                     className={`text-xs ${getMovementColor(movement.type)}`}
                   >
-                    {getMovementLabel(movement)}
+                    {getMovementLabel(movement, sortedMovements)}
                   </Badge>
                 </div>
                 
                 <p className="text-sm text-muted-foreground mb-2">
-                  {getMovementDescription(movement)}
+                  {getMovementDescription(movement, sortedMovements)}
                 </p>
 
                 {MOVEMENT_TYPES_WITH_RECIPIENT_CONTEXT.has(movement.type) &&

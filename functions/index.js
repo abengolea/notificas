@@ -1659,6 +1659,14 @@ async function syncCampaignMessageClick(mailDocId, isWhatsApp) {
   }
 }
 
+function buildReaderUrl(msg, k, from) {
+  const base = `${APP_HOSTING_URL}/reader/${encodeURIComponent(String(msg))}?k=${encodeURIComponent(String(k))}`;
+  if (from === 'whatsapp' || from === 'email') {
+    return `${base}&from=${from}`;
+  }
+  return base;
+}
+
 async function linkRedirectHandler(req, res) {
   try {
     const { msg, u, k, src, r, att } = req.query;
@@ -1680,7 +1688,11 @@ async function linkRedirectHandler(req, res) {
       return res.redirect(302, readerFallback);
     }
 
-    const readerUrl = `${APP_HOSTING_URL}/reader/${encodeURIComponent(String(msg))}?k=${encodeURIComponent(String(k))}`;
+    const readerUrl = buildReaderUrl(
+      msg,
+      k,
+      src === 'whatsapp' ? 'whatsapp' : src ? 'email' : undefined,
+    );
 
     const attIdRaw = att != null && String(att).trim() !== '' ? String(att).trim() : '';
     if (attIdRaw) {
@@ -1714,6 +1726,7 @@ async function linkRedirectHandler(req, res) {
 
     // Sin `u`: mismo enlace que el botón del correo (msg + k) — correo o WhatsApp con `src=whatsapp`
     if (!u) {
+      const isWhatsApp = src === 'whatsapp';
       console.log('🔗 Sin parámetro u — CTA correo o enlace corto WhatsApp, redirigiendo al reader');
       const db = getFirestore();
       const docRef = db.collection('mail').doc(String(msg));
@@ -1727,7 +1740,6 @@ async function linkRedirectHandler(req, res) {
           if (isRecentDuplicateRedirect(data?.tracking?.lastRedirectDedupe, clientIP, dedupeTag)) {
             console.log('⚠️ Duplicate CTA / WhatsApp click (dedupe), skipping update');
           } else {
-            const isWhatsApp = src === 'whatsapp';
             let recipientPhoneFromLink = null;
             let recipientPhoneVerified = false;
             if (r) {
@@ -1778,7 +1790,7 @@ async function linkRedirectHandler(req, res) {
           console.log('❌ Token inválido para CTA click');
         }
       }
-      return res.redirect(302, readerUrl);
+      return res.redirect(302, buildReaderUrl(msg, k, isWhatsApp ? 'whatsapp' : 'email'));
     }
 
     // VALIDACIÓN TEMPRANA: Verificar que el parámetro codificado tenga una longitud razonable
