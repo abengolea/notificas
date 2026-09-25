@@ -26,6 +26,7 @@ const {
   applyEmailBounce,
   applyEmailBounceFromPayload,
 } = require('./email-bounce');
+const { isLinkPreviewCrawler, readerRedirectOrigin } = require('./link-redirect-origin');
 
 initializeApp();
 
@@ -1452,6 +1453,7 @@ const KNOWN_SCANNER_PATTERNS = [
 
 function isKnownScanner(userAgent) {
   if (!userAgent) return false;
+  if (isLinkPreviewCrawler(userAgent)) return true;
   return KNOWN_SCANNER_PATTERNS.some((re) => re.test(userAgent));
 }
 
@@ -1679,8 +1681,9 @@ async function syncCampaignMessageClick(mailDocId, isWhatsApp) {
   }
 }
 
-function buildReaderUrl(msg, k, from) {
-  const base = `${APP_HOSTING_URL}/reader/${encodeURIComponent(String(msg))}?k=${encodeURIComponent(String(k))}`;
+function buildReaderUrl(req, msg, k, from) {
+  const origin = readerRedirectOrigin(req, APP_HOSTING_URL);
+  const base = `${origin}/reader/${encodeURIComponent(String(msg))}?k=${encodeURIComponent(String(k))}`;
   if (from === 'whatsapp' || from === 'email') {
     return `${base}&from=${from}`;
   }
@@ -1704,11 +1707,11 @@ async function linkRedirectHandler(req, res) {
     const userAgentForCheck = req.get('User-Agent') || '';
     if (isKnownScanner(userAgentForCheck)) {
       console.log('🤖 Scanner de email detectado, redirigiendo sin tracking:', userAgentForCheck.substring(0, 80));
-      const readerFallback = `${APP_HOSTING_URL}/reader/${encodeURIComponent(String(msg))}?k=${encodeURIComponent(String(k))}`;
-      return res.redirect(302, readerFallback);
+      return res.redirect(302, buildReaderUrl(req, msg, k, src === 'whatsapp' ? 'whatsapp' : 'email'));
     }
 
     const readerUrl = buildReaderUrl(
+      req,
       msg,
       k,
       src === 'whatsapp' ? 'whatsapp' : src ? 'email' : undefined,
@@ -1815,7 +1818,7 @@ async function linkRedirectHandler(req, res) {
           console.log('❌ Token inválido para CTA click');
         }
       }
-      return res.redirect(302, buildReaderUrl(msg, k, isWhatsApp ? 'whatsapp' : 'email'));
+      return res.redirect(302, buildReaderUrl(req, msg, k, isWhatsApp ? 'whatsapp' : 'email'));
     }
 
     // VALIDACIÓN TEMPRANA: Verificar que el parámetro codificado tenga una longitud razonable
@@ -1984,7 +1987,7 @@ async function linkRedirectHandler(req, res) {
     // En caso de error, intentar redirigir al reader si tenemos el msg
     const { msg, k } = req.query;
     if (msg && k) {
-      const fallbackUrl = `${APP_HOSTING_URL}/reader/${encodeURIComponent(String(msg))}?k=${encodeURIComponent(String(k))}`;
+      const fallbackUrl = buildReaderUrl(req, msg, k, req.query?.src === 'whatsapp' ? 'whatsapp' : 'email');
       return res.status(302).redirect(fallbackUrl);
     }
     return res.status(302).redirect(APP_HOSTING_URL);
