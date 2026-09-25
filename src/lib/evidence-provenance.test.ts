@@ -286,6 +286,7 @@ test('tokenReference no expone el token completo', () => {
 test('leyendas de certificado incluyen messageId y contentHash', () => {
   const hash = 'e'.repeat(64);
   assert.match(certifiedContentLegend(MESSAGE_ID, hash), new RegExp(MESSAGE_ID));
-  assert.match(certifiedContentLegend(MESSAGE_ID, hash), new RegExp(hash));
+  assert.match(certifiedContentLegend(MESSAGE_ID, hash), new RegExp(hash.slice(0, 8)));
+  assert.match(certifiedContentLegend(MESSAGE_ID, hash), /hash completo en el anexo/i);
   assert.match(whatsAppReaderLinkExplanation(MESSAGE_ID, hash), /Contenido certificado mostrado en el lector/);
 });

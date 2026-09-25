@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb, getAdminBucket, getEvidenceBucket, sealEvidenceCopy } from '@/lib/firebase-admin';
 import { verifyAuthToken } from '@/lib/auth-helper';
-import { generateCertificatePDF } from '@/lib/certificate-generator';
+import { CertificateEvidenceError, generateCertificatePDF } from '@/lib/certificate-generator';
 import { certificarDocumento } from '@/lib/certification-polygon';
 import { findEvidenceSnapshot, overlayMailWithSnapshot } from '@/lib/evidence-snapshot';
 import { listProviderEventsForMail } from '@/lib/provider-events';
@@ -249,7 +249,19 @@ export async function POST(request: NextRequest) {
       attachments: sealedMail.attachments || []
     };
 
-    const pdfBlob = await generateCertificatePDF(certificateData);
+    let pdfBlob: Blob;
+    try {
+      pdfBlob = await generateCertificatePDF(certificateData);
+    } catch (e) {
+      if (e instanceof CertificateEvidenceError) {
+        console.error('Certificado bloqueado por inconsistencia probatoria:', e.details);
+        return NextResponse.json(
+          { error: e.message, details: e.details },
+          { status: 422 }
+        );
+      }
+      throw e;
+    }
     const arrayBuffer = await pdfBlob.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const certificateHash = createHash('sha256').update(buffer).digest('hex');

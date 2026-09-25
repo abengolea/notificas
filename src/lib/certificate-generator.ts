@@ -28,11 +28,21 @@ import { publicCertificateVerifyUrl } from './public-verify-url';
 import { campaignVerifyRef, formatVerifyRefLine } from './verify-hints';
 import { stripRichTextToPlainText } from './rich-text';
 import type { WhatsAppSentContent } from './whatsapp-evidence';
+import { buildSortedChronologyRows } from './certificate-chronology';
 import {
-  buildEvidenceChainSteps,
+  verifyEvidenceConsistency,
+  CertificateEvidenceError,
+} from './certificate-evidence-consistency';
+import {
+  buildEvidenceChainVisual,
+  canShowWhatsAppProbatoryPhrase,
   certifiedContentLegend,
+  whatsAppProbatoryPhrase,
   whatsAppReaderLinkExplanation,
+  whatsAppScopeExplanation,
 } from './evidence-chain';
+
+export { CertificateEvidenceError };
 
 /** Texto intimado del certificado: el mismo plano que entra al hash, no el HTML del editor. */
 export function certificatePlainBody(message?: {
@@ -127,6 +137,7 @@ interface MailData {
     whatsapp?: string;
   };
   waRequestSnapshot?: unknown;
+  waOnly?: boolean;
 }
 
 interface CertificateData {
@@ -166,14 +177,14 @@ const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   resend_clicked_signal: 'Señal técnica de clic del correo',
   email_bounced: 'Correo rebotó (no llegó al buzón)',
   email_opened: 'Correo abierto (pixel)',
-  reader_magic_open: 'Acceso al lector certificado',
+  reader_magic_open: 'Se registró acceso al lector certificado',
   app_opened: 'Apertura en app web',
   message_received: 'Mensaje recibido',
-  read_confirmed: 'Lectura confirmada',
+  read_confirmed: 'Se registró confirmación de lectura en el lector',
   link_clicked: 'Acceso a enlace (correo)',
   whatsapp_sent: 'Mensaje de WhatsApp enviado',
   whatsapp_delivered: 'WhatsApp entregado al dispositivo',
-  whatsapp_read: 'WhatsApp leído por el destinatario',
+  whatsapp_read: 'Meta informó que el mensaje fue leído en el chat',
   whatsapp_failed: 'WhatsApp no entregado',
   whatsapp_link_clicked: 'Acceso desde mensaje de WhatsApp',
   attachment_downloaded: 'Descarga de adjunto',
@@ -237,6 +248,21 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     waDeliveredWebhookPreserved,
     waReadWebhookPreserved,
   } = data;
+
+  const consistency = await verifyEvidenceConsistency({
+    messageId,
+    mailData: mailData as Parameters<typeof verifyEvidenceConsistency>[0]['mailData'],
+    whatsappSent: whatsappSent || undefined,
+    snapshotContentHash: mailData.polygonCertifications?.contentHash,
+    snapshotHash: mailData.evidenceSnapshotHash,
+    evidenceSealed: evidenceSealed === true || Boolean(mailData.evidenceSnapshotHash),
+  });
+  if (!consistency.ok) {
+    throw new CertificateEvidenceError(
+      'No se puede emitir el certificado: evidencia inconsistente.',
+      consistency.critical
+    );
+  }
 
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -323,6 +349,15 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       doc.addPage();
       drawPageHeader(false, doc.getNumberOfPages());
       // drawPageHeader ya fija yPosition por debajo del bloque de cabecera; no sobrescribir
+    }
+  };
+
+  /** Evita títulos huérfanos: reserva espacio para título + contenido mínimo antes de dibujar la sección. */
+  const ensureSectionStart = (minContentHeight: number, titleLevel: 1 | 2 = 2) => {
+    const titleReserve = titleLevel === 1 ? 34 : 24;
+    if (yPosition + titleReserve + minContentHeight > contentBottom) {
+      doc.addPage();
+      drawPageHeader(false, doc.getNumberOfPages());
     }
   };
 
@@ -888,22 +923,11 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   });
   yPosition += resultadoBoxHeight + 14;
 
-  const simpleChronoRows: string[][] = [];
-  const pushChrono = (movement: MovementLike | undefined, label: string) => {
-    if (!movement?.timestamp) return;
-    simpleChronoRows.push([formatTableDate(movement.timestamp), label]);
-  };
-  pushChrono(firstMovement(['email_sent', 'resend_sent']), 'Correo enviado y aceptado');
-  pushChrono(firstMovement(['resend_delivered']), 'Servidor del destinatario aceptó el correo');
-  pushChrono(emailEvidence.resendSignal, 'Apertura del correo informada por el proveedor');
-  pushChrono(emailEvidence.legacyPixel, 'Apertura del correo por pixel');
-  pushChrono(emailEvidence.linkClicked, 'Acceso desde enlace del correo');
-  pushChrono(emailEvidence.readerOpen, 'Acceso al lector certificado');
-  pushChrono(emailEvidence.readConfirmed, 'Lectura confirmada en el lector');
-  pushChrono(firstMovement(['whatsapp_sent']), 'WhatsApp enviado');
-  pushChrono(firstMovement(['whatsapp_delivered']), 'WhatsApp entregado al teléfono');
-  pushChrono(whatsappEvidence.metaRead, 'WhatsApp leído en el chat');
-  pushChrono(whatsappEvidence.linkClicked, 'Acceso desde enlace del mensaje de WhatsApp');
+  const sortedChrono = buildSortedChronologyRows(movements);
+  const simpleChronoRows: string[][] = sortedChrono.map((row) => [
+    formatTableDate(row.timestamp),
+    row.label,
+  ]);
   if (simpleChronoRows.length > 0) {
     drawSectionTitle('Cronología (hechos congelados al emitir)', 2);
     drawTable(
@@ -924,17 +948,58 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     (mailData.polygonCertifications as { send?: string } | undefined)?.send?.startsWith('0x')
   );
   if (hasWhatsApp || contentHashForDoc) {
-    drawSectionTitle('Cadena de vinculación de la evidencia', 2);
-    const chainSteps = buildEvidenceChainSteps({
+    const chainVisual = buildEvidenceChainVisual({
       hasWhatsApp,
+      hasEmail: Boolean(mailData.recipientEmail && !mailData.waOnly),
       messageId,
       contentHash: contentHashForDoc || '',
       snapshotHash: snapshotHashForDoc,
       hasPolygon: hasPolygonSend,
     });
-    chainSteps.forEach((step, idx) => {
-      writeTextBlock(`${idx + 1}. ${step}`, 9, 13);
+    const chainBlockHeight = chainVisual.length * 14 + 24;
+    ensureSectionStart(chainBlockHeight, 2);
+    drawSectionTitle('Cadena de vinculación de la evidencia', 2);
+    chainVisual.forEach((step) => {
+      ensureSpace(16);
+      if (step.kind === 'arrow') {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        setTextColor(COLORS.textMuted);
+        doc.text('v', margin + 12, yPosition);
+        yPosition += 14;
+        return;
+      }
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      setTextColor(COLORS.textMain);
+      if (step.kind === 'id') {
+        doc.text(`${step.label}:`, margin + 14, yPosition);
+        doc.setFont('courier', 'normal');
+        doc.setFontSize(8.5);
+        const idLines = doc.splitTextToSize(step.value, contentWidth - 56);
+        idLines.forEach((line: string, idx: number) => {
+          doc.text(line, margin + 36, yPosition + idx * 12);
+        });
+        yPosition += Math.max(idLines.length * 12, 14);
+      } else {
+        doc.text(step.text, margin + 14, yPosition);
+        yPosition += 14;
+      }
     });
+    yPosition += 8;
+    if (
+      canShowWhatsAppProbatoryPhrase({
+        hasWhatsApp,
+        messageId,
+        contentHash: contentHashForDoc || '',
+        whatsappLinkClicked: whatsAppLinkClickedDetected(whatsappEvidence),
+      })
+    ) {
+      writeTextBlock(whatsAppProbatoryPhrase(messageId, contentHashForDoc || ''), 9, 12, {
+        color: COLORS.textMuted,
+        italics: true,
+      });
+    }
   }
 
   writeTextBlock(
@@ -976,9 +1041,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     }
     techData.push({
       label: 'Alcance de WhatsApp',
-      value: whatsappSent?.renderedBody
-        ? 'El globo de WhatsApp (template de Meta) se transcribe en la Parte I. El texto del correo/lector es el intimado en el hash de contenido, salvo que el envío sea solo WhatsApp.'
-        : 'WhatsApp transportó un aviso (template de Meta) con enlace al lector. El texto intimado en el hash es el del correo y del lector, no el globo del chat, salvo que el globo conste más abajo.',
+      value: whatsAppScopeExplanation(Boolean(mailData.waOnly), Boolean(whatsappSent?.renderedBody)),
       monospace: false,
     });
   }
@@ -1008,13 +1071,13 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   }
   if (contentHash) {
     techData.push({
-      label: 'Hash de integridad del texto intimado (SHA-256)',
+      label: 'Hash de integridad del contenido certificado (SHA-256)',
       value: contentHash,
       monospace: true
     });
     techData.push({
       label: 'Fórmula de reproducción del hash (para peritos)',
-      value: 'SHA-256( UTF-8( trim(texto_plano_del_mensaje) ) ) — Texto del correo/lector. Implementación: crypto.subtle.digest("SHA-256", new TextEncoder().encode(texto.trim())) — Web Crypto API estándar.',
+      value: 'SHA-256( UTF-8( trim(texto_plano_del_contenido_certificado) ) ) — Texto intimado certificado mostrado en el lector. Implementación: crypto.subtle.digest("SHA-256", new TextEncoder().encode(texto.trim())) — Web Crypto API estándar.',
       monospace: false
     });
   }
@@ -1047,98 +1110,54 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     : [];
 
   const drawPolygonSection = () => {
-  if (polygonEntries.length > 0) {
-    drawSectionTitle('Certificación en Blockchain (Polygon)', 2);
+    if (polygonEntries.length === 0) return;
 
     const LINK_COLOR: [number, number, number] = COLORS.primaryDark;
     const introText =
-      'Transacciones ancladas en Polygon Mainnet. Enlace clicable al explorador PolygonScan y URL completa para copiar y pegar.';
-
-    const entryBlockHeight = (label: string, txHash: string) => {
-      const url = `${POLYGON_EXPLORER}/tx/${txHash}`;
-      const shortHash = `${txHash.slice(0, 10)}...${txHash.slice(-8)}`;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      const titleLines = doc.splitTextToSize(`${label} — hash ${shortHash}`, contentWidth - 28);
-      doc.setFont('courier', 'normal');
-      doc.setFontSize(8);
-      const urlLines = doc.splitTextToSize(url, contentWidth - 28);
-      // Título (var. líneas) + enlace + rótulo + URL (var. líneas) + separación
-      return titleLines.length * 15 + 18 + 13 + urlLines.length * 12 + 12;
-    };
-
+      'Las siguientes transacciones permiten verificar externamente determinados hechos de esta comunicación. ' +
+      'La blockchain no almacena el texto completo de la notificación, sino identificadores, hashes y referencias técnicas vinculadas a la evidencia.';
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    const introLines = doc.splitTextToSize(introText, contentWidth - 28);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    const footerText = 'PolygonScan (polygonscan.com) es el explorador público de la red Polygon.';
-    const footerLines = doc.splitTextToSize(footerText, contentWidth - 28);
-
-    let polygonHeight = 18 + introLines.length * 13 + 10;
-    polygonEntries.forEach((entry) => {
-      polygonHeight += entryBlockHeight(entry.label, entry.txHash as string);
-    });
-    polygonHeight += footerLines.length * 11 + 12;
-
-    ensureSpace(polygonHeight + 8);
-    drawBox(margin, yPosition, contentWidth, polygonHeight, false);
-
-    let polygonY = yPosition + 18;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    setTextColor(COLORS.textMain);
+    const introLines = doc.splitTextToSize(introText, contentWidth);
+    const firstEntryHeight = 56;
+    ensureSectionStart(introLines.length * 13 + firstEntryHeight + 12, 2);
+    drawSectionTitle('Certificación en Blockchain (Polygon)', 2);
     introLines.forEach((line: string) => {
-      doc.text(line, margin + 14, polygonY);
-      polygonY += 13;
+      doc.text(line, margin, yPosition);
+      yPosition += 13;
     });
-    polygonY += 8;
+    yPosition += 10;
 
     polygonEntries.forEach((entry) => {
       const url = `${POLYGON_EXPLORER}/tx/${entry.txHash}`;
-      const shortHash = `${entry.txHash!.slice(0, 10)}...${entry.txHash!.slice(-8)}`;
-
+      const shortHash = `${entry.txHash!.slice(0, 10)}…${entry.txHash!.slice(-8)}`;
+      ensureSpace(58);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
       setTextColor(COLORS.textMain);
-      const titleLines = doc.splitTextToSize(`${entry.label} — hash ${shortHash}`, contentWidth - 28);
-      titleLines.forEach((line: string) => {
-        doc.text(line, margin + 14, polygonY);
-        polygonY += 15;
-      });
-
+      doc.text(entry.label, margin + 14, yPosition);
+      yPosition += 14;
+      doc.setFont('courier', 'normal');
+      doc.setFontSize(9);
+      doc.text(`TX: ${shortHash}`, margin + 14, yPosition);
+      yPosition += 14;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       setTextColor(LINK_COLOR);
-      doc.textWithLink('Abrir esta transacción en PolygonScan', margin + 14, polygonY, { url });
-      polygonY += 18;
-
-      doc.setFont('helvetica', 'italic');
-      doc.setFontSize(8.5);
-      setTextColor(COLORS.textMuted);
-      doc.text('Si el enlace anterior no responde al clic, copie la URL siguiente:', margin + 14, polygonY);
-      polygonY += 13;
-
-      doc.setFont('courier', 'normal');
-      doc.setFontSize(8.5);
-      setTextColor(COLORS.textMain);
-      const urlLines = doc.splitTextToSize(url, contentWidth - 28);
-      urlLines.forEach((line: string) => {
-        doc.text(line, margin + 14, polygonY);
-        polygonY += 12;
-      });
-      polygonY += 12;
+      doc.textWithLink('Ver en PolygonScan', margin + 14, yPosition, { url });
+      yPosition += 20;
     });
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     setTextColor(COLORS.textMuted);
-    footerLines.forEach((line: string) => {
-      doc.text(line, margin + 14, polygonY);
-      polygonY += 11;
+    const footerText = 'PolygonScan (polygonscan.com) es el explorador público de la red Polygon.';
+    doc.splitTextToSize(footerText, contentWidth).forEach((line: string) => {
+      ensureSpace(12);
+      doc.text(line, margin, yPosition);
+      yPosition += 11;
     });
-    yPosition += polygonHeight + 14;
-  }
+    yPosition += 10;
   };
 
   // ========================================
@@ -1403,13 +1422,16 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
 
   drawSectionTitle('Términos usados', 2);
   const glossary = [
+    'Contenido certificado: texto intimado preservado en el snapshot y mostrado en el lector certificado.',
     'Aceptado (correo): el servidor de correo tomó el mensaje para entrega.',
     'Apertura informada por proveedor: el servicio de correo registró apertura del mensaje.',
     'Apertura por pixel: registro de apertura del correo en bandeja.',
-    'Lector certificado: visor donde el destinatario lee el contenido y puede confirmar lectura.',
-    'Entregado (WhatsApp): el mensaje llegó al teléfono del destinatario.',
-    'Leído en el chat: el destinatario abrió el mensaje en WhatsApp (doble tilde).',
-    'Acceso desde enlace: el destinatario pulsó el enlace dentro del mensaje de WhatsApp.',
+    'Lector certificado: visor donde se exhibe el contenido certificado; puede registrarse acceso y confirmación.',
+    'Entregado (WhatsApp): Meta informó que el mensaje llegó al teléfono indicado.',
+    'Leído en el chat: Meta informó que el mensaje fue abierto en WhatsApp (doble tilde).',
+    'Acceso al lector: se registró ingreso al lector certificado (desde correo o desde enlace de WhatsApp).',
+    'Lectura confirmada: acción expresa realizada dentro del lector certificado mediante la cual el usuario confirma haber accedido al contenido.',
+    'Acceso desde enlace (WhatsApp): se registró que se pulsó el enlace dentro del mensaje de WhatsApp.',
   ];
   glossary.forEach((entry) => {
     writeTextBlock(`• ${entry}`, 9, 13);
@@ -1424,10 +1446,10 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   // ========================================
   drawSectionTitle('Alcance de este documento');
   const statements = [
-    'Esta Parte I relata qué se pidió enviar, a qué destino técnico y qué informaron después los proveedores. No califica valor legal ni prueba por sí sola la identidad civil del receptor.',
+    'Esta Parte I relata qué se pidió enviar, a qué destino técnico y qué informaron después los proveedores. No califica valor legal ni prueba por sí sola la identidad civil de quien operó el dispositivo.',
     'Los eventos listados son los congelados al emitir este certificado. Hechos posteriores no aparecen en esta copia.',
     'Que el servidor de correo haya aceptado el mensaje no significa que haya llegado a la casilla. “Entregado” o “leído” de WhatsApp se consignan solo si Meta los informó.',
-    'El contenido (asunto y cuerpo del correo/lector) se certifica con hash SHA-256. Los adjuntos, si existen, también. Cualquier alteración produce un hash distinto.',
+    'El contenido certificado (texto intimado mostrado en el lector) se identifica con hash SHA-256. Los adjuntos, si existen, también. Cualquier alteración produce un hash distinto.',
     `Emisión: ${utcStamp(emissionDate)}. Las descargas posteriores entregan el mismo PDF.`,
   ];
   
@@ -1454,7 +1476,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   drawSectionTitle('Snapshot y recálculo');
   writeTextBlock(
     sealed
-      ? 'El evidence_snapshot es un registro de escritura única: se sella al enviar y no se modifica. Conserva identidad de las partes, texto o pedido a Meta, hashes de adjuntos, WAMID y Message-ID SMTP si existen. Este certificado transcribe esa copia. El recálculo del perito (SHA-256 del texto de la Parte I) debe coincidir con el contentHash. El recálculo no sustituye al snapshot: lo confronta.'
+      ? 'El evidence_snapshot es un registro de escritura única: se sella al enviar y no se modifica. Conserva identidad de las partes, contenido certificado o pedido a Meta, hashes de adjuntos, WAMID y Message-ID SMTP si existen. Este certificado transcribe esa copia. El recálculo del perito (SHA-256 del contenido certificado de la Parte I) debe coincidir con el contentHash. El recálculo no sustituye al snapshot: lo confronta.'
       : 'No hay snapshot sellado de este envío. Las huellas y transacciones del anexo, si existen, se confrontan con el texto transcrito de los registros del mensaje.',
     9,
     13

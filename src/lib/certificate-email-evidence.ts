@@ -92,8 +92,8 @@ export function whatsAppLinkClickedDetected(state: WhatsAppEvidenceState): boole
 
 /** Resumen en lenguaje claro para la columna de correo. */
 export function emailChannelStatusLine(state: EmailEvidenceState): string {
-  if (emailReadConfirmedDetected(state)) return 'Lectura confirmada en el lector certificado';
-  if (emailReaderOpenDetected(state)) return 'Contenido accedido en el lector certificado';
+  if (emailReadConfirmedDetected(state)) return 'Se registró confirmación de lectura en el lector';
+  if (emailReaderOpenDetected(state)) return 'Se registró acceso al lector certificado';
   if (emailLinkClickedDetected(state)) return 'Enlace pulsado desde el correo';
   if (emailAppOpenDetected(state)) return 'Abierto en la aplicación web';
   if (emailResendSignalDetected(state) || emailLegacyPixelDetected(state)) {
