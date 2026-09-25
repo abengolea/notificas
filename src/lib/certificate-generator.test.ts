@@ -128,9 +128,36 @@ test('señal Resend y reader no se mezclan con pixel Notificas en el resultado',
     attachments: [],
   });
   const raw = pdfText(await blob.arrayBuffer());
-  assert.match(raw, /Señal Resend: S/i);
-  assert.match(raw, /Pixel Notificas \(hist\.\): No consta/i);
-  assert.match(raw, /Acceso al reader: S/i);
+  assert.match(raw, /Apertura informada por proveedor: S/i);
+  assert.match(raw, /Apertura por pixel: No consta/i);
+  assert.match(raw, /Acceso al lector certificado: S/i);
   assert.match(raw, /Resultado de la notificaci/i);
   assert.match(raw, /certificado-lectura\/v4/i);
+});
+
+test('enlace de WhatsApp y lectura confirmada aparecen en el resumen humano', async () => {
+  const blob = await generateCertificatePDF({
+    messageId: 'testWaLinkAndConfirm',
+    issuedAt: new Date('2026-09-25T16:43:42.000Z'),
+    evidenceSealed: true,
+    mailData: {
+      from: 'rem@test.com',
+      recipientEmail: 'dest@test.com',
+      recipientPhone: '+5493412594825',
+      message: { subject: 'Asunto', contentText: 'cuerpo' },
+      delivery: { state: 'DELIVERED', time: '2026-09-25T15:09:37Z' },
+      tracking: { whatsappDelivered: true },
+    },
+    movements: [
+      { type: 'whatsapp_delivered', timestamp: '2026-09-25T15:09:41Z' },
+      { type: 'whatsapp_link_clicked', timestamp: '2026-09-25T16:13:15Z' },
+      { type: 'read_confirmed', timestamp: '2026-09-25T15:11:49Z' },
+    ],
+    attachments: [],
+  });
+  const raw = pdfText(await blob.arrayBuffer());
+  assert.match(raw, /Acceso desde enlace del mensaje: S/i);
+  assert.match(raw, /Leído en el chat: No consta/i);
+  assert.match(raw, /acceso desde el enlace del mensaje/i);
+  assert.match(raw, /lectura confirmada en el lector certificado/i);
 });

@@ -5,15 +5,21 @@ import { computeContentHash } from './certification';
 import { POLYGON_CERT_DISPLAY_ORDER, polygonCertLabel } from './polygon-cert-labels';
 import { emailDeliveryLabel } from './email-delivery-label';
 import {
+  buildNotificationHumanSummary,
   deriveEmailEvidence,
+  deriveWhatsAppEvidence,
   emailAppOpenDetected,
-  emailChannelHumanSummary,
+  emailChannelStatusLine,
   emailLegacyPixelDetected,
-  emailReaderAccessDetected,
+  emailReadConfirmedDetected,
+  emailReaderOpenDetected,
   emailResendSignalDetected,
   firstCertificateMovement,
   formatEvidenceStatus,
   hasCertificateMovement,
+  whatsAppChannelStatusLine,
+  whatsAppLinkClickedDetected,
+  whatsAppMetaReadDetected,
 } from './certificate-email-evidence';
 import { formatEvidenceTimestamp, formatEvidenceTimestampLocal, PDF_SCHEMA } from './pdf-evidence-format';
 import { loadNotificasLogoJpeg, PDF_BRAND } from './pdf-brand';
@@ -154,7 +160,7 @@ const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   resend_clicked_signal: 'Señal técnica de clic del correo',
   email_bounced: 'Correo rebotó (no llegó al buzón)',
   email_opened: 'Correo abierto (pixel)',
-  reader_magic_open: 'Acceso al reader digital',
+  reader_magic_open: 'Acceso al lector certificado',
   app_opened: 'Apertura en app web',
   message_received: 'Mensaje recibido',
   read_confirmed: 'Lectura confirmada',
@@ -274,6 +280,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   const firstMovement = (types: string[]) => firstCertificateMovement(movements, types);
   const hasMovement = (types: string[]) => hasCertificateMovement(movements, types);
   const emailEvidence = deriveEmailEvidence(movements);
+  const whatsappEvidence = deriveWhatsAppEvidence(movements);
 
   const setTextColor = (color: [number, number, number]) => {
     doc.setTextColor(color[0], color[1], color[2]);
@@ -703,9 +710,10 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   const waDelivered =
     Boolean((mailData.tracking as { whatsappDelivered?: boolean } | undefined)?.whatsappDelivered) ||
     hasMovement(['whatsapp_delivered']);
-  const waRead =
+  const waMetaRead =
     Boolean((mailData.tracking as { whatsappRead?: boolean } | undefined)?.whatsappRead) ||
-    hasMovement(['whatsapp_read']);
+    whatsAppMetaReadDetected(whatsappEvidence);
+  const waLinkClicked = whatsAppLinkClickedDetected(whatsappEvidence);
   const hasWhatsApp = Boolean(
     mailData.recipientPhone ||
       mailData.whatsappMessageId ||
@@ -713,9 +721,10 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   );
   const emailResendSignal = formatEvidenceStatus(emailResendSignalDetected(emailEvidence));
   const emailLegacyPixel = formatEvidenceStatus(emailLegacyPixelDetected(emailEvidence));
-  const emailReaderAccess = formatEvidenceStatus(emailReaderAccessDetected(emailEvidence));
   const emailAppOpen = formatEvidenceStatus(emailAppOpenDetected(emailEvidence));
-  const emailHumanLine = emailChannelHumanSummary(emailEvidence);
+  const mailAccepted = deliveryState.toLowerCase().includes('aceptado');
+  const emailHumanLine = emailChannelStatusLine(emailEvidence);
+  const whatsappHumanLine = whatsAppChannelStatusLine(whatsappEvidence, waDelivered);
 
   const identificationData = [
     { label: 'Remitente', value: mailData.senderName || mailData.from || 'No especificado' },
@@ -781,33 +790,29 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     `Enviado: ${formatTableDate(mailData.delivery?.time)}`,
   ];
   const emailChannelLines = [
-    `Aceptación SMTP: ${deliveryState}`,
-    `Señal Resend: ${emailResendSignal}`,
-    `Pixel Notificas (hist.): ${emailLegacyPixel}`,
-    `Acceso al reader: ${emailReaderAccess}`,
-    ...(emailAppOpen === 'Sí' ? [`Apertura en app web: ${emailAppOpen}`] : []),
-    `Estado correo: ${emailHumanLine}`,
+    `Aceptado por servidor de correo: ${deliveryState}`,
+    `Apertura informada por proveedor: ${emailResendSignal}`,
+    `Apertura por pixel: ${emailLegacyPixel}`,
+    `Acceso al lector certificado: ${formatEvidenceStatus(emailReaderOpenDetected(emailEvidence))}`,
+    `Lectura confirmada: ${formatEvidenceStatus(emailReadConfirmedDetected(emailEvidence))}`,
+    ...(emailAppOpen === 'Sí' ? [`Apertura en aplicación web: ${emailAppOpen}`] : []),
+    `Estado: ${emailHumanLine}`,
   ];
   const waChannelLines = hasWhatsApp
     ? [
-        `Entregado al dispositivo: ${formatEvidenceStatus(waDelivered)}`,
-        `Leído en WhatsApp: ${formatEvidenceStatus(waRead)}`,
+        `Entregado al teléfono: ${formatEvidenceStatus(waDelivered)}`,
+        `Leído en el chat: ${formatEvidenceStatus(waMetaRead)}`,
+        `Acceso desde enlace del mensaje: ${formatEvidenceStatus(waLinkClicked)}`,
+        `Estado: ${whatsappHumanLine}`,
       ]
     : [`Adjuntos certificados: ${attachmentsCount}`];
-  const humanSummaryParts: string[] = [];
-  if (hasWhatsApp && waRead) humanSummaryParts.push('WhatsApp leído por el destinatario');
-  else if (hasWhatsApp && waDelivered) humanSummaryParts.push('WhatsApp entregado; lectura no consta');
-  if (emailReaderAccessDetected(emailEvidence)) {
-    humanSummaryParts.push('correo accedido en el lector certificado');
-  } else if (emailResendSignalDetected(emailEvidence) || emailLegacyPixelDetected(emailEvidence)) {
-    humanSummaryParts.push('señal técnica de apertura del correo (no equivale a lectura fehaciente)');
-  } else if (deliveryState.toLowerCase().includes('aceptado')) {
-    humanSummaryParts.push('correo aceptado; apertura no consta a la emisión');
-  }
-  const humanSummaryLine =
-    humanSummaryParts.length > 0
-      ? `${humanSummaryParts[0].charAt(0).toUpperCase()}${humanSummaryParts[0].slice(1)}${humanSummaryParts.length > 1 ? `. ${humanSummaryParts.slice(1).join('. ')}` : ''}.`
-      : 'Sin hechos de entrega o lectura registrados a la emisión.';
+  const humanSummaryLine = buildNotificationHumanSummary({
+    hasWhatsApp,
+    waDelivered,
+    email: emailEvidence,
+    whatsapp: whatsappEvidence,
+    mailAccepted,
+  });
 
   const colWidth = (contentWidth - 28) / 2;
   const colSpacing = 14;
@@ -883,12 +888,14 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   };
   pushChrono(firstMovement(['email_sent', 'resend_sent']), 'Correo enviado y aceptado');
   pushChrono(firstMovement(['resend_delivered']), 'Servidor del destinatario aceptó el correo');
-  pushChrono(emailEvidence.resendSignal, 'Señal técnica de apertura del correo (Resend)');
-  pushChrono(emailEvidence.legacyPixel, 'Correo abierto (pixel Notificas)');
-  pushChrono(emailEvidence.readerOpen || emailEvidence.readConfirmed, 'Acceso al lector certificado');
-  pushChrono(firstMovement(['whatsapp_sent']), 'WhatsApp enviado (Meta)');
-  pushChrono(firstMovement(['whatsapp_delivered']), 'WhatsApp entregado al dispositivo');
-  pushChrono(firstMovement(['whatsapp_read']), 'WhatsApp leído');
+  pushChrono(emailEvidence.resendSignal, 'Apertura del correo informada por el proveedor');
+  pushChrono(emailEvidence.legacyPixel, 'Apertura del correo por pixel');
+  pushChrono(emailEvidence.readerOpen, 'Acceso al lector certificado');
+  pushChrono(emailEvidence.readConfirmed, 'Lectura confirmada en el lector');
+  pushChrono(firstMovement(['whatsapp_sent']), 'WhatsApp enviado');
+  pushChrono(firstMovement(['whatsapp_delivered']), 'WhatsApp entregado al teléfono');
+  pushChrono(whatsappEvidence.metaRead, 'WhatsApp leído en el chat');
+  pushChrono(whatsappEvidence.linkClicked, 'Acceso desde enlace del mensaje de WhatsApp');
   if (simpleChronoRows.length > 0) {
     drawSectionTitle('Cronología (hechos congelados al emitir)', 2);
     drawTable(
@@ -1347,11 +1354,12 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   drawSectionTitle('Términos usados', 2);
   const glossary = [
     'Aceptado (correo): el servidor de correo tomó el mensaje para entrega.',
-    'Señal Resend: apertura técnica informada por el proveedor; no es lectura fehaciente.',
-    'Pixel Notificas (hist.): señal del pixel histórico de Notificas, si existió.',
-    'Reader: visor certificado donde el destinatario lee el contenido.',
-    'Entregado (WhatsApp): Meta confirmó llegada al teléfono.',
-    'Leído (WhatsApp): Meta confirmó lectura en el chat.',
+    'Apertura informada por proveedor: el servicio de correo registró apertura del mensaje.',
+    'Apertura por pixel: registro de apertura del correo en bandeja.',
+    'Lector certificado: visor donde el destinatario lee el contenido y puede confirmar lectura.',
+    'Entregado (WhatsApp): el mensaje llegó al teléfono del destinatario.',
+    'Leído en el chat: el destinatario abrió el mensaje en WhatsApp (doble tilde).',
+    'Acceso desde enlace: el destinatario pulsó el enlace dentro del mensaje de WhatsApp.',
   ];
   glossary.forEach((entry) => {
     writeTextBlock(`• ${entry}`, 9, 13);
