@@ -150,7 +150,24 @@ export interface Organization {
   isTestOrganization?: boolean;
   /** p. ej. production_pilot. No usar en orgs de clientes. */
   environment?: string;
+  /** Puntos de envío / sucursales asignables a operadores. */
+  bocas?: BocaEnvio[];
+  /** Metadatos por miembro (boca asignada, etc.). */
+  memberMeta?: Record<string, OrgMemberMeta>;
   createdAt: unknown;
+}
+
+/** Boca de envío: identidad operativa de un subusuario dentro de la org. */
+export interface BocaEnvio {
+  id: string;
+  nombre: string;
+  descripcion?: string;
+  activa: boolean;
+  createdAt?: unknown;
+}
+
+export interface OrgMemberMeta {
+  bocaId?: string;
 }
 
 export interface RecipientEntry {

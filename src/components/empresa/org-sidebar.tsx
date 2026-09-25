@@ -14,6 +14,7 @@ import {
   Megaphone,
   Send,
   ShieldCheck,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
@@ -131,6 +132,7 @@ export function OrgSidebarNav({ orgId, org, onNavigate, className }: OrgSidebarN
   }, []);
 
   const [artEnabled, setArtEnabled] = useState(false);
+  const [currentUid, setCurrentUid] = useState<string | null>(null);
 
   useEffect(() => {
     void fetch(`/api/art/status?orgId=${encodeURIComponent(orgId)}`)
@@ -139,6 +141,12 @@ export function OrgSidebarNav({ orgId, org, onNavigate, className }: OrgSidebarN
       .catch(() => setArtEnabled(false));
   }, [orgId]);
 
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => setCurrentUid(user?.uid ?? null));
+    return () => unsub();
+  }, []);
+
+  const isOrgAdmin = Boolean(currentUid && org && currentUid === org.adminUserId);
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
 
   return (
@@ -174,6 +182,23 @@ export function OrgSidebarNav({ orgId, org, onNavigate, className }: OrgSidebarN
         </NavSection>
 
         <NavSection title="Configuración">
+          {isOrgAdmin ? (
+            <NavLink
+              href={`${base}/equipo`}
+              label="Equipo y bocas"
+              icon={Users}
+              active={isActive(`${base}/equipo`)}
+              onNavigate={onNavigate}
+            />
+          ) : (
+            <NavLink
+              href={`${base}/equipo`}
+              label="Mi acceso"
+              icon={Users}
+              active={isActive(`${base}/equipo`)}
+              onNavigate={onNavigate}
+            />
+          )}
           {artEnabled ? (
             <NavLink
               href={`${base}/adhesiones-electronicas`}

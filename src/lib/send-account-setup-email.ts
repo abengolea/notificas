@@ -274,3 +274,60 @@ Luego ingresá en: ${loginUrl}
     createdBy: "api:admin-organizations-onboarding",
   });
 }
+
+/** Correo de bienvenida para operador/subusuario invitado por el admin de la empresa. */
+export async function sendEmpresaOperatorOnboardingEmail(options: {
+  email: string;
+  orgNombre: string;
+  authCreated: boolean;
+}): Promise<SendAccountSetupEmailResult> {
+  const base = getAppPublicBaseUrl();
+  if (!base) {
+    return {
+      ok: false,
+      error: "Falta NEXT_PUBLIC_APP_URL en el servidor para armar el enlace de acceso.",
+    };
+  }
+
+  const loginUrl = passwordResetContinueUrl();
+  const orgNombre = options.orgNombre.trim() || "tu organización";
+  const intro = options.authCreated
+    ? `<p class="lead">Tu administrador te dio acceso como operador de <strong>${escapeHtml(orgNombre)}</strong> en Notificas.</p>
+<p class="lead">Para activar la cuenta, definí tu contraseña con el botón siguiente y luego ingresá al módulo de empresas.</p>`
+    : `<p class="lead">Quedaste habilitado como operador de <strong>${escapeHtml(orgNombre)}</strong> en Notificas.</p>
+<p class="lead">Podés definir o actualizar tu contraseña con el botón siguiente. Si ya entrás con Google, también podés usar «Continuar con Google» en el login.</p>`;
+
+  const html = buildSystemEmailHtml({
+    badge: "ACCESO OPERADOR",
+    title: "Activá tu acceso de operador",
+    subtitle: `Invitación de <strong>${escapeHtml(orgNombre)}</strong> mediante <strong>Notificas.com</strong>`,
+    preheader: `Activá tu acceso de operador en Notificas (${orgNombre})`,
+    recipientEmail: options.email.trim().toLowerCase(),
+    logoUrl: `${getEmailActionOrigin()}/notificasLogo.jpg`,
+    bodyHtml: `
+              <p class="lead">Hola,</p>
+              ${intro}
+              <p class="lead">Después de definir la contraseña, accedé desde:
+                <a href="${escapeHref(loginUrl)}" style="color:#0D9488;">${escapeHtml(loginUrl)}</a>
+              </p>
+    `.trim(),
+    ctaLabel: "Activar acceso y definir contraseña",
+    ctaHref: "{{PASSWORD_LINK}}",
+  });
+
+  const text = `Acceso de operador en Notificas (${orgNombre}).
+
+Definí tu contraseña: {{PASSWORD_LINK}}
+
+Luego ingresá en: ${loginUrl}
+`;
+
+  return sendAccountPasswordSetupEmail({
+    email: options.email,
+    continueUrl: loginUrl,
+    subject: `Notificas — activá tu acceso de operador (${orgNombre})`,
+    html,
+    text,
+    createdBy: "api:empresa-equipo-onboarding",
+  });
+}
