@@ -2,13 +2,13 @@
   "manifest_version": 3,
   "name": "Notificas LinkedIn Assistant",
   "description": "Prepara invitaciones y mensajes de LinkedIn desde el CRM de Notificas. El envío final siempre es manual.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "permissions": ["storage", "tabs", "activeTab", "clipboardWrite"],
   "host_permissions": [
     "https://www.linkedin.com/*",
     "https://linkedin.com/*",
-    "http://localhost:9006/*",
-    "https://*/*"
+    "https://notificas.com.ar/*",
+    "http://localhost:9006/*"
   ],
   "action": {
     "default_popup": "popup.html",

@@ -1,43 +1,54 @@
-import { completeAction, fetchCampaigns, fetchNext } from "./lib/api.js";
+import {
+  SessionExpiredError,
+  auditEvent,
+  completeAction,
+  fetchCampaigns,
+  fetchNext,
+  lookupContactByLinkedInUrl,
+} from "./lib/api.js";
+import { extensionLog } from "./lib/log.js";
+import { getRuntimeConfig, login, logout } from "./lib/session.js";
 
 const els = {
   campaignSelect: document.getElementById("campaign-select"),
+  campaignWrap: document.getElementById("campaign-wrap"),
   prospect: document.getElementById("prospect"),
   empty: document.getElementById("empty"),
-  setup: document.getElementById("setup"),
+  login: document.getElementById("login"),
+  expired: document.getElementById("expired"),
+  sessionCard: document.getElementById("session-card"),
+  sessionEmail: document.getElementById("session-email"),
+  sessionEnv: document.getElementById("session-env"),
+  detected: document.getElementById("detected"),
+  detectedUrl: document.getElementById("detected-url"),
+  detectedContact: document.getElementById("detected-contact"),
   statusBanner: document.getElementById("status-banner"),
   name: document.getElementById("prospect-name"),
   company: document.getElementById("prospect-company"),
   title: document.getElementById("prospect-title"),
   status: document.getElementById("prospect-status"),
   message: document.getElementById("message"),
+  actions: document.getElementById("actions"),
   btnPrepare: document.getElementById("btn-prepare"),
   btnConfirm: document.getElementById("btn-confirm"),
   btnCopy: document.getElementById("btn-copy"),
   btnSkip: document.getElementById("btn-skip"),
   btnNext: document.getElementById("btn-next"),
-  openOptions: document.getElementById("open-options"),
+  btnLogin: document.getElementById("btn-login"),
+  btnLogout: document.getElementById("btn-logout"),
+  btnRelogin: document.getElementById("btn-relogin"),
+  btnConnected: document.getElementById("btn-connected"),
+  btnReplied: document.getElementById("btn-replied"),
+  btnInterested: document.getElementById("btn-interested"),
+  btnNotInterested: document.getElementById("btn-not-interested"),
+  loginEmail: document.getElementById("login-email"),
+  loginPassword: document.getElementById("login-password"),
 };
 
 /** @type {object|null} */
 let currentAction = null;
 let prepared = false;
 let lastSkippedId = null;
-
-async function getConfig() {
-  const stored = await chrome.storage.sync.get([
-    "apiUrl",
-    "token",
-    "maxPerSession",
-    "sessionCount",
-  ]);
-  return {
-    apiUrl: stored.apiUrl || "http://localhost:9006",
-    token: stored.token || "",
-    maxPerSession: Number(stored.maxPerSession || 50),
-    sessionCount: Number(stored.sessionCount || 0),
-  };
-}
 
 function showBanner(text, kind = "warn") {
   els.statusBanner.textContent = text;
@@ -49,26 +60,49 @@ function hideBanner() {
   els.statusBanner.classList.add("hidden");
 }
 
+function show(el, visible) {
+  el.classList.toggle("hidden", !visible);
+}
+
 function completeActionForKind(kind) {
   if (kind === "connection") return "connection_sent";
   if (kind === "message") return "message_sent";
   return "followup_sent";
 }
 
+function renderSession(cfg) {
+  els.sessionEmail.textContent = cfg.sessionEmail || "—";
+  els.sessionEnv.textContent = cfg.environmentLabel;
+  show(els.sessionCard, cfg.hasSession);
+}
+
+function renderLoggedOut(expired) {
+  currentAction = null;
+  show(els.sessionCard, false);
+  show(els.login, !expired);
+  show(els.expired, expired);
+  show(els.campaignWrap, false);
+  show(els.prospect, false);
+  show(els.empty, false);
+  show(els.detected, false);
+  show(els.actions, false);
+}
+
 function renderAction(action) {
   currentAction = action;
   prepared = false;
   hideBanner();
+  show(els.actions, true);
 
   if (!action) {
-    els.prospect.classList.add("hidden");
-    els.empty.classList.remove("hidden");
+    show(els.prospect, false);
+    show(els.empty, true);
     disableActionButtons(true);
     return;
   }
 
-  els.empty.classList.add("hidden");
-  els.prospect.classList.remove("hidden");
+  show(els.empty, false);
+  show(els.prospect, true);
   els.name.textContent = action.contact.name;
   els.company.textContent = action.contact.companyName || "—";
   els.title.textContent = action.contact.title || "—";
@@ -83,10 +117,23 @@ function disableActionButtons(disabled) {
   els.btnCopy.disabled = disabled;
   els.btnSkip.disabled = disabled;
   els.btnConfirm.disabled = disabled || !prepared;
+  els.btnConnected.disabled = disabled;
+  els.btnReplied.disabled = disabled;
+  els.btnInterested.disabled = disabled;
+  els.btnNotInterested.disabled = disabled;
 }
 
-async function loadCampaigns(cfg) {
-  const data = await fetchCampaigns(cfg);
+async function handleAuthError(err) {
+  if (err instanceof SessionExpiredError) {
+    renderLoggedOut(true);
+    return true;
+  }
+  showBanner(err.message || "No se pudo completar la solicitud.", "error");
+  return false;
+}
+
+async function loadCampaigns() {
+  const data = await fetchCampaigns();
   els.campaignSelect.innerHTML = '<option value="">Todas las campañas</option>';
   for (const c of data.campaigns || []) {
     const opt = document.createElement("option");
@@ -97,14 +144,15 @@ async function loadCampaigns(cfg) {
 }
 
 async function loadNext(excludeMemberId) {
-  const cfg = await getConfig();
-  if (!cfg.token) {
-    els.setup.classList.remove("hidden");
-    els.prospect.classList.add("hidden");
-    els.empty.classList.add("hidden");
+  const cfg = await getRuntimeConfig();
+  if (!cfg.hasSession) {
+    renderLoggedOut(false);
     return;
   }
-  els.setup.classList.add("hidden");
+  show(els.login, false);
+  show(els.expired, false);
+  show(els.campaignWrap, true);
+  renderSession(cfg);
 
   if (cfg.sessionCount >= cfg.maxPerSession) {
     showBanner(`Límite de sesión alcanzado (${cfg.maxPerSession}).`, "warn");
@@ -115,9 +163,68 @@ async function loadNext(excludeMemberId) {
   if (els.campaignSelect.value) params.campaignId = els.campaignSelect.value;
   if (excludeMemberId) params.excludeMemberId = excludeMemberId;
 
-  const data = await fetchNext(cfg, params);
+  const data = await fetchNext(params);
   renderAction(data.action);
 }
+
+async function loadDetectedProfile() {
+  try {
+    const detected = await chrome.runtime.sendMessage({ type: "GET_DETECTED_PROFILE" });
+    const url = detected?.linkedinUrl || "";
+    if (!url) {
+      show(els.detected, false);
+      return;
+    }
+    show(els.detected, true);
+    els.detectedUrl.textContent = url;
+    els.detectedContact.textContent = "Consultando CRM…";
+    const result = await lookupContactByLinkedInUrl(url);
+    if (!result.contact) {
+      els.detectedContact.textContent = "Este perfil no está en el CRM.";
+      return;
+    }
+    const membership = result.memberships?.[0];
+    els.detectedContact.textContent = membership
+      ? `${result.contact.name || "Contacto"} · ${membership.campaignName} · ${membership.statusLabel}`
+      : `${result.contact.name || "Contacto"} · en CRM, sin campaña activa`;
+  } catch (err) {
+    if (err instanceof SessionExpiredError) throw err;
+    els.detectedContact.textContent = "No pude consultar el CRM para este perfil.";
+  }
+}
+
+async function recordOutcome(actionType) {
+  if (!currentAction) return;
+  await completeAction(currentAction.memberId, { action: actionType });
+  const cfg = await getRuntimeConfig();
+  await chrome.storage.sync.set({ sessionCount: cfg.sessionCount + 1 });
+  lastSkippedId = null;
+  prepared = false;
+  await loadNext();
+}
+
+els.btnLogin.addEventListener("click", async () => {
+  try {
+    hideBanner();
+    els.btnLogin.disabled = true;
+    await login(els.loginEmail.value, els.loginPassword.value);
+    els.loginPassword.value = "";
+    await boot();
+  } catch (err) {
+    showBanner(err.message || "No se pudo iniciar sesión.", "error");
+  } finally {
+    els.btnLogin.disabled = false;
+  }
+});
+
+els.btnLogout.addEventListener("click", async () => {
+  await logout();
+  renderLoggedOut(false);
+});
+
+els.btnRelogin.addEventListener("click", () => {
+  renderLoggedOut(false);
+});
 
 els.btnPrepare.addEventListener("click", async () => {
   if (!currentAction) return;
@@ -131,10 +238,7 @@ els.btnPrepare.addEventListener("click", async () => {
   });
 
   if (!result?.ok) {
-    showBanner(
-      result?.error || "No pude preparar automáticamente esta acción.",
-      "error",
-    );
+    showBanner(result?.error || "No pude preparar automáticamente esta acción.", "error");
     els.btnPrepare.disabled = false;
     els.btnCopy.disabled = false;
     return;
@@ -148,14 +252,17 @@ els.btnPrepare.addEventListener("click", async () => {
 
 els.btnConfirm.addEventListener("click", async () => {
   if (!currentAction || !prepared) return;
-  const cfg = await getConfig();
-  const actionType = completeActionForKind(currentAction.action);
-  await completeAction(cfg, currentAction.memberId, { action: actionType });
-  await chrome.storage.sync.set({ sessionCount: cfg.sessionCount + 1 });
-  lastSkippedId = null;
-  prepared = false;
-  await loadNext();
+  try {
+    await recordOutcome(completeActionForKind(currentAction.action));
+  } catch (err) {
+    await handleAuthError(err);
+  }
 });
+
+els.btnConnected.addEventListener("click", () => recordOutcome("connected").catch(handleAuthError));
+els.btnReplied.addEventListener("click", () => recordOutcome("replied").catch(handleAuthError));
+els.btnInterested.addEventListener("click", () => recordOutcome("interested").catch(handleAuthError));
+els.btnNotInterested.addEventListener("click", () => recordOutcome("not_interested").catch(handleAuthError));
 
 els.btnCopy.addEventListener("click", async () => {
   const text = els.message.value;
@@ -167,37 +274,47 @@ els.btnCopy.addEventListener("click", async () => {
 els.btnSkip.addEventListener("click", async () => {
   if (!currentAction) return;
   lastSkippedId = currentAction.memberId;
-  const cfg = await getConfig();
-  await fetch(`${cfg.apiUrl.replace(/\/$/, "")}/api/linkedin-assistant/actions/${currentAction.memberId}/audit`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${cfg.token}`,
-    },
-    body: JSON.stringify({ event: "skipped" }),
-  }).catch(() => {});
-  await loadNext(lastSkippedId);
+  try {
+    await auditEvent(currentAction.memberId, { event: "skipped" });
+    await loadNext(lastSkippedId);
+  } catch (err) {
+    await handleAuthError(err);
+  }
 });
 
 els.btnNext.addEventListener("click", async () => {
-  await loadNext(currentAction?.memberId);
+  try {
+    await loadNext(currentAction?.memberId);
+  } catch (err) {
+    await handleAuthError(err);
+  }
 });
 
-els.campaignSelect.addEventListener("change", () => loadNext());
-els.openOptions.addEventListener("click", () => chrome.runtime.openOptionsPage());
+els.campaignSelect.addEventListener("change", () => {
+  loadNext().catch(handleAuthError);
+});
 
-async function init() {
+async function boot() {
   try {
-    const cfg = await getConfig();
-    if (!cfg.token) {
-      els.setup.classList.remove("hidden");
+    const cfg = await getRuntimeConfig();
+    extensionLog(`API: ${cfg.env}`);
+    if (!cfg.hasSession) {
+      renderLoggedOut(false);
       return;
     }
-    await loadCampaigns(cfg);
+    renderSession(cfg);
+    show(els.login, false);
+    show(els.expired, false);
+    show(els.campaignWrap, true);
+    show(els.actions, true);
+    await loadCampaigns();
     await loadNext();
+    await loadDetectedProfile();
   } catch (err) {
-    showBanner(String(err.message || err), "error");
+    if (!(await handleAuthError(err))) {
+      showBanner(err.message || "No se pudo conectar con Notificas.", "error");
+    }
   }
 }
 
-init();
+boot();

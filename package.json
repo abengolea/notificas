@@ -32,6 +32,8 @@
     "bounce:send": "node scripts/send-email-bounce.js",
     "deploy:functions": "node scripts/deploy-functions.js",
     "sync:archivo": "node scripts/sync-legacy-archivo.mjs",
+    "extension:build": "node chrome-extension/scripts/stamp-env.mjs production",
+    "extension:dev": "node chrome-extension/scripts/stamp-env.mjs development",
     "test": "npx tsx --tsconfig tsconfig.json --test src/lib/*.test.ts src/lib/public-api/*.test.ts src/lib/art/*.test.ts src/lib/marketing/**/*.test.ts src/mcp/*.test.ts src/mcp/**/*.test.ts && node --test chrome-extension/tests/extension.test.js",
     "crm:migrate:companies": "npx tsx scripts/marketing/migrate-companies.ts",
     "crm:seed:taxonomy": "npx tsx scripts/marketing/seed-taxonomy.ts",

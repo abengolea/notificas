@@ -12,7 +12,40 @@
       <p id="status-banner" class="banner hidden"></p>
     </header>
 
-    <section class="field">
+    <section id="session-card" class="session hidden">
+      <p class="session-title">CONECTADO A NOTIFICAS</p>
+      <p>Usuario: <strong id="session-email">—</strong></p>
+      <p>Entorno: <strong id="session-env">—</strong></p>
+      <button type="button" id="btn-logout" class="secondary compact">Cerrar sesión</button>
+    </section>
+
+    <section id="login" class="card hidden">
+      <p class="session-title">Iniciar sesión</p>
+      <p class="hint">Usá las credenciales del panel de Notificas. La sesión se guarda en este Chrome.</p>
+      <div class="field">
+        <label for="login-email">Email</label>
+        <input id="login-email" type="email" autocomplete="username" />
+      </div>
+      <div class="field">
+        <label for="login-password">Contraseña</label>
+        <input id="login-password" type="password" autocomplete="current-password" />
+      </div>
+      <button type="button" id="btn-login" class="primary">INICIAR SESIÓN</button>
+    </section>
+
+    <section id="expired" class="setup hidden">
+      <p class="session-title">Sesión vencida</p>
+      <p>Tu sesión venció. Volvé a iniciar sesión.</p>
+      <button type="button" id="btn-relogin" class="primary">Volver a iniciar sesión</button>
+    </section>
+
+    <section id="detected" class="card hidden">
+      <p class="session-title">Perfil detectado en LinkedIn</p>
+      <p id="detected-url" class="hint">—</p>
+      <p id="detected-contact">Consultando CRM…</p>
+    </section>
+
+    <section class="field" id="campaign-wrap">
       <label for="campaign-select">Campaña</label>
       <select id="campaign-select">
         <option value="">Todas las campañas</option>
@@ -34,14 +67,15 @@
       <p>No hay acciones pendientes para esta campaña.</p>
     </section>
 
-    <section id="setup" class="setup hidden">
-      <p>Configurá la URL de Notificas y el token en opciones.</p>
-      <button type="button" id="open-options" class="secondary">Abrir configuración</button>
-    </section>
-
-    <footer class="actions">
+    <footer id="actions" class="actions">
       <button type="button" id="btn-prepare" class="primary" disabled>ABRIR PERFIL Y PREPARAR</button>
       <button type="button" id="btn-confirm" class="success" disabled>CONFIRMAR QUE LO ENVIÉ</button>
+      <div class="row-actions outcomes">
+        <button type="button" id="btn-connected" class="secondary" disabled>CONECTADO</button>
+        <button type="button" id="btn-replied" class="secondary" disabled>RESPONDIÓ</button>
+        <button type="button" id="btn-interested" class="secondary" disabled>INTERESADO</button>
+        <button type="button" id="btn-not-interested" class="secondary" disabled>NO INTERESADO</button>
+      </div>
       <div class="row-actions">
         <button type="button" id="btn-copy" class="secondary" disabled>COPIAR MENSAJE</button>
         <button type="button" id="btn-skip" class="secondary" disabled>SALTAR</button>

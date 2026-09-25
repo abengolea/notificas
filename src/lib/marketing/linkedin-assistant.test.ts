@@ -135,6 +135,46 @@ test("audit prepared event does not change member status", async () => {
   assert.equal(unchanged?.status, "message_ready");
 });
 
+test("complete action records replied using existing CRM action", async () => {
+  const { services, context, assistant } = setup();
+  const campaign = await services.linkedInCampaigns.createCampaign(context, {
+    name: "Reply campaign",
+  });
+  await services.linkedInCampaigns.updateCampaign(context, campaign.id, { status: "active" });
+  const contact = await services.contacts.createContact(context, {
+    email: "reply@example.com",
+    linkedinUrl: "https://linkedin.com/in/reply-test",
+    name: "Reply User",
+    country: "AR",
+  });
+  const member = await services.linkedInCampaigns.addMember(context, campaign.id, contact.id);
+  await services.linkedInCampaigns.updateMember(context, campaign.id, member.id, {
+    status: "message_sent",
+  });
+  const result = await assistant.completeAction(context, member.id, { action: "replied" });
+  assert.equal(result.member.status, "replied");
+});
+
+test("lookupByLinkedInUrl finds contact and campaign membership", async () => {
+  const { services, context, assistant } = setup();
+  const campaign = await services.linkedInCampaigns.createCampaign(context, {
+    name: "Lookup campaign",
+    connectionMessage: "Hola",
+  });
+  await services.linkedInCampaigns.updateCampaign(context, campaign.id, { status: "active" });
+  const contact = await services.contacts.createContact(context, {
+    email: "lookup@example.com",
+    linkedinUrl: "https://www.linkedin.com/in/Lookup-User/",
+    name: "Lookup User",
+    country: "AR",
+  });
+  await services.linkedInCampaigns.addMember(context, campaign.id, contact.id);
+  const found = await assistant.lookupByLinkedInUrl(context, "https://pa.linkedin.com/in/lookup-user");
+  assert.equal(found.contact?.id, contact.id);
+  assert.equal(found.memberships.length, 1);
+  assert.equal(found.memberships[0].campaignName, "Lookup campaign");
+});
+
 test("connection review days default", () => {
   const days = connectionReviewDays();
   assert.ok(days >= 1);

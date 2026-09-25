@@ -1,6 +1,13 @@
 import { auditEvent } from "./lib/api.js";
+import { extensionLog } from "./lib/log.js";
+import { getPreferences } from "./lib/session.js";
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+const lastProfile = {
+  linkedinUrl: "",
+  detectedAt: 0,
+};
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "OPEN_AND_PREPARE") {
     openAndPrepare(message)
       .then(sendResponse)
@@ -13,16 +20,52 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       .catch((err) => sendResponse({ ok: false, error: String(err.message || err) }));
     return true;
   }
+  if (message?.type === "PROFILE_DETECTED") {
+    if (typeof message.linkedinUrl === "string" && message.linkedinUrl.includes("/in/")) {
+      lastProfile.linkedinUrl = message.linkedinUrl;
+      lastProfile.detectedAt = Date.now();
+      extensionLog(`profile detected: ${summarizeProfile(message.linkedinUrl)}`);
+    }
+    sendResponse({ ok: true });
+    return false;
+  }
+  if (message?.type === "GET_DETECTED_PROFILE") {
+    resolveDetectedProfile()
+      .then(sendResponse)
+      .catch(() => sendResponse({ ok: true, ...lastProfile, tabUrl: "" }));
+    return true;
+  }
   return false;
 });
 
-async function getConfig() {
-  const stored = await chrome.storage.sync.get(["apiUrl", "token", "locale"]);
-  return {
-    apiUrl: stored.apiUrl || "http://localhost:9006",
-    token: stored.token || "",
-    locale: stored.locale || "auto",
-  };
+async function resolveDetectedProfile() {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab = tabs[0];
+  const tabUrl = tab?.url || "";
+  if (tab?.id && /linkedin\.com\/in\//i.test(tabUrl)) {
+    try {
+      const page = await chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_PROFILE" });
+      if (page?.linkedinUrl) {
+        lastProfile.linkedinUrl = page.linkedinUrl;
+        lastProfile.detectedAt = Date.now();
+      }
+    } catch {
+      if (/\/in\//i.test(tabUrl)) {
+        lastProfile.linkedinUrl = tabUrl;
+        lastProfile.detectedAt = Date.now();
+      }
+    }
+  }
+  return { ok: true, linkedinUrl: lastProfile.linkedinUrl, detectedAt: lastProfile.detectedAt, tabUrl };
+}
+
+function summarizeProfile(url) {
+  try {
+    const match = new URL(url).pathname.match(/\/in\/([^/?#]+)/i);
+    return match ? `/in/${decodeURIComponent(match[1])}` : "/in/*";
+  } catch {
+    return "/in/*";
+  }
 }
 
 async function openAndPrepare(message) {
@@ -31,21 +74,21 @@ async function openAndPrepare(message) {
     return { ok: false, error: "El prospecto no tiene linkedinUrl." };
   }
 
-  const cfg = await getConfig();
+  const prefs = await getPreferences();
   const url = action.contact.linkedinUrl;
   const tab = await chrome.tabs.create({ url, active: true });
   await waitForTabLoad(tab.id);
   await sleep(1800);
 
   if (memberId) {
-    await auditEvent(cfg, memberId, { event: "opened_profile" }).catch(() => {});
+    await auditEvent(memberId, { event: "opened_profile" }).catch(() => {});
   }
 
   const payload = {
     action: action.action,
     message: action.message,
     linkedinUrl: url,
-    locale: cfg.locale,
+    locale: prefs.locale,
   };
 
   let prepareResult = { ok: false, error: "No pude preparar automáticamente esta acción." };
@@ -69,8 +112,7 @@ async function openAndPrepare(message) {
 }
 
 async function handleAudit(message) {
-  const cfg = await getConfig();
-  return auditEvent(cfg, message.memberId, message.body);
+  return auditEvent(message.memberId, message.body);
 }
 
 function sleep(ms) {

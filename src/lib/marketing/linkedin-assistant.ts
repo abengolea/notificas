@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { MarketingServiceContext } from "./context";
-import { newMarketingEntityId } from "./domain/ids";
+import { marketingLinkedInCampaignMemberId, newMarketingEntityId } from "./domain/ids";
 import type {
   MarketingLinkedInAction,
   MarketingLinkedInCampaign,
@@ -10,10 +10,11 @@ import type {
 import { MarketingNotFoundError, MarketingValidationError } from "./errors";
 import { linkedInOutreachView } from "./linkedin-outreach";
 import { LINKEDIN_MEMBER_STATUS_LABEL } from "./linkedin-ui";
-import { normalizeMarketingCountryCode } from "./normalizers";
+import { normalizeLinkedInUrl, normalizeMarketingCountryCode } from "./normalizers";
 import { nowIso } from "./persistence/timestamps";
 import type {
   MarketingActivityRepository,
+  MarketingContactRecord,
   MarketingContactRepository,
   MarketingLinkedInCampaignMemberRepository,
   MarketingLinkedInCampaignRepository,
@@ -67,10 +68,22 @@ const completeActionSchema = z.object({
     "followup_sent",
     "follow_up_sent",
     "invitation_sent",
+    "replied",
+    "interested",
+    "not_interested",
   ]),
   at: z.string().datetime().optional(),
   nextActionAt: z.string().datetime().nullable().optional(),
   notes: z.string().max(8000).optional(),
+});
+
+const contactPatchSchema = z.object({
+  name: z.string().max(200).optional(),
+  title: z.string().max(200).optional(),
+  company: z.string().max(200).optional(),
+  notes: z.string().max(8000).optional(),
+  linkedinNotes: z.string().max(8000).optional(),
+  linkedinUrl: z.string().max(500).optional(),
 });
 
 const auditEventSchema = z.object({
@@ -92,6 +105,30 @@ export type LinkedInAssistantFilters = {
   dueBefore?: string;
   limit?: number;
   excludeMemberIds?: string[];
+};
+
+export type LinkedInAssistantContactView = {
+  id: string;
+  name: string | null;
+  title: string | null;
+  companyName: string | null;
+  email: string | null;
+  linkedinUrl: string | null;
+  linkedinStatus: string | null;
+  linkedinLastContactAt: string | null;
+  linkedinNextActionAt: string | null;
+};
+
+export type LinkedInAssistantMembershipView = {
+  memberId: string;
+  campaignId: string;
+  campaignName: string;
+  status: MarketingLinkedInMemberStatus;
+  statusLabel: string;
+  nextActionAt: string | null;
+  connectionMessage: string | null;
+  message: string | null;
+  followUpMessage: string | null;
 };
 
 export type LinkedInAssistantActionView = {
@@ -138,6 +175,20 @@ function resolveMessage(
     return member.message ?? campaign.message ?? null;
   }
   return member.followUpMessage ?? campaign.followUpMessage ?? null;
+}
+
+function contactView(contact: MarketingContactRecord): LinkedInAssistantContactView {
+  return {
+    id: contact.id,
+    name: contact.name || null,
+    title: contact.title || null,
+    companyName: contact.company || null,
+    email: contact.email || null,
+    linkedinUrl: contact.linkedinUrl || null,
+    linkedinStatus: contact.linkedinStatus || null,
+    linkedinLastContactAt: contact.linkedinLastContactAt || null,
+    linkedinNextActionAt: contact.linkedinNextActionAt || null,
+  };
 }
 
 function contactName(member: MarketingLinkedInCampaignMember, contact?: { name?: string } | null): string {
@@ -440,6 +491,127 @@ export function createLinkedInAssistantService(deps: {
         });
       }
       return summaries;
+    },
+
+    async listCampaignMembers(ctx: MarketingServiceContext, campaignId: string) {
+      const campaign = await deps.linkedIn.getCampaign(ctx, campaignId);
+      if (!isCampaignEligible(campaign)) {
+        throw new MarketingNotFoundError("Campaña LinkedIn", campaignId);
+      }
+      const members = await deps.members.listAllForCampaign(ctx.workspaceId, campaignId);
+      const items = [];
+      for (const member of members) {
+        const contact = await deps.contacts.getById(member.contactId);
+        items.push({
+          memberId: member.id,
+          campaignId: campaign.id,
+          contactId: member.contactId,
+          status: member.status,
+          statusLabel: LINKEDIN_MEMBER_STATUS_LABEL[member.status],
+          nextActionAt: member.nextActionAt ?? null,
+          lastActionAt: member.updatedAt ?? null,
+          contact: {
+            name: contactName(member, contact),
+            title: member.jobTitle || contact?.title || null,
+            companyName: member.companyName || contact?.company || null,
+            linkedinUrl: member.linkedinUrl,
+          },
+          messages: {
+            connection: member.connectionMessage ?? campaign.connectionMessage ?? null,
+            message: member.message ?? campaign.message ?? null,
+            followUp: member.followUpMessage ?? campaign.followUpMessage ?? null,
+          },
+        });
+      }
+      return { campaign: { id: campaign.id, name: campaign.name, status: campaign.status }, members: items };
+    },
+
+    async lookupByLinkedInUrl(ctx: MarketingServiceContext, rawUrl: string) {
+      const linkedinUrl = normalizeLinkedInUrl(rawUrl);
+      if (!linkedinUrl) throw new MarketingValidationError("URL de LinkedIn inválida");
+      const contact = await deps.contacts.getByLinkedInUrl(ctx.workspaceId, linkedinUrl);
+      if (!contact || contact.deletedAt) {
+        return { contact: null, memberships: [], linkedinUrl };
+      }
+
+      const campaigns = await loadCampaignMap(ctx);
+      const memberships: LinkedInAssistantMembershipView[] = [];
+      for (const campaign of campaigns.values()) {
+        const memberId = marketingLinkedInCampaignMemberId(campaign.id, contact.id, ctx.workspaceId);
+        const member = await deps.members.getById(ctx.workspaceId, memberId);
+        if (!member) continue;
+        memberships.push({
+          memberId: member.id,
+          campaignId: campaign.id,
+          campaignName: campaign.name,
+          status: member.status,
+          statusLabel: LINKEDIN_MEMBER_STATUS_LABEL[member.status],
+          nextActionAt: member.nextActionAt ?? null,
+          connectionMessage: member.connectionMessage ?? campaign.connectionMessage ?? null,
+          message: member.message ?? campaign.message ?? null,
+          followUpMessage: member.followUpMessage ?? campaign.followUpMessage ?? null,
+        });
+      }
+
+      return { contact: contactView(contact), memberships, linkedinUrl };
+    },
+
+    async getContact(ctx: MarketingServiceContext, contactId: string) {
+      const contact = await deps.contacts.getById(contactId);
+      if (!contact || contact.workspaceId !== ctx.workspaceId || contact.deletedAt) {
+        throw new MarketingNotFoundError("Contacto", contactId);
+      }
+      return contactView(contact);
+    },
+
+    async updateAllowedContact(
+      ctx: MarketingServiceContext,
+      contactId: string,
+      input: z.input<typeof contactPatchSchema>,
+    ) {
+      const parsed = contactPatchSchema.safeParse(input);
+      if (!parsed.success) {
+        throw new MarketingValidationError("Datos de contacto inválidos", parsed.error.flatten());
+      }
+      const current = await deps.contacts.getById(contactId);
+      if (!current || current.workspaceId !== ctx.workspaceId || current.deletedAt) {
+        throw new MarketingNotFoundError("Contacto", contactId);
+      }
+      const patch: Partial<MarketingContactRecord> = {
+        ...updateStamps(ctx),
+      };
+      if (parsed.data.name !== undefined) patch.name = parsed.data.name.trim();
+      if (parsed.data.title !== undefined) patch.title = parsed.data.title.trim();
+      if (parsed.data.company !== undefined) patch.company = parsed.data.company.trim();
+      if (parsed.data.notes !== undefined) patch.notes = parsed.data.notes.trim();
+      if (parsed.data.linkedinNotes !== undefined) patch.linkedinNotes = parsed.data.linkedinNotes.trim();
+      if (parsed.data.linkedinUrl !== undefined) {
+        const linkedinUrl = normalizeLinkedInUrl(parsed.data.linkedinUrl);
+        if (!linkedinUrl) throw new MarketingValidationError("URL de LinkedIn inválida");
+        const duplicate = await deps.contacts.getByLinkedInUrl(ctx.workspaceId, linkedinUrl);
+        if (duplicate && duplicate.id !== contactId) {
+          throw new MarketingValidationError("linkedinUrl ya pertenece a otro contacto");
+        }
+        patch.linkedinUrl = linkedinUrl;
+      }
+      await deps.contacts.update(contactId, patch);
+      const updated = await deps.contacts.getById(contactId);
+      if (!updated) throw new MarketingNotFoundError("Contacto", contactId);
+      return contactView(updated);
+    },
+
+    async searchContacts(ctx: MarketingServiceContext, query: string) {
+      const q = query.trim();
+      if (!q) return { contacts: [] };
+      const normalizedUrl = normalizeLinkedInUrl(q);
+      if (normalizedUrl) {
+        const found = await deps.contacts.getByLinkedInUrl(ctx.workspaceId, normalizedUrl);
+        return { contacts: found && !found.deletedAt ? [contactView(found)] : [] };
+      }
+      const page = await deps.contacts.search(ctx.workspaceId, { query: q, limit: 20 });
+      return {
+        contacts: page.items.filter((contact) => !contact.deletedAt).map(contactView),
+      };
     },
   };
 }
