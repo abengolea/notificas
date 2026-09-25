@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { MarketingServiceContext } from "./context";
-import { marketingLinkedInCampaignMemberId, newMarketingEntityId } from "./domain/ids";
+import { newMarketingEntityId } from "./domain/ids";
 import type {
   MarketingLinkedInAction,
   MarketingLinkedInCampaign,
@@ -9,7 +9,7 @@ import type {
 } from "./domain/types";
 import { MarketingNotFoundError, MarketingValidationError } from "./errors";
 import { linkedInOutreachView } from "./linkedin-outreach";
-import { LINKEDIN_MEMBER_STATUS_LABEL } from "./linkedin-ui";
+import { LINKEDIN_CAMPAIGN_STATUS_LABEL, LINKEDIN_MEMBER_STATUS_LABEL } from "./linkedin-ui";
 import { normalizeLinkedInUrl, normalizeMarketingCountryCode } from "./normalizers";
 import { nowIso } from "./persistence/timestamps";
 import type {
@@ -123,12 +123,15 @@ export type LinkedInAssistantMembershipView = {
   memberId: string;
   campaignId: string;
   campaignName: string;
+  campaignStatus: MarketingLinkedInCampaign["status"];
+  campaignStatusLabel: string;
   status: MarketingLinkedInMemberStatus;
   statusLabel: string;
   nextActionAt: string | null;
   connectionMessage: string | null;
   message: string | null;
   followUpMessage: string | null;
+  updatedAt: string | null;
 };
 
 export type LinkedInAssistantActionView = {
@@ -201,6 +204,26 @@ function isCampaignEligible(campaign: MarketingLinkedInCampaign): boolean {
   return campaign.status !== "archived" && !campaign.archivedAt;
 }
 
+/** Campañas que la extensión puede operar: draft y active. */
+export function isLinkedInCampaignOperable(campaign: MarketingLinkedInCampaign): boolean {
+  if (!isCampaignEligible(campaign)) return false;
+  return campaign.status === "draft" || campaign.status === "active";
+}
+
+function campaignWorkPriority(status: MarketingLinkedInCampaign["status"]): number {
+  if (status === "active") return 0;
+  if (status === "draft") return 1;
+  return 9;
+}
+
+function sortMemberships(items: LinkedInAssistantMembershipView[]): LinkedInAssistantMembershipView[] {
+  return [...items].sort((a, b) => {
+    const priority = campaignWorkPriority(a.campaignStatus) - campaignWorkPriority(b.campaignStatus);
+    if (priority !== 0) return priority;
+    return (b.updatedAt || "").localeCompare(a.updatedAt || "");
+  });
+}
+
 function sortActionableMembers(
   members: MarketingLinkedInCampaignMember[],
   now: string,
@@ -246,7 +269,7 @@ export function createLinkedInAssistantService(deps: {
   ) => {
     if (campaignId) {
       const campaign = await deps.linkedIn.getCampaign(ctx, campaignId);
-      if (!isCampaignEligible(campaign)) return new Map<string, MarketingLinkedInCampaign>();
+      if (!isLinkedInCampaignOperable(campaign)) return new Map<string, MarketingLinkedInCampaign>();
       return new Map([[campaign.id, campaign]]);
     }
     const page = await deps.linkedIn.searchCampaigns(ctx, {
@@ -256,7 +279,7 @@ export function createLinkedInAssistantService(deps: {
     });
     const map = new Map<string, MarketingLinkedInCampaign>();
     for (const campaign of page.items) {
-      if (isCampaignEligible(campaign) && campaign.status !== "draft") {
+      if (isLinkedInCampaignOperable(campaign)) {
         map.set(campaign.id, campaign);
       }
     }
@@ -475,7 +498,7 @@ export function createLinkedInAssistantService(deps: {
 
       const summaries = [];
       for (const campaign of page.items) {
-        if (!isCampaignEligible(campaign) || campaign.status === "draft") continue;
+        if (!isLinkedInCampaignOperable(campaign)) continue;
         const preview = await deps.linkedIn.previewCampaign(ctx, campaign.id);
         summaries.push({
           id: campaign.id,
@@ -534,26 +557,34 @@ export function createLinkedInAssistantService(deps: {
         return { contact: null, memberships: [], linkedinUrl };
       }
 
-      const campaigns = await loadCampaignMap(ctx);
+      const outreach = await deps.linkedIn.listOutreach(ctx, { contactId: contact.id, limit: 200 });
       const memberships: LinkedInAssistantMembershipView[] = [];
-      for (const campaign of campaigns.values()) {
-        const memberId = marketingLinkedInCampaignMemberId(campaign.id, contact.id, ctx.workspaceId);
-        const member = await deps.members.getById(ctx.workspaceId, memberId);
-        if (!member) continue;
+      for (const member of outreach.items) {
+        const campaign = await deps.linkedIn.getCampaign(ctx, member.campaignId);
+        if (!isLinkedInCampaignOperable(campaign)) continue;
         memberships.push({
           memberId: member.id,
           campaignId: campaign.id,
           campaignName: campaign.name,
+          campaignStatus: campaign.status,
+          campaignStatusLabel: LINKEDIN_CAMPAIGN_STATUS_LABEL[campaign.status],
           status: member.status,
-          statusLabel: LINKEDIN_MEMBER_STATUS_LABEL[member.status],
+          statusLabel: member.status === "connection_ready"
+            ? "Listo para conexión"
+            : LINKEDIN_MEMBER_STATUS_LABEL[member.status],
           nextActionAt: member.nextActionAt ?? null,
           connectionMessage: member.connectionMessage ?? campaign.connectionMessage ?? null,
           message: member.message ?? campaign.message ?? null,
           followUpMessage: member.followUpMessage ?? campaign.followUpMessage ?? null,
+          updatedAt: member.updatedAt ?? campaign.updatedAt ?? null,
         });
       }
 
-      return { contact: contactView(contact), memberships, linkedinUrl };
+      return {
+        contact: contactView(contact),
+        memberships: sortMemberships(memberships),
+        linkedinUrl,
+      };
     },
 
     async getContact(ctx: MarketingServiceContext, contactId: string) {

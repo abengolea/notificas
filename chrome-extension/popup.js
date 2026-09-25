@@ -2,6 +2,7 @@ import {
   SessionExpiredError,
   auditEvent,
   completeAction,
+  fetchAction,
   fetchCampaigns,
   fetchNext,
   lookupContactByLinkedInUrl,
@@ -22,6 +23,12 @@ const els = {
   detected: document.getElementById("detected"),
   detectedUrl: document.getElementById("detected-url"),
   detectedContact: document.getElementById("detected-contact"),
+  detectedDetail: document.getElementById("detected-detail"),
+  detectedName: document.getElementById("detected-name"),
+  detectedCompany: document.getElementById("detected-company"),
+  detectedCampaign: document.getElementById("detected-campaign"),
+  detectedCampaignStatus: document.getElementById("detected-campaign-status"),
+  detectedMemberStatus: document.getElementById("detected-member-status"),
   statusBanner: document.getElementById("status-banner"),
   name: document.getElementById("prospect-name"),
   company: document.getElementById("prospect-company"),
@@ -139,7 +146,8 @@ async function loadCampaigns() {
   for (const c of data.campaigns || []) {
     const opt = document.createElement("option");
     opt.value = c.id;
-    opt.textContent = `${c.name} (${c.pending} pendientes)`;
+    const draft = c.status === "draft" ? " · Borrador" : "";
+    opt.textContent = `${c.name}${draft} (${c.pending} pendientes)`;
     els.campaignSelect.appendChild(opt);
   }
 }
@@ -168,6 +176,12 @@ async function loadNext(excludeMemberId) {
   renderAction(data.action);
 }
 
+function campaignLine(membership) {
+  if (!membership) return "En CRM · sin campaña LinkedIn";
+  if (membership.campaignStatus === "draft") return "En CRM · campaña en borrador";
+  return "En CRM · campaña activa";
+}
+
 async function loadDetectedProfile() {
   try {
     const detected = await chrome.runtime.sendMessage({ type: "GET_DETECTED_PROFILE" });
@@ -177,17 +191,42 @@ async function loadDetectedProfile() {
       return;
     }
     show(els.detected, true);
+    show(els.detectedDetail, false);
     els.detectedUrl.textContent = url;
     els.detectedContact.textContent = "Consultando CRM…";
     const result = await lookupContactByLinkedInUrl(url);
     if (!result.contact) {
-      els.detectedContact.textContent = "Este perfil no está en el CRM.";
+      els.detectedContact.textContent = "Perfil no encontrado en CRM";
       return;
     }
     const membership = result.memberships?.[0];
-    els.detectedContact.textContent = membership
-      ? `${result.contact.name || "Contacto"} · ${membership.campaignName} · ${membership.statusLabel}`
-      : `${result.contact.name || "Contacto"} · en CRM, sin campaña activa`;
+    els.detectedContact.textContent = campaignLine(membership);
+    show(els.detectedDetail, true);
+    els.detectedName.textContent = result.contact.name || "Contacto";
+    els.detectedCompany.textContent = result.contact.companyName || "—";
+    els.detectedCampaign.textContent = membership?.campaignName || "—";
+    els.detectedCampaignStatus.textContent = membership
+      ? (membership.campaignStatusLabel || membership.campaignStatus || "—").toUpperCase()
+      : "—";
+    els.detectedMemberStatus.textContent = membership?.statusLabel || result.contact.linkedinStatus || "—";
+
+    if (membership?.campaignId) {
+      if (![...els.campaignSelect.options].some((opt) => opt.value === membership.campaignId)) {
+        const opt = document.createElement("option");
+        opt.value = membership.campaignId;
+        opt.textContent = `${membership.campaignName}${membership.campaignStatus === "draft" ? " · Borrador" : ""}`;
+        els.campaignSelect.appendChild(opt);
+      }
+      els.campaignSelect.value = membership.campaignId;
+    }
+    if (membership?.memberId) {
+      try {
+        const actionData = await fetchAction(membership.memberId);
+        if (actionData.action) renderAction(actionData.action);
+      } catch {
+        // El contacto puede estar en campaña sin una acción pendiente.
+      }
+    }
   } catch (err) {
     if (err instanceof SessionExpiredError) throw err;
     els.detectedContact.textContent = "No pude consultar el CRM para este perfil.";

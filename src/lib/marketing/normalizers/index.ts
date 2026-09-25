@@ -108,12 +108,11 @@ export function normalizeLinkedInUrl(value: string): string | null {
   const url = new URL(normalized);
   const host = url.hostname.replace(/^www\./, "").toLowerCase();
   const linkedinHost = host === "linkedin.com" || host.endsWith(".linkedin.com");
-  if (!linkedinHost || !/^\/in\/[^/]+\/?$/i.test(url.pathname)) return null;
-  url.protocol = "https:";
-  url.hostname = "linkedin.com";
-  url.search = "";
-  url.pathname = url.pathname.replace(/\/+$/, "").toLowerCase();
-  return url.toString().replace(/\/$/, "");
+  const match = url.pathname.match(/\/in\/([^/]+)/i);
+  if (!linkedinHost || !match?.[1]) return null;
+  const slug = decodeURIComponent(match[1]).replace(/\/+$/, "").toLowerCase();
+  if (!slug) return null;
+  return `https://linkedin.com/in/${slug}`;
 }
 
 export function normalizeMarketingPhone(value: string): string | null {

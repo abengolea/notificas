@@ -658,6 +658,7 @@ export async function searchLinkedinOutreach(
   const limit = pageLimit(input.limit);
   const page = await runtime.services.linkedInCampaigns.listOutreach(ctx, {
     campaignId: input.campaignId,
+    contactId: input.contactId,
     status,
     dueBefore: input.dueBefore,
     limit: 100,
@@ -665,7 +666,6 @@ export async function searchLinkedinOutreach(
   });
   let items = page.items.map(linkedinMemberView);
   if (input.companyId) items = items.filter((item) => item.companyId === input.companyId);
-  if (input.contactId) items = items.filter((item) => item.contactId === input.contactId);
   if (input.dueAfter) {
     items = items.filter((item) => Boolean(item.nextActionAt && String(item.nextActionAt) >= input.dueAfter!));
   }

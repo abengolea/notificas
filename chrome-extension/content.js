@@ -4,9 +4,9 @@
 
   function currentProfileUrl() {
     try {
-      const url = new URL(location.href);
-      if (!/\/in\/[^/?#]+/i.test(url.pathname)) return "";
-      return `${url.origin}${url.pathname}`;
+      const match = location.pathname.match(/\/in\/([^/]+)/i);
+      if (!match) return "";
+      return `https://www.linkedin.com/in/${decodeURIComponent(match[1])}/`;
     } catch {
       return "";
     }

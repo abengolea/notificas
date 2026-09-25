@@ -440,6 +440,27 @@ export function createLinkedInCampaignService(deps: {
     },
 
     async listOutreach(ctx: MarketingServiceContext, filters: LinkedInMemberListFilters = {}) {
+      if (filters.contactId) {
+        const page = await deps.campaigns.search(ctx.workspaceId, {
+          archived: "exclude",
+          limit: 200,
+        });
+        const items = [];
+        for (const campaign of page.items) {
+          if (campaign.status === "archived" || campaign.archivedAt) continue;
+          if (filters.campaignId && campaign.id !== filters.campaignId) continue;
+          const memberId = marketingLinkedInCampaignMemberId(
+            campaign.id,
+            filters.contactId,
+            ctx.workspaceId,
+          );
+          const member = await deps.members.getById(ctx.workspaceId, memberId);
+          if (!member) continue;
+          if (filters.status && member.status !== filters.status) continue;
+          items.push(member);
+        }
+        return { items, nextCursor: undefined };
+      }
       return deps.members.list(ctx.workspaceId, filters);
     },
 

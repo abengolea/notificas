@@ -9,6 +9,7 @@ import {
   connectionReviewDays,
   defaultNextActionAfterConnectionSent,
 } from "./linkedin-assistant";
+import { marketingLinkedInCampaignMemberId } from "./domain/ids";
 
 function setup() {
   const repos = createMemoryMarketingRepositories();
@@ -153,6 +154,82 @@ test("complete action records replied using existing CRM action", async () => {
   });
   const result = await assistant.completeAction(context, member.id, { action: "replied" });
   assert.equal(result.member.status, "replied");
+});
+
+test("LinkedIn URL variants for Carlos Guardado normalize to the same profile", () => {
+  const expected = "https://linkedin.com/in/carlos-guardado-23394255";
+  assert.equal(
+    normalizeLinkedInUrl("https://www.linkedin.com/in/carlos-guardado-23394255/"),
+    expected,
+  );
+  assert.equal(
+    normalizeLinkedInUrl("https://linkedin.com/in/carlos-guardado-23394255"),
+    expected,
+  );
+  assert.equal(
+    normalizeLinkedInUrl("https://www.linkedin.com/in/Carlos-Guardado-23394255?utm=1"),
+    expected,
+  );
+  assert.equal(
+    normalizeLinkedInUrl("https://www.linkedin.com/in/carlos-guardado-23394255/overlay/contact-info/"),
+    expected,
+  );
+});
+
+test("lookupByLinkedInUrl finds draft campaign membership", async () => {
+  const { services, context, assistant } = setup();
+  const campaign = await services.linkedInCampaigns.createCampaign(context, {
+    name: "AES El Salvador | Comunicaciones trazables | LinkedIn",
+    connectionMessage: "Hola Carlos",
+  });
+  assert.equal(campaign.status, "draft");
+  const contact = await services.contacts.createContact(context, {
+    email: "carlos.guardado@example.com",
+    linkedinUrl: "https://www.linkedin.com/in/carlos-guardado-23394255/",
+    name: "Carlos Guardado",
+    company: "AES El Salvador",
+    country: "SV",
+  });
+  const member = await services.linkedInCampaigns.addMember(context, campaign.id, contact.id);
+  await services.linkedInCampaigns.updateMember(context, campaign.id, member.id, {
+    status: "connection_ready",
+  });
+  assert.equal(member.id, marketingLinkedInCampaignMemberId(campaign.id, contact.id, context.workspaceId));
+
+  const found = await assistant.lookupByLinkedInUrl(
+    context,
+    "https://www.linkedin.com/in/carlos-guardado-23394255/",
+  );
+  assert.equal(found.contact?.name, "Carlos Guardado");
+  assert.equal(found.memberships.length, 1);
+  assert.equal(found.memberships[0].campaignId, campaign.id);
+  assert.equal(found.memberships[0].campaignStatus, "draft");
+  assert.equal(found.memberships[0].campaignName, campaign.name);
+
+  const summaries = await assistant.listCampaignSummaries(context);
+  assert.equal(summaries.some((row) => row.id === campaign.id && row.status === "draft"), true);
+
+  const next = await assistant.getNextAction(context, { campaignId: campaign.id });
+  assert.ok(next);
+  assert.equal(next.campaign.id, campaign.id);
+});
+
+test("lookup prefers active campaign over draft", async () => {
+  const { services, context, assistant } = setup();
+  const draft = await services.linkedInCampaigns.createCampaign(context, { name: "Draft campaign" });
+  const active = await services.linkedInCampaigns.createCampaign(context, { name: "Active campaign" });
+  await services.linkedInCampaigns.updateCampaign(context, active.id, { status: "active" });
+  const contact = await services.contacts.createContact(context, {
+    email: "priority@example.com",
+    linkedinUrl: "https://linkedin.com/in/priority-user",
+    name: "Priority User",
+    country: "AR",
+  });
+  await services.linkedInCampaigns.addMember(context, draft.id, contact.id);
+  await services.linkedInCampaigns.addMember(context, active.id, contact.id);
+  const found = await assistant.lookupByLinkedInUrl(context, "https://linkedin.com/in/priority-user");
+  assert.equal(found.memberships[0].campaignId, active.id);
+  assert.equal(found.memberships[1].campaignId, draft.id);
 });
 
 test("lookupByLinkedInUrl finds contact and campaign membership", async () => {

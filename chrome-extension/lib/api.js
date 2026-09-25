@@ -67,6 +67,10 @@ export async function fetchCampaignMembers(campaignId) {
   return apiFetch(`/api/linkedin-assistant/campaigns/${encodeURIComponent(campaignId)}/members`);
 }
 
+export async function fetchAction(memberId) {
+  return apiFetch(`/api/linkedin-assistant/actions/${encodeURIComponent(memberId)}`);
+}
+
 export async function lookupContactByLinkedInUrl(linkedinUrl) {
   const qs = new URLSearchParams({ linkedinUrl });
   return apiFetch(`/api/linkedin-assistant/contacts?${qs}`);

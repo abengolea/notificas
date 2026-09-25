@@ -77,6 +77,7 @@ export type LinkedInCampaignSearchFilters = {
 
 export type LinkedInMemberListFilters = {
   campaignId?: string;
+  contactId?: string;
   status?: MarketingLinkedInCampaignMember["status"];
   dueBefore?: string;
   limit?: number;

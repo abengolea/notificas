@@ -91,6 +91,9 @@ test("extension UI does not ask for a pasted token", () => {
   assert.match(popupHtml, /CONECTADO A NOTIFICAS/);
   assert.match(popupHtml, /Sesión vencida/);
   assert.match(popupHtml, /INICIAR SESIÓN EN EL ADMIN/);
+  const popupJs = readFileSync(join(root, "popup.js"), "utf8");
+  assert.match(popupJs, /campaña en borrador/);
+  assert.doesNotMatch(popupJs, /sin campaña activa/);
 });
 
 test("api client never logs a bearer secret", () => {
