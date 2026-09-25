@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   isLinkPreviewCrawler,
   isReaderCtaQuery,
+  publicReaderOriginFromHeaders,
   readerPathFromQuery,
   readerResponseOrigin,
   readerUrlOnRequestOrigin,
@@ -83,6 +84,34 @@ test("el crawler de vista previa de WhatsApp no cuenta como pulso", () => {
     ),
     false,
   );
+});
+
+test("App Hosting no puede mandar el 302 a 0.0.0.0:8080", () => {
+  const headers = {
+    get(name: string) {
+      if (name === "host") return "0.0.0.0:8080";
+      if (name === "x-forwarded-host") return "notificas.com.ar";
+      return null;
+    },
+  };
+  assert.equal(publicReaderOriginFromHeaders(headers), "https://notificas.com.ar");
+  assert.equal(
+    readerUrlOnRequestOrigin(
+      "https://0.0.0.0:8080",
+      params({ msg: "mail-1", k: "secret", src: "whatsapp" }),
+    ),
+    "https://notificas.com.ar/reader/mail-1?k=secret&from=whatsapp",
+  );
+});
+
+test("sin host público usable, el reader cae en .com.ar", () => {
+  const headers = {
+    get(name: string) {
+      if (name === "host") return "0.0.0.0:8080";
+      return null;
+    },
+  };
+  assert.equal(publicReaderOriginFromHeaders(headers), "https://notificas.com.ar");
 });
 
 test("el path del reader lleva from=whatsapp o from=email", () => {

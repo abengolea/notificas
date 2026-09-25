@@ -2,7 +2,36 @@
  * El WebView de WhatsApp (app del celular) suele cortar un 302 hacia
  * `*.hosted.app`. WhatsApp Web usa el navegador del escritorio y sí lo sigue.
  * El reader tiene que quedar en el mismo host público que abrió el destinatario.
+ *
+ * En App Hosting `request.nextUrl.origin` es `https://0.0.0.0:8080`.
+ * El host real viene en `x-forwarded-host`.
  */
+
+import { hostnameOf } from "./international-site";
+
+const PUBLIC_READER_ORIGIN = "https://notificas.com.ar";
+
+function isUnusableHost(host: string): boolean {
+  return !host || /^(0\.0\.0\.0|127\.0\.0\.1|localhost|::1)$/i.test(host);
+}
+
+function firstUsableHost(headers: { get(name: string): string | null }): string {
+  for (const name of ["x-forwarded-host", "x-original-host", "host"] as const) {
+    const raw = headers.get(name);
+    if (!raw) continue;
+    const host = hostnameOf(raw.split(",")[0] ?? "");
+    if (!isUnusableHost(host)) return host;
+  }
+  return "";
+}
+
+export function publicReaderOriginFromHeaders(headers: {
+  get(name: string): string | null;
+}): string {
+  const host = firstUsableHost(headers);
+  if (!host) return PUBLIC_READER_ORIGIN;
+  return readerResponseOrigin(`https://${host}`);
+}
 
 export function isReaderCtaQuery(params: {
   get(name: string): string | null;
@@ -33,9 +62,10 @@ export function readerResponseOrigin(requestOrigin: string): string {
     ) {
       return "https://notificas.com.ar";
     }
+    if (isUnusableHost(host)) return PUBLIC_READER_ORIGIN;
     return requestOrigin.replace(/\/$/, "");
   } catch {
-    return requestOrigin;
+    return PUBLIC_READER_ORIGIN;
   }
 }
 

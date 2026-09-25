@@ -3,6 +3,7 @@ import { after, NextRequest, NextResponse } from "next/server";
 import {
   isLinkPreviewCrawler,
   isReaderCtaQuery,
+  publicReaderOriginFromHeaders,
   readerUrlOnRequestOrigin,
   rewriteLocationToRequestOrigin,
 } from "@/lib/link-redirect-public";
@@ -25,13 +26,13 @@ function upstreamHeaders(request: NextRequest): HeadersInit {
   const ua = request.headers.get("user-agent");
   const xf = request.headers.get("x-forwarded-for");
   const xri = request.headers.get("x-real-ip");
+  const publicHost = new URL(publicReaderOriginFromHeaders(request.headers)).host;
   return {
     ...(ua ? { "user-agent": ua } : {}),
     ...(xf ? { "x-forwarded-for": xf } : {}),
     ...(xri ? { "x-real-ip": xri } : {}),
-    "x-forwarded-host":
-      request.headers.get("x-forwarded-host") || request.nextUrl.host,
-    host: request.nextUrl.host,
+    "x-forwarded-host": request.headers.get("x-forwarded-host") || publicHost,
+    host: publicHost,
   };
 }
 
@@ -49,7 +50,7 @@ function trackClickInBackground(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
-  const origin = request.nextUrl.origin;
+  const origin = publicReaderOriginFromHeaders(request.headers);
 
   if (isReaderCtaQuery(params)) {
     const readerUrl = readerUrlOnRequestOrigin(origin, params);
