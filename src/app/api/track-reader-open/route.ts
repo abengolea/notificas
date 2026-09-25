@@ -11,6 +11,7 @@ import {
   readerOpenStoredSource,
   type ClickSource,
 } from '@/lib/movement-display';
+import { buildAccessEvidenceFields } from '@/lib/evidence-chain';
 
 function extractBrowserInfo(userAgent: string) {
   const match = userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)\/(\d+)/);
@@ -159,8 +160,15 @@ export async function POST(request: NextRequest) {
               { type: 'reader_magic_open', timestamp: openTimestamp },
               existingMovements,
             );
+      const movementId = generateUUID();
+      const evidence = buildAccessEvidenceFields(
+        messageData as Record<string, unknown>,
+        messageId,
+        movementId,
+        { linkKind: 'reader', token: k },
+      );
       const movement = {
-        id: generateUUID(),
+        id: movementId,
         type: 'reader_magic_open',
         description: readerOpenStoredDescription(clickSource),
         timestamp: openTimestamp,
@@ -172,6 +180,7 @@ export async function POST(request: NextRequest) {
           ? { source: readerOpenStoredSource(clickSource), clickSource }
           : {}),
         isFirstOpen: wasFirstOpen,
+        evidence,
       };
 
       tx.update(messageRef, {

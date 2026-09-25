@@ -27,6 +27,11 @@ import { publicCertificateVerifyUrl } from './public-verify-url';
 import { campaignVerifyRef, formatVerifyRefLine } from './verify-hints';
 import { stripRichTextToPlainText } from './rich-text';
 import type { WhatsAppSentContent } from './whatsapp-evidence';
+import {
+  buildEvidenceChainLine,
+  certifiedContentLegend,
+  whatsAppReaderLinkExplanation,
+} from './evidence-chain';
 
 /** Texto intimado del certificado: el mismo plano que entra al hash, no el HTML del editor. */
 export function certificatePlainBody(message?: {
@@ -904,6 +909,33 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       [contentWidth * 0.28, contentWidth * 0.72]
     );
   }
+
+  const contentHashStoredEarly = (mailData as { polygonCertifications?: { contentHash?: string } }).polygonCertifications?.contentHash;
+  const contentHashComputedEarly = await computeContentHash(mailData.message?.contentText || '');
+  const contentHashForDoc = contentHashStoredEarly || contentHashComputedEarly;
+  const snapshotHashForDoc = mailData.evidenceSnapshotHash;
+  const wamid =
+    mailData.whatsappMessageId ||
+    (mailData as { tracking?: { whatsappMessageId?: string } }).tracking?.whatsappMessageId;
+  const hasPolygonSend = Boolean(
+    (mailData.polygonCertifications as { send?: string } | undefined)?.send?.startsWith('0x')
+  );
+  if (hasWhatsApp || contentHashForDoc) {
+    drawSectionTitle('Cadena de vinculación de la evidencia', 2);
+    writeTextBlock(
+      buildEvidenceChainLine({
+        hasWhatsApp,
+        messageId,
+        contentHash: contentHashForDoc || '',
+        snapshotHash: snapshotHashForDoc,
+        hasPolygon: hasPolygonSend,
+      }),
+      9,
+      13,
+      { monospace: true }
+    );
+  }
+
   writeTextBlock(
     sealed
       ? 'Notificas.com certifica una comunicación digital con copia inalterable al enviar. Este PDF se emite una sola vez: hechos posteriores no entran en esta copia.'
@@ -913,9 +945,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     { color: COLORS.textMuted }
   );
 
-  const contentHashStored = (mailData as any).polygonCertifications?.contentHash;
-  const contentHashComputed = await computeContentHash(mailData.message?.contentText || '');
-  const contentHash = contentHashStored || contentHashComputed;
+  const contentHash = contentHashForDoc;
   const verifyUrl = publicCertificateVerifyUrl({
     id: messageId,
     campaignId: mailData.campaignId,
@@ -935,7 +965,6 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   if (mailData.delivery?.info) {
     techData.push({ label: 'Identificador SMTP (aceptación)', value: mailData.delivery.info, monospace: true });
   }
-  const wamid = mailData.whatsappMessageId || (mailData as { tracking?: { whatsappMessageId?: string } }).tracking?.whatsappMessageId;
   if (wamid) {
     techData.push({ label: 'WhatsApp Message ID (wamid)', value: String(wamid), monospace: true });
     if (mailData.whatsappPhoneNumberId) {
@@ -1116,7 +1145,10 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   // ========================================
   const cleanedContent = certificatePlainBody(mailData.message);
   if (cleanedContent) {
-    drawSectionTitle(hasWhatsApp ? 'Contenido enviado por correo (lector)' : 'Contenido del mensaje certificado');
+    drawSectionTitle('Contenido certificado mostrado en el lector');
+    writeTextBlock(certifiedContentLegend(messageId, contentHash || ''), 9, 12, {
+      color: COLORS.textMuted,
+    });
     if (data.layoutCorrection) {
       writeTextBlock(
         'Este ejemplar corrige la diagramación de uno anterior: el cuerpo intimado no cabía en una sola página y quedaba cortado. La fecha de emisión, el snapshot y los hechos congelados no cambian.',
@@ -1130,7 +1162,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   }
 
   if (whatsappSent) {
-    drawSectionTitle('Contenido enviado por WhatsApp');
+    drawSectionTitle('Mensaje enviado por WhatsApp');
     if (whatsappSent.templateBodyMissing && !whatsappSent.renderedBody) {
       writeTextBlock(
         'No se pudo lacrar el texto fijo de Meta en este envío. Se certifican el nombre del template, el idioma y las variables. El WhatsApp sí se envió.',
@@ -1156,13 +1188,30 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       writeTextBlock(whatsappSent.renderedFooter, 9, 12, { italics: true, color: COLORS.textMuted });
     }
     writeTextBlock(
-      'Template, variables y URLs completas del pedido a Meta: ver anexo técnico.',
-      8,
-      11,
-      { color: COLORS.textMuted }
+      `Plantilla: ${whatsappSent.templateName} · ${whatsappSent.templateLang}` +
+        (whatsappSent.templateId ? ` · ID ${whatsappSent.templateId}` : ''),
+      9,
+      12
     );
+    if (mailData.recipientPhone) {
+      writeTextBlock(`Teléfono destino: ${mailData.recipientPhone}`, 9, 12);
+    }
+    if (wamid) {
+      writeTextBlock(`Identificador WAMID: ${wamid}`, 9, 12, { monospace: true });
+    }
+    for (const btn of whatsappSent.buttons) {
+      const label = btn.text ? `Enlace del botón: ${btn.text}` : 'Enlace del mensaje';
+      const dest = btn.url || btn.urlParameter;
+      if (dest) writeTextBlock(`${label}: ${dest}`, 8, 11, { monospace: true });
+    }
+    writeTextBlock(whatsAppReaderLinkExplanation(messageId, contentHash || ''), 9, 12, {
+      color: COLORS.textMuted,
+    });
+    writeTextBlock('Variables y pedido técnico completo a Meta: ver anexo técnico.', 8, 11, {
+      color: COLORS.textMuted,
+    });
   } else if (hasWhatsApp) {
-    drawSectionTitle('Contenido enviado por WhatsApp');
+    drawSectionTitle('Mensaje enviado por WhatsApp');
     writeTextBlock(
       'No hay pedido a Meta en el snapshot. No se reconstruye el globo desde datos vivos.',
       9,

@@ -1511,6 +1511,26 @@ function isRecentDuplicateRedirect(dedupe, clientIP, tag, windowMs = 5000) {
   return Date.now() - dedupe.t < windowMs && dedupe.ip === clientIP && dedupe.tag === tag;
 }
 
+function buildAccessEvidenceFields(data, messageId, movementId, opts = {}) {
+  const poly = data?.polygonCertifications || {};
+  const token = opts.token || data?.tracking?.token;
+  let tokenRef;
+  if (token) {
+    tokenRef = crypto.createHash('sha256').update(String(token), 'utf8').digest('hex').slice(0, 16);
+  }
+  return {
+    messageId: String(messageId),
+    movementId: String(movementId),
+    contentHash: poly.contentHash || undefined,
+    snapshotHash: data?.evidenceSnapshotHash || undefined,
+    wamid: data?.whatsappMessageId || data?.tracking?.whatsappMessageId || undefined,
+    recipientPhone: data?.recipientPhone || undefined,
+    recipientEmail: data?.recipientEmail || undefined,
+    tokenRef,
+    linkKind: opts.linkKind,
+  };
+}
+
 /**
  * Registra `attachment_opened` + actualiza `attachments[].tracking` y redirige al archivo.
  * Usado por linkRedirect con `?att=id` (correo) o con `u=` cuando coincide fileUrl.
@@ -1752,8 +1772,9 @@ async function linkRedirectHandler(req, res) {
                 console.warn('⚠️ No se pudo decodificar r (teléfono en enlace):', decodePhoneErr?.message);
               }
             }
+            const movementId = crypto.randomUUID();
             const movement = {
-              id: crypto.randomUUID(),
+              id: movementId,
               type: isWhatsApp ? 'whatsapp_link_clicked' : 'link_clicked',
               description: isWhatsApp
                 ? recipientPhoneVerified && recipientPhoneFromLink
@@ -1769,6 +1790,10 @@ async function linkRedirectHandler(req, res) {
               browser: extractBrowserInfo(userAgentForCheck),
               recipientEmail: data.recipientEmail || 'Unknown',
               ...(recipientPhoneFromLink ? { recipientPhone: recipientPhoneFromLink, recipientPhoneVerified } : {}),
+              evidence: buildAccessEvidenceFields(data, msg, movementId, {
+                token: k,
+                linkKind: isWhatsApp ? 'whatsapp_cta' : 'email_cta',
+              }),
             };
             const updateData = {
               'tracking.clickCount': FieldValue.increment(1),
@@ -1927,7 +1952,11 @@ async function linkRedirectHandler(req, res) {
         realIP: realIP,
         browser: extractBrowserInfo(userAgent),
         recipientEmail: data.recipientEmail || 'Unknown',
-        ...(recipientPhoneFromLink ? { recipientPhone: recipientPhoneFromLink, recipientPhoneVerified: recipientPhoneVerified } : {})
+        ...(recipientPhoneFromLink ? { recipientPhone: recipientPhoneFromLink, recipientPhoneVerified: recipientPhoneVerified } : {}),
+        evidence: buildAccessEvidenceFields(data, msg, movementId, {
+          token: k,
+          linkKind: isWhatsApp ? 'whatsapp_link' : 'email_link',
+        }),
       };
       const updateData = {
         'tracking.clickCount': FieldValue.increment(1),

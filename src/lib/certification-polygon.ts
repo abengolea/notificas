@@ -53,13 +53,17 @@ export async function certificarHito(opts: {
   hito: PolygonHitoType;
   sendTxHash?: string;
   contentHash?: string;
+  snapshotHash?: string;
+  wamid?: string;
   via?: string;
 }): Promise<string> {
-  const { messageId, userId, hito, sendTxHash, contentHash, via } = opts;
+  const { messageId, userId, hito, sendTxHash, contentHash, snapshotHash, wamid, via } = opts;
   const timestamp = new Date().toISOString();
   const parts = [HITO_PREFIX[hito], messageId, userId];
   if (contentHash) parts.push(contentHash);
   if (via) parts.push(`via:${via}`);
+  if (snapshotHash) parts.push(`snap:${snapshotHash}`);
+  if (wamid) parts.push(`wamid:${wamid}`);
   if (sendTxHash) parts.push(`ref:${sendTxHash}`);
   parts.push(timestamp);
   const payload = parts.join('|');
@@ -128,6 +132,15 @@ export async function certifyMailHitoIfNeeded(opts: {
       recipientId: String(recipientId),
       sendTxHash: existing.send as string | undefined,
       contentHash: existing.contentHash as string | undefined,
+      snapshotHash:
+        typeof data.evidenceSnapshotHash === 'string' ? data.evidenceSnapshotHash : undefined,
+      wamid:
+        typeof data.whatsappMessageId === 'string'
+          ? data.whatsappMessageId
+          : typeof (data.tracking as { whatsappMessageId?: string } | undefined)?.whatsappMessageId ===
+              'string'
+            ? (data.tracking as { whatsappMessageId: string }).whatsappMessageId
+            : undefined,
     };
   });
 
@@ -149,6 +162,8 @@ export async function certifyMailHitoIfNeeded(opts: {
       hito,
       sendTxHash: claim.sendTxHash,
       contentHash: claim.contentHash,
+      snapshotHash: claim.snapshotHash,
+      wamid: claim.wamid,
       via,
     });
 

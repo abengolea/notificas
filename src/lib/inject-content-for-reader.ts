@@ -8,10 +8,16 @@ export { escapeHtml };
  */
 export function injectContentForReader(
   html: string,
-  mail: { message?: { content?: string; details?: { fecha?: string; attachmentsCount?: number } } }
+  mail: {
+    message?: {
+      content?: string;
+      contentText?: string;
+      details?: { fecha?: string; attachmentsCount?: number };
+    };
+  }
 ): string {
   if (!html) return "";
-  const content = mail?.message?.content || "";
+  const content = mail?.message?.content || mail?.message?.contentText || "";
   const details = mail?.message?.details;
   let contentHtml = "";
   if (content) {

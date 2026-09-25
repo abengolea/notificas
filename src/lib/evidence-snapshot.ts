@@ -330,7 +330,10 @@ export function overlayMailWithSnapshot(
       subject: snapshot.subject,
       contentText: snapshot.contentText,
       text: snapshot.contentText,
+      /** El lector debe mostrar el texto lacrado, no el HTML editable del mail vivo. */
+      content: snapshot.contentText,
     },
+    evidenceSealed: true,
     attachments: (snapshot.attachments || []).map((a) => {
       const live = liveAtt.find((x) => String(x.fileName || x.nombre || "") === a.fileName) || {};
       return { ...live, fileName: a.fileName, hash: a.hash, fileSize: a.fileSize };

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
+import { getEvidenceSnapshot, overlayMailWithSnapshot } from "@/lib/evidence-snapshot";
 
 /**
  * Permite al lector público cargar un mensaje sin Firebase Auth en el cliente.
  * Las reglas de Firestore exigen sesión; el destinatario autentica con `k` (tracking.token).
+ * Si existe snapshot lacrado, el contenido proviene del expediente inmutable (no del mail editable).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -35,10 +37,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Enlace inválido o caducado" }, { status: 401 });
     }
 
-    // La apertura se registra solo en POST /api/track-reader-open (una vez por visita).
-    // Este GET se usa en carga inicial y polling; no debe crear movimientos.
+    const snapshot = await getEvidenceSnapshot(id);
+    const mail = snapshot ? overlayMailWithSnapshot(data, snapshot) : data;
 
-    return NextResponse.json({ mail: data });
+    return NextResponse.json({
+      mail,
+      contentSource: snapshot ? "snapshot" : "live",
+    });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     const code =

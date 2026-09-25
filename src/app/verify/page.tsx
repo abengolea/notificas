@@ -45,6 +45,16 @@ interface VerificationResult {
   hasWhatsApp?: boolean;
   merkleRoot?: string;
   snapshotMatch?: boolean;
+  contentIntegrity?: {
+    recalculatedFromSnapshot?: string | null;
+    registeredHash?: string | null;
+    matchesRegistered?: boolean;
+    snapshotSealed?: boolean;
+  };
+  chainEvents?: Record<string, { timestamp?: string } | undefined>;
+  polygonTx?: Record<string, string | null | undefined>;
+  smtpMessageId?: string;
+  recipientPhone?: string;
 }
 
 function mapVerifyApiData(
@@ -100,8 +110,38 @@ function mapVerifyApiData(
       typeof (data?.contentHash as { snapshotMatch?: boolean } | undefined)?.snapshotMatch === "boolean"
         ? (data?.contentHash as { snapshotMatch?: boolean }).snapshotMatch
         : undefined,
+    contentIntegrity: data?.contentIntegrity as VerificationResult["contentIntegrity"],
+    chainEvents: data?.chainEvents as VerificationResult["chainEvents"],
+    polygonTx: data?.polygonTx as VerificationResult["polygonTx"],
+    smtpMessageId: data?.smtpMessageId as string | undefined,
+    recipientPhone: data?.recipientPhone as string | undefined,
     ...extras,
   };
+}
+
+function formatChainEventLabel(key: string): string {
+  const labels: Record<string, string> = {
+    emailSent: "Correo enviado",
+    whatsappSent: "WhatsApp enviado",
+    whatsappDelivered: "WhatsApp entregado",
+    whatsappRead: "WhatsApp leído",
+    whatsappLinkClicked: "Enlace pulsado (WhatsApp)",
+    readerAccess: "Lector accedido",
+    readConfirmed: "Lectura confirmada",
+  };
+  return labels[key] || key;
+}
+
+function formatPolygonTxLabel(key: string): string {
+  const labels: Record<string, string> = {
+    send: "Envío",
+    whatsapp: "Aviso WhatsApp",
+    waDelivered: "Entrega WhatsApp",
+    waRead: "Lectura WhatsApp",
+    contentAccess: "Acceso al contenido",
+    readConfirmed: "Lectura confirmada",
+  };
+  return labels[key] || key;
 }
 
 export default function VerifyPage() {
@@ -675,7 +715,7 @@ export default function VerifyPage() {
                         )}
                         {result.explorerUrl && (
                           <div className="flex justify-between gap-3">
-                            <span className="text-sm text-muted-foreground">Polygon:</span>
+                            <span className="text-sm text-muted-foreground">Polygon (envío):</span>
                             <a
                               href={result.explorerUrl}
                               target="_blank"
@@ -686,8 +726,113 @@ export default function VerifyPage() {
                             </a>
                           </div>
                         )}
+                        {result.wamid && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-sm text-muted-foreground">WAMID:</span>
+                            <span className="text-sm font-mono truncate max-w-[180px]" title={result.wamid}>
+                              {result.wamid.substring(0, 16)}…
+                            </span>
+                          </div>
+                        )}
+                        {result.smtpMessageId && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-sm text-muted-foreground">Message-ID (correo):</span>
+                            <span className="text-sm font-mono truncate max-w-[180px]" title={result.smtpMessageId}>
+                              {result.smtpMessageId.substring(0, 20)}…
+                            </span>
+                          </div>
+                        )}
+                        {result.recipientPhone && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-sm text-muted-foreground">Teléfono destino:</span>
+                            <span className="text-sm font-medium">{result.recipientPhone}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
+
+                    {(result.contentIntegrity || result.contentHash) && (
+                      <div className="rounded-md border p-4 space-y-3 bg-muted/30">
+                        <h4 className="font-semibold text-sm">Integridad del contenido</h4>
+                        {result.contentIntegrity?.recalculatedFromSnapshot && (
+                          <p className="text-sm text-muted-foreground break-all">
+                            SHA-256 calculado del contenido certificado:{" "}
+                            <span className="font-mono text-foreground">
+                              {result.contentIntegrity.recalculatedFromSnapshot}
+                            </span>
+                          </p>
+                        )}
+                        {(result.contentIntegrity?.registeredHash || result.contentHash) && (
+                          <p className="text-sm text-muted-foreground break-all">
+                            Hash registrado:{" "}
+                            <span className="font-mono text-foreground">
+                              {result.contentIntegrity?.registeredHash || result.contentHash}
+                            </span>
+                          </p>
+                        )}
+                        <p className="text-sm">
+                          Coincide con el hash registrado:{" "}
+                          <span
+                            className={
+                              result.contentIntegrity?.matchesRegistered === false ||
+                              result.integrityValid === false
+                                ? "text-destructive font-semibold"
+                                : "text-emerald-700 font-semibold"
+                            }
+                          >
+                            {result.contentIntegrity?.matchesRegistered === false ||
+                            result.integrityValid === false
+                              ? "NO"
+                              : "SÍ"}
+                          </span>
+                        </p>
+                      </div>
+                    )}
+
+                    {result.chainEvents && Object.keys(result.chainEvents).length > 0 && (
+                      <div className="rounded-md border p-4 space-y-2">
+                        <h4 className="font-semibold text-sm">Cadena de acceso y eventos</h4>
+                        <ul className="text-sm space-y-1">
+                          {Object.entries(result.chainEvents).map(([key, ev]) =>
+                            ev?.timestamp ? (
+                              <li key={key} className="flex justify-between gap-3">
+                                <span className="text-muted-foreground">{formatChainEventLabel(key)}</span>
+                                <span className="font-medium">
+                                  {new Date(ev.timestamp).toLocaleString("es-AR")}
+                                </span>
+                              </li>
+                            ) : null
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
+                    {result.polygonTx &&
+                      Object.entries(result.polygonTx).some(
+                        ([k, v]) => k !== "contentAccessVia" && typeof v === "string" && v.startsWith("0x")
+                      ) && (
+                        <div className="rounded-md border p-4 space-y-2">
+                          <h4 className="font-semibold text-sm">Transacciones Polygon</h4>
+                          <ul className="text-sm space-y-1">
+                            {Object.entries(result.polygonTx).map(([key, tx]) =>
+                              key !== "contentAccessVia" && typeof tx === "string" && tx.startsWith("0x") ? (
+                                <li key={key} className="flex justify-between gap-3 items-center">
+                                  <span className="text-muted-foreground">{formatPolygonTxLabel(key)}</span>
+                                  <a
+                                    href={`https://polygonscan.com/tx/${tx}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="font-mono text-xs text-primary underline truncate max-w-[200px]"
+                                    title={tx}
+                                  >
+                                    {tx.slice(0, 10)}…{tx.slice(-6)}
+                                  </a>
+                                </li>
+                              ) : null
+                            )}
+                          </ul>
+                        </div>
+                      )}
 
                     <Collapsible>
                       <CollapsibleTrigger asChild>

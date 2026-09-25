@@ -44,8 +44,12 @@ export async function buildPublicEvidence(mailId: string) {
     snapshot = await sealEvidenceSnapshot(mailId);
   }
 
+  const snapshotText = snapshot?.contentText || "";
   const liveText = String(mail.message?.contentText || mail.message?.text || "");
-  const currentHash = await computeContentHash(liveText);
+  const certifiedText = snapshotText || liveText;
+  const snapshotRecalcHash = snapshotText ? await computeContentHash(snapshotText) : "";
+  const liveRecalcHash = liveText ? await computeContentHash(liveText) : "";
+  const currentHash = snapshotRecalcHash || liveRecalcHash;
   const snapshotHash = snapshot?.contentHash || "";
   const firestoreHash = String(mail.polygonCertifications?.contentHash || snapshotHash || "");
 
@@ -62,8 +66,11 @@ export async function buildPublicEvidence(mailId: string) {
     }
   }
 
-  const contentMatch = Boolean(firestoreHash) && currentHash === firestoreHash;
-  const snapshotMatch = !snapshotHash || currentHash === snapshotHash;
+  const registeredHashMatch = Boolean(firestoreHash) && currentHash === firestoreHash;
+  const snapshotHashMatch = Boolean(snapshotHash) && currentHash === snapshotHash;
+  const liveDrift = Boolean(snapshotText && liveText && snapshotText !== liveText);
+  const contentMatch = registeredHashMatch;
+  const snapshotMatch = !snapshotHash || snapshotHashMatch;
 
   let campaign: Awaited<ReturnType<typeof verifyCampaignMessage>> | null = null;
   if (mail.campaignId && mail.campaignMessageId) {
@@ -84,6 +91,33 @@ export async function buildPublicEvidence(mailId: string) {
   }
 
   const events = await listProviderEventsForMail(mailId, 15).catch(() => []);
+
+  type MovementRow = { type?: string; timestamp?: string; evidence?: Record<string, unknown> };
+  const movements: MovementRow[] = Array.isArray(mail.tracking?.movements)
+    ? (mail.tracking.movements as MovementRow[])
+    : [];
+  const firstMovement = (types: string[]) =>
+    movements.find((m) => m.type && types.includes(m.type));
+  const chainEvents = {
+    whatsappSent: firstMovement(["whatsapp_sent"]),
+    whatsappDelivered: firstMovement(["whatsapp_delivered"]),
+    whatsappRead: firstMovement(["whatsapp_read"]),
+    whatsappLinkClicked: firstMovement(["whatsapp_link_clicked"]),
+    readerAccess: firstMovement(["reader_magic_open"]),
+    readConfirmed: firstMovement(["read_confirmed"]),
+    emailSent: firstMovement(["email_sent", "resend_sent"]),
+  };
+
+  const polyCerts = (mail.polygonCertifications || {}) as Record<string, string | undefined>;
+  const polygonTx = {
+    send: polyCerts.send || campaign?.send.txHash || null,
+    whatsapp: polyCerts.whatsapp || null,
+    waDelivered: polyCerts.waDelivered || null,
+    waRead: polyCerts.waRead || null,
+    contentAccess: polyCerts.contentAccess || null,
+    readConfirmed: polyCerts.readConfirmed || null,
+    contentAccessVia: polyCerts.contentAccessVia || null,
+  };
 
   const currentWaHash = await hashWhatsAppBody(mail.waRequestSnapshot || snapshot?.whatsapp.requestSnapshot);
   const storedWaHash = String(
@@ -157,7 +191,18 @@ export async function buildPublicEvidence(mailId: string) {
       match: contentMatch,
       snapshotMatch,
       onChainMatch,
+      /** Recálculo sobre snapshot inmutable vs hash registrado (SÍ/NO en verificador). */
+      integrityVerified: registeredHashMatch,
+      liveDrift,
     },
+    contentIntegrity: {
+      recalculatedFromSnapshot: snapshotRecalcHash || null,
+      registeredHash: firestoreHash || null,
+      matchesRegistered: registeredHashMatch,
+      snapshotSealed: Boolean(snapshot),
+    },
+    chainEvents,
+    polygonTx,
     sendTxHash: sendTx || campaign?.send.txHash || null,
     merkleRoot: campaign?.send.merkleRoot || null,
     explorerUrl: sendTx
@@ -181,8 +226,8 @@ export async function buildPublicEvidence(mailId: string) {
       providerMessageId: (e as { providerMessageId?: string }).providerMessageId,
     })),
     summary: intact
-      ? "El texto intimado (correo/lector) coincide con el snapshot. Si hubo WhatsApp, el aviso (template + enlace) se ancla aparte."
-      : "Hay una diferencia entre el texto intimado, el aviso de WhatsApp, el snapshot o Polygon.",
+      ? "El contenido certificado del lector coincide con el snapshot y los hashes registrados. WhatsApp consta como canal de acceso al mismo contenido."
+      : "Hay una diferencia entre el contenido certificado, el aviso de WhatsApp, el snapshot o Polygon.",
   };
 }
 
