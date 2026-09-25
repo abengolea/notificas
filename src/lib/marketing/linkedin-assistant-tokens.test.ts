@@ -2,11 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   EXTENSION_ACCESS_TTL_SEC,
+  EXTENSION_CONNECT_TTL_SEC,
   EXTENSION_REFRESH_TTL_SEC,
   EXTENSION_TOKEN_AUD,
   EXTENSION_TOKEN_ISS,
   issueExtensionSession,
   passwordsEqual,
+  signExtensionConnectCode,
   verifyExtensionToken,
 } from "./linkedin-assistant-tokens";
 
@@ -59,6 +61,27 @@ test("verifyExtensionToken distinguishes expired vs invalid", () => {
       verifyExtensionToken(session.refreshToken, SECRET, "ext_access", issuedAt).reason,
       "invalid",
     );
+  } finally {
+    if (prevEmail === undefined) delete process.env.ADMIN_PANEL_EMAIL;
+    else process.env.ADMIN_PANEL_EMAIL = prevEmail;
+  }
+});
+
+test("connect code can be exchanged only while fresh", () => {
+  const prevEmail = process.env.ADMIN_PANEL_EMAIL;
+  process.env.ADMIN_PANEL_EMAIL = EMAIL;
+  try {
+    const issuedAt = Date.parse("2026-09-25T12:00:00.000Z");
+    const code = signExtensionConnectCode(EMAIL, SECRET, issuedAt);
+    const ok = verifyExtensionToken(code, SECRET, "ext_connect", issuedAt);
+    assert.equal(ok.ok, true);
+    const expired = verifyExtensionToken(
+      code,
+      SECRET,
+      "ext_connect",
+      issuedAt + (EXTENSION_CONNECT_TTL_SEC + 1) * 1000,
+    );
+    assert.deepEqual(expired, { ok: false, reason: "expired" });
   } finally {
     if (prevEmail === undefined) delete process.env.ADMIN_PANEL_EMAIL;
     else process.env.ADMIN_PANEL_EMAIL = prevEmail;

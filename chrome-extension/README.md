@@ -10,8 +10,9 @@ La build de producción habla **solo** con `https://notificas.com.ar`. No usa lo
 2. Chrome → `chrome://extensions` → **Modo desarrollador**
 3. Si ya estaba cargada, **Quitar** la extensión anterior
 4. **Cargar descomprimida** → carpeta `chrome-extension/`
-5. Abrí el popup → iniciá sesión con el email/contraseña del panel admin de Notificas
-6. Confirmá que diga **Entorno: Producción**
+5. Abrí el popup → **Iniciar sesión en el admin**
+6. Si ya estás en notificas.com.ar/admin, se conecta sola. Si no, entrá con Google o email en el admin.
+7. Confirmá que el popup diga **Entorno: Producción**
 
 ## Flujo diario
 
@@ -35,7 +36,8 @@ La build de desarrollo puede usar `http://localhost:9006`. Volvé a `npm run ext
 
 ## Autenticación
 
-- Login: `POST /api/linkedin-assistant/auth/login`
+- Login admin: abre `/admin/linkedin-assistant/connect` y canjea un código de 3 minutos
+- Login email: `POST /api/linkedin-assistant/auth/login`
 - Access token: 30 minutos, audience `linkedin-assistant`, issuer `notificas`
 - Refresh token: 14 días
 - La extensión renueva sola y reintenta una vez

@@ -2,6 +2,8 @@ import { EXTENSION_ENV } from "./env.js";
 
 export const PRODUCTION_API_URL = "https://notificas.com.ar";
 export const DEVELOPMENT_API_URL = "http://localhost:9006";
+export const ADMIN_CONNECT_PATH = "/admin/linkedin-assistant/connect";
+export const ADMIN_CONNECT_DONE_PATH = "/admin/linkedin-assistant/connect/done";
 
 export function extensionEnv() {
   return EXTENSION_ENV === "development" ? "development" : "production";

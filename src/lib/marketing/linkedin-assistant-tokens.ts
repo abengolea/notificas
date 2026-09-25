@@ -7,8 +7,13 @@ export const EXTENSION_TOKEN_ISS = "notificas";
 export const EXTENSION_TOKEN_AUD = "linkedin-assistant";
 export const EXTENSION_ACCESS_TYP = "ext_access";
 export const EXTENSION_REFRESH_TYP = "ext_refresh";
+export const EXTENSION_CONNECT_TYP = "ext_connect";
+export const EXTENSION_CONNECT_TTL_SEC = 3 * 60;
 
-export type ExtensionTokenTyp = typeof EXTENSION_ACCESS_TYP | typeof EXTENSION_REFRESH_TYP;
+export type ExtensionTokenTyp =
+  | typeof EXTENSION_ACCESS_TYP
+  | typeof EXTENSION_REFRESH_TYP
+  | typeof EXTENSION_CONNECT_TYP;
 
 export type ExtensionTokenPayload = {
   typ: ExtensionTokenTyp;
@@ -48,7 +53,13 @@ function decodeSignedPayload(token: string, secret: string): ExtensionTokenPaylo
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
   try {
     const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Partial<ExtensionTokenPayload>;
-    if (data.typ !== EXTENSION_ACCESS_TYP && data.typ !== EXTENSION_REFRESH_TYP) return null;
+    if (
+      data.typ !== EXTENSION_ACCESS_TYP &&
+      data.typ !== EXTENSION_REFRESH_TYP &&
+      data.typ !== EXTENSION_CONNECT_TYP
+    ) {
+      return null;
+    }
     if (typeof data.e !== "string" || !data.e.trim()) return null;
     if (typeof data.exp !== "number" || typeof data.iat !== "number") return null;
     if (data.iss !== EXTENSION_TOKEN_ISS || data.aud !== EXTENSION_TOKEN_AUD) return null;
@@ -92,6 +103,22 @@ export function signExtensionRefreshToken(email: string, secret: string, now = D
       typ: EXTENSION_REFRESH_TYP,
       e: normalizeEmail(email),
       exp: iat + EXTENSION_REFRESH_TTL_SEC,
+      iat,
+      iss: EXTENSION_TOKEN_ISS,
+      aud: EXTENSION_TOKEN_AUD,
+      jti: randomBytes(16).toString("hex"),
+    },
+    secret,
+  );
+}
+
+export function signExtensionConnectCode(email: string, secret: string, now = Date.now()): string {
+  const iat = Math.floor(now / 1000);
+  return encodeToken(
+    {
+      typ: EXTENSION_CONNECT_TYP,
+      e: normalizeEmail(email),
+      exp: iat + EXTENSION_CONNECT_TTL_SEC,
       iat,
       iss: EXTENSION_TOKEN_ISS,
       aud: EXTENSION_TOKEN_AUD,

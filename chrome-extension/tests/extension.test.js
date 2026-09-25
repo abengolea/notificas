@@ -53,6 +53,16 @@ test("prepare module never implements final send clicks", () => {
   assert.doesNotMatch(prepareSource, /findSend|clickSend|Enviar invitaci/);
 });
 
+test("connect URL parsing reads the admin handshake code", async () => {
+  const { connectCodeFromUrl, adminConnectUrl } = await import("../lib/session.js");
+  assert.equal(
+    connectCodeFromUrl("https://notificas.com.ar/admin/linkedin-assistant/connect/done?code=abc123"),
+    "abc123",
+  );
+  assert.equal(connectCodeFromUrl("https://notificas.com.ar/admin"), "");
+  assert.equal(adminConnectUrl("https://notificas.com.ar"), "https://notificas.com.ar/admin/linkedin-assistant/connect");
+});
+
 test("production build never resolves localhost", async () => {
   const env = readFileSync(join(root, "lib/env.js"), "utf8");
   assert.match(env, /EXTENSION_ENV = "production"/);
@@ -80,6 +90,7 @@ test("extension UI does not ask for a pasted token", () => {
   assert.doesNotMatch(optionsJs, /stored\.token|Bearer \$\{token\}/);
   assert.match(popupHtml, /CONECTADO A NOTIFICAS/);
   assert.match(popupHtml, /Sesión vencida/);
+  assert.match(popupHtml, /INICIAR SESIÓN EN EL ADMIN/);
 });
 
 test("api client never logs a bearer secret", () => {

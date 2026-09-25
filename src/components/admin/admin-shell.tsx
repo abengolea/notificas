@@ -37,6 +37,7 @@ function mapAuthUserToAppUser(u: {
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isLoginPage = pathname === "/admin/login";
+  const isExtensionConnectPage = pathname.startsWith("/admin/linkedin-assistant/connect");
   const [appUser, setAppUser] = useState<AppUser | null>(null);
 
   useEffect(() => {
@@ -68,7 +69,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     return "Panel de Administración";
   };
 
-  if (isLoginPage) {
+  if (isLoginPage || isExtensionConnectPage) {
     return <>{children}</>;
   }
 

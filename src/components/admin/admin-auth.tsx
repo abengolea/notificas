@@ -29,7 +29,8 @@ export function AdminAuth({ children }: AdminAuthProps) {
         if (!res.ok) {
           setIsAuthenticated(false);
           setTimeout(() => {
-            router.push("/admin/login");
+            const next = `${window.location.pathname}${window.location.search}`;
+            router.push(`/admin/login?next=${encodeURIComponent(next)}`);
           }, 100);
           return;
         }

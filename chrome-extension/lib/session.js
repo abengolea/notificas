@@ -84,6 +84,35 @@ async function postAuth(apiUrl, path, body) {
   return { res, data };
 }
 
+export function adminConnectUrl(apiUrl) {
+  return `${(apiUrl || defaultApiUrl()).replace(/\/$/, "")}/admin/linkedin-assistant/connect`;
+}
+
+export function connectCodeFromUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.pathname.includes("/admin/linkedin-assistant/connect/done")) return "";
+    return parsed.searchParams.get("code")?.trim() || "";
+  } catch {
+    return "";
+  }
+}
+
+export async function claimConnectCode(code) {
+  const prefs = await getPreferences();
+  const apiUrl = prefs.apiUrl || defaultApiUrl();
+  const { res, data } = await postAuth(apiUrl, "/api/linkedin-assistant/auth/claim", { code });
+  if (!res.ok) {
+    if (res.status === 404) {
+      throw new Error("El admin todavía no tiene el conector de la extensión. Hay que desplegar la API de producción.");
+    }
+    throw new Error(data.message || "No se pudo tomar la sesión del admin.");
+  }
+  await saveSession(data);
+  extensionLog("auth connect: success");
+  return data;
+}
+
 export async function login(email, password) {
   const prefs = await getPreferences();
   const apiUrl = prefs.apiUrl || defaultApiUrl();

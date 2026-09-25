@@ -20,8 +20,10 @@
     </section>
 
     <section id="login" class="card hidden">
-      <p class="session-title">Iniciar sesión</p>
-      <p class="hint">Usá las credenciales del panel de Notificas. La sesión se guarda en este Chrome.</p>
+      <p class="session-title">Conectar con Notificas</p>
+      <p class="hint">La extensión usa tu sesión del admin en notificas.com.ar. Si ya estás logueado, se conecta sola.</p>
+      <button type="button" id="btn-connect-admin" class="primary">INICIAR SESIÓN EN EL ADMIN</button>
+      <p class="hint" style="margin-top:12px">O con email y contraseña del panel</p>
       <div class="field">
         <label for="login-email">Email</label>
         <input id="login-email" type="email" autocomplete="username" />
@@ -30,7 +32,7 @@
         <label for="login-password">Contraseña</label>
         <input id="login-password" type="password" autocomplete="current-password" />
       </div>
-      <button type="button" id="btn-login" class="primary">INICIAR SESIÓN</button>
+      <button type="button" id="btn-login" class="secondary">INICIAR SESIÓN CON EMAIL</button>
     </section>
 
     <section id="expired" class="setup hidden">

@@ -1,6 +1,6 @@
 import { auditEvent } from "./lib/api.js";
 import { extensionLog } from "./lib/log.js";
-import { getPreferences } from "./lib/session.js";
+import { adminConnectUrl, claimConnectCode, connectCodeFromUrl, getPreferences } from "./lib/session.js";
 
 const lastProfile = {
   linkedinUrl: "",
@@ -35,8 +35,46 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(() => sendResponse({ ok: true, ...lastProfile, tabUrl: "" }));
     return true;
   }
+  if (message?.type === "START_ADMIN_CONNECT") {
+    startAdminConnect()
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, error: String(err.message || err) }));
+    return true;
+  }
   return false;
 });
+
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+  if (!info.url && info.status !== "complete") return;
+  const url = info.url || tab.url || "";
+  const code = connectCodeFromUrl(url);
+  if (!code) return;
+  claimConnectFromTab(tabId, code).catch((err) => {
+    extensionLog(`auth connect: failed ${String(err.message || err)}`);
+  });
+});
+
+let claimingCode = "";
+
+async function claimConnectFromTab(tabId, code) {
+  if (!code || claimingCode === code) return;
+  claimingCode = code;
+  try {
+    await claimConnectCode(code);
+    extensionLog("auth connect: success");
+    if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+  } finally {
+    claimingCode = "";
+  }
+}
+
+async function startAdminConnect() {
+  const prefs = await getPreferences();
+  const url = adminConnectUrl(prefs.apiUrl);
+  extensionLog("auth connect: opening admin");
+  const tab = await chrome.tabs.create({ url, active: true });
+  return { ok: true, tabId: tab.id };
+}
 
 async function resolveDetectedProfile() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });

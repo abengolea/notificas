@@ -35,6 +35,7 @@ const els = {
   btnSkip: document.getElementById("btn-skip"),
   btnNext: document.getElementById("btn-next"),
   btnLogin: document.getElementById("btn-login"),
+  btnConnectAdmin: document.getElementById("btn-connect-admin"),
   btnLogout: document.getElementById("btn-logout"),
   btnRelogin: document.getElementById("btn-relogin"),
   btnConnected: document.getElementById("btn-connected"),
@@ -203,6 +204,22 @@ async function recordOutcome(actionType) {
   await loadNext();
 }
 
+els.btnConnectAdmin.addEventListener("click", async () => {
+  try {
+    hideBanner();
+    els.btnConnectAdmin.disabled = true;
+    showBanner("Abriendo el admin de Notificas…", "warn");
+    const result = await chrome.runtime.sendMessage({ type: "START_ADMIN_CONNECT" });
+    if (!result?.ok) {
+      showBanner(result?.error || "No pude abrir el admin.", "error");
+    }
+  } catch (err) {
+    showBanner(err.message || "No pude abrir el admin.", "error");
+  } finally {
+    els.btnConnectAdmin.disabled = false;
+  }
+});
+
 els.btnLogin.addEventListener("click", async () => {
   try {
     hideBanner();
@@ -316,5 +333,12 @@ async function boot() {
     }
   }
 }
+
+chrome.storage.local.onChanged.addListener((changes) => {
+  if (changes.accessToken?.newValue) {
+    hideBanner();
+    boot();
+  }
+});
 
 boot();

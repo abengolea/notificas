@@ -7,11 +7,14 @@ import {
 } from "@/lib/admin-session";
 
 /** Redirige a login si no hay cookie de panel admin. Solo para páginas, no APIs. */
-export async function requireAdminPage(): Promise<void> {
+export async function requireAdminPage(nextPath?: string): Promise<string> {
   const cfg = getAdminPanelConfig();
-  if (!cfg) redirect("/admin/login");
+  const login = nextPath
+    ? `/admin/login?next=${encodeURIComponent(nextPath)}`
+    : "/admin/login";
+  if (!cfg) redirect(login);
   const raw = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
-  if (!raw || !readAdminSessionEmail(raw, cfg.secret, cfg.email)) {
-    redirect("/admin/login");
-  }
+  const email = raw ? readAdminSessionEmail(raw, cfg.secret, cfg.email) : null;
+  if (!email) redirect(login);
+  return email;
 }
