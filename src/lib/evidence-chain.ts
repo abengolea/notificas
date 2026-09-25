@@ -53,6 +53,25 @@ export function buildAccessEvidenceFields(
   };
 }
 
+export function buildEvidenceChainSteps(input: {
+  hasWhatsApp: boolean;
+  messageId: string;
+  contentHash: string;
+  snapshotHash?: string;
+  hasPolygon: boolean;
+}): string[] {
+  const steps: string[] = [];
+  if (input.hasWhatsApp) steps.push('Mensaje de WhatsApp enviado al destinatario');
+  steps.push('Enlace certificado incluido en el mensaje');
+  steps.push(`Lector certificado (identificador ${input.messageId})`);
+  steps.push('Texto intimado certificado (único contenido jurídico de este documento)');
+  steps.push(`Huella SHA-256 del contenido: ${shortenHash(input.contentHash)}`);
+  if (input.snapshotHash) steps.push(`Snapshot inmutable: ${shortenHash(input.snapshotHash)}`);
+  if (input.hasPolygon) steps.push('Anclaje en Polygon');
+  return steps;
+}
+
+/** Una sola línea (ASCII, sin Unicode) para tests o uso textual. */
 export function buildEvidenceChainLine(input: {
   hasWhatsApp: boolean;
   messageId: string;
@@ -60,15 +79,9 @@ export function buildEvidenceChainLine(input: {
   snapshotHash?: string;
   hasPolygon: boolean;
 }): string {
-  const steps: string[] = [];
-  if (input.hasWhatsApp) steps.push('WhatsApp');
-  steps.push('Enlace certificado');
-  steps.push(`Lector ${input.messageId}`);
-  steps.push('Contenido certificado');
-  steps.push(`SHA-256 ${shortenHash(input.contentHash)}`);
-  if (input.snapshotHash) steps.push(`Snapshot ${shortenHash(input.snapshotHash)}`);
-  if (input.hasPolygon) steps.push('Polygon');
-  return steps.join(' → ');
+  return buildEvidenceChainSteps(input)
+    .map((s, i) => `${i + 1}. ${s}`)
+    .join(' ');
 }
 
 export function whatsAppReaderLinkExplanation(messageId: string, contentHash: string): string {

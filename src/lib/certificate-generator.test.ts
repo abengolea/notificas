@@ -135,6 +135,26 @@ test('señal Resend y reader no se mezclan con pixel Notificas en el resultado',
   assert.match(raw, /certificado-lectura\/v4/i);
 });
 
+test('el resumen usa la etiqueta Resumen y no Lectura humana', async () => {
+  const blob = await generateCertificatePDF({
+    messageId: 'testResumenLabel',
+    issuedAt: new Date('2026-09-25T18:15:00.000Z'),
+    evidenceSealed: true,
+    mailData: {
+      from: 'rem@test.com',
+      recipientEmail: 'dest@test.com',
+      message: { subject: 'Asunto', contentText: 'Cuerpo' },
+      delivery: { state: 'accepted', time: '2026-09-25T18:13:00Z' },
+      tracking: { token: 'tok' },
+    },
+    movements: [],
+    attachments: [],
+  });
+  const raw = pdfText(await blob.arrayBuffer());
+  assert.match(raw, /Resumen:/);
+  assert.doesNotMatch(raw, /Lectura humana:/);
+});
+
 test('enlace de WhatsApp y lectura confirmada aparecen en el resumen humano', async () => {
   const blob = await generateCertificatePDF({
     messageId: 'testWaLinkAndConfirm',

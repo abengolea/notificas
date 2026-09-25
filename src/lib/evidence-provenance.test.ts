@@ -246,7 +246,8 @@ test('L: certificado incluye WAMID, cadena y no duplica título de contenido cor
 });
 
 test('M: el contenido certificado no aparece duplicado como secciones jurídicas distintas', async () => {
-  const hash = await computeContentHash(CONTENT);
+  const uniqueBody = 'CUERPO_JURIDICO_UNICO_9f3a2b1c para este certificado.';
+  const hash = await computeContentHash(uniqueBody);
   const blob = await generateCertificatePDF({
     messageId: MESSAGE_ID,
     issuedAt: new Date('2026-09-24T18:00:00.000Z'),
@@ -256,7 +257,7 @@ test('M: el contenido certificado no aparece duplicado como secciones jurídicas
       recipientEmail: 'dest@example.com',
       recipientPhone: '+5492215462961',
       whatsappMessageId: WAMID,
-      message: { subject: 'Intimación', contentText: CONTENT },
+      message: { subject: 'Intimación', contentText: uniqueBody },
       delivery: { state: 'accepted', time: '2026-09-24T12:00:00Z' },
       tracking: { token: 'tok' },
       evidenceSnapshotHash: SNAPSHOT_HASH,
@@ -267,9 +268,11 @@ test('M: el contenido certificado no aparece duplicado como secciones jurídicas
     attachments: [],
   });
   const raw = pdfText(await blob.arrayBuffer());
-  const titleCount = (raw.match(/Contenido certificado mostrado en el lector/g) || []).length;
-  assert.equal(titleCount, 1);
-  const body = certificatePlainBody({ contentText: CONTENT });
+  const sectionTitleCount = (raw.match(/Contenido certificado mostrado en el lector/g) || []).length;
+  assert.equal(sectionTitleCount, 1);
+  assert.doesNotMatch(raw, /Contenido enviado por correo \(lector\)/);
+  assert.doesNotMatch(raw, /Contenido enviado por WhatsApp/);
+  const body = certificatePlainBody({ contentText: uniqueBody });
   const occurrences = raw.split(body).length - 1;
   assert.equal(occurrences, 1, 'el texto jurídico debe aparecer una sola vez');
 });

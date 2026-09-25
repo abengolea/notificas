@@ -20,6 +20,7 @@ export function hasCertificateMovement(movements: CertificateMovement[], types: 
 export type EmailEvidenceState = {
   resendSignal: CertificateMovement | undefined;
   legacyPixel: CertificateMovement | undefined;
+  linkClicked: CertificateMovement | undefined;
   readerOpen: CertificateMovement | undefined;
   appOpen: CertificateMovement | undefined;
   readConfirmed: CertificateMovement | undefined;
@@ -34,6 +35,7 @@ export function deriveEmailEvidence(movements: CertificateMovement[]): EmailEvid
   return {
     resendSignal: firstCertificateMovement(movements, ['resend_opened_signal']),
     legacyPixel: firstCertificateMovement(movements, ['email_opened']),
+    linkClicked: firstCertificateMovement(movements, ['link_clicked']),
     readerOpen: firstCertificateMovement(movements, ['reader_magic_open']),
     appOpen: firstCertificateMovement(movements, ['app_opened']),
     readConfirmed: firstCertificateMovement(movements, ['read_confirmed']),
@@ -71,6 +73,10 @@ export function emailReaderAccessDetected(state: EmailEvidenceState): boolean {
   return Boolean(state.readerOpen || state.readConfirmed);
 }
 
+export function emailLinkClickedDetected(state: EmailEvidenceState): boolean {
+  return Boolean(state.linkClicked);
+}
+
 export function emailAppOpenDetected(state: EmailEvidenceState): boolean {
   const m = state.appOpen;
   return Boolean(m && !m.viewerIsSender);
@@ -88,6 +94,7 @@ export function whatsAppLinkClickedDetected(state: WhatsAppEvidenceState): boole
 export function emailChannelStatusLine(state: EmailEvidenceState): string {
   if (emailReadConfirmedDetected(state)) return 'Lectura confirmada en el lector certificado';
   if (emailReaderOpenDetected(state)) return 'Contenido accedido en el lector certificado';
+  if (emailLinkClickedDetected(state)) return 'Enlace pulsado desde el correo';
   if (emailAppOpenDetected(state)) return 'Abierto en la aplicación web';
   if (emailResendSignalDetected(state) || emailLegacyPixelDetected(state)) {
     return 'Apertura del correo registrada';
@@ -106,7 +113,7 @@ export function whatsAppChannelStatusLine(
   return 'Sin entrega registrada a la emisión';
 }
 
-/** Una sola frase para el bloque «Lectura humana». */
+/** Resumen en lenguaje claro (correo y WhatsApp por separado). */
 export function buildNotificationHumanSummary(input: {
   hasWhatsApp: boolean;
   waDelivered: boolean;
@@ -114,31 +121,36 @@ export function buildNotificationHumanSummary(input: {
   whatsapp: WhatsAppEvidenceState;
   mailAccepted: boolean;
 }): string {
-  const parts: string[] = [];
+  const emailParts: string[] = [];
+  const waParts: string[] = [];
+
+  if (input.mailAccepted) emailParts.push('envío aceptado por el servidor de correo');
+  if (emailLinkClickedDetected(input.email)) emailParts.push('enlace pulsado desde el correo');
+  if (emailReadConfirmedDetected(input.email)) {
+    emailParts.push('lectura confirmada en el lector certificado');
+  } else if (emailReaderOpenDetected(input.email)) {
+    emailParts.push('contenido accedido en el lector certificado');
+  } else if (emailResendSignalDetected(input.email) || emailLegacyPixelDetected(input.email)) {
+    emailParts.push('apertura del correo registrada');
+  }
 
   if (input.hasWhatsApp) {
-    if (whatsAppMetaReadDetected(input.whatsapp)) {
-      parts.push('WhatsApp leído en el chat');
-    } else if (whatsAppLinkClickedDetected(input.whatsapp)) {
-      parts.push('WhatsApp entregado con acceso desde el enlace del mensaje');
-    } else if (input.waDelivered) {
-      parts.push('WhatsApp entregado al teléfono');
+    if (input.waDelivered) waParts.push('entregado al teléfono');
+    if (whatsAppMetaReadDetected(input.whatsapp)) waParts.push('leído en el chat');
+    if (whatsAppLinkClickedDetected(input.whatsapp)) {
+      waParts.push('acceso desde el enlace del mensaje');
+    } else if (input.waDelivered || whatsAppMetaReadDetected(input.whatsapp)) {
+      waParts.push('sin constar acceso desde el enlace del mensaje');
     }
   }
 
-  if (emailReadConfirmedDetected(input.email)) {
-    parts.push('lectura confirmada en el lector certificado');
-  } else if (emailReaderOpenDetected(input.email)) {
-    parts.push('contenido accedido en el lector certificado');
-  } else if (emailResendSignalDetected(input.email) || emailLegacyPixelDetected(input.email)) {
-    parts.push('apertura del correo registrada');
-  } else if (input.mailAccepted) {
-    parts.push('correo aceptado por el servidor');
+  const lines: string[] = [];
+  if (emailParts.length > 0) {
+    lines.push(`Correo electrónico: ${emailParts.join('; ')}.`);
   }
-
-  if (parts.length === 0) return 'Sin hechos de entrega o lectura registrados a la emisión.';
-
-  const [first, ...rest] = parts;
-  const head = `${first.charAt(0).toUpperCase()}${first.slice(1)}`;
-  return rest.length > 0 ? `${head}. ${rest.join('. ')}.` : `${head}.`;
+  if (waParts.length > 0) {
+    lines.push(`WhatsApp: ${waParts.join('; ')}.`);
+  }
+  if (lines.length === 0) return 'Sin hechos de entrega o lectura registrados a la emisión.';
+  return lines.join(' ');
 }

@@ -47,7 +47,7 @@ test('app_opened del remitente no cuenta como apertura del destinatario', () => 
     whatsapp: deriveWhatsAppEvidence([]),
     mailAccepted: true,
   });
-  assert.match(summary, /correo aceptado/i);
+  assert.match(summary, /envío aceptado por el servidor de correo/i);
   assert.doesNotMatch(summary, /aplicaci/i);
 });
 
@@ -67,8 +67,30 @@ test('acceso desde enlace WA sin tilde Meta aparece en el resumen humano', () =>
     whatsapp,
     mailAccepted: true,
   });
-  assert.match(summary, /acceso desde el enlace del mensaje/i);
-  assert.match(summary, /lectura confirmada en el lector certificado/i);
+  assert.match(summary, /WhatsApp:.*acceso desde el enlace del mensaje/i);
+  assert.match(summary, /Correo electrónico:.*lectura confirmada en el lector certificado/i);
   assert.doesNotMatch(summary, /fehaciente/i);
   assert.doesNotMatch(summary, /no equivale/i);
+});
+
+test('resumen separa correo y WhatsApp cuando el acceso fue por email', () => {
+  const email = deriveEmailEvidence([
+    { type: 'link_clicked', timestamp: '2026-09-25T18:13:58Z' },
+    { type: 'reader_magic_open', timestamp: '2026-09-25T18:14:01Z' },
+    { type: 'read_confirmed', timestamp: '2026-09-25T18:14:42Z' },
+  ]);
+  const whatsapp = deriveWhatsAppEvidence([
+    { type: 'whatsapp_read', timestamp: '2026-09-25T18:13:09Z' },
+  ]);
+  const summary = buildNotificationHumanSummary({
+    hasWhatsApp: true,
+    waDelivered: true,
+    email,
+    whatsapp,
+    mailAccepted: true,
+  });
+  assert.match(summary, /Correo electrónico:.*enlace pulsado desde el correo/i);
+  assert.match(summary, /Correo electrónico:.*lectura confirmada en el lector certificado/i);
+  assert.match(summary, /WhatsApp:.*leído en el chat/i);
+  assert.match(summary, /sin constar acceso desde el enlace del mensaje/i);
 });

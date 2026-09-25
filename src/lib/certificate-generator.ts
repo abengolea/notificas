@@ -11,6 +11,7 @@ import {
   emailAppOpenDetected,
   emailChannelStatusLine,
   emailLegacyPixelDetected,
+  emailLinkClickedDetected,
   emailReadConfirmedDetected,
   emailReaderOpenDetected,
   emailResendSignalDetected,
@@ -28,7 +29,7 @@ import { campaignVerifyRef, formatVerifyRefLine } from './verify-hints';
 import { stripRichTextToPlainText } from './rich-text';
 import type { WhatsAppSentContent } from './whatsapp-evidence';
 import {
-  buildEvidenceChainLine,
+  buildEvidenceChainSteps,
   certifiedContentLegend,
   whatsAppReaderLinkExplanation,
 } from './evidence-chain';
@@ -798,6 +799,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     `Aceptado por servidor de correo: ${deliveryState}`,
     `Apertura informada por proveedor: ${emailResendSignal}`,
     `Apertura por pixel: ${emailLegacyPixel}`,
+    `Acceso desde enlace del correo: ${formatEvidenceStatus(emailLinkClickedDetected(emailEvidence))}`,
     `Acceso al lector certificado: ${formatEvidenceStatus(emailReaderOpenDetected(emailEvidence))}`,
     `Lectura confirmada: ${formatEvidenceStatus(emailReadConfirmedDetected(emailEvidence))}`,
     ...(emailAppOpen === 'Sí' ? [`Apertura en aplicación web: ${emailAppOpen}`] : []),
@@ -879,10 +881,10 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   boxY += 14;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
-  doc.text('Lectura humana:', margin + 14, boxY);
+  doc.text('Resumen:', margin + 14, boxY);
   doc.setFont('helvetica', 'normal');
-  doc.splitTextToSize(humanSummaryLine, contentWidth - 100).forEach((line: string, idx: number) => {
-    doc.text(line, margin + 96, boxY + idx * 12);
+  doc.splitTextToSize(humanSummaryLine, contentWidth - 72).forEach((line: string, idx: number) => {
+    doc.text(line, margin + 68, boxY + idx * 12);
   });
   yPosition += resultadoBoxHeight + 14;
 
@@ -895,6 +897,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   pushChrono(firstMovement(['resend_delivered']), 'Servidor del destinatario aceptó el correo');
   pushChrono(emailEvidence.resendSignal, 'Apertura del correo informada por el proveedor');
   pushChrono(emailEvidence.legacyPixel, 'Apertura del correo por pixel');
+  pushChrono(emailEvidence.linkClicked, 'Acceso desde enlace del correo');
   pushChrono(emailEvidence.readerOpen, 'Acceso al lector certificado');
   pushChrono(emailEvidence.readConfirmed, 'Lectura confirmada en el lector');
   pushChrono(firstMovement(['whatsapp_sent']), 'WhatsApp enviado');
@@ -922,18 +925,16 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   );
   if (hasWhatsApp || contentHashForDoc) {
     drawSectionTitle('Cadena de vinculación de la evidencia', 2);
-    writeTextBlock(
-      buildEvidenceChainLine({
-        hasWhatsApp,
-        messageId,
-        contentHash: contentHashForDoc || '',
-        snapshotHash: snapshotHashForDoc,
-        hasPolygon: hasPolygonSend,
-      }),
-      9,
-      13,
-      { monospace: true }
-    );
+    const chainSteps = buildEvidenceChainSteps({
+      hasWhatsApp,
+      messageId,
+      contentHash: contentHashForDoc || '',
+      snapshotHash: snapshotHashForDoc,
+      hasPolygon: hasPolygonSend,
+    });
+    chainSteps.forEach((step, idx) => {
+      writeTextBlock(`${idx + 1}. ${step}`, 9, 13);
+    });
   }
 
   writeTextBlock(
