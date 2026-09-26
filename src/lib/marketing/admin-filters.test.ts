@@ -56,6 +56,23 @@ test("filtros de campaña: lista y etapa como en contactos", () => {
   assert.equal(campaignMatchesAdminFilters(withList, { stage: "replied" }), false);
 });
 
+test("filtros de campaña: nombre de contacto via lista o id", () => {
+  const withList = { ...camp, id: "camp-aes", listId: "lista-aes" };
+  assert.equal(campaignMatchesAdminFilters(withList, { q: "carlos" }), false);
+  assert.equal(
+    campaignMatchesAdminFilters(withList, { q: "carlos", matchedListIds: ["lista-aes"] }),
+    true,
+  );
+  assert.equal(
+    campaignMatchesAdminFilters(withList, { q: "carlos", matchedCampaignIds: ["camp-aes"] }),
+    true,
+  );
+  assert.equal(
+    campaignMatchesAdminFilters(withList, { q: "carlos", matchedListIds: ["otra"] }),
+    false,
+  );
+});
+
 test("filtros de campaña: archivadas ocultas por defecto", () => {
   const archived = { ...camp, archivedAt: "2026-09-18T12:00:00.000Z" };
   assert.equal(campaignMatchesAdminFilters(camp, {}), true);

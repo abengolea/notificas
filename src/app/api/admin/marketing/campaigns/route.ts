@@ -6,7 +6,7 @@ import { getAdminDb } from "@/lib/firebase-admin";
 import { resolveListLabel } from "@/lib/marketing/audience";
 import { materializeCrmCampaignList } from "@/lib/marketing/campaign-segment";
 import { campaignMatchesAdminFilters, parseAdminFilterValue } from "@/lib/marketing/admin-filters";
-import { MARKETING_CAMPAIGNS, MARKETING_LISTS } from "@/lib/marketing/collections";
+import { MARKETING_CAMPAIGNS, MARKETING_CONTACTS, MARKETING_LISTS } from "@/lib/marketing/collections";
 import { MarketingError } from "@/lib/marketing/errors";
 import { serializeAdminDoc } from "@/lib/marketing/events";
 import { namedRecipientSource } from "@/lib/marketing/lists";
@@ -64,10 +64,29 @@ export async function GET(request: NextRequest) {
     const archivedRaw = String(request.nextUrl.searchParams.get("archived") || "hide").trim();
     const archived = archivedRaw === "only" || archivedRaw === "all" ? archivedRaw : "hide";
     const db = getAdminDb();
-    const [snap, listsSnap] = await Promise.all([
+    const [snap, listsSnap, contactsSnap] = await Promise.all([
       db.collection(MARKETING_CAMPAIGNS).limit(400).get(),
       db.collection(MARKETING_LISTS).limit(200).get(),
+      q ? db.collection(MARKETING_CONTACTS).limit(2000).get() : Promise.resolve(null),
     ]);
+    const matchedListIds: string[] = [];
+    const matchedCampaignIds: string[] = [];
+    if (q && contactsSnap) {
+      const needle = q.toLowerCase();
+      const listIds = new Set<string>();
+      const campaignIds = new Set<string>();
+      for (const doc of contactsSnap.docs) {
+        const data = doc.data() || {};
+        const hay = `${data.name || ""} ${data.email || ""} ${data.company || ""} ${data.title || ""}`.toLowerCase();
+        if (!hay.includes(needle)) continue;
+        for (const id of Array.isArray(data.listIds) ? data.listIds : []) {
+          if (id) listIds.add(String(id));
+        }
+        if (data.lastCampaignId) campaignIds.add(String(data.lastCampaignId));
+      }
+      matchedListIds.push(...listIds);
+      matchedCampaignIds.push(...campaignIds);
+    }
     const listTaxonomy = new Map(
       listsSnap.docs.map((d) => {
         const data = d.data() || {};
@@ -110,6 +129,8 @@ export async function GET(request: NextRequest) {
           listId,
           stage,
           archived,
+          matchedListIds,
+          matchedCampaignIds,
         }),
       )
       .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));

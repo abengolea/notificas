@@ -88,6 +88,41 @@ test("LinkedIn campaign lifecycle and personalized member messages", async () =>
   assert.ok(archived.archivedAt);
 });
 
+test("LinkedIn campaign search finds campaign by contact name", async () => {
+  const { services, context } = setup();
+  const campaign = await services.linkedInCampaigns.createCampaign(context, {
+    name: "AES El Salvador outreach",
+  });
+  const other = await services.linkedInCampaigns.createCampaign(context, {
+    name: "Campana sin ese contacto",
+  });
+  const contact = await services.contacts.createContact(context, {
+    email: "carlos.guardado@example.com",
+    name: "Carlos Guardado",
+    company: "AES El Salvador",
+    title: "Director",
+    country: "SV",
+    linkedinUrl: "https://linkedin.com/in/carlos-guardado-search",
+  });
+  await services.linkedInCampaigns.addMember(context, campaign.id, contact.id);
+
+  const byFullName = await services.linkedInCampaigns.searchCampaigns(context, {
+    query: "Carlos Guardado",
+  });
+  assert.equal(byFullName.items.some((item) => item.id === campaign.id), true);
+  assert.equal(byFullName.items.some((item) => item.id === other.id), false);
+
+  const byLastName = await services.linkedInCampaigns.searchCampaigns(context, {
+    query: "guardado",
+  });
+  assert.equal(byLastName.items.some((item) => item.id === campaign.id), true);
+
+  const byCompany = await services.linkedInCampaigns.searchCampaigns(context, {
+    query: "AES El Salvador",
+  });
+  assert.equal(byCompany.items.some((item) => item.id === campaign.id), true);
+});
+
 test("LinkedIn campaign targeting metadata persists and search handles country and archives", async () => {
   const { services, context } = setup();
   const archived = await services.linkedInCampaigns.createCampaign(context, {

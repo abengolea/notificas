@@ -31,12 +31,48 @@ import {
 } from "../schemas";
 import { createStamps, updateStamps } from "./scope";
 
+function campaignPassesListFilters(
+  campaign: MarketingLinkedInCampaign,
+  filters: LinkedInCampaignSearchFilters,
+): boolean {
+  const archived = filters.archived ?? (filters.status === "archived" ? "only" : "exclude");
+  if (archived === "exclude" && (campaign.status === "archived" || campaign.archivedAt)) return false;
+  if (archived === "only" && campaign.status !== "archived" && !campaign.archivedAt) return false;
+  if (filters.status && campaign.status !== filters.status) return false;
+  if (filters.countryCode && campaign.countryCode !== filters.countryCode) return false;
+  return true;
+}
+
+async function findCampaignIdsByContactQuery(
+  workspaceId: string,
+  query: string,
+  deps: {
+    contacts: MarketingContactRepository;
+    members: MarketingLinkedInCampaignMemberRepository;
+  },
+): Promise<string[]> {
+  const ids = new Set<string>();
+  const contacts = await deps.contacts.search(workspaceId, { query, limit: 80 });
+  for (const contact of contacts.items) {
+    const members = await deps.members.list(workspaceId, { contactId: contact.id, limit: 80 });
+    for (const member of members.items) ids.add(member.campaignId);
+  }
+  const members = await deps.members.list(workspaceId, { limit: 200 });
+  const needle = query.toLowerCase();
+  for (const member of members.items) {
+    const hay = `${member.firstName || ""} ${member.companyName || ""} ${member.jobTitle || ""}`.toLowerCase();
+    if (hay.includes(needle)) ids.add(member.campaignId);
+  }
+  return [...ids];
+}
+
 const campaignStatusSchema = marketingLinkedInCampaignStatusSchema;
 const memberStatusSchema = marketingLinkedInMemberStatusSchema;
 const memberStatuses = marketingLinkedInMemberStatusSchema.options;
 const actionSchema = z.enum([
   "connection_sent",
   "connected",
+  "message_drafted",
   "message_sent",
   "followup_sent",
   "replied",
@@ -96,6 +132,11 @@ const actionState: Record<
     status: "connected",
     timestamp: "connectedAt",
     activityType: "linkedin_connected",
+  },
+  message_drafted: {
+    status: "message_drafted",
+    timestamp: "messagePreparedAt",
+    activityType: "linkedin_message_prepared",
   },
   message_sent: {
     status: "message_sent",
@@ -189,7 +230,26 @@ export function createLinkedInCampaignService(deps: {
         ? normalizeMarketingCountryCode(filters.countryCode)
         : undefined;
       if (filters.countryCode && !countryCode) throw new MarketingValidationError("countryCode inválido");
-      return deps.campaigns.search(ctx.workspaceId, { ...filters, countryCode: countryCode || undefined });
+      const scoped = { ...filters, countryCode: countryCode || undefined };
+      const page = await deps.campaigns.search(ctx.workspaceId, scoped);
+      const query = filters.query?.trim();
+      if (!query) return page;
+
+      const extraIds = await findCampaignIdsByContactQuery(ctx.workspaceId, query, {
+        contacts: deps.contacts,
+        members: deps.members,
+      });
+      const seen = new Set(page.items.map((item) => item.id));
+      const extras: MarketingLinkedInCampaign[] = [];
+      for (const id of extraIds) {
+        if (seen.has(id)) continue;
+        const campaign = await deps.campaigns.getById(ctx.workspaceId, id);
+        if (!campaign || !campaignPassesListFilters(campaign, scoped)) continue;
+        extras.push(campaign);
+        seen.add(id);
+      }
+      extras.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id));
+      return { items: [...extras, ...page.items], nextCursor: page.nextCursor };
     },
 
     async updateCampaign(

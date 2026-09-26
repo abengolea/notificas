@@ -144,7 +144,7 @@ export function LinkedInCampaigns() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               className="pl-9"
-              placeholder="Nombre o descripción"
+              placeholder="Nombre de campaña o contacto"
             />
           </div>
         </div>

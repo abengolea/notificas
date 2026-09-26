@@ -204,7 +204,8 @@ export function createFirestoreMarketingRepositories(): MarketingRepositories {
       } else {
         q = q.where("workspaceId", "==", workspaceId);
       }
-      q = applyCursor(q, filters.cursor, "updatedAt").limit(limit + 1);
+      const scan = filters.query?.trim() ? Math.max(limit + 1, 500) : limit + 1;
+      q = applyCursor(q, filters.cursor, "updatedAt").limit(scan);
       const snap = await q.get();
       const rows = snap.docs
         .map((d) => hydrateContact(fromFirestoreDocument(d.id, d.data())))
@@ -213,6 +214,11 @@ export function createFirestoreMarketingRepositories(): MarketingRepositories {
           if ((c.workspaceId || DEFAULT_MARKETING_WORKSPACE_ID) !== workspaceId) return false;
           if (filters.stage && c.stage !== filters.stage) return false;
           if (filters.commercialStageId && c.commercialStageId !== filters.commercialStageId) return false;
+          if (filters.query?.trim()) {
+            const query = filters.query.trim().toLowerCase();
+            const hay = `${c.name || ""} ${c.email || ""} ${c.company || ""} ${c.title || ""}`.toLowerCase();
+            if (!hay.includes(query)) return false;
+          }
           return true;
         });
       return asPage(rows, limit, (r) => r.updatedAt || undefined);
@@ -584,7 +590,10 @@ export function createFirestoreMarketingRepositories(): MarketingRepositories {
       );
       if (filters.query?.trim()) {
         const query = filters.query.trim().toLowerCase();
-        rows = rows.filter((row) => row.name.toLowerCase().includes(query));
+        rows = rows.filter((row) => {
+          const hay = `${row.name} ${row.description || ""}`.toLowerCase();
+          return hay.includes(query);
+        });
       }
       return asPage(rows, size, (row) => row.updatedAt);
     },
@@ -636,6 +645,7 @@ export function createFirestoreMarketingRepositories(): MarketingRepositories {
       let q: FirebaseFirestore.Query = col(MARKETING_LINKEDIN_CAMPAIGN_MEMBERS)
         .where("workspaceId", "==", workspaceId);
       if (filters.campaignId) q = q.where("campaignId", "==", filters.campaignId);
+      if (filters.contactId) q = q.where("contactId", "==", filters.contactId);
       if (filters.status) q = q.where("status", "==", filters.status);
       if (filters.dueBefore) {
         if (!filters.status) {
@@ -645,6 +655,7 @@ export function createFirestoreMarketingRepositories(): MarketingRepositories {
             "connection_sent",
             "connected",
             "message_ready",
+            "message_drafted",
             "message_sent",
             "follow_up_due",
             "follow_up_sent",

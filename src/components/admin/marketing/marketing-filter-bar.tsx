@@ -126,7 +126,7 @@ export function MarketingFilterBar({
             id="mkt-filter-q"
             value={values.q}
             onChange={(e) => patch({ q: e.target.value })}
-            placeholder="Nombre, asunto, empresa, email"
+            placeholder="Nombre, asunto, contacto, email"
           />
         </div>
       ) : null}

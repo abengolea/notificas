@@ -198,12 +198,11 @@ export function createMemoryMarketingRepositories(): MarketingRepositories {
       if (filters.stage) rows = rows.filter((c) => c.stage === filters.stage);
       if (filters.query?.trim()) {
         const q = filters.query.trim().toLowerCase();
-        rows = rows.filter(
-          (c) =>
-            c.email === q ||
-            c.emailKey === q ||
-            (c.name || "").toLowerCase().includes(q),
-        );
+        rows = rows.filter((c) => {
+          if (c.email === q || c.emailKey === q) return true;
+          const hay = `${c.name || ""} ${c.company || ""} ${c.title || ""}`.toLowerCase();
+          return hay.includes(q);
+        });
       }
       return paginate(rows, (c) => c.updatedAt, filters.cursor, clampMarketingLimit(filters.limit));
     },
@@ -504,7 +503,10 @@ export function createMemoryMarketingRepositories(): MarketingRepositories {
       if (filters.countryCode) rows = rows.filter((d) => d.countryCode === filters.countryCode);
       if (filters.query?.trim()) {
         const q = filters.query.trim().toLowerCase();
-        rows = rows.filter((d) => d.name.toLowerCase().includes(q));
+        rows = rows.filter((d) => {
+          const hay = `${d.name} ${d.description || ""}`.toLowerCase();
+          return hay.includes(q);
+        });
       }
       return paginate(rows, (d) => d.updatedAt, filters.cursor, clampMarketingLimit(filters.limit));
     },
@@ -538,6 +540,7 @@ export function createMemoryMarketingRepositories(): MarketingRepositories {
     async list(workspaceId, filters) {
       let rows = [...linkedInCampaignMembers.values()].filter((d) => d.workspaceId === workspaceId);
       if (filters.campaignId) rows = rows.filter((d) => d.campaignId === filters.campaignId);
+      if (filters.contactId) rows = rows.filter((d) => d.contactId === filters.contactId);
       if (filters.status) rows = rows.filter((d) => d.status === filters.status);
       if (filters.dueBefore) {
         rows = rows.filter((d) => Boolean(d.nextActionAt && d.nextActionAt <= filters.dueBefore!));

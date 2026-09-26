@@ -65,9 +65,12 @@ export type CampaignAdminFilters = {
   listId?: string;
   stage?: string;
   archived?: string;
+  matchedListIds?: string[];
+  matchedCampaignIds?: string[];
 };
 
 export type CampaignFilterable = {
+  id?: unknown;
   name?: unknown;
   subject?: unknown;
   listName?: unknown;
@@ -189,7 +192,13 @@ export function campaignMatchesAdminFilters(camp: CampaignFilterable, filters: C
   const q = asText(filters.q).toLowerCase();
   if (q) {
     const blob = `${asText(camp.name)} ${asText(camp.subject)} ${asText(camp.listName)}`.toLowerCase();
-    if (!blob.includes(q)) return false;
+    const listHit = Boolean(
+      filters.matchedListIds?.length && filters.matchedListIds.includes(asText(camp.listId)),
+    );
+    const idHit = Boolean(
+      filters.matchedCampaignIds?.length && filters.matchedCampaignIds.includes(asText(camp.id)),
+    );
+    if (!blob.includes(q) && !listHit && !idHit) return false;
   }
   const country = asText(filters.country).toUpperCase();
   if (country && country !== "ALL" && isMarketingCountryCode(country)) {
