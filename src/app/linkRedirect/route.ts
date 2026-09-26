@@ -4,8 +4,10 @@ import {
   isLinkPreviewCrawler,
   isReaderCtaQuery,
   publicReaderOriginFromHeaders,
+  readerPathFromQuery,
   readerUrlOnRequestOrigin,
   rewriteLocationToRequestOrigin,
+  whatsappReaderInterstitialHtml,
 } from "@/lib/link-redirect-public";
 
 /**
@@ -53,11 +55,19 @@ export async function GET(request: NextRequest) {
   const origin = publicReaderOriginFromHeaders(request.headers);
 
   if (isReaderCtaQuery(params)) {
-    const readerUrl = readerUrlOnRequestOrigin(origin, params);
     if (!isLinkPreviewCrawler(request.headers.get("user-agent"))) {
       trackClickInBackground(request);
     }
-    return NextResponse.redirect(readerUrl, 302);
+    if (params.get("src") === "whatsapp") {
+      return new NextResponse(whatsappReaderInterstitialHtml(readerPathFromQuery(params)), {
+        status: 200,
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+        },
+      });
+    }
+    return NextResponse.redirect(readerUrlOnRequestOrigin(origin, params), 302);
   }
 
   const internal = `${internalLinkRedirectOrigin()}${request.nextUrl.search}`;

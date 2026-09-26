@@ -9,6 +9,7 @@ import {
   readerResponseOrigin,
   readerUrlOnRequestOrigin,
   rewriteLocationToRequestOrigin,
+  whatsappReaderInterstitialHtml,
 } from "./link-redirect-public";
 
 function params(init: Record<string, string>) {
@@ -112,6 +113,13 @@ test("sin host público usable, el reader cae en .com.ar", () => {
     },
   };
   assert.equal(publicReaderOriginFromHeaders(headers), "https://notificas.com.ar");
+});
+
+test("el puente de WhatsApp es HTML 200 con enlace relativo al reader", () => {
+  const html = whatsappReaderInterstitialHtml("/reader/mail-1?k=secret&from=whatsapp");
+  assert.match(html, /href="\/reader\/mail-1\?k=secret&amp;from=whatsapp"/);
+  assert.match(html, /location\.replace\("\/reader\/mail-1\?k=secret&from=whatsapp"\)/);
+  assert.doesNotMatch(html, /hosted\.app|0\.0\.0\.0/);
 });
 
 test("el path del reader lleva from=whatsapp o from=email", () => {

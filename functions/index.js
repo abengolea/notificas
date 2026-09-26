@@ -26,7 +26,7 @@ const {
   applyEmailBounce,
   applyEmailBounceFromPayload,
 } = require('./email-bounce');
-const { isLinkPreviewCrawler, readerRedirectOrigin } = require('./link-redirect-origin');
+const { isLinkPreviewCrawler, readerRedirectOrigin, PUBLIC_READER_ORIGIN } = require('./link-redirect-origin');
 
 initializeApp();
 
@@ -772,7 +772,7 @@ exports.sendEmail = onRequest(
         waDigits && waDigits.length >= 10
           ? `&r=${encodeURIComponent(base64UrlEncode(waDigits))}`
           : '';
-      const readerUrlWa = `${APP_HOSTING_URL}/linkRedirect?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}&src=whatsapp${rParam}`;
+      const readerUrlWa = `${PUBLIC_READER_ORIGIN}/linkRedirect?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}&src=whatsapp${rParam}`;
       const recipientPhone = emailData.recipientPhone;
       if (!recipientPhone) {
         await docRef.update({
@@ -1227,7 +1227,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
                 waDigits && waDigits.length >= 10
                   ? `&r=${encodeURIComponent(base64UrlEncode(waDigits))}`
                   : '';
-              return `${APP_HOSTING_URL}/linkRedirect?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}&src=whatsapp${rParam}`;
+              return `${PUBLIC_READER_ORIGIN}/linkRedirect?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}&src=whatsapp${rParam}`;
             })();
             const waRecipient = formatWhatsAppRecipientDisplay(emailData.recipientName);
             const waSender = formatWhatsAppSenderDisplay(emailData.senderName || from, from);
