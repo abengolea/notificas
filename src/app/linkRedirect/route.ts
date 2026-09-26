@@ -4,11 +4,10 @@ import {
   isLinkPreviewCrawler,
   isReaderCtaQuery,
   publicReaderOriginFromHeaders,
-  readerPathFromQuery,
   readerUrlOnRequestOrigin,
   rewriteLocationToRequestOrigin,
-  whatsappReaderInterstitialHtml,
 } from "@/lib/link-redirect-public";
+import { whatsappCtaPageResponse } from "@/lib/whatsapp-read-http";
 
 /**
  * Enlace público bajo el dominio de la app (p. ej. notificas.com.ar/linkRedirect).
@@ -59,16 +58,7 @@ export async function GET(request: NextRequest) {
       trackClickInBackground(request);
     }
     if (params.get("src") === "whatsapp") {
-      return new NextResponse(
-        whatsappReaderInterstitialHtml(readerPathFromQuery(params), origin),
-        {
-          status: 200,
-          headers: {
-            "content-type": "text/html; charset=utf-8",
-            "cache-control": "no-store",
-          },
-        },
-      );
+      return whatsappCtaPageResponse(request, params.get("msg") || "", params.get("k") || "");
     }
     return NextResponse.redirect(readerUrlOnRequestOrigin(origin, params), 302);
   }

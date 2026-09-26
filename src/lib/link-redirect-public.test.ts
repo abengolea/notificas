@@ -9,6 +9,7 @@ import {
   readerResponseOrigin,
   readerUrlOnRequestOrigin,
   rewriteLocationToRequestOrigin,
+  whatsappPublicReadUrl,
   whatsappReaderInterstitialHtml,
 } from "./link-redirect-public";
 
@@ -113,6 +114,13 @@ test("sin host público usable, el reader cae en .com.ar", () => {
     },
   };
   assert.equal(publicReaderOriginFromHeaders(headers), "https://notificas.com.ar");
+});
+
+test("el link de WhatsApp es corto y con marca, no hosted.app", () => {
+  assert.equal(
+    whatsappPublicReadUrl("cYpgLaGAwwSvlvQ7UlG6", "d5634e2a3981e6e592e5c02802297ad4"),
+    "https://notificas.com.ar/n/cYpgLaGAwwSvlvQ7UlG6?k=d5634e2a3981e6e592e5c02802297ad4",
+  );
 });
 
 test("el puente de WhatsApp es HTML quieto: botón al reader público, sin salto automático", () => {

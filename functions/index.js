@@ -26,7 +26,7 @@ const {
   applyEmailBounce,
   applyEmailBounceFromPayload,
 } = require('./email-bounce');
-const { isLinkPreviewCrawler, readerRedirectOrigin, PUBLIC_READER_ORIGIN } = require('./link-redirect-origin');
+const { isLinkPreviewCrawler, readerRedirectOrigin, whatsappPublicReadUrl } = require('./link-redirect-origin');
 
 initializeApp();
 
@@ -767,12 +767,7 @@ exports.sendEmail = onRequest(
 
     // Campaña WhatsApp-only: enviar WA primero; DELIVERED solo si Meta aceptó.
     if (emailData.waOnly === true) {
-      const waDigits = formatPhoneForWhatsApp(emailData.recipientPhone);
-      const rParam =
-        waDigits && waDigits.length >= 10
-          ? `&r=${encodeURIComponent(base64UrlEncode(waDigits))}`
-          : '';
-      const readerUrlWa = `${PUBLIC_READER_ORIGIN}/linkRedirect?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}&src=whatsapp${rParam}`;
+      const readerUrlWa = whatsappPublicReadUrl(docId, trackingToken);
       const recipientPhone = emailData.recipientPhone;
       if (!recipientPhone) {
         await docRef.update({
@@ -1221,14 +1216,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
             console.warn('⚠️', whatsappError);
           } else {
             const waTpl = resolveCampaignWhatsAppTemplate(emailData);
-            const whatsappLink = (() => {
-              const waDigits = formatPhoneForWhatsApp(recipientPhone);
-              const rParam =
-                waDigits && waDigits.length >= 10
-                  ? `&r=${encodeURIComponent(base64UrlEncode(waDigits))}`
-                  : '';
-              return `${PUBLIC_READER_ORIGIN}/linkRedirect?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}&src=whatsapp${rParam}`;
-            })();
+            const whatsappLink = whatsappPublicReadUrl(docId, trackingToken);
             const waRecipient = formatWhatsAppRecipientDisplay(emailData.recipientName);
             const waSender = formatWhatsAppSenderDisplay(emailData.senderName || from, from);
             const resultWA = await sendWhatsAppNotification({

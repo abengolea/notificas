@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   isLinkPreviewCrawler,
   readerRedirectOrigin,
+  whatsappPublicReadUrl,
 } = require('./link-redirect-origin');
 
 function req(headers) {
@@ -27,6 +28,13 @@ test('sin host público, el reader tampoco cae en hosted.app', () => {
     'https://notificas--notificas-f9953.us-central1.hosted.app',
   );
   assert.equal(origin, 'https://notificas.com.ar');
+});
+
+test('el link público de WhatsApp usa notificas.com.ar/n y no hosted.app', () => {
+  assert.equal(
+    whatsappPublicReadUrl('abc', 'tok'),
+    'https://notificas.com.ar/n/abc?k=tok',
+  );
 });
 
 test('el crawler de vista previa de WhatsApp no es un pulso real', () => {
