@@ -94,29 +94,31 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-/** Página 200 para el WebView de WhatsApp: no depende de que el celu siga un 302. */
+/**
+ * Página quieta para el WebView de WhatsApp.
+ * Un location.replace o meta-refresh inmediato en algunos celus abre en blanco
+ * y WhatsApp cierra el visor. El destinatario tiene que tocar el botón.
+ */
 export function whatsappReaderInterstitialHtml(readerPath: string): string {
   const path = readerPath.startsWith("/") ? readerPath : `/${readerPath}`;
   const href = escapeHtml(path);
-  const js = JSON.stringify(path);
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="0;url=${href}">
-  <title>Abriendo notificación</title>
+  <title>Abrir notificación</title>
   <style>
     body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
       font-family:system-ui,sans-serif;background:#f4f1ea;color:#1a1a1a;text-align:center;padding:24px}
-    a{display:inline-block;margin-top:18px;padding:14px 22px;background:#111;color:#fff;
+    p{margin:0;font-size:16px;line-height:1.4}
+    a{display:inline-block;margin-top:20px;padding:16px 24px;background:#111;color:#fff;
       text-decoration:none;border-radius:8px;font-weight:600}
   </style>
-  <script>location.replace(${js});</script>
 </head>
 <body>
   <main>
-    <p>Abriendo la notificación…</p>
+    <p>La notificación está lista.</p>
     <a href="${href}">Abrir notificación</a>
   </main>
 </body>
