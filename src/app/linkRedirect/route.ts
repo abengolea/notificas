@@ -59,13 +59,16 @@ export async function GET(request: NextRequest) {
       trackClickInBackground(request);
     }
     if (params.get("src") === "whatsapp") {
-      return new NextResponse(whatsappReaderInterstitialHtml(readerPathFromQuery(params)), {
-        status: 200,
-        headers: {
-          "content-type": "text/html; charset=utf-8",
-          "cache-control": "no-store",
+      return new NextResponse(
+        whatsappReaderInterstitialHtml(readerPathFromQuery(params), origin),
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/html; charset=utf-8",
+            "cache-control": "no-store",
+          },
         },
-      });
+      );
     }
     return NextResponse.redirect(readerUrlOnRequestOrigin(origin, params), 302);
   }

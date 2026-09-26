@@ -95,13 +95,18 @@ function escapeHtml(value: string): string {
 }
 
 /**
- * Página quieta para el WebView de WhatsApp.
- * Un location.replace o meta-refresh inmediato en algunos celus abre en blanco
- * y WhatsApp cierra el visor. El destinatario tiene que tocar el botón.
+ * Página quieta para destinatarios de WhatsApp.
+ * No hay salto automático: en una franja de WebViews eso abre en blanco y
+ * WhatsApp cierra el visor. El botón va al reader público y pide navegador
+ * externo (target=_blank), que es el camino que sí abre en esos celus.
  */
-export function whatsappReaderInterstitialHtml(readerPath: string): string {
+export function whatsappReaderInterstitialHtml(
+  readerPath: string,
+  publicOrigin = PUBLIC_READER_ORIGIN,
+): string {
   const path = readerPath.startsWith("/") ? readerPath : `/${readerPath}`;
-  const href = escapeHtml(path);
+  const origin = String(publicOrigin || PUBLIC_READER_ORIGIN).replace(/\/$/, "");
+  const href = escapeHtml(`${origin}${path}`);
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -111,15 +116,15 @@ export function whatsappReaderInterstitialHtml(readerPath: string): string {
   <style>
     body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
       font-family:system-ui,sans-serif;background:#f4f1ea;color:#1a1a1a;text-align:center;padding:24px}
-    p{margin:0;font-size:16px;line-height:1.4}
+    p{margin:0;font-size:16px;line-height:1.45;max-width:22rem}
     a{display:inline-block;margin-top:20px;padding:16px 24px;background:#111;color:#fff;
       text-decoration:none;border-radius:8px;font-weight:600}
   </style>
 </head>
 <body>
   <main>
-    <p>La notificación está lista.</p>
-    <a href="${href}">Abrir notificación</a>
+    <p>Toque para leer la notificación.</p>
+    <a href="${href}" target="_blank" rel="noopener">Abrir notificación</a>
   </main>
 </body>
 </html>`;

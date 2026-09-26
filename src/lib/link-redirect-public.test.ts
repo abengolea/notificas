@@ -115,9 +115,13 @@ test("sin host público usable, el reader cae en .com.ar", () => {
   assert.equal(publicReaderOriginFromHeaders(headers), "https://notificas.com.ar");
 });
 
-test("el puente de WhatsApp es HTML quieto: botón, sin salto automático", () => {
+test("el puente de WhatsApp es HTML quieto: botón al reader público, sin salto automático", () => {
   const html = whatsappReaderInterstitialHtml("/reader/mail-1?k=secret&from=whatsapp");
-  assert.match(html, /href="\/reader\/mail-1\?k=secret&amp;from=whatsapp"/);
+  assert.match(
+    html,
+    /href="https:\/\/notificas\.com\.ar\/reader\/mail-1\?k=secret&amp;from=whatsapp"/,
+  );
+  assert.match(html, /target="_blank"/);
   assert.match(html, /Abrir notificación/);
   assert.doesNotMatch(html, /location\.replace|http-equiv="refresh"/);
   assert.doesNotMatch(html, /hosted\.app|0\.0\.0\.0/);
