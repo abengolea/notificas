@@ -10,9 +10,11 @@
  * FINISH: el HTML del preview es el HTML enviado, menos pixel y wrapping de clics.
  */
 
+import { countryName } from "./countries";
 import {
   applyMergeFields,
   buildMergeFields,
+  type MergeFields,
   PREVIEW_SAMPLE_CONTACT,
 } from "./merge-fields";
 
@@ -156,6 +158,23 @@ export function textToBenefits(value: string): CampaignEmailBenefit[] {
 
 export function applyCampaignMergeFields(template: string, fields: Record<string, string>): string {
   return applyMergeFields(template, fields);
+}
+
+/** Mismos campos que el envío real a partir de un contacto de audiencia. */
+export function mergeFieldsForCampaignRecipient(contact: {
+  name?: string | null;
+  company?: string | null;
+  title?: string | null;
+  country?: string | null;
+  email?: string | null;
+}): MergeFields {
+  return buildMergeFields({
+    name: contact.name,
+    company: contact.company,
+    title: contact.title,
+    countryName: countryName(String(contact.country || "")) || String(contact.country || ""),
+    email: contact.email,
+  });
 }
 
 export function previewCampaignEmail(

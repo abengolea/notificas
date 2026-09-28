@@ -7,7 +7,13 @@ import {
   firstNameFromFullName,
   hasUnresolvedMergePlaceholders,
 } from "./merge-fields";
-import { blankCampaignEmailContent, persistCampaignEmail, previewCampaignEmail } from "./campaign-email";
+import {
+  applyCampaignMergeFields,
+  blankCampaignEmailContent,
+  mergeFieldsForCampaignRecipient,
+  persistCampaignEmail,
+  previewCampaignEmail,
+} from "./campaign-email";
 
 test("firstName usa el primer token y queda vacío si no hay nombre", () => {
   assert.equal(firstNameFromFullName("César Pérez"), "César");
@@ -146,4 +152,62 @@ test("preview y assemble personalizan HTML y texto con un destinatario de muestr
   assert.match(assembled.text, /Gerente en YPF S\.A\./);
   assert.doesNotMatch(assembled.html, /\{\{\s*firstName\s*\}\}/);
   assert.doesNotMatch(assembled.text, /\{\{\s*firstName\s*\}\}/);
+});
+
+test("Caso 1: template Hola {{firstName}} con empresa real", () => {
+  const fields = mergeFieldsForCampaignRecipient({
+    name: "Laura Mora Bogantes",
+    company: "BMI Seguros Costa Rica",
+  });
+  const out = applyMergeFields("Hola {{firstName}}, trabajamos con {{companyName}}.", fields);
+  assert.equal(out, "Hola Laura, trabajamos con BMI Seguros Costa Rica.");
+});
+
+test("Caso 2: asunto con firstName y companyName", () => {
+  const fields = mergeFieldsForCampaignRecipient({
+    name: "Edwin Alexander Peña Sandoval",
+    company: "SISA",
+  });
+  const subject = applyCampaignMergeFields(
+    "{{firstName}}, una idea para Operaciones en {{companyName}}",
+    fields,
+  );
+  assert.equal(subject, "Edwin, una idea para Operaciones en SISA");
+});
+
+test("Caso 3: contacto sin nombre deja saludo limpio", () => {
+  const fields = mergeFieldsForCampaignRecipient({ name: "", company: "Acme" });
+  assert.equal(applyMergeFields("Hola {{firstName}},", fields), "Hola,");
+});
+
+test("Caso 4: preview con contacto real no usa César ni YPF", () => {
+  const content = blankCampaignEmailContent({
+    introduction: "Hola {{firstName}},",
+    paragraphs: ["Para {{companyName}}."],
+  });
+  const fields = mergeFieldsForCampaignRecipient({
+    name: "Laura Mora Bogantes",
+    company: "BMI Seguros Costa Rica",
+  });
+  const preview = previewCampaignEmail(content, fields);
+  assert.match(preview.html, /Laura/);
+  assert.match(preview.html, /BMI Seguros Costa Rica/);
+  assert.doesNotMatch(preview.html, /César/);
+  assert.doesNotMatch(preview.html, /YPF/);
+});
+
+test("Caso 5: HTML y texto del preview comparten merge fields", () => {
+  const content = blankCampaignEmailContent({
+    introduction: "Hola {{firstName}},",
+    paragraphs: ["{{companyName}}"],
+  });
+  const fields = mergeFieldsForCampaignRecipient({
+    name: "Nícida Aguilar",
+    company: "ASSA Costa Rica",
+  });
+  const preview = previewCampaignEmail(content, fields);
+  assert.match(preview.html, /Hola Nícida,/);
+  assert.match(preview.text, /Hola Nícida,/);
+  assert.match(preview.html, /ASSA Costa Rica/);
+  assert.match(preview.text, /ASSA Costa Rica/);
 });

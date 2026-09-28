@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, Download } from "lucide-react";
@@ -14,6 +14,7 @@ import { countryName } from "@/lib/marketing/countries";
 import { CAMPAIGN_OUTCOME_LABEL, CAMPAIGN_OUTCOMES, sendMatchesOutcome } from "@/lib/marketing/admin-filters";
 import { MarketingCampaignActions } from "./marketing-campaign-actions";
 import { MarketingEmailEditor } from "./marketing-email-editor";
+import { MarketingExactRecipientMessage } from "./marketing-exact-recipient-message";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -147,6 +148,34 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
   const [emailContent, setEmailContent] = useState<CampaignEmailContent>(blankCampaignEmailContent());
   const [confirmSend, setConfirmSend] = useState(false);
   const [sendOutcome, setSendOutcome] = useState("all");
+  const [exactRecipientId, setExactRecipientId] = useState<string | null>(null);
+
+  const eligibleAudience = useMemo(
+    () => (audience?.contacts || []).filter((c) => c.eligible),
+    [audience],
+  );
+
+  const exactRecipient = useMemo(() => {
+    if (!eligibleAudience.length) return null;
+    return eligibleAudience.find((c) => c.id === exactRecipientId) ?? eligibleAudience[0];
+  }, [eligibleAudience, exactRecipientId]);
+
+  useEffect(() => {
+    if (!eligibleAudience.length) {
+      setExactRecipientId(null);
+      return;
+    }
+    setExactRecipientId((prev) =>
+      prev && eligibleAudience.some((c) => c.id === prev) ? prev : eligibleAudience[0].id,
+    );
+  }, [eligibleAudience]);
+
+  function focusExactRecipientMessage(contactId: string) {
+    setExactRecipientId(contactId);
+    requestAnimationFrame(() => {
+      document.getElementById("exact-recipient-message")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/admin/marketing/campaigns/${campaignId}`, { credentials: "include" });
@@ -154,7 +183,18 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
     if (!res.ok) throw new Error(data.error || "Error");
     setCampaign(data.campaign);
     setSends(data.sends || []);
-    setAudience(data.audience || null);
+    const rawAudience = data.audience as Audience | null;
+    setAudience(
+      rawAudience
+        ? {
+            ...rawAudience,
+            contacts: (rawAudience.contacts || []).map((c) => ({
+              ...c,
+              title: c.title ?? "",
+            })),
+          }
+        : null,
+    );
     setSubject(String(data.campaign?.subject || ""));
     const parsed = parseCampaignEmailContent(data.campaign?.emailContent);
     setEmailContent(
@@ -406,6 +446,7 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
               total={audience.total}
               eligible={audience.eligible}
               skipped={audience.skipped}
+              onViewMessage={focusExactRecipientMessage}
             />
           ) : (
             <p className="text-sm text-muted-foreground">Todavía no hay destinatarios cargados en esta campaña.</p>
@@ -427,11 +468,23 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
             subject={subject}
             onSubjectChange={setSubject}
             campaignId={campaignId}
+            audienceRecipient={exactRecipient}
             onTestResult={(ok, message) => toast({ title: message, variant: ok ? "default" : "destructive" })}
           />
           <Button type="button" variant="outline" onClick={() => void saveCopy()} disabled={busy !== null}>
             {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar texto"}
           </Button>
+          {eligibleAudience.length > 0 ? (
+            <div id="exact-recipient-message">
+              <MarketingExactRecipientMessage
+                subject={subject}
+                emailContent={emailContent}
+                contacts={audience?.contacts || []}
+                selectedContactId={exactRecipient?.id ?? null}
+                onSelectedContactIdChange={setExactRecipientId}
+              />
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="space-y-3 rounded-lg border bg-background p-4">

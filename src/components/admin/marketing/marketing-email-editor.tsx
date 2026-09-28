@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { MarketingEmailPreview } from "./marketing-email-preview";
+import type { PreviewContact } from "./marketing-recipient-preview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +27,7 @@ export function MarketingEmailEditor({
   onSubjectChange,
   campaignId,
   onTestResult,
+  audienceRecipient,
 }: {
   value: CampaignEmailContent;
   onChange: (next: CampaignEmailContent) => void;
@@ -33,6 +35,7 @@ export function MarketingEmailEditor({
   onSubjectChange: (value: string) => void;
   campaignId?: string;
   onTestResult?: (ok: boolean, message: string) => void;
+  audienceRecipient?: PreviewContact | null;
 }) {
   const [testTo, setTestTo] = useState(MARKETING_TEST_EMAIL_DEFAULT);
   const [testing, setTesting] = useState(false);
@@ -174,7 +177,10 @@ export function MarketingEmailEditor({
           </div>
         </div>
       </div>
-      <MarketingEmailPreview content={value.title.trim() ? value : { ...blankCampaignEmailContent(), ...value, title: value.title || "Notificas" }} />
+      <MarketingEmailPreview
+        content={value.title.trim() ? value : { ...blankCampaignEmailContent(), ...value, title: value.title || "Notificas" }}
+        audienceRecipient={audienceRecipient}
+      />
     </div>
   );
 }

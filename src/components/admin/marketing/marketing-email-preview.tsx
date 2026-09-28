@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   type CampaignEmailContent,
+  mergeFieldsForCampaignRecipient,
   previewCampaignEmail,
 } from "@/lib/marketing/campaign-email";
 import {
@@ -10,6 +11,7 @@ import {
   PREVIEW_SAMPLE_CONTACT,
   PREVIEW_SAMPLE_CONTACT_WITHOUT_NAME,
 } from "@/lib/marketing/merge-fields";
+import type { PreviewContact } from "./marketing-recipient-preview";
 
 type PreviewMode = "desktop" | "mobile";
 type SampleRecipient = "named" | "unnamed";
@@ -28,24 +30,37 @@ const UNNAMED_FIELDS = buildMergeFields(PREVIEW_SAMPLE_CONTACT_WITHOUT_NAME);
 export function MarketingEmailPreview({
   content,
   className,
+  audienceRecipient,
 }: {
   content: CampaignEmailContent;
   className?: string;
+  /** Primer destinatario elegible (o el elegido) de la campaña; desactiva César/YPF de muestra. */
+  audienceRecipient?: PreviewContact | null;
 }) {
   const [mode, setMode] = useState<PreviewMode>("desktop");
   const [sample, setSample] = useState<SampleRecipient>("named");
   const [blockImages, setBlockImages] = useState(false);
   const [noFonts, setNoFonts] = useState(false);
-  const fields = sample === "named" ? NAMED_FIELDS : UNNAMED_FIELDS;
+
+  const useRealAudience = Boolean(audienceRecipient);
+  const fields = useRealAudience
+    ? mergeFieldsForCampaignRecipient(audienceRecipient!)
+    : sample === "named"
+      ? NAMED_FIELDS
+      : UNNAMED_FIELDS;
+
   const html = useMemo(() => {
     let rendered = previewCampaignEmail(content, fields).html;
     if (noFonts) rendered = withoutExternalFonts(rendered);
     if (blockImages) rendered = withBlockedImages(rendered);
     return rendered;
   }, [blockImages, content, fields, noFonts]);
+
   const width = mode === "mobile" ? 375 : 600;
-  const sampleLabel =
-    sample === "named"
+
+  const sampleLabel = useRealAudience
+    ? `${audienceRecipient!.name || "Sin nombre"} · ${audienceRecipient!.company || audienceRecipient!.email}`
+    : sample === "named"
       ? `${PREVIEW_SAMPLE_CONTACT.name} · ${PREVIEW_SAMPLE_CONTACT.company}`
       : `Sin nombre · ${PREVIEW_SAMPLE_CONTACT_WITHOUT_NAME.company}`;
 
@@ -79,26 +94,33 @@ export function MarketingEmailPreview({
           </label>
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          className={`rounded-md border px-3 py-1.5 text-sm ${sample === "named" ? "bg-foreground text-background" : "bg-background"}`}
-          onClick={() => setSample("named")}
-        >
-          Con nombre
-        </button>
-        <button
-          type="button"
-          className={`rounded-md border px-3 py-1.5 text-sm ${sample === "unnamed" ? "bg-foreground text-background" : "bg-background"}`}
-          onClick={() => setSample("unnamed")}
-        >
-          Sin nombre
-        </button>
-        <p className="text-sm text-muted-foreground">Destinatario de muestra: {sampleLabel}</p>
-      </div>
+      {!useRealAudience ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className={`rounded-md border px-3 py-1.5 text-sm ${sample === "named" ? "bg-foreground text-background" : "bg-background"}`}
+            onClick={() => setSample("named")}
+          >
+            Con nombre
+          </button>
+          <button
+            type="button"
+            className={`rounded-md border px-3 py-1.5 text-sm ${sample === "unnamed" ? "bg-foreground text-background" : "bg-background"}`}
+            onClick={() => setSample("unnamed")}
+          >
+            Sin nombre
+          </button>
+          <p className="text-sm text-muted-foreground">Destinatario de muestra genérico: {sampleLabel}</p>
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">
+          Vista rápida con destinatario real de la campaña: {sampleLabel}
+        </p>
+      )}
       <p className="mt-2 text-sm text-muted-foreground">
-        El preview personaliza el correo con datos de un destinatario de muestra. En el envío real la
-        sustitución se hace por cada contacto, con el mismo motor.
+        {useRealAudience
+          ? "Personalización con el mismo motor que el envío. Para otro contacto usá la sección «Mensaje exacto por destinatario»."
+          : "Sin audiencia cargada se usa un contacto genérico de muestra. Con destinatarios reales el preview toma el primero elegible."}
       </p>
       <div className="mt-3 overflow-auto rounded-lg border bg-[#F4F8FD] p-3">
         <iframe
