@@ -14,7 +14,11 @@ import { countryName } from "@/lib/marketing/countries";
 import { CAMPAIGN_OUTCOME_LABEL, CAMPAIGN_OUTCOMES, sendMatchesOutcome } from "@/lib/marketing/admin-filters";
 import { MarketingCampaignActions } from "./marketing-campaign-actions";
 import { MarketingEmailEditor } from "./marketing-email-editor";
-import { MarketingExactRecipientMessage } from "./marketing-exact-recipient-message";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -179,7 +183,7 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
   function focusExactRecipientMessage(contactId: string) {
     setExactRecipientId(contactId);
     requestAnimationFrame(() => {
-      document.getElementById("exact-recipient-message")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("email-preview-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }
 
@@ -438,35 +442,45 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
       ) : null}
 
       {isDraft ? (
-        <div className="space-y-3 rounded-lg border bg-background p-4">
-          <div>
-            <h4 className="text-sm font-medium">Destinatarios de este envío</h4>
-            <p className="text-sm text-muted-foreground">
-              Subí un CSV. No se usan contactos viejos del CRM salvo que estén en esta lista.
-            </p>
-          </div>
-          <MarketingListUpload requireTaxonomy defaultName={campaign.name} onImported={(list) => void attachList(list.listId)} />
-          {audience && audience.total > 0 ? (
-            <MarketingRecipientPreview
-              contacts={audience.contacts}
-              total={audience.total}
-              eligible={audience.eligible}
-              skipped={audience.skipped}
-              onViewMessage={focusExactRecipientMessage}
-            />
-          ) : (
-            <p className="text-sm text-muted-foreground">Todavía no hay destinatarios cargados en esta campaña.</p>
-          )}
-        </div>
+        <Collapsible defaultOpen={!audience || audience.total === 0} className="rounded-lg border bg-background">
+          <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-muted/30">
+            <div>
+              <h4 className="text-sm font-medium">Destinatarios</h4>
+              <p className="text-xs text-muted-foreground">
+                {audience && audience.total > 0
+                  ? `${audience.eligible} envíos · ${audience.total} en lista`
+                  : "CSV nominado para este envío"}
+              </p>
+            </div>
+            <span className="text-xs text-muted-foreground">Mostrar / ocultar</span>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-3 border-t px-4 pb-4 pt-3">
+            <MarketingListUpload requireTaxonomy defaultName={campaign.name} onImported={(list) => void attachList(list.listId)} />
+            {audience && audience.total > 0 ? (
+              <MarketingRecipientPreview
+                contacts={audience.contacts}
+                total={audience.total}
+                eligible={audience.eligible}
+                skipped={audience.skipped}
+                onViewMessage={focusExactRecipientMessage}
+              />
+            ) : (
+              <p className="text-xs text-muted-foreground">Todavía no hay destinatarios en esta campaña.</p>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
       ) : null}
 
       {isDraft ? (
         <div className="space-y-3 rounded-lg border bg-background p-4">
-          <div>
-            <h4 className="text-sm font-medium">Correo institucional</h4>
-            <p className="text-sm text-muted-foreground">
-              El preview y el envío de prueba usan la misma plantilla que el envío real. La campaña permanece en borrador hasta que confirmes “Enviar campaña”.
-            </p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h4 className="text-sm font-medium">Correo</h4>
+              <p className="text-xs text-muted-foreground">Plantilla + preview personalizado (mismo motor que el envío).</p>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={() => void saveCopy()} disabled={busy !== null}>
+              {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar texto"}
+            </Button>
           </div>
           <MarketingEmailEditor
             value={emailContent}
@@ -475,23 +489,12 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
             onSubjectChange={setSubject}
             campaignId={campaignId}
             audienceRecipient={exactRecipient}
+            audienceContacts={audience?.contacts}
+            selectedContactId={exactRecipient?.id ?? null}
+            onSelectContact={setExactRecipientId}
             unsavedCopy={copyUnsaved}
             onTestResult={(ok, message) => toast({ title: message, variant: ok ? "default" : "destructive" })}
           />
-          <Button type="button" variant="outline" onClick={() => void saveCopy()} disabled={busy !== null}>
-            {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar texto"}
-          </Button>
-          {eligibleAudience.length > 0 ? (
-            <div id="exact-recipient-message">
-              <MarketingExactRecipientMessage
-                subject={subject}
-                emailContent={emailContent}
-                contacts={audience?.contacts || []}
-                selectedContactId={exactRecipient?.id ?? null}
-                onSelectedContactIdChange={setExactRecipientId}
-              />
-            </div>
-          ) : null}
         </div>
       ) : (
         <div className="space-y-3 rounded-lg border bg-background p-4">

@@ -1,13 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { ChevronDown, Loader2 } from "lucide-react";
 import { MarketingEmailPreview } from "./marketing-email-preview";
 import type { PreviewContact } from "./marketing-recipient-preview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   benefitsToText,
   blankCampaignEmailContent,
@@ -28,6 +33,9 @@ export function MarketingEmailEditor({
   campaignId,
   onTestResult,
   audienceRecipient,
+  audienceContacts,
+  selectedContactId,
+  onSelectContact,
   unsavedCopy,
 }: {
   value: CampaignEmailContent;
@@ -37,6 +45,9 @@ export function MarketingEmailEditor({
   campaignId?: string;
   onTestResult?: (ok: boolean, message: string) => void;
   audienceRecipient?: PreviewContact | null;
+  audienceContacts?: PreviewContact[];
+  selectedContactId?: string | null;
+  onSelectContact?: (id: string) => void;
   unsavedCopy?: boolean;
 }) {
   const [testTo, setTestTo] = useState(MARKETING_TEST_EMAIL_DEFAULT);
@@ -87,8 +98,8 @@ export function MarketingEmailEditor({
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <div className="space-y-3">
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.95fr)] xl:items-start">
+      <div className="space-y-2.5">
         <div className="space-y-1">
           <Label htmlFor="camp-subj">Asunto</Label>
           <Input id="camp-subj" required value={subject} onChange={(e) => onSubjectChange(e.target.value)} placeholder="Notificas para {{empresa}}" />
@@ -108,83 +119,102 @@ export function MarketingEmailEditor({
         <div className="space-y-1">
           <Label htmlFor="camp-intro">Bajada / saludo</Label>
           <Input id="camp-intro" value={value.introduction || ""} onChange={(e) => onChange({ ...value, introduction: e.target.value })} placeholder="Hola {{firstName}}," />
-          <p className="text-sm text-muted-foreground">
-            Si falta el nombre, {"Hola {{firstName}},"} queda {"Hola,"}.
-          </p>
+          <p className="text-[11px] text-muted-foreground">Sin nombre queda {"Hola,"}.</p>
         </div>
         <div className="space-y-1">
           <Label htmlFor="camp-paragraphs">Párrafos</Label>
           <Textarea
             id="camp-paragraphs"
             required
-            rows={10}
+            rows={7}
             value={paragraphsToText(value.paragraphs)}
             onChange={(e) => onChange({ ...value, paragraphs: textToParagraphs(e.target.value) })}
             className="font-sans text-sm"
           />
-          <p className="text-sm text-muted-foreground">
-            Separá párrafos con una línea vacía. Variables: {MERGE_FIELD_HINT}
+          <p className="text-[11px] text-muted-foreground">
+            Párrafos: línea vacía entre bloques. {MERGE_FIELD_HINT}
           </p>
         </div>
-        <div className="space-y-1">
-          <div className="flex items-center justify-between gap-2">
-            <Label htmlFor="camp-benefits">Casos de uso</Label>
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-auto px-2 py-1 text-sm"
-              onClick={() => onChange({ ...value, benefits: OILFIELD_USE_CASES })}
-            >
-              Usar casos Vaca Muerta
-            </Button>
-          </div>
-          <Textarea
-            id="camp-benefits"
-            rows={7}
-            value={benefitsToText(value.benefits)}
-            onChange={(e) => onChange({ ...value, benefits: textToBenefits(e.target.value) })}
-            className="font-sans text-sm"
-          />
-          <p className="text-sm text-muted-foreground">Un caso por línea.</p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1">
-            <Label htmlFor="camp-cta">Botón</Label>
-            <Input id="camp-cta" value={value.callToActionLabel || ""} onChange={(e) => onChange({ ...value, callToActionLabel: e.target.value })} />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="camp-cta-url">URL del botón</Label>
-            <Input id="camp-cta-url" value={value.callToActionUrl || ""} onChange={(e) => onChange({ ...value, callToActionUrl: e.target.value })} />
-          </div>
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="camp-why">Por qué recibió este correo</Label>
-          <Textarea id="camp-why" rows={2} value={value.receivedWhy || ""} onChange={(e) => onChange({ ...value, receivedWhy: e.target.value })} className="font-sans text-sm" />
-        </div>
-        <div className="rounded-lg border bg-muted/30 p-3">
-          <p className="text-sm font-medium">Enviar prueba</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Esto no envía la campaña. El correo de prueba usa el mismo HTML institucional y llega a la dirección indicada.
-          </p>
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <Collapsible>
+          <CollapsibleTrigger className="flex w-full items-center gap-1 rounded-md border px-2 py-1.5 text-xs font-medium hover:bg-muted/40">
+            <ChevronDown className="size-3.5" />
+            Casos de uso, botón y pie legal
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-2 space-y-2">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="camp-benefits" className="text-xs">
+                  Casos de uso
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-auto px-2 py-0.5 text-xs"
+                  onClick={() => onChange({ ...value, benefits: OILFIELD_USE_CASES })}
+                >
+                  Vaca Muerta
+                </Button>
+              </div>
+              <Textarea
+                id="camp-benefits"
+                rows={4}
+                value={benefitsToText(value.benefits)}
+                onChange={(e) => onChange({ ...value, benefits: textToBenefits(e.target.value) })}
+                className="font-sans text-sm"
+              />
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label htmlFor="camp-cta" className="text-xs">
+                  Botón
+                </Label>
+                <Input id="camp-cta" value={value.callToActionLabel || ""} onChange={(e) => onChange({ ...value, callToActionLabel: e.target.value })} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="camp-cta-url" className="text-xs">
+                  URL del botón
+                </Label>
+                <Input id="camp-cta-url" value={value.callToActionUrl || ""} onChange={(e) => onChange({ ...value, callToActionUrl: e.target.value })} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="camp-why" className="text-xs">
+                Por qué recibió este correo
+              </Label>
+              <Textarea id="camp-why" rows={2} value={value.receivedWhy || ""} onChange={(e) => onChange({ ...value, receivedWhy: e.target.value })} className="font-sans text-sm" />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+        <Collapsible>
+          <CollapsibleTrigger className="flex w-full items-center gap-1 rounded-md border px-2 py-1.5 text-xs font-medium hover:bg-muted/40">
+            <ChevronDown className="size-3.5" />
+            Enviar prueba a mi correo
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-2 flex flex-col gap-2 sm:flex-row">
             <Input
               aria-label="Dirección de prueba"
               value={testTo}
               onChange={(e) => setTestTo(e.target.value)}
               type="email"
+              className="h-8 text-sm"
             />
-            <Button type="button" variant="outline" onClick={() => void sendTest()} disabled={testing}>
+            <Button type="button" variant="outline" size="sm" onClick={() => void sendTest()} disabled={testing}>
               {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enviar prueba"}
             </Button>
-          </div>
-        </div>
+          </CollapsibleContent>
+        </Collapsible>
       </div>
-      <MarketingEmailPreview
-        content={value.title.trim() ? value : { ...blankCampaignEmailContent(), ...value, title: value.title || "Notificas" }}
-        subject={subject}
-        audienceRecipient={audienceRecipient}
-        unsavedCopy={unsavedCopy}
-      />
+      <div className="xl:sticky xl:top-3 xl:max-h-[calc(100vh-1.5rem)] xl:overflow-y-auto">
+        <MarketingEmailPreview
+          content={value.title.trim() ? value : { ...blankCampaignEmailContent(), ...value, title: value.title || "Notificas" }}
+          subject={subject}
+          audienceRecipient={audienceRecipient}
+          audienceContacts={audienceContacts}
+          selectedContactId={selectedContactId}
+          onSelectContact={onSelectContact}
+          unsavedCopy={unsavedCopy}
+        />
+      </div>
     </div>
   );
 }
