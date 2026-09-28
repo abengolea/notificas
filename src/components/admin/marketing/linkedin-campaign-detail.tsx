@@ -54,6 +54,19 @@ import type {
   MarketingLinkedInMessageType,
 } from "@/lib/marketing/domain/types";
 import { useToast } from "@/hooks/use-toast";
+import {
+  buildLinkedInPreparePayload,
+  linkedInActionKindForStatus,
+  linkedInCompleteActionForMember,
+  linkedInPrimaryOutreachField,
+  linkedInResolveOutreachMessage,
+  linkedInWorkBucket,
+  LINKEDIN_OUTREACH_FIELD_LABEL,
+  sortLinkedInCampaignMembersForWork,
+  type LinkedInOutreachFieldKey,
+  type LinkedInWorkBucket,
+} from "@/lib/marketing/linkedin-campaign-workflow";
+import { requestLinkedInExtensionPrepare } from "@/lib/marketing/linkedin-extension-bridge";
 
 type CampaignDetail = {
   campaign: MarketingLinkedInCampaign;
@@ -97,6 +110,37 @@ function formatDate(value?: string | null): string {
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
 }
 
+function memberCopyText(
+  member: MarketingLinkedInCampaignMember,
+  campaign: MarketingLinkedInCampaign,
+): string {
+  const kind = linkedInActionKindForStatus(member.status);
+  if (kind) {
+    return (linkedInResolveOutreachMessage(member, campaign, kind) ?? "").trim();
+  }
+  return (member.message || member.connectionMessage || member.followUpMessage || "").trim();
+}
+
+const OUTREACH_FIELDS: { key: LinkedInOutreachFieldKey; rows: number }[] = [
+  { key: "connectionMessage", rows: 4 },
+  { key: "message", rows: 10 },
+  { key: "followUpMessage", rows: 8 },
+];
+
+const WORK_BUCKET_LABEL: Record<LinkedInWorkBucket, string> = {
+  todo: "Por enviar ahora",
+  pending: "Sin preparar",
+  waiting: "Enviado — en espera",
+  closed: "Cerrados",
+};
+
+function memberRowClass(bucket: LinkedInWorkBucket): string {
+  if (bucket === "todo") return "border-l-4 border-l-primary/70";
+  if (bucket === "waiting") return "opacity-80 bg-muted/15 border-l-4 border-l-transparent";
+  if (bucket === "closed") return "opacity-55 bg-muted/25 border-l-4 border-l-transparent";
+  return "opacity-90 border-l-4 border-l-muted";
+}
+
 function MemberStatusBadge({ status }: { status: MarketingLinkedInMemberStatus }) {
   const className =
     status === "interested"
@@ -109,7 +153,27 @@ function MemberStatusBadge({ status }: { status: MarketingLinkedInMemberStatus }
   return <Badge variant="outline" className={className}>{LINKEDIN_MEMBER_STATUS_LABEL[status]}</Badge>;
 }
 
-function MemberEditor({
+async function patchLinkedInMember(
+  campaignId: string,
+  memberId: string,
+  body: Record<string, unknown>,
+): Promise<void> {
+  const response = await fetch(
+    `/api/admin/marketing/linkedin/campaigns/${campaignId}/members/${memberId}`,
+    {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(typeof result.error === "string" ? result.error : "No se pudo guardar");
+  }
+}
+
+function MemberOutreachMessages({
   campaignId,
   member,
   busy,
@@ -122,67 +186,27 @@ function MemberEditor({
 }) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const [action, setAction] = useState<MarketingLinkedInAction>("connection_sent");
-  const [form, setForm] = useState({
+  const [showAllSteps, setShowAllSteps] = useState(false);
+  const primaryField = linkedInPrimaryOutreachField(member.status);
+  const [messages, setMessages] = useState({
     connectionMessage: member.connectionMessage ?? "",
     message: member.message ?? "",
     followUpMessage: member.followUpMessage ?? "",
-    notes: member.notes ?? "",
-    nextActionAt: toLocalDateTime(member.nextActionAt),
   });
 
-  async function request(url: string, method: "PATCH" | "POST", body: Record<string, unknown>) {
-    const response = await fetch(url, {
-      method,
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+  useEffect(() => {
+    setMessages({
+      connectionMessage: member.connectionMessage ?? "",
+      message: member.message ?? "",
+      followUpMessage: member.followUpMessage ?? "",
     });
-    const result = await response.json();
-    if (!response.ok) throw new Error(typeof result.error === "string" ? result.error : "No se pudo guardar");
-  }
-
-  async function saveMessages() {
-    setSaving(true);
-    try {
-      await request(
-        `/api/admin/marketing/linkedin/campaigns/${campaignId}/members/${member.id}`,
-        "PATCH",
-        {
-          ...form,
-          nextActionAt: toIsoDateTime(form.nextActionAt),
-        },
-      );
-      toast({ title: "Personalización guardada" });
-      await onChanged();
-    } catch (reason) {
-      toast({ title: reason instanceof Error ? reason.message : "No se pudo guardar", variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function recordAction() {
-    setRecording(true);
-    try {
-      await request(
-        `/api/admin/marketing/linkedin/campaigns/${campaignId}/members/${member.id}/actions`,
-        "POST",
-        {
-          action,
-          nextActionAt: toIsoDateTime(form.nextActionAt),
-          notes: form.notes,
-        },
-      );
-      toast({ title: LINKEDIN_ACTION_LABEL[action].replace("Registrar ", "") });
-      await onChanged();
-    } catch (reason) {
-      toast({ title: reason instanceof Error ? reason.message : "No se pudo registrar", variant: "destructive" });
-    } finally {
-      setRecording(false);
-    }
-  }
+  }, [
+    member.id,
+    member.updatedAt,
+    member.connectionMessage,
+    member.message,
+    member.followUpMessage,
+  ]);
 
   async function copyMessage(label: string, value: string) {
     if (!value.trim()) {
@@ -197,38 +221,179 @@ function MemberEditor({
     }
   }
 
+  async function saveMessages() {
+    setSaving(true);
+    try {
+      await patchLinkedInMember(campaignId, member.id, messages);
+      toast({ title: "Mensaje guardado" });
+      await onChanged();
+    } catch (reason) {
+      toast({
+        title: reason instanceof Error ? reason.message : "No se pudo guardar",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function renderField(key: LinkedInOutreachFieldKey, rows: number, emphasized: boolean) {
+    const label = LINKEDIN_OUTREACH_FIELD_LABEL[key];
+    const value = messages[key];
+    return (
+      <div
+        key={key}
+        className={
+          emphasized
+            ? "space-y-2 rounded-md border border-primary/25 bg-background p-3 shadow-sm"
+            : "space-y-2 rounded-md border bg-muted/10 p-3"
+        }
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Label htmlFor={`${member.id}-${key}`} className="text-sm font-medium">
+              {label}
+            </Label>
+            {emphasized ? (
+              <Badge variant="secondary" className="text-xs font-normal">
+                Paso actual para LinkedIn
+              </Badge>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>{value.length} caracteres</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => void copyMessage(label, value)}
+            >
+              <Clipboard className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+              Copiar
+            </Button>
+          </div>
+        </div>
+        <Textarea
+          id={`${member.id}-${key}`}
+          rows={rows}
+          value={value}
+          disabled={busy || saving}
+          className="min-h-[8rem] w-full resize-y font-mono text-sm leading-relaxed"
+          onChange={(event) => setMessages({ ...messages, [key]: event.target.value })}
+        />
+      </div>
+    );
+  }
+
+  const secondaryFields = OUTREACH_FIELDS.filter((field) => field.key !== primaryField);
+
   return (
-    <details className="group rounded-md border bg-muted/20">
-      <summary className="cursor-pointer px-3 py-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        Mensajes y registro manual
+    <div className="space-y-3">
+      {renderField(
+        primaryField,
+        OUTREACH_FIELDS.find((field) => field.key === primaryField)?.rows ?? 10,
+        true,
+      )}
+      {secondaryFields.length > 0 ? (
+        <div className="space-y-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 text-muted-foreground"
+            onClick={() => setShowAllSteps((open) => !open)}
+          >
+            {showAllSteps ? "Ocultar otros pasos de la secuencia" : "Ver y editar conexión / seguimiento"}
+          </Button>
+          {showAllSteps
+            ? secondaryFields.map((field) => renderField(field.key, field.rows, false))
+            : null}
+        </div>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" disabled={busy || saving} onClick={() => void saveMessages()}>
+          {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+          Guardar mensaje
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function MemberManualPanel({
+  campaignId,
+  member,
+  busy,
+  onChanged,
+}: {
+  campaignId: string;
+  member: MarketingLinkedInCampaignMember;
+  busy: boolean;
+  onChanged: () => Promise<void>;
+}) {
+  const { toast } = useToast();
+  const [recording, setRecording] = useState(false);
+  const [action, setAction] = useState<MarketingLinkedInAction>("connection_sent");
+  const [form, setForm] = useState({
+    notes: member.notes ?? "",
+    nextActionAt: toLocalDateTime(member.nextActionAt),
+  });
+
+  useEffect(() => {
+    setForm({
+      notes: member.notes ?? "",
+      nextActionAt: toLocalDateTime(member.nextActionAt),
+    });
+  }, [member.id, member.updatedAt, member.notes, member.nextActionAt]);
+
+  async function recordAction() {
+    setRecording(true);
+    try {
+      const response = await fetch(
+        `/api/admin/marketing/linkedin/campaigns/${campaignId}/members/${member.id}/actions`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action,
+            nextActionAt: toIsoDateTime(form.nextActionAt),
+            notes: form.notes,
+          }),
+        },
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(typeof result.error === "string" ? result.error : "No se pudo registrar");
+      }
+      toast({ title: LINKEDIN_ACTION_LABEL[action].replace("Registrar ", "") });
+      await onChanged();
+    } catch (reason) {
+      toast({ title: reason instanceof Error ? reason.message : "No se pudo registrar", variant: "destructive" });
+    } finally {
+      setRecording(false);
+    }
+  }
+
+  async function saveMeta() {
+    try {
+      await patchLinkedInMember(campaignId, member.id, {
+        notes: form.notes,
+        nextActionAt: toIsoDateTime(form.nextActionAt),
+      });
+      toast({ title: "Notas y fecha guardadas" });
+      await onChanged();
+    } catch (reason) {
+      toast({ title: reason instanceof Error ? reason.message : "No se pudo guardar", variant: "destructive" });
+    }
+  }
+
+  return (
+    <details className="rounded-md border border-dashed bg-muted/10">
+      <summary className="cursor-pointer px-3 py-2 text-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        Notas, próxima acción y registro manual
       </summary>
       <div className="space-y-4 border-t p-3">
-        {[
-          { key: "connectionMessage" as const, label: "Solicitud de conexión", rows: 3 },
-          { key: "message" as const, label: "Mensaje principal", rows: 4 },
-          { key: "followUpMessage" as const, label: "Seguimiento", rows: 4 },
-        ].map((field) => (
-          <div key={field.key} className="space-y-1">
-            <div className="flex items-center justify-between gap-2">
-              <Label htmlFor={`${member.id}-${field.key}`}>{field.label}</Label>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => void copyMessage(field.label, form[field.key])}
-              >
-                <Clipboard className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-                Copiar
-              </Button>
-            </div>
-            <Textarea
-              id={`${member.id}-${field.key}`}
-              rows={field.rows}
-              value={form[field.key]}
-              onChange={(event) => setForm({ ...form, [field.key]: event.target.value })}
-            />
-          </div>
-        ))}
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
             <Label htmlFor={`${member.id}-next-action`}>Próxima acción</Label>
@@ -261,11 +426,10 @@ function MemberEditor({
           />
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={() => void saveMessages()} disabled={busy || saving || recording}>
-            {saving && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />}
-            Guardar mensajes
+          <Button type="button" variant="outline" size="sm" onClick={() => void saveMeta()} disabled={busy || recording}>
+            Guardar notas
           </Button>
-          <Button type="button" onClick={() => void recordAction()} disabled={busy || saving || recording}>
+          <Button type="button" size="sm" onClick={() => void recordAction()} disabled={busy || recording}>
             {recording && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />}
             Registrar acción
           </Button>
@@ -277,6 +441,18 @@ function MemberEditor({
 
 export function LinkedInCampaignDetail({ campaignId }: { campaignId: string }) {
   const { toast } = useToast();
+  async function copyOutreach(label: string, value: string) {
+    if (!value.trim()) {
+      toast({ title: `${label}: no hay texto para copiar`, variant: "destructive" });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      toast({ title: `${label} copiado` });
+    } catch {
+      toast({ title: "No se pudo copiar. Revisá el permiso del navegador.", variant: "destructive" });
+    }
+  }
   const [data, setData] = useState<CampaignDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -285,6 +461,20 @@ export function LinkedInCampaignDetail({ campaignId }: { campaignId: string }) {
   const [contactQuery, setContactQuery] = useState("");
   const [contactResults, setContactResults] = useState<ContactResult[]>([]);
   const [searchingContacts, setSearchingContacts] = useState(false);
+
+  const sortedMembers = useMemo(
+    () => (data ? sortLinkedInCampaignMembersForWork(data.members) : []),
+    [data],
+  );
+
+  const workSummary = useMemo(() => {
+    const counts = { todo: 0, pending: 0, waiting: 0, closed: 0 };
+    for (const member of sortedMembers) {
+      counts[linkedInWorkBucket(member.status)] += 1;
+    }
+    return counts;
+  }, [sortedMembers]);
+
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -298,6 +488,53 @@ export function LinkedInCampaignDetail({ campaignId }: { campaignId: string }) {
     followUpMessage: "",
     notes: "",
   });
+
+  async function prepareMemberOnLinkedIn(member: MarketingLinkedInCampaignMember) {
+    if (!data) return;
+    const payload = buildLinkedInPreparePayload(member, data.campaign);
+    if (!payload) {
+      toast({
+        title: "Sin acción para preparar",
+        description: "Solo se puede cargar desde estados listos (invitación, mensaje o follow-up).",
+        variant: "destructive",
+      });
+      return;
+    }
+    requestLinkedInExtensionPrepare(payload);
+    toast({
+      title: "Cargando en LinkedIn",
+      description:
+        "Si tenés la extensión Notificas activa, se abrirá el perfil con el mensaje. Vos hacés el envío final.",
+    });
+  }
+
+  async function markMemberSent(member: MarketingLinkedInCampaignMember) {
+    const action = linkedInCompleteActionForMember(member.status);
+    if (!action) return;
+    setBusyMember(member.id);
+    try {
+      const response = await fetch(
+        `/api/admin/marketing/linkedin/campaigns/${campaignId}/members/${member.id}/actions`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        },
+      );
+      const body = await response.json();
+      if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : "No se pudo registrar");
+      toast({ title: "Acción registrada en el CRM" });
+      await load();
+    } catch (e) {
+      toast({
+        title: e instanceof Error ? e.message : "Error al registrar",
+        variant: "destructive",
+      });
+    } finally {
+      setBusyMember(null);
+    }
+  }
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/admin/marketing/linkedin/campaigns/${campaignId}`, { credentials: "include" });
@@ -576,16 +813,52 @@ export function LinkedInCampaignDetail({ campaignId }: { campaignId: string }) {
           <Input id="campaign-use-cases" value={form.useCaseIds} onChange={(event) => setForm({ ...form, useCaseIds: event.target.value })} />
         </div>
         <div className="space-y-1 md:col-span-2">
-          <Label htmlFor="campaign-connection">Solicitud de conexión base</Label>
-          <Textarea id="campaign-connection" rows={3} value={form.connectionMessage} onChange={(event) => setForm({ ...form, connectionMessage: event.target.value })} />
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="campaign-connection">Solicitud de conexión base</Label>
+            <Button type="button" size="sm" variant="outline" onClick={() => void copyOutreach("Solicitud de conexión", form.connectionMessage)}>
+              <Clipboard className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+              Copiar mensaje
+            </Button>
+          </div>
+          <Textarea
+            id="campaign-connection"
+            rows={5}
+            className="min-h-[6rem] w-full resize-y font-mono text-sm leading-relaxed"
+            value={form.connectionMessage}
+            onChange={(event) => setForm({ ...form, connectionMessage: event.target.value })}
+          />
         </div>
         <div className="space-y-1 md:col-span-2">
-          <Label htmlFor="campaign-message">Mensaje principal base</Label>
-          <Textarea id="campaign-message" rows={4} value={form.message} onChange={(event) => setForm({ ...form, message: event.target.value })} />
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="campaign-message">Mensaje principal base</Label>
+            <Button type="button" size="sm" variant="outline" onClick={() => void copyOutreach("Mensaje principal", form.message)}>
+              <Clipboard className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+              Copiar mensaje
+            </Button>
+          </div>
+          <Textarea
+            id="campaign-message"
+            rows={12}
+            className="min-h-[12rem] w-full resize-y font-mono text-sm leading-relaxed"
+            value={form.message}
+            onChange={(event) => setForm({ ...form, message: event.target.value })}
+          />
         </div>
         <div className="space-y-1 md:col-span-2">
-          <Label htmlFor="campaign-follow-up">Seguimiento base</Label>
-          <Textarea id="campaign-follow-up" rows={4} value={form.followUpMessage} onChange={(event) => setForm({ ...form, followUpMessage: event.target.value })} />
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="campaign-follow-up">Seguimiento base</Label>
+            <Button type="button" size="sm" variant="outline" onClick={() => void copyOutreach("Seguimiento", form.followUpMessage)}>
+              <Clipboard className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+              Copiar mensaje
+            </Button>
+          </div>
+          <Textarea
+            id="campaign-follow-up"
+            rows={8}
+            className="min-h-[8rem] w-full resize-y font-mono text-sm leading-relaxed"
+            value={form.followUpMessage}
+            onChange={(event) => setForm({ ...form, followUpMessage: event.target.value })}
+          />
         </div>
         <div className="space-y-1 md:col-span-2">
           <Label htmlFor="campaign-notes">Notas internas</Label>
@@ -658,10 +931,19 @@ export function LinkedInCampaignDetail({ campaignId }: { campaignId: string }) {
       <section className="space-y-3">
         <div>
           <h3 className="text-lg font-semibold">Prospectos</h3>
-          <p className="text-sm text-muted-foreground">{data.members.length} contactos en esta campaña.</p>
+          <p className="text-sm text-muted-foreground">
+            {data.members.length} contactos ·{" "}
+            <span className="font-medium text-foreground">{workSummary.todo} por enviar ahora</span>
+            {workSummary.waiting ? ` · ${workSummary.waiting} en espera` : ""}
+            {workSummary.pending ? ` · ${workSummary.pending} sin preparar` : ""}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Usá <strong>Cargar en LinkedIn</strong> desde esta campaña; la extensión prepara el mensaje. Registrá el
+            envío acá o desde la extensión cuando lo hayas hecho manualmente en LinkedIn.
+          </p>
         </div>
         <div className="overflow-x-auto rounded-lg border bg-background">
-          <Table className="min-w-[1180px]">
+          <Table className="min-w-[1280px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Empresa</TableHead>
@@ -671,19 +953,31 @@ export function LinkedInCampaignDetail({ campaignId }: { campaignId: string }) {
                 <TableHead>Estado</TableHead>
                 <TableHead>Última acción</TableHead>
                 <TableHead>Próxima acción</TableHead>
-                <TableHead>Mensaje / acciones</TableHead>
+                <TableHead>Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.members.length === 0 ? (
+              {sortedMembers.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
                     Todavía no hay prospectos. Buscá un contacto arriba para agregarlo.
                   </TableCell>
                 </TableRow>
-              ) : data.members.map((member) => (
+              ) : sortedMembers.map((member, index) => {
+                const bucket = linkedInWorkBucket(member.status);
+                const prevBucket = index > 0 ? linkedInWorkBucket(sortedMembers[index - 1].status) : null;
+                const canPrepare = Boolean(linkedInActionKindForStatus(member.status));
+                const canMarkSent = Boolean(linkedInCompleteActionForMember(member.status));
+                return (
                 <Fragment key={member.id}>
-                  <TableRow>
+                  {bucket !== prevBucket ? (
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
+                      <TableCell colSpan={8} className="py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {WORK_BUCKET_LABEL[bucket]}
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                  <TableRow className={memberRowClass(bucket)}>
                     <TableCell className="font-medium">{member.companyName || "—"}</TableCell>
                     <TableCell>
                       <Link href={`/admin/marketing/contactos/${member.contactId}`} className="hover:underline">
@@ -722,10 +1016,41 @@ export function LinkedInCampaignDetail({ campaignId }: { campaignId: string }) {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{formatDate(member.nextActionAt)}</TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="max-w-44 truncate text-sm text-muted-foreground">
-                          {member.message || member.connectionMessage || "Sin mensaje"}
-                        </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {canPrepare ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={busyMember !== null}
+                            onClick={() => void prepareMemberOnLinkedIn(member)}
+                          >
+                            Cargar en LinkedIn
+                          </Button>
+                        ) : null}
+                        {canMarkSent ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            disabled={busyMember !== null}
+                            onClick={() => void markMemberSent(member)}
+                          >
+                            Marcar enviado
+                          </Button>
+                        ) : null}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          aria-label={`Copiar mensaje de ${member.firstName || "contacto"}`}
+                          onClick={() => void copyOutreach(
+                            `Mensaje de ${member.firstName || "contacto"}`,
+                            memberCopyText(member, data.campaign),
+                          )}
+                        >
+                          <Clipboard className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                          Copiar
+                        </Button>
                         <Button
                           type="button"
                           size="icon"
@@ -741,18 +1066,27 @@ export function LinkedInCampaignDetail({ campaignId }: { campaignId: string }) {
                       </div>
                     </TableCell>
                   </TableRow>
-                  <TableRow>
-                    <TableCell colSpan={8} className="bg-muted/10 p-3">
-                      <MemberEditor
+                  <TableRow className="hover:bg-muted/5">
+                    <TableCell colSpan={8} className="bg-muted/5 p-4">
+                      <MemberOutreachMessages
                         campaignId={campaignId}
                         member={member}
                         busy={busyMember !== null}
                         onChanged={load}
                       />
+                      <div className="mt-3">
+                        <MemberManualPanel
+                          campaignId={campaignId}
+                          member={member}
+                          busy={busyMember !== null}
+                          onChanged={load}
+                        />
+                      </div>
                     </TableCell>
                   </TableRow>
                 </Fragment>
-              ))}
+              );
+              })}
             </TableBody>
           </Table>
         </div>
