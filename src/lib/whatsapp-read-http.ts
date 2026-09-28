@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 import {
   publicReaderOriginFromHeaders,
-  readerPathFromQuery,
-  whatsappReaderInterstitialHtml,
+  readerUrlOnRequestOrigin,
 } from "@/lib/link-redirect-public";
 
+/** Mismo host: /n/{id} → /reader/{id}. Sin página intermedia. */
 export function whatsappCtaPageResponse(request: NextRequest, msg: string, k: string): NextResponse {
   const origin = publicReaderOriginFromHeaders(request.headers);
   const params = {
@@ -16,14 +16,10 @@ export function whatsappCtaPageResponse(request: NextRequest, msg: string, k: st
       return null;
     },
   };
-  return new NextResponse(whatsappReaderInterstitialHtml(readerPathFromQuery(params), origin), {
-    status: 200,
-    headers: {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
-      "x-robots-tag": "noindex, nofollow",
-    },
-  });
+  const dest = NextResponse.redirect(readerUrlOnRequestOrigin(origin, params), 302);
+  dest.headers.set("cache-control", "no-store");
+  dest.headers.set("x-robots-tag", "noindex, nofollow");
+  return dest;
 }
 
 export function whatsappClickTrackUrl(msg: string, k: string): string {

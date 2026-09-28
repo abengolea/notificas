@@ -90,51 +90,6 @@ export function readerUrlOnRequestOrigin(
   return `${readerResponseOrigin(requestOrigin)}${readerPathFromQuery(params)}`;
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-/**
- * Página quieta para destinatarios de WhatsApp.
- * No hay salto automático: en una franja de WebViews eso abre en blanco y
- * WhatsApp cierra el visor. El botón va al reader público y pide navegador
- * externo (target=_blank), que es el camino que sí abre en esos celus.
- */
-export function whatsappReaderInterstitialHtml(
-  readerPath: string,
-  publicOrigin = PUBLIC_READER_ORIGIN,
-): string {
-  const path = readerPath.startsWith("/") ? readerPath : `/${readerPath}`;
-  const origin = String(publicOrigin || PUBLIC_READER_ORIGIN).replace(/\/$/, "");
-  const href = escapeHtml(`${origin}${path}`);
-  return `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Abrir notificación</title>
-  <style>
-    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
-      font-family:system-ui,sans-serif;background:#f4f1ea;color:#1a1a1a;text-align:center;padding:24px}
-    p{margin:0;font-size:16px;line-height:1.45;max-width:22rem}
-    a{display:inline-block;margin-top:20px;padding:16px 24px;background:#111;color:#fff;
-      text-decoration:none;border-radius:8px;font-weight:600}
-  </style>
-</head>
-<body>
-  <main>
-    <p>Toque para leer la notificación.</p>
-    <a href="${href}" target="_blank" rel="noopener">Abrir notificación</a>
-  </main>
-</body>
-</html>`;
-}
-
 export function rewriteLocationToRequestOrigin(
   location: string,
   requestOrigin: string,

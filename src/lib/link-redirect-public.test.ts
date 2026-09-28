@@ -10,7 +10,6 @@ import {
   readerUrlOnRequestOrigin,
   rewriteLocationToRequestOrigin,
   whatsappPublicReadUrl,
-  whatsappReaderInterstitialHtml,
 } from "./link-redirect-public";
 
 function params(init: Record<string, string>) {
@@ -121,18 +120,6 @@ test("el link de WhatsApp es corto y con marca, no hosted.app", () => {
     whatsappPublicReadUrl("cYpgLaGAwwSvlvQ7UlG6", "d5634e2a3981e6e592e5c02802297ad4"),
     "https://notificas.com.ar/n/cYpgLaGAwwSvlvQ7UlG6?k=d5634e2a3981e6e592e5c02802297ad4",
   );
-});
-
-test("el puente de WhatsApp es HTML quieto: botón al reader público, sin salto automático", () => {
-  const html = whatsappReaderInterstitialHtml("/reader/mail-1?k=secret&from=whatsapp");
-  assert.match(
-    html,
-    /href="https:\/\/notificas\.com\.ar\/reader\/mail-1\?k=secret&amp;from=whatsapp"/,
-  );
-  assert.match(html, /target="_blank"/);
-  assert.match(html, /Abrir notificación/);
-  assert.doesNotMatch(html, /location\.replace|http-equiv="refresh"/);
-  assert.doesNotMatch(html, /hosted\.app|0\.0\.0\.0/);
 });
 
 test("el path del reader lleva from=whatsapp o from=email", () => {

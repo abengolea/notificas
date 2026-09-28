@@ -7,7 +7,6 @@ import {
   readerUrlOnRequestOrigin,
   rewriteLocationToRequestOrigin,
 } from "@/lib/link-redirect-public";
-import { whatsappCtaPageResponse } from "@/lib/whatsapp-read-http";
 
 /**
  * Enlace público bajo el dominio de la app (p. ej. notificas.com.ar/linkRedirect).
@@ -56,11 +55,6 @@ export async function GET(request: NextRequest) {
   if (isReaderCtaQuery(params)) {
     if (!isLinkPreviewCrawler(request.headers.get("user-agent"))) {
       trackClickInBackground(request);
-    }
-    if (params.get("src") === "whatsapp") {
-      const msg = params.get("msg") || "";
-      const k = params.get("k") || "";
-      return whatsappCtaPageResponse(request, msg, k);
     }
     return NextResponse.redirect(readerUrlOnRequestOrigin(origin, params), 302);
   }
