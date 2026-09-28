@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { assembleMarketingHtml, MARKETING_LOGO_WORDMARK_URL, previewAssembledCampaignEmail } from "./html";
-import { buildCampaignEmailSnapshot, VACA_MUERTA_OILFIELD_CONTENT } from "./campaign-email";
+import {
+  buildCampaignEmailSnapshot,
+  PREVIEW_UNSUBSCRIBE_URL,
+  VACA_MUERTA_OILFIELD_CONTENT,
+} from "./campaign-email";
 import { buildMergeFields } from "./merge-fields";
 import { outreachOfferBodyHtml, OUTREACH_SUBJECT } from "./offer-letter";
 import { marketingUnsubUrl } from "./tokens";
@@ -60,6 +64,7 @@ test("previewAssembledCampaignEmail coincide con assemble sin tracking", () => {
     fields,
     trackLinks: false,
     injectPixel: false,
+    unsubscribeUrl: PREVIEW_UNSUBSCRIBE_URL,
   });
   assert.equal(preview.html, sent.html);
   assert.match(preview.html, /César/);

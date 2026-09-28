@@ -8,6 +8,7 @@ import {
   MARKETING_ASSET_ORIGIN,
   MARKETING_LOGO_WORDMARK_URL,
   parseCampaignEmailContent,
+  PREVIEW_UNSUBSCRIBE_URL,
   renderCampaignEmail,
   type CampaignEmailContent,
 } from "./campaign-email";
@@ -69,8 +70,10 @@ export function assembleMarketingHtml(input: {
   trackLinks?: boolean;
   emailContent?: CampaignEmailContent | null;
   injectPixel?: boolean;
+  /** Admin preview en el browser: evita HMAC (base64url no existe en crypto-browserify). */
+  unsubscribeUrl?: string;
 }): { html: string; text: string } {
-  const unsubUrl = marketingUnsubUrl(input.contactId);
+  const unsubUrl = input.unsubscribeUrl ?? marketingUnsubUrl(input.contactId);
   const fromEmail = marketingContactEmail();
   let sourceHtml: string;
   let sourceText: string;
@@ -118,5 +121,6 @@ export function previewAssembledCampaignEmail(
     fields,
     trackLinks: false,
     injectPixel: false,
+    unsubscribeUrl: PREVIEW_UNSUBSCRIBE_URL,
   });
 }
