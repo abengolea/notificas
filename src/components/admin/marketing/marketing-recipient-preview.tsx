@@ -16,6 +16,7 @@ export type PreviewContact = {
   email: string;
   name: string;
   company: string;
+  title?: string;
   country: string;
   stage: string;
   eligible: boolean;
