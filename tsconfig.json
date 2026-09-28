@@ -37,6 +37,10 @@
   ],
   "exclude": [
     "node_modules",
-    "scripts"
+    "scripts",
+    "functions",
+    "chrome-extension",
+    "**/*.test.ts",
+    "**/*.test.js"
   ]
 }

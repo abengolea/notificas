@@ -58,7 +58,9 @@ export async function GET(request: NextRequest) {
       trackClickInBackground(request);
     }
     if (params.get("src") === "whatsapp") {
-      return whatsappCtaPageResponse(request, params.get("msg") || "", params.get("k") || "");
+      const msg = params.get("msg") || "";
+      const k = params.get("k") || "";
+      return whatsappCtaPageResponse(request, msg, k);
     }
     return NextResponse.redirect(readerUrlOnRequestOrigin(origin, params), 302);
   }
