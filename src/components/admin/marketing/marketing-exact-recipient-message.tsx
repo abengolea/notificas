@@ -4,9 +4,9 @@ import { useMemo } from "react";
 import {
   applyCampaignMergeFields,
   mergeFieldsForCampaignRecipient,
-  previewCampaignEmail,
   type CampaignEmailContent,
 } from "@/lib/marketing/campaign-email";
+import { previewAssembledCampaignEmail } from "@/lib/marketing/html";
 import { countryName } from "@/lib/marketing/countries";
 import { Label } from "@/components/ui/label";
 import {
@@ -51,8 +51,11 @@ export function MarketingExactRecipientMessage({
   );
 
   const preview = useMemo(
-    () => (fields ? previewCampaignEmail(emailContent, fields) : null),
-    [emailContent, fields],
+    () =>
+      fields && selected
+        ? previewAssembledCampaignEmail(emailContent, fields, selected.id)
+        : null,
+    [emailContent, fields, selected],
   );
 
   if (eligible.length === 0) return null;

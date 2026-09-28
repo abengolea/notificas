@@ -155,6 +155,12 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
     [audience],
   );
 
+  const copyUnsaved = useMemo(() => {
+    if (!campaign || campaign.status !== "draft") return false;
+    if (subject.trim() !== String(campaign.subject || "").trim()) return true;
+    return JSON.stringify(emailContent) !== JSON.stringify(campaign.emailContent || {});
+  }, [campaign, emailContent, subject]);
+
   const exactRecipient = useMemo(() => {
     if (!eligibleAudience.length) return null;
     return eligibleAudience.find((c) => c.id === exactRecipientId) ?? eligibleAudience[0];
@@ -469,6 +475,7 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
             onSubjectChange={setSubject}
             campaignId={campaignId}
             audienceRecipient={exactRecipient}
+            unsavedCopy={copyUnsaved}
             onTestResult={(ok, message) => toast({ title: message, variant: ok ? "default" : "destructive" })}
           />
           <Button type="button" variant="outline" onClick={() => void saveCopy()} disabled={busy !== null}>

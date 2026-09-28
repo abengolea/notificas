@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import {
+  applyCampaignMergeFields,
   type CampaignEmailContent,
   mergeFieldsForCampaignRecipient,
-  previewCampaignEmail,
 } from "@/lib/marketing/campaign-email";
+import { previewAssembledCampaignEmail } from "@/lib/marketing/html";
 import {
   buildMergeFields,
   PREVIEW_SAMPLE_CONTACT,
@@ -29,13 +30,18 @@ const UNNAMED_FIELDS = buildMergeFields(PREVIEW_SAMPLE_CONTACT_WITHOUT_NAME);
 
 export function MarketingEmailPreview({
   content,
+  subject,
   className,
   audienceRecipient,
+  unsavedCopy,
 }: {
   content: CampaignEmailContent;
+  subject?: string;
   className?: string;
   /** Primer destinatario elegible (o el elegido) de la campaña; desactiva César/YPF de muestra. */
   audienceRecipient?: PreviewContact | null;
+  /** Hay cambios en el formulario que todavía no se guardaron en la campaña. */
+  unsavedCopy?: boolean;
 }) {
   const [mode, setMode] = useState<PreviewMode>("desktop");
   const [sample, setSample] = useState<SampleRecipient>("named");
@@ -49,12 +55,17 @@ export function MarketingEmailPreview({
       ? NAMED_FIELDS
       : UNNAMED_FIELDS;
 
+  const mergedSubject = useMemo(
+    () => (subject?.trim() ? applyCampaignMergeFields(subject.trim(), fields) : ""),
+    [subject, fields],
+  );
+
   const html = useMemo(() => {
-    let rendered = previewCampaignEmail(content, fields).html;
+    let rendered = previewAssembledCampaignEmail(content, fields, audienceRecipient?.id || "preview").html;
     if (noFonts) rendered = withoutExternalFonts(rendered);
     if (blockImages) rendered = withBlockedImages(rendered);
     return rendered;
-  }, [blockImages, content, fields, noFonts]);
+  }, [audienceRecipient?.id, blockImages, content, fields, noFonts]);
 
   const width = mode === "mobile" ? 375 : 600;
 
@@ -94,6 +105,12 @@ export function MarketingEmailPreview({
           </label>
         </div>
       </div>
+      {unsavedCopy ? (
+        <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          Tenés cambios sin guardar. Este preview muestra el texto que estás editando ahora; al pulsar «Enviar campaña» se
+          guarda y se envía esa versión.
+        </p>
+      ) : null}
       {!useRealAudience ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <button
@@ -110,18 +127,28 @@ export function MarketingEmailPreview({
           >
             Sin nombre
           </button>
-          <p className="text-sm text-muted-foreground">Destinatario de muestra genérico: {sampleLabel}</p>
+          <p className="text-sm text-muted-foreground">
+            Destinatario ficticio de muestra (no es tu lista): {sampleLabel}
+          </p>
         </div>
       ) : (
         <p className="mt-2 text-sm text-muted-foreground">
-          Vista rápida con destinatario real de la campaña: {sampleLabel}
+          Destinatario real de tu campaña: {sampleLabel}
         </p>
       )}
       <p className="mt-2 text-sm text-muted-foreground">
+        A la izquierda ves las variables {"{{firstName}}"}, {"{{companyName}}"}, etc. A la derecha, el mismo mensaje ya
+        reemplazado para este contacto. En el envío real cada destinatario recibe su versión con el mismo motor.
         {useRealAudience
-          ? "Personalización con el mismo motor que el envío. Para otro contacto usá la sección «Mensaje exacto por destinatario»."
-          : "Sin audiencia cargada se usa un contacto genérico de muestra. Con destinatarios reales el preview toma el primero elegible."}
+          ? " Para revisar otro contacto de la lista usá «Mensaje exacto por destinatario» más abajo."
+          : " Cargá destinatarios para previsualizar con datos reales."}
       </p>
+      {mergedSubject ? (
+        <div className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+          <p className="font-medium">Asunto tal como lo verá este destinatario</p>
+          <p className="mt-1">{mergedSubject}</p>
+        </div>
+      ) : null}
       <div className="mt-3 overflow-auto rounded-lg border bg-[#F4F8FD] p-3">
         <iframe
           title={mode === "mobile" ? "Preview móvil del correo" : "Preview de escritorio del correo"}

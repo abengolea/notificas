@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assembleMarketingHtml, MARKETING_LOGO_WORDMARK_URL } from "./html";
+import { assembleMarketingHtml, MARKETING_LOGO_WORDMARK_URL, previewAssembledCampaignEmail } from "./html";
+import { buildCampaignEmailSnapshot, VACA_MUERTA_OILFIELD_CONTENT } from "./campaign-email";
+import { buildMergeFields } from "./merge-fields";
 import { outreachOfferBodyHtml, OUTREACH_SUBJECT } from "./offer-letter";
 import { marketingUnsubUrl } from "./tokens";
 import { marketingContactEmail } from "./types";
@@ -44,6 +46,23 @@ test("la baja de marketing apunta a producción", () => {
     if (prev === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
     else process.env.NEXT_PUBLIC_APP_URL = prev;
   }
+});
+
+test("previewAssembledCampaignEmail coincide con assemble sin tracking", () => {
+  const fields = buildMergeFields({ name: "César Pérez", company: "YPF S.A.", email: "a@x.com" });
+  const snapshot = buildCampaignEmailSnapshot(VACA_MUERTA_OILFIELD_CONTENT);
+  const preview = previewAssembledCampaignEmail(VACA_MUERTA_OILFIELD_CONTENT, fields, "contact-preview");
+  const sent = assembleMarketingHtml({
+    bodyHtml: snapshot.htmlBody,
+    textBody: snapshot.textBody,
+    sendId: "send1",
+    contactId: "contact-preview",
+    fields,
+    trackLinks: false,
+    injectPixel: false,
+  });
+  assert.equal(preview.html, sent.html);
+  assert.match(preview.html, /César/);
 });
 
 test("el contacto visible del correo es contacto@notificas.com", () => {

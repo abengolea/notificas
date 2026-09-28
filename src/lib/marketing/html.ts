@@ -2,6 +2,7 @@ import { marketingClickUrl, marketingOpenUrl, marketingUnsubUrl } from "./tokens
 import { marketingContactEmail } from "./types";
 import { applyMergeFields, type MergeFields } from "./merge-fields";
 import {
+  buildCampaignEmailSnapshot,
   contentFromLegacyHtml,
   isFullCampaignEmailHtml,
   MARKETING_ASSET_ORIGIN,
@@ -98,4 +99,24 @@ export function assembleMarketingHtml(input: {
   const html = input.injectPixel === false ? tracked : injectOpenPixel(tracked, input.sendId);
   const text = `${mergedText}\n\n—\nNotificas · ${fromEmail}\nBaja: ${unsubUrl}`;
   return { html, text };
+}
+
+/**
+ * Preview en admin: mismo snapshot + merge que el envío real (sin pixel ni wrapping de clics).
+ */
+export function previewAssembledCampaignEmail(
+  content: CampaignEmailContent,
+  fields: MergeFields,
+  contactId = "preview",
+): { html: string; text: string } {
+  const snapshot = buildCampaignEmailSnapshot(content);
+  return assembleMarketingHtml({
+    bodyHtml: snapshot.htmlBody,
+    textBody: snapshot.textBody,
+    sendId: "",
+    contactId,
+    fields,
+    trackLinks: false,
+    injectPixel: false,
+  });
 }

@@ -28,6 +28,7 @@ export function MarketingEmailEditor({
   campaignId,
   onTestResult,
   audienceRecipient,
+  unsavedCopy,
 }: {
   value: CampaignEmailContent;
   onChange: (next: CampaignEmailContent) => void;
@@ -36,6 +37,7 @@ export function MarketingEmailEditor({
   campaignId?: string;
   onTestResult?: (ok: boolean, message: string) => void;
   audienceRecipient?: PreviewContact | null;
+  unsavedCopy?: boolean;
 }) {
   const [testTo, setTestTo] = useState(MARKETING_TEST_EMAIL_DEFAULT);
   const [testing, setTesting] = useState(false);
@@ -179,7 +181,9 @@ export function MarketingEmailEditor({
       </div>
       <MarketingEmailPreview
         content={value.title.trim() ? value : { ...blankCampaignEmailContent(), ...value, title: value.title || "Notificas" }}
+        subject={subject}
         audienceRecipient={audienceRecipient}
+        unsavedCopy={unsavedCopy}
       />
     </div>
   );
