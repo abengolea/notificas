@@ -11,9 +11,9 @@ import { hostnameOf } from "./international-site";
 
 export const PUBLIC_READER_ORIGIN = "https://notificas.com.ar";
 
-/** Link corto y con marca para el globo de WhatsApp. Evita *.hosted.app. */
-export function whatsappPublicReadUrl(messageId: string, token: string): string {
-  return `${PUBLIC_READER_ORIGIN}/n/${encodeURIComponent(messageId)}?k=${encodeURIComponent(token)}`;
+/** Link de WhatsApp: un código. El token no viaja en el globo. */
+export function whatsappPublicReadUrl(shortCode: string): string {
+  return `${PUBLIC_READER_ORIGIN}/n/${encodeURIComponent(shortCode)}`;
 }
 
 function isUnusableHost(host: string): boolean {

@@ -30,11 +30,8 @@ test('sin host público, el reader tampoco cae en hosted.app', () => {
   assert.equal(origin, 'https://notificas.com.ar');
 });
 
-test('el link público de WhatsApp usa notificas.com.ar/n y no hosted.app', () => {
-  assert.equal(
-    whatsappPublicReadUrl('abc', 'tok'),
-    'https://notificas.com.ar/n/abc?k=tok',
-  );
+test('el link público de WhatsApp es un código corto, sin token', () => {
+  assert.equal(whatsappPublicReadUrl('x7Km9pQ2'), 'https://notificas.com.ar/n/x7Km9pQ2');
 });
 
 test('el crawler de vista previa de WhatsApp no es un pulso real', () => {

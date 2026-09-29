@@ -329,6 +329,9 @@ service cloud.firestore {
     match /mcp_audit_logs/{id} { allow read, write: if false; }
     match /mcp_rate_limits/{id} { allow read, write: if false; }
 
+    // Código corto de lectura WhatsApp: mailId + token. Solo Admin SDK.
+    match /readCodes/{id} { allow read, write: if false; }
+
     // Módulo ART / adhesión electrónica: solo Admin SDK (nunca el cliente web).
     match /art_configs/{id} { allow read, write: if false; }
     match /art_recipients/{id} { allow read, write: if false; }

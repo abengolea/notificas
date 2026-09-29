@@ -24,8 +24,8 @@ function isLinkPreviewCrawler(userAgent) {
  * Destino del reader para el 302. Si el click llegó por .com.ar, no mandar
  * el WebView de WhatsApp a *.hosted.app (WhatsApp Web sí lo abre; la app no).
  */
-function whatsappPublicReadUrl(messageId, token) {
-  return `${PUBLIC_READER_ORIGIN}/n/${encodeURIComponent(String(messageId))}?k=${encodeURIComponent(String(token))}`;
+function whatsappPublicReadUrl(shortCode) {
+  return `${PUBLIC_READER_ORIGIN}/n/${encodeURIComponent(String(shortCode))}`;
 }
 
 function readerRedirectOrigin(req, fallbackOrigin) {

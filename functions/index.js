@@ -26,7 +26,8 @@ const {
   applyEmailBounce,
   applyEmailBounceFromPayload,
 } = require('./email-bounce');
-const { isLinkPreviewCrawler, readerRedirectOrigin, whatsappPublicReadUrl } = require('./link-redirect-origin');
+const { isLinkPreviewCrawler, readerRedirectOrigin, PUBLIC_READER_ORIGIN, whatsappPublicReadUrl } = require('./link-redirect-origin');
+const { allocateReadCode } = require('./read-code');
 
 initializeApp();
 
@@ -560,6 +561,19 @@ function generateToken() {
   return crypto.randomBytes(16).toString('hex');
 }
 
+async function whatsappReaderUrlForSend(db, docId, trackingToken, existingShortCode) {
+  try {
+    const code = await allocateReadCode(db, docId, trackingToken, existingShortCode, FieldValue);
+    return { readCode: code, url: whatsappPublicReadUrl(code) };
+  } catch (err) {
+    console.error('❌ allocateReadCode:', err && err.message);
+    return {
+      readCode: null,
+      url: `${PUBLIC_READER_ORIGIN}/n/${encodeURIComponent(docId)}?k=${encodeURIComponent(trackingToken)}`,
+    };
+  }
+}
+
 function base64UrlEncode(str) {
   return Buffer.from(str, 'utf8')
     .toString('base64')
@@ -764,10 +778,13 @@ exports.sendEmail = onRequest(
     const from = emailData.from || 'contacto@notificas.com';
 
     const trackingToken = emailData.tracking?.token || generateToken();
+    const waRead = (emailData.waOnly === true || emailData.recipientPhone)
+      ? await whatsappReaderUrlForSend(db, docId, trackingToken, emailData.tracking?.shortCode)
+      : { readCode: null, url: null };
 
     // Campaña WhatsApp-only: enviar WA primero; DELIVERED solo si Meta aceptó.
     if (emailData.waOnly === true) {
-      const readerUrlWa = whatsappPublicReadUrl(docId, trackingToken);
+      const readerUrlWa = waRead.url;
       const recipientPhone = emailData.recipientPhone;
       if (!recipientPhone) {
         await docRef.update({
@@ -821,6 +838,7 @@ exports.sendEmail = onRequest(
         delivery: { state: 'DELIVERED', time: FieldValue.serverTimestamp(), info: 'whatsapp-only' },
         tracking: {
           token: trackingToken,
+          ...(waRead.readCode ? { shortCode: waRead.readCode } : {}),
           sentAt: FieldValue.serverTimestamp(),
           openCount: 0, clickCount: 0,
           opened: false, openedAt: null,
@@ -1155,6 +1173,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
         },
         tracking: {
           token: trackingToken,
+          ...(waRead.readCode ? { shortCode: waRead.readCode } : {}),
           sentAt: FieldValue.serverTimestamp(),
           openCount: 0,
           clickCount: 0,
@@ -1216,7 +1235,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
             console.warn('⚠️', whatsappError);
           } else {
             const waTpl = resolveCampaignWhatsAppTemplate(emailData);
-            const whatsappLink = whatsappPublicReadUrl(docId, trackingToken);
+            const whatsappLink = waRead.url;
             const waRecipient = formatWhatsAppRecipientDisplay(emailData.recipientName);
             const waSender = formatWhatsAppSenderDisplay(emailData.senderName || from, from);
             const resultWA = await sendWhatsAppNotification({

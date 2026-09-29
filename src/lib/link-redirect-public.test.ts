@@ -115,11 +115,8 @@ test("sin host público usable, el reader cae en .com.ar", () => {
   assert.equal(publicReaderOriginFromHeaders(headers), "https://notificas.com.ar");
 });
 
-test("el link de WhatsApp es corto y con marca, no hosted.app", () => {
-  assert.equal(
-    whatsappPublicReadUrl("cYpgLaGAwwSvlvQ7UlG6", "d5634e2a3981e6e592e5c02802297ad4"),
-    "https://notificas.com.ar/n/cYpgLaGAwwSvlvQ7UlG6?k=d5634e2a3981e6e592e5c02802297ad4",
-  );
+test("el link de WhatsApp es un código corto, sin token", () => {
+  assert.equal(whatsappPublicReadUrl("x7Km9pQ2"), "https://notificas.com.ar/n/x7Km9pQ2");
 });
 
 test("el path del reader lleva from=whatsapp o from=email", () => {
