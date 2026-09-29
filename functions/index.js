@@ -561,7 +561,7 @@ function generateToken() {
   return crypto.randomBytes(16).toString('hex');
 }
 
-async function whatsappReaderUrlForSend(db, docId, trackingToken, existingShortCode) {
+async function publicReadUrlForSend(db, docId, trackingToken, existingShortCode) {
   try {
     const code = await allocateReadCode(db, docId, trackingToken, existingShortCode, FieldValue);
     return { readCode: code, url: whatsappPublicReadUrl(code) };
@@ -569,7 +569,7 @@ async function whatsappReaderUrlForSend(db, docId, trackingToken, existingShortC
     console.error('❌ allocateReadCode:', err && err.message);
     return {
       readCode: null,
-      url: `${PUBLIC_READER_ORIGIN}/n/${encodeURIComponent(docId)}?k=${encodeURIComponent(trackingToken)}`,
+      url: `${PUBLIC_READER_ORIGIN}/reader/${encodeURIComponent(docId)}?k=${encodeURIComponent(trackingToken)}`,
     };
   }
 }
@@ -590,11 +590,12 @@ function base64UrlDecode(str) {
  * Wrapper que delega en `./tracking-html.js` (módulo testeable) pasándole las URLs
  * de tracking definidas en este archivo, y loggea las estadísticas de procesamiento.
  */
-function injectTrackingIntoHtml(html, docId, token) {
+function injectTrackingIntoHtml(html, docId, token, publicReaderUrl) {
   if (!html) return html;
   const { html: out, stats } = injectTrackingIntoHtmlImpl(html, docId, token, {
     linkRedirectUrl: LINK_REDIRECT_URL,
-    appHostingUrl: APP_HOSTING_URL,
+    appHostingUrl: PUBLIC_READER_ORIGIN,
+    publicReaderUrl: publicReaderUrl || '',
   });
   console.log(
     `🔗 Tracking: ${stats.processedCount} enlaces procesados, ${stats.replacedCount} enlaces inválidos reemplazados, ${stats.ignoredCount} ignorados (mailto/tel/js)`
@@ -778,13 +779,16 @@ exports.sendEmail = onRequest(
     const from = emailData.from || 'contacto@notificas.com';
 
     const trackingToken = emailData.tracking?.token || generateToken();
-    const waRead = (emailData.waOnly === true || emailData.recipientPhone)
-      ? await whatsappReaderUrlForSend(db, docId, trackingToken, emailData.tracking?.shortCode)
-      : { readCode: null, url: null };
+    const publicRead = await publicReadUrlForSend(
+      db,
+      docId,
+      trackingToken,
+      emailData.tracking?.shortCode,
+    );
 
     // Campaña WhatsApp-only: enviar WA primero; DELIVERED solo si Meta aceptó.
     if (emailData.waOnly === true) {
-      const readerUrlWa = waRead.url;
+      const readerUrlWa = publicRead.url;
       const recipientPhone = emailData.recipientPhone;
       if (!recipientPhone) {
         await docRef.update({
@@ -838,7 +842,7 @@ exports.sendEmail = onRequest(
         delivery: { state: 'DELIVERED', time: FieldValue.serverTimestamp(), info: 'whatsapp-only' },
         tracking: {
           token: trackingToken,
-          ...(waRead.readCode ? { shortCode: waRead.readCode } : {}),
+          ...(publicRead.readCode ? { shortCode: publicRead.readCode } : {}),
           sentAt: FieldValue.serverTimestamp(),
           openCount: 0, clickCount: 0,
           opened: false, openedAt: null,
@@ -874,8 +878,8 @@ exports.sendEmail = onRequest(
     const htmlOriginal = emailData.message?.html || '';
     const textOriginal = emailData.message?.text || htmlOriginal.replace(/<[^>]*>/g, '');
 
-    // Build reader URL for explicit read and confidential viewing
-    const readerUrl = `${APP_HOSTING_URL}/reader/${encodeURIComponent(docId)}?k=${encodeURIComponent(trackingToken)}`;
+    // Destinatario: notificas.com.ar/n/código. Nunca *.hosted.app.
+    const readerUrl = publicRead.url;
 
     // Build email with new template and inject tracking
     // Si hay HTML original con archivos adjuntos, usarlo; si no, usar template genérico
@@ -1026,7 +1030,7 @@ exports.sendEmail = onRequest(
         }
       }
 
-      htmlWithTracking = injectTrackingIntoHtml(htmlToProcess, docId, trackingToken);
+      htmlWithTracking = injectTrackingIntoHtml(htmlToProcess, docId, trackingToken, readerUrl);
       console.log('📎 Usando HTML original con archivos adjuntos');
     } else {
       // Usar template genérico si no hay HTML original
@@ -1049,7 +1053,7 @@ exports.sendEmail = onRequest(
       // Generar versión de texto plano completa con toda la información
       const isCampaignMail = isCampaignEmailSend(emailData);
       if (isCampaignMail) {
-        const unsubUrl = `${APP_HOSTING_URL.replace(/\/$/, '')}/api/mail/list-unsubscribe?m=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}`;
+        const unsubUrl = `${PUBLIC_READER_ORIGIN}/api/mail/list-unsubscribe?m=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}`;
         htmlWithTracking = appendCampaignUnsubscribeFooter(htmlWithTracking, unsubUrl);
       }
 
@@ -1094,7 +1098,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
         Object.assign(
           mailHeaders,
           buildCampaignListHeaders({
-            appHostingUrl: APP_HOSTING_URL,
+            appHostingUrl: PUBLIC_READER_ORIGIN,
             docId,
             trackingToken,
             campaignId: emailData.campaignId,
@@ -1173,7 +1177,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
         },
         tracking: {
           token: trackingToken,
-          ...(waRead.readCode ? { shortCode: waRead.readCode } : {}),
+          ...(publicRead.readCode ? { shortCode: publicRead.readCode } : {}),
           sentAt: FieldValue.serverTimestamp(),
           openCount: 0,
           clickCount: 0,
@@ -1235,7 +1239,7 @@ Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce e
             console.warn('⚠️', whatsappError);
           } else {
             const waTpl = resolveCampaignWhatsAppTemplate(emailData);
-            const whatsappLink = waRead.url;
+            const whatsappLink = publicRead.url;
             const waRecipient = formatWhatsAppRecipientDisplay(emailData.recipientName);
             const waSender = formatWhatsAppSenderDisplay(emailData.senderName || from, from);
             const resultWA = await sendWhatsAppNotification({
@@ -2198,8 +2202,8 @@ exports.processIncomingEmail = onRequest({ region: REGION, secrets: [smtpPass, p
     // Crear HTML del mensaje
     const htmlContent = html || text.replace(/\n/g, '<br>');
     
-    // Build reader URL
-    const readerUrl = `${APP_HOSTING_URL}/reader/${encodeURIComponent(docId)}?k=${encodeURIComponent(trackingToken)}`;
+    const publicRead = await publicReadUrlForSend(db, docId, trackingToken, null);
+    const readerUrl = publicRead.url;
     
     // Build email with template
     const htmlWithTracking = generateEmailWithTracking({
@@ -2261,6 +2265,7 @@ Este mensaje fue destinado a ${recipientNorm}. Si no reconoce esta notificacion,
       },
       tracking: {
         token: trackingToken,
+        ...(publicRead.readCode ? { shortCode: publicRead.readCode } : {}),
         sentAt: null,
         openCount: 0,
         clickCount: 0,

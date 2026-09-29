@@ -23,9 +23,20 @@ function base64UrlEncode(str) {
  *
  * Recibe las URLs por parámetro para permitir tests unitarios sin acoplarse a la config global.
  */
+function isShortPublicRead(href) {
+  try {
+    const u = new URL(href);
+    const host = u.hostname.toLowerCase();
+    if (host !== 'notificas.com.ar' && host !== 'www.notificas.com.ar') return false;
+    return /^\/n\/[A-Za-z0-9]+$/.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
 function injectTrackingIntoHtml(html, docId, token, urls) {
   if (!html) return html;
-  const { linkRedirectUrl, appHostingUrl } = urls || {};
+  const { linkRedirectUrl, appHostingUrl, publicReaderUrl } = urls || {};
   if (!linkRedirectUrl || !appHostingUrl) {
     throw new Error(
       'injectTrackingIntoHtml: faltan urls.linkRedirectUrl / urls.appHostingUrl'
@@ -38,7 +49,9 @@ function injectTrackingIntoHtml(html, docId, token, urls) {
   let replacedCount = 0;
   let ignoredCount = 0;
 
-  const readerUrl = `${appHostingUrl}/reader/${encodeURIComponent(docId)}?k=${encodeURIComponent(token)}`;
+  const readerUrl =
+    (typeof publicReaderUrl === 'string' && publicReaderUrl.trim()) ||
+    `${appHostingUrl}/reader/${encodeURIComponent(docId)}?k=${encodeURIComponent(token)}`;
 
   $('a[href]').each((_, el) => {
     const href = $(el).attr('href');
@@ -74,6 +87,11 @@ function injectTrackingIntoHtml(html, docId, token, urls) {
     if (!isValidHttpUrl || cleanHref === '' || cleanHref === '#' || cleanHref.startsWith('#')) {
       $(el).attr('href', readerUrl);
       replacedCount++;
+      return;
+    }
+
+    if (isShortPublicRead(cleanHref) || (publicReaderUrl && cleanHref === publicReaderUrl)) {
+      ignoredCount++;
       return;
     }
 

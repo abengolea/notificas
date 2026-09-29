@@ -169,6 +169,19 @@ test('docId y token con caracteres especiales se url-encodean en links', () => {
   assert.ok(decoded.includes(`k=${expectedTok}`));
 });
 
+test('el link corto de lectura se deja en notificas.com.ar/n, no pasa por linkRedirect', () => {
+  const short = 'https://notificas.com.ar/n/x7Km9pQ2';
+  const input = `<html><body><a href="${short}">Acceder</a></body></html>`;
+  const { html, stats } = injectTrackingIntoHtml(input, DOC_ID, TOKEN, {
+    ...URLS,
+    publicReaderUrl: short,
+  });
+  const decoded = decodeHtmlEntities(html);
+  assert.ok(decoded.includes(`href="${short}"`), decoded);
+  assert.ok(!decoded.includes(URLS.linkRedirectUrl), decoded);
+  assert.equal(stats.ignoredCount, 1);
+});
+
 test('regresión bug undefined: el módulo NO inyecta campos undefined al serializar', () => {
   // Este test se asegura de que el HTML output sea siempre una string válida sin "undefined" literal,
   // ya que un undefined en docId/token/urls produciría URLs basura tipo "?msg=undefined&k=undefined".
