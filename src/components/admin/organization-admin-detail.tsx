@@ -8,6 +8,17 @@ import { ArrowLeft, Copy, KeyRound, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -27,6 +38,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import type { AdminOrganizationDetail } from "@/lib/admin-organization-detail-types";
+import { OrgWaTemplatesAdmin } from "@/components/admin/org-wa-templates-admin";
 
 const TIPO_OPTIONS = [
   { value: "empresa", label: "Empresa" },
@@ -55,6 +67,10 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
   const [tipo, setTipo] = useState("empresa");
   const [plan, setPlan] = useState("starter");
   const [telefono, setTelefono] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
+  const [changingEmail, setChangingEmail] = useState(false);
+  const [confirmEmailOpen, setConfirmEmailOpen] = useState(false);
+  const [keepPreviousAsMember, setKeepPreviousAsMember] = useState(true);
 
   const applyOrg = useCallback((next: AdminOrganizationDetail) => {
     setOrg(next);
@@ -64,6 +80,7 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
     setPlan(next.plan || "starter");
     const admin = next.operators.find((o) => o.isOrgAdmin) || next.operators[0];
     setTelefono(admin?.telefono || "");
+    setAdminEmail(admin?.email || next.adminUserEmail || "");
   }, []);
 
   const load = useCallback(async () => {
@@ -160,6 +177,52 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
       });
     } finally {
       setResettingUid(null);
+    }
+  }
+
+  const currentAdminEmail = (
+    org?.operators.find((o) => o.isOrgAdmin)?.email || org?.adminUserEmail || ""
+  ).trim().toLowerCase();
+  const nextAdminEmail = adminEmail.trim().toLowerCase();
+  const emailDirty = Boolean(nextAdminEmail) && nextAdminEmail !== currentAdminEmail;
+
+  async function changeAdminEmail() {
+    if (!emailDirty) return;
+    setChangingEmail(true);
+    try {
+      const res = await fetch(`/api/admin/organizations/${encodeURIComponent(orgId)}/admin-email`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: nextAdminEmail,
+          keepPreviousAsMember,
+        }),
+      });
+      const data = (await res.json()) as {
+        organization?: AdminOrganizationDetail;
+        error?: string;
+        warning?: string;
+        inviteEmailSent?: boolean;
+      };
+      if (!res.ok) throw new Error(data.error || "No se pudo cambiar el email");
+      if (data.organization) applyOrg(data.organization);
+      setConfirmEmailOpen(false);
+      toast({
+        title: "Email del administrador actualizado",
+        description: data.warning
+          || (data.inviteEmailSent === false
+            ? "Se cambió el mail, pero no salió el correo de activación."
+            : `Se envió el correo de activación a ${nextAdminEmail}.`),
+      });
+    } catch (e: unknown) {
+      toast({
+        title: "No se pudo cambiar el email",
+        description: e instanceof Error ? e.message : "",
+        variant: "destructive",
+      });
+    } finally {
+      setChangingEmail(false);
     }
   }
 
@@ -291,23 +354,43 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
 
         <section className="space-y-4 rounded-lg border p-6">
           <h4 className="font-semibold">Acceso del administrador</h4>
-          <dl className="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-3 text-sm">
-            <dt className="text-muted-foreground">Email</dt>
-            <dd className="flex min-w-0 items-center gap-2">
-              <span className="truncate">{admin?.email || org.adminUserEmail || "—"}</span>
-              {(admin?.email || org.adminUserEmail) && (
+          <div className="space-y-2">
+            <Label htmlFor="org-admin-email">Email de acceso</Label>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Input
+                id="org-admin-email"
+                type="email"
+                value={adminEmail}
+                onChange={(e) => setAdminEmail(e.target.value)}
+                placeholder="responsable@empresa.com"
+                autoComplete="off"
+              />
+              <div className="flex shrink-0 gap-2">
+                {(admin?.email || org.adminUserEmail) && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-10 w-10 shrink-0"
+                    aria-label="Copiar email"
+                    onClick={() => void copyText("Email", admin?.email || org.adminUserEmail)}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                )}
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0"
-                  aria-label="Copiar email"
-                  onClick={() => void copyText("Email", admin?.email || org.adminUserEmail)}
+                  variant="secondary"
+                  disabled={!emailDirty || changingEmail}
+                  onClick={() => setConfirmEmailOpen(true)}
                 >
-                  <Copy className="h-4 w-4" />
+                  {changingEmail ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Cambiar email
                 </Button>
-              )}
-            </dd>
+              </div>
+            </div>
+          </div>
+          <dl className="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-3 text-sm">
             <dt className="text-muted-foreground">Nombre</dt>
             <dd>{admin?.nombre || "—"}</dd>
             <dt className="text-muted-foreground">Teléfono</dt>
@@ -329,11 +412,14 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
             <dd>{(admin?.enviosDisponibles ?? 0).toLocaleString("es-AR")}</dd>
           </dl>
           <p className="text-sm text-muted-foreground">
-            El enlace de restablecimiento llega al email del operador. Después entra en{" "}
-            <span className="font-mono text-xs">/empresa</span>.
+            Cambiá el mail para pasarle la cuenta al responsable real. Recibe el correo para definir
+            contraseña e ingresa en <span className="font-mono text-xs">/empresa</span>. El enlace de
+            restablecimiento también llega a este email.
           </p>
         </section>
       </div>
+
+      <OrgWaTemplatesAdmin orgId={org.id} />
 
       <section className="space-y-3">
         <h4 className="font-semibold">Operadores</h4>
@@ -426,6 +512,41 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
           </Table>
         </div>
       </section>
+
+      <AlertDialog open={confirmEmailOpen} onOpenChange={setConfirmEmailOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Pasar el acceso a {nextAdminEmail}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deja de servir el mail actual ({currentAdminEmail || "—"}). Al nuevo correo le llega la
+              activación para definir contraseña y entrar por empresas.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <label className="flex items-start gap-2 text-sm">
+            <Checkbox
+              checked={keepPreviousAsMember}
+              onCheckedChange={(v) => setKeepPreviousAsMember(v === true)}
+            />
+            <span>
+              Si el correo nuevo ya existe, mantener {currentAdminEmail || "el mail anterior"} como
+              operador de esta empresa.
+            </span>
+          </label>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={changingEmail}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={changingEmail}
+              onClick={(e) => {
+                e.preventDefault();
+                void changeAdminEmail();
+              }}
+            >
+              {changingEmail ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Cambiar y enviar activación
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

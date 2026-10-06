@@ -45,7 +45,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/hooks/use-toast"
-import { User } from "@/lib/types"
+import { SrtAdhesionWarning } from "@/components/art/srt-adhesion-warning";
+import { listSavedWaTemplates } from "@/lib/wa-templates-client";
+import { pickPreferredOrgWaTemplate } from "@/lib/wa-saved-template";
+import type { SavedWaTemplate, User } from "@/lib/types";
 import { scheduleEmail, sendEmailManually, type SendEmailResult } from "@/lib/email";
 import { addDoc, collection, updateDoc, doc, increment } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
@@ -428,6 +431,7 @@ function RichTextEditor({ value, disabled, onChange, onBlur }: RichTextEditorPro
 export function ComposeMessageDialog({ children, open, onOpenChange, user, initialContact, orgId }: { children: React.ReactNode, open: boolean, onOpenChange: (open: boolean) => void, user: User, initialContact?: { email: string, nombre?: string, telefono?: string }, orgId?: string }) {
     const [isSending, setIsSending] = useState(false);
     const [artEnabled, setArtEnabled] = useState(false);
+    const [orgWaTemplate, setOrgWaTemplate] = useState<SavedWaTemplate | null>(null);
     const [selectedFiles, setSelectedFiles] = useState<SelectedAttachment[]>([]);
     const isExecutingRef = useRef(false);
     const currentExecutionIdRef = useRef<string | null>(null);
@@ -462,12 +466,16 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
     useEffect(() => {
         if (!orgId) {
             setArtEnabled(false);
+            setOrgWaTemplate(null);
             return;
         }
         void fetch(`/api/art/status?orgId=${encodeURIComponent(orgId)}`)
             .then((r) => r.json())
             .then((d) => setArtEnabled(d.enabled === true))
             .catch(() => setArtEnabled(false));
+        void listSavedWaTemplates("empresa", orgId)
+            .then((list) => setOrgWaTemplate(pickPreferredOrgWaTemplate(list)))
+            .catch(() => setOrgWaTemplate(null));
     }, [orgId]);
 
     const persistRecipientContact = useCallback(async () => {
@@ -680,6 +688,14 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                     skipAutoSend: true,
                     ...(artEnabled && (data.notificationType === "ORDINARY" || data.notificationType === "SRT_ART")
                         ? { notificationType: data.notificationType }
+                        : {}),
+                    ...(orgWaTemplate && (sendCanal === "whatsapp" || sendCanal === "ambos")
+                        ? {
+                            waTemplateName: orgWaTemplate.templateName,
+                            waTemplateLang: orgWaTemplate.templateLang,
+                            waTemplateVariables: orgWaTemplate.templateVariables,
+                            waUrlButton: orgWaTemplate.urlButton,
+                          }
                         : {}),
                 }),
                 new Promise<never>((_, reject) =>
@@ -963,6 +979,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                                 </span>
                             </label>
                         </RadioGroup>
+                        {form.watch("notificationType") === "SRT_ART" ? <SrtAdhesionWarning /> : null}
                     </div>
                 ) : null}
                 {needsEmail && (

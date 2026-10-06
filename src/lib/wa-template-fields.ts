@@ -1,3 +1,5 @@
+import { explainElectronicNotificationBlock } from "@/lib/art/electronic-notification-copy";
+
 export const WA_TEMPLATE_LANGS = [
   { value: "es_AR", label: "Español (Argentina)" },
   { value: "es", label: "Español" },
@@ -10,6 +12,8 @@ export const WA_TEMPLATE_VARIABLE_OPTIONS = [
   { value: "nombre", label: "nombre" },
   { value: "dni", label: "dni" },
   { value: "legajo", label: "legajo" },
+  { value: "tomo", label: "tomo" },
+  { value: "folio", label: "folio" },
   { value: "email", label: "email" },
   { value: "telefono", label: "telefono" },
   { value: "dias", label: "días de atraso" },
@@ -96,6 +100,8 @@ export const WA_DEFAULT_TEMPLATE_HINT =
 export function explainWhatsAppSendError(raw: string | undefined | null): string | null {
   const t = String(raw || "");
   if (!t) return null;
+  const srt = explainElectronicNotificationBlock(t);
+  if (srt) return srt;
   if (t.includes("131008") || /required parameter is missing/i.test(t)) {
     return "Meta rechazó el template: falta un parámetro o llegó vacío. Suele ser (1) más o menos {{N}} que en Meta, (2) un dato vacío (legajo, DNI, días, fecha, monto), o (3) el template tiene botón URL y no está activado acá. Ajustá el template de WhatsApp y reintentá.";
   }

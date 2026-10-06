@@ -30,8 +30,13 @@ export function assertSavableWaMapping(input: {
     return "El template por defecto de Notificas ya está en el sistema; guardá uno con nombre de Meta.";
   }
   const vars = input.templateVariables.map((v) => v.trim());
-  if (!vars.length) return "El template no tiene variables mapeadas.";
   if (vars.length > WA_TEMPLATE_MAX_VARS) return `Máximo ${WA_TEMPLATE_MAX_VARS} variables.`;
   if (vars.some((v) => isWaTemplateVarEmpty(v))) return "Hay una variable vacía. Completala o usá texto fijo.";
   return null;
+}
+
+export function pickPreferredOrgWaTemplate(list: SavedWaTemplate[]): SavedWaTemplate | null {
+  const real = list.filter((t) => !usesNotificasDefaultTemplate(t.templateName));
+  if (!real.length) return null;
+  return real.slice().sort((a, b) => a.label.localeCompare(b.label, "es"))[0] || null;
 }

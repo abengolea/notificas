@@ -1,46 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
 import { verifyAuthToken } from '@/lib/auth-helper';
-import { computeContentHash } from '@/lib/certification';
-import { certificarEnvio, certifyWhatsAppPayloadIfNeeded } from '@/lib/certification-polygon';
 import { sendEmailCfHeaders } from '@/lib/cf-send-auth';
 import { sealEvidenceSnapshot } from '@/lib/evidence-snapshot';
 import { getFirebaseSendEmailUrl } from '@/lib/mail-defaults';
 import { guardarContactoDesdeMail } from '@/lib/contactos-server';
-
-/** Certifica el envío en Polygon en segundo plano — nunca bloquea la respuesta HTTP. */
-async function certifyInBackground(docId: string): Promise<void> {
-  try {
-    const snap = await adminDb.collection('mail').doc(docId).get();
-    const mailData = snap.data();
-    if (!mailData) return;
-
-    const toEmail = Array.isArray(mailData.to)
-      ? mailData.to[0]
-      : mailData.recipientEmail || mailData.to || '';
-    const fromUserId = mailData.createdBy || mailData.senderName || 'app';
-    const contentHash = await computeContentHash(mailData.message?.contentText || '');
-
-    const polygonTxHash = await Promise.race([
-      certificarEnvio(docId, fromUserId, toEmail, contentHash),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout certificación Polygon (>40s)')), 40_000)
-      ),
-    ]);
-
-    await adminDb.collection('mail').doc(docId).update({
-      'polygonCertifications.send': polygonTxHash,
-      'polygonCertifications.contentHash': contentHash,
-      'polygonCertifications.updatedAt': new Date(),
-    });
-    console.log('🔗 Envío certificado en Polygon:', polygonTxHash);
-    await certifyWhatsAppPayloadIfNeeded(docId).catch((e) =>
-      console.warn('⚠️ Certificación aviso WhatsApp:', e instanceof Error ? e.message : e)
-    );
-  } catch (err: any) {
-    console.error('⚠️ Error certificando en Polygon (no afecta el envío):', err?.message);
-  }
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -91,13 +55,32 @@ export async function POST(request: NextRequest) {
         if (gate && !gate.eligibleForElectronicNotification) {
           return NextResponse.json(
             {
-              error: 'REQUIRES_CONVENTIONAL_CHANNEL',
-              code: gate.reason,
+              error: 'No se envió: el destinatario no tiene adhesión electrónica activa. Para este aviso usá comunicación ordinaria, o notificá por vía convencional (carta).',
+              code: 'REQUIRES_CONVENTIONAL_CHANNEL',
+              reason: gate.reason,
               eligibleForElectronicNotification: false,
               conventionalChannelRequired: true,
             },
             { status: 422 }
           );
+        }
+      }
+    }
+
+    const usesWa = mailData.waOnly === true || Boolean(String(mailData.recipientPhone || "").trim());
+    if (orgId && usesWa) {
+      const { usesNotificasDefaultTemplate } = await import("@/lib/wa-template-fields");
+      if (usesNotificasDefaultTemplate(mailData.waTemplateName)) {
+        const { resolvePreferredOrgWaTemplate } = await import("@/lib/resolve-org-wa-template");
+        const preferred = await resolvePreferredOrgWaTemplate(orgId);
+        if (preferred) {
+          await adminDb.collection("mail").doc(docId).update({
+            waTemplateName: preferred.templateName,
+            waTemplateLang: preferred.templateLang || "es_AR",
+            waTemplateVariables: preferred.templateVariables,
+            ...(preferred.urlButton ? { waUrlButton: true } : {}),
+            ...(preferred.templateBody ? { waTemplateBody: preferred.templateBody } : {}),
+          });
         }
       }
     }
@@ -160,9 +143,7 @@ export async function POST(request: NextRequest) {
     // Guardar destinatario en libreta personal (no bloquea la respuesta).
     void guardarContactoDesdeMail(mailSnap.data()!);
 
-    // Lanzar la certificación Polygon sin await — responde al cliente YA.
-    // El void es intencional: Polygon es best-effort y nunca debe bloquear la UI.
-    void certifyInBackground(docId);
+    // Polygon SEND lo dispara la Cloud Function sendEmail → /api/polygon/certify-event.
     void sealEvidenceSnapshot(docId).catch((e) =>
       console.warn('⚠️ No se pudo sellar snapshot de evidencia:', e?.message)
     );

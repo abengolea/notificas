@@ -4,7 +4,10 @@ import {
   extractTemplateBody,
   extractTemplateFooter,
   extractTemplateHeader,
+  inferWaTemplateVariables,
   pickApprovedTemplate,
+  summarizeApprovedTemplates,
+  variablesForApprovedTemplate,
 } from "./meta-message-templates";
 
 const deuda = {
@@ -45,4 +48,30 @@ test("no toma HEADER de imagen como texto", () => {
     }),
     ""
   );
+});
+
+test("infiere nombre + url_lectura cuando el BODY pide un enlace", () => {
+  const vars = inferWaTemplateVariables(
+    "Estimado/a {{1}}, lea el documento en el siguiente enlace:\n{{2}}"
+  );
+  assert.deepEqual(vars, ["nombre", "url_lectura"]);
+});
+
+test("usa el mapeo conocido del Colegio y resume solo aprobadas", () => {
+  const vars = variablesForApprovedTemplate("colegio_de_abogados_san_nicolas", "{{1}} {{2}} {{3}} {{4}} {{5}}");
+  assert.deepEqual(vars, ["nombre", "tomo", "folio", "cuotas", "monto"]);
+  const list = summarizeApprovedTemplates([
+    { name: "alpha", language: "es_AR", status: "PENDING", components: [{ type: "BODY", text: "Hola {{1}}" }] },
+    { name: "colegio_de_abogados_intimacion_matricula", language: "es_AR", status: "APPROVED", components: [{ type: "BODY", text: "Hola {{1}} {{2}}" }] },
+    {
+      name: "aviso",
+      language: "es_AR",
+      status: "APPROVED",
+      components: [{ type: "BUTTONS", buttons: [{ type: "URL", text: "Ver" }] }, { type: "BODY", text: "X" }],
+    },
+  ]);
+  assert.equal(list.length, 2);
+  assert.equal(list[0].name, "aviso");
+  assert.equal(list[0].urlButton, true);
+  assert.equal(list[1].variableCount, 2);
 });

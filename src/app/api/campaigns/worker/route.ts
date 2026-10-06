@@ -208,7 +208,7 @@ async function processMessage(
       await msgRef.update({
         estado: 'error',
         errorCode: 'REQUIRES_CONVENTIONAL_CHANNEL',
-        errorMsg: gate.reason,
+        errorMsg: 'No se envió: el destinatario no tiene adhesión electrónica activa. Para este aviso usá comunicación ordinaria, o notificá por vía convencional (carta).',
         conventionalChannelRequired: true,
         eligibleForElectronicNotification: false,
         notificationType: 'SRT_ART',
@@ -218,6 +218,20 @@ async function processMessage(
   }
 
   const canal: string = campaign.canal || 'email';
+  if ((canal === 'whatsapp' || canal === 'ambos') && usesNotificasDefaultTemplate(campaign.waTemplateName)) {
+    const { resolvePreferredOrgWaTemplate } = await import('@/lib/resolve-org-wa-template');
+    const preferred = await resolvePreferredOrgWaTemplate(orgIdForArt);
+    if (preferred) {
+      campaign = {
+        ...campaign,
+        waTemplateName: preferred.templateName,
+        waTemplateLang: preferred.templateLang || 'es_AR',
+        waTemplateVariables: preferred.templateVariables,
+        waUrlButton: preferred.urlButton === true,
+        ...(preferred.templateBody ? { waTemplateBody: preferred.templateBody } : {}),
+      };
+    }
+  }
   const emailRaw = String(msg.recipientEmail || '').toLowerCase();
   // Tratar emails sintéticos (generados por CSV parser cuando no hay email real) como "sin email".
   const isSyntheticEmail = emailRaw.endsWith('@notificas.internal') || emailRaw.endsWith('@wa.internal');

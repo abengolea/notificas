@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import type { SavedWaTemplate } from "@/lib/types";
-import { lastUsedWaTemplateKey } from "@/lib/wa-saved-template";
+import { lastUsedWaTemplateKey, pickPreferredOrgWaTemplate } from "@/lib/wa-saved-template";
 import {
   createSavedWaTemplate,
   deleteSavedWaTemplate,
@@ -34,6 +34,7 @@ export function WaSavedTemplates({
   onApply,
   disabled,
   autoApply = false,
+  reloadKey = 0,
 }: {
   orgId: string;
   mode: WaTemplatesAuthMode;
@@ -41,6 +42,7 @@ export function WaSavedTemplates({
   onApply: (next: WaTemplateFieldsValue) => void;
   disabled?: boolean;
   autoApply?: boolean;
+  reloadKey?: number;
 }) {
   const { toast } = useToast();
   const [items, setItems] = useState<SavedWaTemplate[]>([]);
@@ -76,15 +78,20 @@ export function WaSavedTemplates({
       if (cancelled) return;
       if (!autoApply || usesNotificasDefaultTemplate(current.name) === false) return;
       const lastId = typeof window !== "undefined" ? window.localStorage.getItem(lastUsedWaTemplateKey(orgId)) : null;
-      const last = lastId ? list.find((t) => t.id === lastId) : list[0];
-      if (!last) return;
-      setSelectedId(last.id);
-      setLabel(last.label);
+      const last = lastId ? list.find((t) => t.id === lastId) : undefined;
+      const chosen =
+        last && !usesNotificasDefaultTemplate(last.templateName)
+          ? last
+          : pickPreferredOrgWaTemplate(list);
+      if (!chosen) return;
+      setSelectedId(chosen.id);
+      setLabel(chosen.label);
       onApply({
-        name: last.templateName,
-        lang: last.templateLang,
-        variables: last.templateVariables,
-        urlButton: last.urlButton,
+        name: chosen.templateName,
+        lang: chosen.templateLang,
+        variables: chosen.templateVariables,
+        urlButton: chosen.urlButton,
+        templateBody: chosen.templateBody,
       });
     })();
     return () => {
@@ -93,6 +100,11 @@ export function WaSavedTemplates({
     // Solo al montar / cambiar org: no reaplicar si el usuario edita a mano.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, mode, autoApply]);
+
+  useEffect(() => {
+    if (!orgId || !reloadKey) return;
+    void refresh();
+  }, [orgId, reloadKey, refresh]);
 
   function applyItem(tpl: SavedWaTemplate) {
     setSelectedId(tpl.id);

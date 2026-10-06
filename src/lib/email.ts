@@ -24,6 +24,10 @@ export type ScheduleEmailParams = {
   waOnly?: boolean;
   /** Clasificación explícita para organizaciones ART. */
   notificationType?: "ORDINARY" | "SRT_ART";
+  waTemplateName?: string;
+  waTemplateLang?: string;
+  waTemplateVariables?: string[];
+  waUrlButton?: boolean;
 };
 
 /** Lista de correos para `to`, `cc`, `bcc`: minúsculas + trim (alineado con queries y reglas). */
@@ -40,7 +44,7 @@ function normalizedEmailIdentity(value?: string): string | undefined {
 }
 
 export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend?: boolean }): Promise<string> {
-  const { to, subject, html, text, from, replyTo, cc, bcc, recipientName, recipientEmail, recipientPhone, recipientDni, recipientCuit, senderName, createdBy, orgId, waOnly, notificationType, skipAutoSend = false } = params;
+  const { to, subject, html, text, from, replyTo, cc, bcc, recipientName, recipientEmail, recipientPhone, recipientDni, recipientCuit, senderName, createdBy, orgId, waOnly, notificationType, waTemplateName, waTemplateLang, waTemplateVariables, waUrlButton, skipAutoSend = false } = params;
 
   const payload: any = {
     to: normalizeEmailList(to),
@@ -71,6 +75,10 @@ export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend
   if (notificationType === "SRT_ART" || notificationType === "ORDINARY") {
     payload.notificationType = notificationType;
   }
+  if (waTemplateName) payload.waTemplateName = waTemplateName;
+  if (waTemplateLang) payload.waTemplateLang = waTemplateLang;
+  if (waTemplateVariables?.length) payload.waTemplateVariables = waTemplateVariables;
+  if (waUrlButton) payload.waUrlButton = true;
 
   // 🚨 ID ÚNICO PARA EVITAR DUPLICADOS
   const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;

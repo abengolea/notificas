@@ -89,6 +89,29 @@ export async function deleteSavedWaTemplate(mode: WaTemplatesAuthMode, templateI
   if (!res.ok) throw new Error(await readError(res));
 }
 
+export type MetaApprovedCatalogItem = {
+  id: string | null;
+  name: string;
+  language: string;
+  status: string;
+  body: string;
+  urlButton: boolean;
+  variableCount: number;
+};
+
+export async function listMetaApprovedCatalog(
+  mode: WaTemplatesAuthMode,
+  orgId: string
+): Promise<MetaApprovedCatalogItem[]> {
+  const res = await waTemplatesFetch(
+    mode,
+    `/api/wa-templates/meta/catalog?orgId=${encodeURIComponent(orgId)}`
+  );
+  if (!res.ok) throw new Error(await readError(res));
+  const data = (await res.json()) as { templates?: MetaApprovedCatalogItem[] };
+  return Array.isArray(data.templates) ? data.templates : [];
+}
+
 export async function fetchMetaApprovedTemplateBody(
   mode: WaTemplatesAuthMode,
   input: { orgId: string; name: string; lang?: string }

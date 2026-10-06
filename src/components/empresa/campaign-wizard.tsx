@@ -83,6 +83,9 @@ import { usesMetaTemplateAsEmailBody } from "@/lib/campaign-mixed-message";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 import { WaSavedTemplates } from "@/components/empresa/wa-saved-templates";
 import { CampaignPadronPicker, padronRowToRecipient, type PadronRow } from "@/components/empresa/campaign-padron-picker";
+import { listSavedWaTemplates } from "@/lib/wa-templates-client";
+import { pickPreferredOrgWaTemplate } from "@/lib/wa-saved-template";
+import { SrtAdhesionWarning } from "@/components/art/srt-adhesion-warning";
 
 type WizardStepId = "canal" | "destinatarios" | "mensaje" | "whatsapp" | "confirmacion";
 
@@ -281,6 +284,30 @@ export function CampaignWizard({
         setArtPilotCaps(false);
       });
   }, [orgId]);
+
+  useEffect(() => {
+    if (!orgId || isEdit) return;
+    if (canal !== "whatsapp" && canal !== "ambos") return;
+    let cancelled = false;
+    void listSavedWaTemplates(isAdmin ? "admin" : "empresa", orgId)
+      .then((list) => {
+        if (cancelled) return;
+        const preferred = pickPreferredOrgWaTemplate(list);
+        if (!preferred) return;
+        setWaTemplateName((cur) => {
+          if (!usesNotificasDefaultTemplate(cur)) return cur;
+          setWaTemplateLang(preferred.templateLang);
+          setWaTemplateVariables(preferred.templateVariables);
+          setWaUrlButton(preferred.urlButton);
+          if (preferred.templateBody) setWaTemplateBody(preferred.templateBody);
+          return preferred.templateName;
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, canal, isAdmin, isEdit]);
 
   useEffect(() => {
     if (prevOrgIdRef.current === orgId) return;
@@ -1819,8 +1846,8 @@ export function CampaignWizard({
           <CardHeader>
             <CardTitle>Template de WhatsApp</CardTitle>
             <CardDescription>
-              Meta no deja texto libre: hay que usar un template aprobado. Mapeá cada {"{{N}}"} ahora; en el paso
-              siguiente el CSV tiene que traer esas columnas (salvo las que pongas como texto fijo).
+              Si esta empresa tiene plantillas habilitadas en admin, se usa esa (no el sobre de Notificas). Meta no deja
+              texto libre: mapeá cada {"{{N}}"} ahora.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1987,6 +2014,7 @@ export function CampaignWizard({
                     </span>
                   </label>
                 </RadioGroup>
+                {notificationType === "SRT_ART" ? <SrtAdhesionWarning /> : null}
               </div>
             ) : null}
             <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
