@@ -58,7 +58,7 @@ export function campaignBodyToHtmlFragment(body: string): string {
     .join('');
 }
 
-export type CampaignMailHtmlMode = 'teaser' | 'inline';
+export type CampaignMailHtmlMode = 'teaser' | 'inline' | 'letter';
 
 export function buildCampaignMailHtml(params: {
   recipientEmail: string;
@@ -66,19 +66,22 @@ export function buildCampaignMailHtml(params: {
   sender: string;
   bodyHtml: string;
   attachments: CampaignAttachment[];
-  /** inline: el cuerpo viaja en el correo (mismo texto que el template de Meta). teaser: solo enlace al lector. */
+  /** inline: el cuerpo viaja en el correo (mismo texto que el template de Meta). letter: carta larga visible + mismo enlace que WhatsApp. teaser: solo enlace al lector. */
   mode?: CampaignMailHtmlMode;
   /** Vista previa en bandeja; si falta, se usa un texto genérico (sin jerga legal). */
   previewText?: string;
 }): string {
   const { recipientEmail, recipientName, sender, bodyHtml, attachments } = params;
-  const inline = params.mode === 'inline';
+  const showBodyInMailbox = params.mode === 'inline' || params.mode === 'letter';
 
   const hasInlineBody = !!(bodyHtml?.trim());
-  const leadSecondParagraph = inline && hasInlineBody
+  const leadSecondParagraph = params.mode === 'inline' && hasInlineBody
     ? `Recibió una comunicación de <strong>${escapeHtmlText(sender)}</strong>.
                 El texto siguiente es el mismo mensaje enviado por WhatsApp.
                 El enlace registra la apertura en Notificas.com.`
+    : params.mode === 'letter' && hasInlineBody
+    ? `Recibió una comunicación de <strong>${escapeHtmlText(sender)}</strong>.
+                Puede leer el texto completo en este mismo correo. El enlace registra la apertura y es el mismo acceso que le enviamos por WhatsApp.`
     : hasInlineBody
     ? `Recibió una comunicación de <strong>${escapeHtmlText(sender)}</strong>.
                 Puede leer el texto en este mismo correo. El enlace registra la apertura en Notificas.com.`
@@ -92,7 +95,7 @@ export function buildCampaignMailHtml(params: {
   const preview = previewRaw
     || `Comunicación de ${sender} a través de Notificas.com`;
 
-  const hideAttr = inline ? '' : ' data-email-hide';
+  const hideAttr = showBodyInMailbox ? '' : ' data-email-hide';
   const contentSection = bodyHtml?.trim()
     ? `
                 <div class="message-content"${hideAttr} style="margin: 20px 0;">

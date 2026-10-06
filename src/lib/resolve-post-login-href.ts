@@ -1,4 +1,10 @@
 import type { User } from "firebase/auth";
+import {
+  EMPRESA_ONLY_LOGIN_MESSAGE,
+  isConsumerAppPath,
+  isEmpresaAppPath,
+  isEmpresaOnlyUser,
+} from "@/lib/user-account-kind";
 
 function orgIdFromUnknown(row: unknown): string | null {
   if (!row || typeof row !== "object" || !("id" in row)) return null;
@@ -14,26 +20,53 @@ export function empresaHomeHrefFromOrgs(orgs: unknown[]): string | null {
   return null;
 }
 
+export type PostLoginResolution =
+  | { ok: true; href: string }
+  | { ok: false; code: "empresa_only"; message: string; empresaHref: string };
+
 /**
- * Si el usuario pidió el módulo empresas (`/empresa`), y tiene organizaciones,
- * lo enviamos al dashboard de esa org (o al selector si tiene más de una).
- * Entrar por particulares (`/dashboard` o login sin `next`) no se desvía a empresa.
+ * Login de particulares (`/dashboard`) no admite cuentas solo-empresa.
+ * Login de empresas (`/empresa`) va al dashboard de esa org.
  */
 export async function resolvePostLoginHref(
   user: User,
   options: { requested: string; defaultConsumerEntry?: boolean },
-): Promise<string> {
-  const path = options.requested.split("?")[0];
-  const wantsEmpresaRoot = path === "/empresa" || path === "/empresa/";
-  if (!wantsEmpresaRoot) return options.requested;
-
+): Promise<PostLoginResolution> {
+  const requested = options.requested;
+  const path = requested.split("?")[0];
   const token = await user.getIdToken();
   const res = await fetch("/api/organizations", {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) return options.requested;
+  if (!res.ok) {
+    if (isConsumerAppPath(path) && options.defaultConsumerEntry) {
+      return { ok: true, href: requested };
+    }
+    return { ok: true, href: requested };
+  }
 
-  const data = (await res.json()) as { organizations?: unknown };
+  const data = (await res.json()) as {
+    organizations?: unknown;
+    empresaOnly?: unknown;
+    userTipo?: unknown;
+  };
   const orgs = Array.isArray(data.organizations) ? data.organizations : [];
-  return empresaHomeHrefFromOrgs(orgs) ?? options.requested;
+  const empresaHref = empresaHomeHrefFromOrgs(orgs) ?? "/empresa";
+  const empresaOnly =
+    data.empresaOnly === true || isEmpresaOnlyUser({ tipo: data.userTipo });
+
+  if (empresaOnly && isConsumerAppPath(path)) {
+    return {
+      ok: false,
+      code: "empresa_only",
+      message: EMPRESA_ONLY_LOGIN_MESSAGE,
+      empresaHref,
+    };
+  }
+
+  if (isEmpresaAppPath(path)) {
+    return { ok: true, href: empresaHomeHrefFromOrgs(orgs) ?? requested };
+  }
+
+  return { ok: true, href: requested };
 }

@@ -7,7 +7,7 @@ import {
   campaignBodyToHtmlFragment,
   personalizeCampaignText,
 } from '@/lib/campaign-email-html';
-import { renderCampaignMessageBody, usesMetaTemplateAsEmailBody } from '@/lib/campaign-mixed-message';
+import { renderCampaignMessageBody } from '@/lib/campaign-mixed-message';
 import { normalizeEnviosDisponibles } from '@/lib/envios';
 import { invokeSendEmail } from '@/lib/send-mail-via-cf';
 import { computeContentHash } from '@/lib/certification';
@@ -239,7 +239,6 @@ async function processMessage(
   const senderEmail = String(campaign.senderEmail || campaign.createdBy || 'contacto@notificas.com');
   const uid = String(campaign.senderUid || campaign.createdBy || '');
   const subject = personalizeCampaignText(String(campaign.asunto || 'Notificación'), row);
-  const mixedMeta = usesMetaTemplateAsEmailBody(canal, campaign.waTemplateName);
   const bodyPlain = renderCampaignMessageBody({
     canal,
     waTemplateName: campaign.waTemplateName,
@@ -260,10 +259,7 @@ async function processMessage(
     sender: senderEmail,
     bodyHtml,
     attachments: attachmentsFor(campaign, email),
-    mode: mixedMeta ? 'inline' : 'teaser',
-    ...(mixedMeta && bodyPlain.trim()
-      ? { previewText: bodyPlain.replace(/\s+/g, ' ').trim().slice(0, 140) }
-      : {}),
+    mode: 'teaser',
   });
   const adjuntos = attachmentsFor(campaign, email);
 

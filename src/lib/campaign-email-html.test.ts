@@ -40,6 +40,21 @@ test('modo inline usa el cuerpo como preheader de bandeja', () => {
   assert.match(html, /Deuda de prueba 180 días/);
 });
 
+test('modo letter muestra la carta en el correo y no dice que es el globo de WhatsApp', () => {
+  const html = buildCampaignMailHtml({
+    recipientEmail: 'a@b.com',
+    recipientName: 'Ana',
+    sender: 'Colegio de Abogados de San Nicolás',
+    bodyHtml: campaignBodyToHtmlFragment('Intimación por matrícula impaga.'),
+    attachments: [],
+    mode: 'letter',
+  });
+  assert.match(html, /Intimación por matrícula impaga/);
+  assert.match(html, /mismo acceso que le enviamos por WhatsApp/);
+  assert.equal(/data-email-hide/.test(html), false);
+  assert.equal(/mismo mensaje enviado por WhatsApp/.test(html), false);
+});
+
 test('modo teaser oculta el cuerpo (el lector lo muestra)', () => {
   const html = buildCampaignMailHtml({
     recipientEmail: 'a@b.com',

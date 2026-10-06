@@ -1389,7 +1389,7 @@ export const CampaignDashboard = forwardRef<
               </p>
               <p className="text-xs text-muted-foreground">
                 {usesMetaTemplateAsEmailBody(campaign.canal, campaign.waTemplateName)
-                  ? "Correo y WhatsApp usan el mismo texto: el BODY del template aprobado en Meta, con las variables de cada destinatario."
+                  ? "El correo es un aviso con enlace al lector. WhatsApp lleva la plantilla de Meta con el mismo acceso. La carta está en el lector."
                   : "El aviso de WhatsApp no es el cuerpo de email: Meta solo acepta el template aprobado, con las mismas variables y en el mismo orden."}
               </p>
               {canEditTpl ? (

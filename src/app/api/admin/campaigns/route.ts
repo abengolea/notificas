@@ -6,7 +6,6 @@ import { getAdminDb } from '@/lib/firebase-admin';
 import { normalizeEnviosDisponibles } from '@/lib/envios';
 import type { CanalCampaign } from '@/lib/types';
 import { usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
-import { usesMetaTemplateAsEmailBody } from '@/lib/campaign-mixed-message';
 
 const createSchema = z.object({
   orgId: z.string().min(1),
@@ -119,16 +118,14 @@ export async function POST(request: NextRequest) {
     const canal = parsed.data.canal;
     const waName = parsed.data.waTemplateName?.trim() || '';
     const customWa = canal !== 'email' && !usesNotificasDefaultTemplate(waName);
-    const mixedMeta = usesMetaTemplateAsEmailBody(canal, waName);
     const waTemplateBody = (parsed.data.waTemplateBody || '').trim();
     const cuerpo =
       (parsed.data.cuerpo || '').trim() ||
-      (mixedMeta ? waTemplateBody : '') ||
       (canal === 'whatsapp' ? `Notificación por WhatsApp: ${parsed.data.nombre.trim()}` : '');
-    if ((canal === 'email' || (canal === 'ambos' && !mixedMeta)) && !cuerpo) {
-      return NextResponse.json({ error: 'Completá el cuerpo del correo' }, { status: 400 });
+    if ((canal === 'email' || canal === 'ambos') && !cuerpo) {
+      return NextResponse.json({ error: 'Completá el cuerpo de la intimación (texto del lector)' }, { status: 400 });
     }
-    if (mixedMeta && !waTemplateBody && !cuerpo) {
+    if (customWa && !waTemplateBody && canal !== 'email') {
       return NextResponse.json({ error: 'Falta el texto del template de Meta' }, { status: 400 });
     }
 

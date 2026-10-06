@@ -2,7 +2,7 @@ import { personalizeCampaignText } from "@/lib/campaign-email-html";
 import { recipientValueText } from "@/lib/parse-campaign-csv";
 import { isWaLiteralVar, usesNotificasDefaultTemplate, waLiteralText } from "@/lib/wa-template-fields";
 
-/** Campaña email+WhatsApp con template propio de Meta: el correo muestra el mismo globo. */
+/** Campaña email+WhatsApp con template propio de Meta (no el default de Notificas). */
 export function usesMetaTemplateAsEmailBody(
   canal: string | undefined | null,
   waTemplateName: string | undefined | null
@@ -130,8 +130,10 @@ export function renderCampaignMessageBody(input: {
   senderName?: string;
 }): string {
   const cuerpo = String(input.cuerpo || "");
-  const metaBody = String(input.waTemplateBody || "").trim() || cuerpo;
-  if (usesMetaTemplateAsEmailBody(input.canal, input.waTemplateName) && metaBody.trim()) {
+  const letter = personalizeCampaignText(cuerpo, input.row).trim();
+  if (letter) return letter;
+  const metaBody = String(input.waTemplateBody || "").trim();
+  if (usesMetaTemplateAsEmailBody(input.canal, input.waTemplateName) && metaBody) {
     return renderMetaTemplateBody({
       templateBody: metaBody,
       variables: input.waTemplateVariables,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuthToken } from '@/lib/auth-helper';
 import { getAdminDb } from '@/lib/firebase-admin';
+import { isEmpresaOnlyUser } from '@/lib/user-account-kind';
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,6 +11,10 @@ export async function GET(request: NextRequest) {
     const db = getAdminDb();
     const uid = decoded!.uid;
     const email = decoded!.email?.trim().toLowerCase();
+
+    const userSnap = await db.collection("users").doc(uid).get();
+    const userData = userSnap.exists ? (userSnap.data() as Record<string, unknown>) : {};
+    const empresaOnly = isEmpresaOnlyUser(userData);
 
     const parts = [
       db.collection('organizations').where('adminUserId', '==', uid).get(),
@@ -26,7 +31,11 @@ export async function GET(request: NextRequest) {
       q.docs.forEach((d) => map.set(d.id, { id: d.id, ...d.data() }));
     }
 
-    return NextResponse.json({ organizations: [...map.values()] });
+    return NextResponse.json({
+      organizations: [...map.values()],
+      empresaOnly,
+      userTipo: String(userData.tipo || "individual"),
+    });
   } catch (e) {
     console.error('GET /api/organizations', e);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });

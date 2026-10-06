@@ -79,7 +79,7 @@ import {
   isWaTemplateVarEmpty,
   usesNotificasDefaultTemplate,
 } from "@/lib/wa-template-fields";
-import { usesMetaTemplateAsEmailBody, renderCampaignMessageBody } from "@/lib/campaign-mixed-message";
+import { usesMetaTemplateAsEmailBody } from "@/lib/campaign-mixed-message";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 import { WaSavedTemplates } from "@/components/empresa/wa-saved-templates";
 import { CampaignPadronPicker, padronRowToRecipient, type PadronRow } from "@/components/empresa/campaign-padron-picker";
@@ -117,7 +117,6 @@ function campaignCopyFields(
   nombre: string,
   asunto: string,
   cuerpo: string,
-  opts?: { waTemplateName?: string; waTemplateBody?: string }
 ) {
   const n = nombre.trim();
   if (canal === "whatsapp") {
@@ -126,10 +125,6 @@ function campaignCopyFields(
       asunto: asunto.trim() || n,
       cuerpo: cuerpo.trim() || `Notificación por WhatsApp: ${n}`,
     };
-  }
-  if (usesMetaTemplateAsEmailBody(canal, opts?.waTemplateName)) {
-    const body = (opts?.waTemplateBody || cuerpo).trim();
-    return { nombre: n, asunto: asunto.trim(), cuerpo: body };
   }
   return { nombre: n, asunto: asunto.trim(), cuerpo: cuerpo.trim() };
 }
@@ -516,18 +511,7 @@ export function CampaignWizard({
       monto: r0?.monto,
       cuotas: presentRecipientValue(r0?.cuotas) ? recipientValueText(r0?.cuotas) : undefined,
     };
-    const bodyPlain = mixedMeta
-      ? renderCampaignMessageBody({
-          canal,
-          waTemplateName,
-          waTemplateBody,
-          waTemplateVariables,
-          waUrlButton,
-          cuerpo,
-          row,
-          senderName: auth.currentUser?.email || "remitente",
-        })
-      : personalizeCampaignText(cuerpo, row);
+    const bodyPlain = personalizeCampaignText(cuerpo, row);
     const body = campaignBodyToHtmlFragment(bodyPlain);
     return buildCampaignMailHtml({
       recipientEmail: r0?.email || "destinatario@ejemplo.com",
@@ -535,9 +519,9 @@ export function CampaignWizard({
       sender: auth.currentUser?.email || "remitente",
       bodyHtml: body,
       attachments: [],
-      mode: mixedMeta ? "inline" : "teaser",
+      mode: "teaser",
     });
-  }, [recipients, cuerpo, csvInspect, mixedMeta, canal, waTemplateName, waTemplateBody, waTemplateVariables, waUrlButton]);
+  }, [recipients, cuerpo, csvInspect]);
 
   const recvSig = useMemo(
     () =>
@@ -736,11 +720,8 @@ export function CampaignWizard({
     }
     if (!assertNotificationClassification()) return;
     if (!assertRecipientSources()) return;
-    const copy = campaignCopyFields(canal, campaniaNombre, asunto, cuerpo, {
-      waTemplateName,
-      waTemplateBody,
-    });
-    if (!copy.nombre || (needsMensajeStep && !copy.asunto) || (needsMensajeStep && !mixedMeta && !copy.cuerpo)) {
+    const copy = campaignCopyFields(canal, campaniaNombre, asunto, cuerpo);
+    if (!copy.nombre || (needsMensajeStep && !copy.asunto) || (needsMensajeStep && !copy.cuerpo)) {
       toast({
         title: needsMensajeStep ? "Completá nombre interno, asunto y cuerpo" : "Completá el nombre interno de la campaña",
         variant: "destructive",
@@ -901,11 +882,8 @@ export function CampaignWizard({
     if (!user) return;
     if (!assertNotificationClassification()) return;
     if (!assertRecipientSources()) return;
-    const copy = campaignCopyFields(canal, campaniaNombre, asunto, cuerpo, {
-      waTemplateName,
-      waTemplateBody,
-    });
-    if (!copy.nombre || (needsMensajeStep && !copy.asunto) || (needsMensajeStep && !mixedMeta && !copy.cuerpo)) {
+    const copy = campaignCopyFields(canal, campaniaNombre, asunto, cuerpo);
+    if (!copy.nombre || (needsMensajeStep && !copy.asunto) || (needsMensajeStep && !copy.cuerpo)) {
       toast({
         title: needsMensajeStep ? "Completá nombre interno, asunto y cuerpo" : "Completá el nombre interno de la campaña",
         variant: "destructive",
@@ -1743,9 +1721,8 @@ export function CampaignWizard({
           <CardHeader>
             <CardTitle>Mensaje</CardTitle>
             <CardDescription>
-              {mixedMeta
-                ? "El texto del correo es el mismo que WhatsApp. Acá solo definís el nombre interno y el asunto."
-                : "Variables: {{nombre}}, {{dni}}, {{legajo}}, {{fecha}}, {{monto}}, {{dias}}, {{cuotas}}."}
+              El correo es un aviso con enlace. Este texto es el del lector (la intimación). WhatsApp lleva la plantilla
+              de Meta con el mismo enlace.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1758,32 +1735,17 @@ export function CampaignWizard({
               <Input value={asunto} onChange={(e) => setAsunto(e.target.value)} />
             </div>
 
-            {canal === "ambos" && needsWaTemplateStep && mixedMeta && (
+            {canal === "ambos" && needsWaTemplateStep && (
               <p className="text-xs text-muted-foreground rounded-md border bg-muted/40 px-3 py-2">
-                El correo lleva el mismo texto que el template de WhatsApp (paso anterior). No hace falta escribir
-                otro cuerpo. Abajo podés cambiar el asunto.
-              </p>
-            )}
-            {canal === "ambos" && needsWaTemplateStep && !mixedMeta && (
-              <p className="text-xs text-muted-foreground rounded-md border bg-muted/40 px-3 py-2">
-                Con el template por defecto de Notificas, el WhatsApp es un aviso con enlace. Este cuerpo es el del
-                correo y la vista de lectura.
+                El destinatario no ve esta carta en Gmail: ve un botón «Acceder a la notificación». El mismo enlace va
+                en WhatsApp. La lectura se registra cuando abre el lector.
               </p>
             )}
 
-            {mixedMeta ? (
-              <div className="space-y-2">
-                <Label>Mensaje (igual que WhatsApp)</Label>
-                <div className="rounded-md border bg-muted/30 p-3 text-sm whitespace-pre-wrap min-h-[8rem]">
-                  {waTemplateBody.trim() || "Completá el BODY del template en el paso de WhatsApp."}
-                </div>
-              </div>
-            ) : (
             <div className="space-y-2">
-              <Label>Cuerpo{canal === "ambos" ? " (correo / vista de lectura)" : ""}</Label>
+              <Label>Cuerpo (vista de lectura)</Label>
               <Textarea value={cuerpo} onChange={(e) => setCuerpo(e.target.value)} rows={10} />
             </div>
-            )}
             {!isAdmin && (
               <>
             <div className="rounded-md border p-4 space-y-3">
@@ -1842,7 +1804,7 @@ export function CampaignWizard({
               <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
               <Button
                 onClick={() => setStep((s) => s + 1)}
-                disabled={!asunto.trim() || !campaniaNombre.trim() || (!mixedMeta && !cuerpo.trim())}
+                disabled={!asunto.trim() || !campaniaNombre.trim() || !cuerpo.trim()}
               >
                 Siguiente
               </Button>
@@ -2053,9 +2015,10 @@ export function CampaignWizard({
                   {waUrlButton && !usesNotificasDefaultTemplate(waTemplateName) ? " · botón URL" : ""}
                 </p>
               )}
-              {mixedMeta && (
+              {canal === "ambos" && (
                 <p className="text-muted-foreground">
-                  Correo y WhatsApp llevan el mismo mensaje (el BODY del template de Meta).
+                  El correo es un aviso con enlace. WhatsApp lleva la plantilla de Meta. Los dos abren el mismo lector
+                  (esta carta).
                 </p>
               )}
             </div>

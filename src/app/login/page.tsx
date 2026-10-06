@@ -35,6 +35,9 @@ function LoginForm() {
 
   const { signIn, signInWithGoogle, loading, error } = useFirebaseAuth();
   const [showPassword, setShowPassword] = useState(false);
+  const [gateError, setGateError] = useState<string | null>(null);
+  const [empresaHref, setEmpresaHref] = useState("/empresa");
+  const isEmpresaLogin = nextHref === "/empresa" || nextHref.startsWith("/empresa/");
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -46,10 +49,16 @@ function LoginForm() {
 
   const onSubmit = async (data: LoginFormValues) => {
     try {
+      setGateError(null);
       const user = await signIn(data.email.trim(), data.password);
       if (!user) return;
       const dest = await resolvePostLoginHref(user, { requested: nextHref, defaultConsumerEntry });
-      router.push(dest);
+      if (!dest.ok) {
+        setGateError(dest.message);
+        setEmpresaHref(dest.empresaHref);
+        return;
+      }
+      router.push(dest.href);
     } catch (err) {
       console.error("Error al iniciar sesión:", err);
     }
@@ -57,10 +66,16 @@ function LoginForm() {
 
   const onGoogleSignIn = async () => {
     try {
+      setGateError(null);
       const user = await signInWithGoogle();
       if (!user) return;
       const dest = await resolvePostLoginHref(user, { requested: nextHref, defaultConsumerEntry });
-      router.push(dest);
+      if (!dest.ok) {
+        setGateError(dest.message);
+        setEmpresaHref(dest.empresaHref);
+        return;
+      }
+      router.push(dest.href);
     } catch {
       // Errores ya manejados en useFirebaseAuth
     }
@@ -76,8 +91,14 @@ function LoginForm() {
           <div className="mb-4 flex justify-center">
             <Logo variant="lockup" className="h-12 w-auto max-w-[min(100%,18rem)] sm:h-14" />
           </div>
-          <CardTitle className="text-3xl font-bold">Iniciar sesión</CardTitle>
-          <CardDescription>Accede de forma segura a tus mensajes certificados</CardDescription>
+          <CardTitle className="text-3xl font-bold">
+            {isEmpresaLogin ? "Acceso empresas" : "Iniciar sesión"}
+          </CardTitle>
+          <CardDescription>
+            {isEmpresaLogin
+              ? "Ingresá con la cuenta de tu organización"
+              : "Accede de forma segura a tus mensajes certificados"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -142,6 +163,14 @@ function LoginForm() {
               {error && (
                 <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
               )}
+              {gateError && (
+                <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive space-y-2">
+                  <p>{gateError}</p>
+                  <Button type="button" variant="outline" className="w-full" onClick={() => router.push(empresaHref)}>
+                    Ir al acceso empresas
+                  </Button>
+                </div>
+              )}
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? (
                   <>
@@ -192,6 +221,14 @@ function LoginForm() {
             </svg>
             Continuar con Google
           </Button>
+          {!isEmpresaLogin && (
+            <p className="mt-4 text-center text-sm text-muted-foreground">
+              ¿Tu cuenta es de empresa?{" "}
+              <Link href="/login?next=/empresa" className="underline" prefetch={false}>
+                Ingresá por el acceso empresas
+              </Link>
+            </p>
+          )}
           <p className="mt-4 text-center text-xs text-muted-foreground">
             <Link href="/cuenta/activar-migracion" className="underline underline-offset-2" prefetch={false}>
               Venías de Notificas anterior: activá tu cuenta migrada

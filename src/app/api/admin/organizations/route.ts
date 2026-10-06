@@ -151,8 +151,15 @@ export async function POST(request: NextRequest) {
         createdByAdminOrg: true,
         ...onboardingFields,
       });
-    } else if (needsPasswordOnboarding) {
-      await userRef.set({ ...onboardingFields }, { merge: true });
+    } else {
+      await userRef.set(
+        {
+          tipo: "empresa",
+          createdByAdminOrg: true,
+          ...(needsPasswordOnboarding ? onboardingFields : {}),
+        },
+        { merge: true },
+      );
     }
 
     const mailResult = await sendEmpresaAdminOnboardingEmail({

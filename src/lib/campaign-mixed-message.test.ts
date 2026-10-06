@@ -54,13 +54,31 @@ test("texto fijo (=) no sale del CSV", () => {
   assert.equal(text, "Hola Ana, ref GOcuotas");
 });
 
-test("campaña mixta usa waTemplateBody y no un cuerpo distinto", () => {
+test("si hay carta, el lector usa esa y no el globo de Meta", () => {
+  const text = renderCampaignMessageBody({
+    canal: "ambos",
+    waTemplateName: "colegio_de_abogados_intimacion_matricula",
+    waTemplateBody: DEUDA,
+    waTemplateVariables: ["nombre", "dni", "fecha", "monto", "dias"],
+    cuerpo: "Intimación formal a {{nombre}} por matrícula.",
+    row: {
+      nombre: "Marcela Suárez",
+      dni: "20123456",
+      fecha: "01/03/26",
+      monto: "50000",
+      dias: "90",
+    },
+  });
+  assert.equal(text, "Intimación formal a Marcela Suárez por matrícula.");
+});
+
+test("sin carta, la mixta cae al BODY de Meta", () => {
   const text = renderCampaignMessageBody({
     canal: "ambos",
     waTemplateName: "notificacion_deuda_180_dias",
     waTemplateBody: DEUDA,
     waTemplateVariables: ["nombre", "dni", "fecha", "monto", "dias"],
-    cuerpo: "Este texto del correo NO debería salir",
+    cuerpo: "",
     row: {
       nombre: "Marcela Suárez",
       dni: "20123456",
@@ -71,7 +89,6 @@ test("campaña mixta usa waTemplateBody y no un cuerpo distinto", () => {
   });
   assert.match(text, /Marcela Suárez/);
   assert.match(text, /50000/);
-  assert.equal(/Este texto del correo/.test(text), false);
 });
 
 test("email-only sigue personalizando el cuerpo escrito", () => {
