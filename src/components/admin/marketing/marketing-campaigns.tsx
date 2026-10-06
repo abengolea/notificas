@@ -29,8 +29,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { parseCampaignEmailContent } from "@/lib/marketing/campaign-email";
+import {
+  campaignAudienceStatusLabel,
+  canSendMarketingCampaign,
+  evaluateCampaignSendReadiness,
+  type CampaignAudienceSummary,
+} from "@/lib/marketing/campaign-send-readiness";
 
 type Campaign = {
   id: string;
@@ -47,17 +55,36 @@ type Campaign = {
   audienceKind?: string | null;
   archivedAt?: string | null;
   contactCount?: number;
+  audience?: CampaignAudienceSummary | null;
+  emailContent?: unknown;
   stats?: { sent?: number; delivered?: number; opened?: number; clicked?: number; replied?: number; bounced?: number; failed?: number; unsubscribed?: number };
   createdAt?: string | null;
 };
 
+function campaignReadiness(row: Campaign) {
+  const parsed = parseCampaignEmailContent(row.emailContent);
+  return evaluateCampaignSendReadiness({
+    status: row.status,
+    archivedAt: row.archivedAt,
+    listId: row.listId,
+    listName: row.listName,
+    subject: row.subject,
+    emailTitle: parsed?.title ?? row.subject,
+    audience: row.audience ?? null,
+  });
+}
+
 function canSendCampaign(row: Campaign): boolean {
-  return (
-    row.status === "draft" &&
-    !row.archivedAt &&
-    Boolean(row.listId || row.listName) &&
-    (row.subject || "").trim().length >= 2
-  );
+  const parsed = parseCampaignEmailContent(row.emailContent);
+  return canSendMarketingCampaign({
+    status: row.status,
+    archivedAt: row.archivedAt,
+    listId: row.listId,
+    listName: row.listName,
+    subject: row.subject,
+    emailTitle: parsed?.title ?? row.subject,
+    audience: row.audience ?? null,
+  });
 }
 
 function statusBadge(status: string): string {
@@ -332,6 +359,9 @@ export function MarketingCampaigns() {
         <ul className="divide-y rounded-lg border bg-background">
           {rows.map((c) => {
             const failedCount = c.stats?.failed || 0;
+            const readiness = campaignReadiness(c);
+            const audienceLabel = campaignAudienceStatusLabel(readiness, c.audience ?? null);
+            const eligible = c.audience?.eligible;
             return (
             <li key={c.id} className="px-4 py-4">
               <Link href={`/admin/marketing/campanas/${c.id}`} className="block hover:opacity-80">
@@ -349,7 +379,17 @@ export function MarketingCampaigns() {
                   {c.country && c.country !== "all" ? countryName(c.country) : "Varios países"}
                   {c.listName ? ` · ${c.listName}` : ""}
                   {` · ${c.subject}`}
+                  {c.status === "draft" && typeof eligible === "number"
+                    ? ` · ${eligible.toLocaleString("es-AR")} elegibles${c.audience && c.audience.total > eligible ? ` (${c.audience.total.toLocaleString("es-AR")} en lista)` : ""}`
+                    : c.contactCount
+                      ? ` · ${c.contactCount.toLocaleString("es-AR")} destinatarios`
+                      : ""}
                 </p>
+                {c.status === "draft" && audienceLabel ? (
+                  <Badge variant="outline" className="mt-2 text-xs font-normal">
+                    {audienceLabel}
+                  </Badge>
+                ) : null}
                 <CampaignStatPills stats={c.stats} status={c.status} />
               </Link>
               <div className="mt-3">
@@ -377,7 +417,9 @@ export function MarketingCampaigns() {
             <AlertDialogDescription>
               Esto envía el correo institucional
               {confirmSend?.name ? ` de “${confirmSend.name}”` : ""}
-              {confirmSend?.contactCount ? ` a ${confirmSend.contactCount.toLocaleString("es-AR")} destinatarios` : ""}
+              {confirmSend?.audience?.eligible
+                ? ` a ${confirmSend.audience.eligible.toLocaleString("es-AR")} destinatarios`
+                : ""}
               {" "}desde {confirmSend?.fromEmail || "contacto@notificas.com"}.
               No es una prueba. La campaña dejará de ser un borrador.
             </AlertDialogDescription>

@@ -54,6 +54,7 @@ import {
   parseCampaignEmailContent,
   type CampaignEmailContent,
 } from "@/lib/marketing/campaign-email";
+import { canSendMarketingCampaign } from "@/lib/marketing/campaign-send-readiness";
 
 type Send = {
   id: string;
@@ -380,8 +381,15 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
   const isDraft = campaign.status === "draft";
   const archived = Boolean(campaign.archivedAt);
   const failedCount = sends.filter((row) => row.status === "failed").length || stats.failed || 0;
-  const hasNamedList = Boolean(audience && audience.total > 0);
-  const canSend = isDraft && !archived && hasNamedList && (audience?.eligible || 0) > 0 && emailContent.title.trim().length >= 2 && subject.trim().length >= 2;
+  const canSend = canSendMarketingCampaign({
+    status: campaign.status,
+    archivedAt: campaign.archivedAt,
+    listId: campaign.listId,
+    listName: campaign.listName,
+    subject,
+    emailTitle: emailContent.title,
+    audience,
+  });
   const filteredSends = sendOutcome === "all" ? sends : sends.filter((row) => sendMatchesOutcome(row, sendOutcome));
   const statTiles: Array<{ label: string; value: number; outcome: string }> = [
     { label: "En cola", value: stats.queued || 0, outcome: "unsent" },

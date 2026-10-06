@@ -3,7 +3,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { assertAdminSession } from "@/lib/assert-admin-session";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { resolveListLabel } from "@/lib/marketing/audience";
+import { audienceForCampaign, resolveListLabel } from "@/lib/marketing/audience";
+import { attachAudienceSummariesToCampaignRows } from "@/lib/marketing/campaign-audience-batch";
 import { materializeCrmCampaignList } from "@/lib/marketing/campaign-segment";
 import { campaignMatchesAdminFilters, parseAdminFilterValue } from "@/lib/marketing/admin-filters";
 import { MARKETING_CAMPAIGNS, MARKETING_CONTACTS, MARKETING_LISTS } from "@/lib/marketing/collections";
@@ -134,7 +135,8 @@ export async function GET(request: NextRequest) {
         }),
       )
       .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-    return NextResponse.json({ campaigns, total: campaigns.length });
+    const withAudience = await attachAudienceSummariesToCampaignRows(campaigns);
+    return NextResponse.json({ campaigns: withAudience, total: withAudience.length });
   } catch (e) {
     console.error("GET marketing campaigns", e);
     return NextResponse.json({ error: "Error interno" }, { status: 500 });
@@ -214,7 +216,25 @@ export async function POST(request: NextRequest) {
       completedAt: null,
     });
     const snap = await ref.get();
-    return NextResponse.json({ campaign: serializeAdminDoc(snap.id, snap.data() || {}) }, { status: 201 });
+    const created = serializeAdminDoc(snap.id, snap.data() || {});
+    const audience = await audienceForCampaign(created);
+    if (Number(created.contactCount || 0) !== audience.eligible) {
+      await ref.update({
+        contactCount: audience.eligible,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+    return NextResponse.json(
+      {
+        campaign: { ...created, contactCount: audience.eligible },
+        audience: {
+          total: audience.total,
+          eligible: audience.eligible,
+          skipped: audience.skipped,
+        },
+      },
+      { status: 201 },
+    );
   } catch (e) {
     const status =
       e instanceof MarketingError && (e.code === "validation" || e.code === "not_found")

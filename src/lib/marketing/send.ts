@@ -314,7 +314,10 @@ export async function enqueueCampaignSends(campaignId: string): Promise<{ queued
   await flush();
 
   if (queued === 0) {
-    return { queued: 0 };
+    throw Object.assign(
+      new Error("No hay destinatarios elegibles para esta campaña. Revisá la lista y las etapas incluidas."),
+      { status: 400 },
+    );
   }
 
   const snapshot = snapshotFieldsForCampaign(camp);

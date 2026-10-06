@@ -72,7 +72,7 @@ export function copiedCampaignFields(
     status: "draft",
     channel: "email",
     includeStages: includeStages.length ? includeStages : ["new"],
-    contactCount: Number(source.contactCount) || 0,
+    contactCount: 0,
     stats: emptyCampaignStats(),
     audienceKind: source.audienceKind || "list",
     industryId: source.industryId || null,
