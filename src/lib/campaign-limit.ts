@@ -33,7 +33,10 @@ const WA_LIMIT_TEXT =
   /rate[\s_-]?limit|too many requests|throughput|spam rate|account.{0,40}(locked|restricted|banned)|limit reached|temporarily (blocked|unavailable)|experiment group|pairing rate|unique user/i;
 
 const POLYGON_LIMIT_TEXT =
-  /insufficient.?funds|sin balance pol|fondos insuficientes|replacement fee too low|nonce too low|(-32005)|rpc.*limit|polygon.*quota/i;
+  /insufficient.?funds|sin balance pol|fondos insuficientes|(-32005)|rpc.*limit|polygon.*quota/i;
+
+const POLYGON_NONCE_CONFLICT_TEXT =
+  /replacement fee too low|replacement transaction underpriced|replacement_underpriced|nonce too low/i;
 
 const GCP_LIMIT_TEXT =
   /resource_exhausted|quota.?exceeded|too many outstanding requests|cloud tasks api error 429|429 too many|rateLimitExceeded|billing|exceeded.{0,40}quota/i;
@@ -72,6 +75,10 @@ export function isRecipientLevelEmailError(message: unknown): boolean {
   return EMAIL_RECIPIENT_TEXT.test(text);
 }
 
+export function isPolygonNonceConflict(message: unknown): boolean {
+  return POLYGON_NONCE_CONFLICT_TEXT.test(blob([message]));
+}
+
 /** En email/mixto, un fallo de envío (salvo destinatario inválido) suspende la campaña. */
 export function campaignEmailSendShouldPause(input: {
   canal?: unknown;
@@ -79,6 +86,7 @@ export function campaignEmailSendShouldPause(input: {
   limitHit?: unknown;
 }): boolean {
   if (input.limitHit === true) return true;
+  if (isPolygonNonceConflict(input.error)) return false;
   const canal = String(input.canal || '');
   if (canal !== 'email' && canal !== 'ambos') return false;
   return !isRecipientLevelEmailError(input.error);
@@ -102,6 +110,10 @@ export function classifyCampaignLimit(input: {
       code: code || String(http || 'limit'),
       reason: message || `Límite de ${hinted}`,
     };
+  }
+
+  if (isPolygonNonceConflict(message)) {
+    return null;
   }
 
   if (POLYGON_LIMIT_TEXT.test(message)) {

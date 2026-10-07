@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
     if ((canal === 'email' || canal === 'ambos') && !cuerpo) {
       return NextResponse.json({ error: 'Completá el cuerpo de la intimación (texto del lector)' }, { status: 400 });
     }
-    if (customWa && !waTemplateBody && canal !== 'email') {
+    if (customWa && !waTemplateBody) {
       return NextResponse.json({ error: 'Falta el texto del template de Meta' }, { status: 400 });
     }
 

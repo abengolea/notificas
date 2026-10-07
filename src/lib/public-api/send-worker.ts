@@ -2,33 +2,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { invokeSendEmail } from "@/lib/send-mail-via-cf";
 import { sealEvidenceSnapshot } from "@/lib/evidence-snapshot";
-import { computeContentHash } from "@/lib/certification";
-import { certificarEnvio, certifyWhatsAppPayloadIfNeeded } from "@/lib/certification-polygon";
 import { syncPublicApiNotificationFromMail } from "@/lib/public-api/status-sync";
 import { COLLECTIONS } from "@/lib/public-api/types";
-
-async function certifyInBackground(docId: string): Promise<void> {
-  try {
-    const snap = await getAdminDb().collection("mail").doc(docId).get();
-    const mailData = snap.data();
-    if (!mailData) return;
-    const toEmail = Array.isArray(mailData.to) ? mailData.to[0] : mailData.recipientEmail || mailData.to || "";
-    const fromUserId = mailData.createdBy || mailData.senderName || "app";
-    const contentHash = await computeContentHash(mailData.message?.contentText || "");
-    const polygonTxHash = await Promise.race([
-      certificarEnvio(docId, fromUserId, toEmail, contentHash),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout certificación Polygon (>40s)")), 40_000)),
-    ]);
-    await getAdminDb().collection("mail").doc(docId).update({
-      "polygonCertifications.send": polygonTxHash,
-      "polygonCertifications.contentHash": contentHash,
-      "polygonCertifications.updatedAt": new Date(),
-    });
-    await certifyWhatsAppPayloadIfNeeded(docId).catch(() => undefined);
-  } catch (err: unknown) {
-    console.error("public-api certify", err instanceof Error ? err.message : err);
-  }
-}
 
 export async function processPublicApiSend(mailId: string, notificationId: string): Promise<void> {
   const db = getAdminDb();
@@ -60,7 +35,7 @@ export async function processPublicApiSend(mailId: string, notificationId: strin
     }
   }
 
-  void certifyInBackground(mailId);
+  // Polygon SEND lo dispara la Cloud Function sendEmail → /api/polygon/certify-event.
   void sealEvidenceSnapshot(mailId).catch((e) => console.warn("public-api snapshot", e instanceof Error ? e.message : e));
   await syncPublicApiNotificationFromMail(mailId, "sent");
 }

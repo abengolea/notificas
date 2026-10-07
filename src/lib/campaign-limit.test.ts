@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   campaignEmailSendShouldPause,
   classifyCampaignLimit,
+  isPolygonNonceConflict,
   isRecipientLevelEmailError,
 } from './campaign-limit';
 
@@ -23,6 +24,17 @@ test('errores de destinatario no pausan', () => {
 test('Polygon sin POL pausa', () => {
   assert.equal(classifyCampaignLimit({ message: 'INSUFFICIENT_FUNDS' })?.source, 'polygon');
   assert.equal(classifyCampaignLimit({ message: '❌ Sin balance POL. Necesitas POL' })?.source, 'polygon');
+});
+
+test('conflicto de nonce Polygon no pausa campañas', () => {
+  assert.equal(isPolygonNonceConflict('REPLACEMENT_UNDERPRICED'), true);
+  assert.equal(isPolygonNonceConflict('replacement fee too low'), true);
+  assert.equal(isPolygonNonceConflict('replacement transaction underpriced'), true);
+  assert.equal(isPolygonNonceConflict('nonce too low'), true);
+  assert.equal(classifyCampaignLimit({ message: 'REPLACEMENT_UNDERPRICED' }), null);
+  assert.equal(classifyCampaignLimit({ message: 'replacement fee too low' }), null);
+  assert.equal(classifyCampaignLimit({ message: 'nonce too low' }), null);
+  assert.equal(campaignEmailSendShouldPause({ canal: 'ambos', error: 'replacement fee too low' }), false);
 });
 
 test('GCP quota / Cloud Tasks 429 pausan', () => {

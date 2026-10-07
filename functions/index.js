@@ -2615,9 +2615,9 @@ exports.whatsappWebhook = onRequest(
 );
 
 /**
- * Retry automático de certificación en Polygon.
- * Cada 10 minutos busca correos DELIVERED sin polygonCertifications.send
- * (últimas 48 h) y los certifica. Cubre el gap del fire-and-forget de sendEmail.
+ * Reconciliador de certificación Polygon.
+ * Cada 10 minutos revisa correos DELIVERED recientes.
+ * No reemite una certificación si ya hay txHash pending/mined; recupera reserved sin hash.
  */
 exports.retryCertifyPendingSends = onSchedule(
   {
@@ -2639,9 +2639,22 @@ exports.retryCertifyPendingSends = onSchedule(
 
     const pending = snap.docs.filter((doc) => {
       const data = doc.data();
-      if (data.polygonCertifications?.send) return false; // ya certificado
       const sentAt = data.tracking?.sentAt?.toDate?.();
-      return sentAt && sentAt >= cutoff; // solo últimas 48 h
+      if (!sentAt || sentAt < cutoff) return false;
+      const poly = data.polygonCertifications || {};
+      const op = poly.sendOperation || {};
+      const status = typeof op.status === 'string' ? op.status : '';
+      const send = typeof poly.send === 'string' && /^0x[0-9a-fA-F]{64}$/.test(poly.send) ? poly.send : '';
+      const opHash = typeof op.txHash === 'string' && /^0x[0-9a-fA-F]{64}$/.test(op.txHash) ? op.txHash : '';
+      const txHash = send || opHash;
+      if (status === 'pending') return false;
+      if (status === 'mined' && txHash) return false;
+      if (status === 'reserved' && !txHash) return true;
+      if ((status === 'dropped' || status === 'failed') && (op.payload || !txHash)) return true;
+      if (txHash) return true;
+      if (status === 'broadcast' && !txHash) return true;
+      if (!txHash && !status) return true;
+      return false;
     });
 
     if (pending.length === 0) {
@@ -2649,7 +2662,7 @@ exports.retryCertifyPendingSends = onSchedule(
       return;
     }
 
-    console.log(`🔄 retryCertifyPendingSends: ${pending.length} envíos sin certificar`);
+    console.log(`🔄 retryCertifyPendingSends: ${pending.length} envíos a reconciliar`);
 
     let ok = 0;
     let fail = 0;

@@ -59,9 +59,6 @@ export async function POST(request: NextRequest) {
     let txHash: string;
 
     if (type === 'send') {
-      if (typeof existing.send === 'string' && existing.send) {
-        return NextResponse.json({ success: true, txHash: existing.send, skipped: 'ya certificado' });
-      }
       const contentHash = await computeContentHash((mailData.message?.contentText as string | undefined) || '');
       const fromUserId =
         (mailData.createdBy as string | undefined) ||
@@ -73,11 +70,6 @@ export async function POST(request: NextRequest) {
         '';
       const smtpMessageId = mailData.smtpMessageId as string | undefined;
       txHash = await certificarEnvio(docId, fromUserId, toEmail, contentHash, smtpMessageId);
-      await adminDb.collection('mail').doc(docId).update({
-        'polygonCertifications.send': txHash,
-        'polygonCertifications.contentHash': contentHash,
-        'polygonCertifications.updatedAt': new Date(),
-      });
     } else if (HITO_TYPES.has(type) || type === 'receive' || type === 'read') {
       const hito: PolygonHitoType =
         type === 'receive'

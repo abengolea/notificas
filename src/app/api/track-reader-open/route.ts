@@ -30,19 +30,14 @@ function generateUUID() {
  */
 async function certifyContentAccessInBackground(docId: string): Promise<void> {
   try {
-    const txHash = await Promise.race([
-      certifyMailHitoIfNeeded({ docId, hito: 'content_access', via: 'reader' }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout certificación Polygon CONTENT_ACCESS (>40s)')), 40_000)
-      ),
-    ]);
+    const txHash = await certifyMailHitoIfNeeded({ docId, hito: 'content_access', via: 'reader' });
     if (!txHash) return;
     const msgSnap = await adminDb.collection('campaign_messages').where('mailId', '==', docId).limit(1).get();
     if (!msgSnap.empty) {
       await msgSnap.docs[0].ref.update({ txHashLectura: txHash, emailTxLectura: txHash });
     }
-  } catch (err: any) {
-    console.error('⚠️ Error certificando CONTENT_ACCESS en Polygon (no afecta la apertura):', err?.message);
+  } catch (err: unknown) {
+    console.error('⚠️ Error certificando CONTENT_ACCESS en Polygon (no afecta la apertura):', err instanceof Error ? err.message : err);
   }
 }
 
@@ -80,8 +75,8 @@ async function syncCampaignMessageRead(mailId: string): Promise<void> {
       }
       t.update(msgRef, update);
     });
-  } catch (err: any) {
-    console.error('⚠️ Error sincronizando leído en campaign_message:', err?.message);
+  } catch (err: unknown) {
+    console.error('⚠️ Error sincronizando leído en campaign_message:', err instanceof Error ? err.message : err);
   }
 }
 
@@ -141,7 +136,7 @@ export async function POST(request: NextRequest) {
         throw Object.assign(new Error('INVALID_TOKEN'), { code: 'INVALID_TOKEN' });
       }
 
-      const existingMovements: any[] = messageData.tracking?.movements || [];
+      const existingMovements: { type?: string }[] = messageData.tracking?.movements || [];
       const alreadyLoggedReaderOpen = existingMovements.some(
         (m) => m.type === 'reader_magic_open',
       );
@@ -247,14 +242,15 @@ export async function POST(request: NextRequest) {
       { success: true, movementId: txResult.movementId, wasFirstOpen: txResult.wasFirstOpen },
       { status: 200 },
     );
-  } catch (e: any) {
-    if (e?.code === 'NOT_FOUND') {
+  } catch (e: unknown) {
+    const err = e as { code?: string; message?: string };
+    if (err?.code === 'NOT_FOUND') {
       return NextResponse.json({ error: 'Mensaje no encontrado' }, { status: 404 });
     }
-    if (e?.code === 'INVALID_TOKEN') {
+    if (err?.code === 'INVALID_TOKEN') {
       return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
     }
-    console.error('track-reader-open:', e?.message);
+    console.error('track-reader-open:', err?.message);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }

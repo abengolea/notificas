@@ -1,6 +1,6 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { sendPolygonTransaction } from '@/lib/blockchain';
+import { broadcastPolygonCertification, inspectPolygonTx, waitForPolygonMined } from '@/lib/blockchain';
 import { buildMerkleTree, getMerkleProof, sha256Hex, verifyMerkleProof } from '@/lib/merkle';
 import {
   buildSendLeafPayload,
@@ -9,6 +9,17 @@ import {
 } from '@/lib/campaign-leaf-payload';
 import { enqueueIntegrityClose } from '@/lib/cloud-tasks';
 import { pauseCampaignIfLimit } from '@/lib/campaign-auto-pause';
+import {
+  buildCampaignAnchorPayload,
+  canMarkMerkleFailed,
+  decideMerkleClose,
+  merkleBatchCertificationId,
+  merkleBatchStatusForChain,
+  readMerkleChain,
+  resolveStableAnchorPayload,
+  type MerkleChainState,
+} from '@/lib/merkle-anchor-logic';
+import { extractPolygonTxHashFromError, isPolygonTxHash } from '@/lib/polygon-send-logic';
 
 export {
   buildSendLeafPayload,
@@ -51,6 +62,7 @@ export type IntegrityBatch = {
   errorMsg?: string;
   createdAt?: unknown;
   sealedAt?: unknown;
+  chain?: MerkleChainState;
 };
 
 function batchesCol(campaignId: string) {
@@ -589,8 +601,29 @@ export async function closeIntegrityBatch(
     const snap = await t.get(batchRef);
     if (!snap.exists) throw new Error('Tanda no encontrada');
     const d = snap.data()!;
-    if (d.status === 'anchored') return { skip: true as const, data: d };
-    if (d.status === 'sealing') return { skip: true as const, data: d };
+    const chain = readMerkleChain(d as Record<string, unknown>);
+    const decision = decideMerkleClose({
+      status: String(d.status || ''),
+      chainStatus: chain.status || null,
+      txHash: chain.txHash || null,
+      payload: chain.payload || null,
+      lastError: typeof chain.lastError === 'string' ? chain.lastError : null,
+    });
+
+    if (decision === 'done') return { skip: true as const, data: { ...d, status: 'anchored' } };
+    if (decision === 'empty') return { skip: true as const, data: { ...d, status: 'empty' } };
+    if (decision === 'reconcile' || decision === 'retry_same_payload' || decision === 'retry_fresh') {
+      if (d.status !== 'sealing') t.update(batchRef, { status: 'sealing', accepting: false });
+      return { skip: false as const, data: d, resume: true as const };
+    }
+    if (decision === 'skip_in_flight') {
+      if (opts.force && !chain.txHash && !chain.payload) {
+        t.update(batchRef, { status: 'sealing', accepting: false });
+        return { skip: false as const, data: d, resume: true as const };
+      }
+      return { skip: true as const, data: d };
+    }
+
     if (d.status !== 'open') return { skip: true as const, data: d };
 
     const remaining = idleCloseRemainingSec(d);
@@ -651,109 +684,231 @@ export async function closeIntegrityBatch(
     return { status: 'empty', leafCount: 0 };
   }
 
+  const hashes = leaves.map((l) => l.leafHash);
+  const tree = await buildMerkleTree(hashes);
+  const campSnap = kind === 'send' ? await db.collection('campaigns').doc(campaignId).get() : null;
+  const templateSealHash =
+    kind === 'send' ? String(campSnap?.data()?.waTemplateSeal?.hash || '') : '';
+  const leavesDigest = await computeLeavesDigest(hashes);
+  const existingChain = readMerkleChain(claimed.data as Record<string, unknown>);
+
+  const stable = resolveStableAnchorPayload({
+    existingPayload: existingChain.payload || null,
+    existingTimestamp: typeof existingChain.timestamp === 'string' ? existingChain.timestamp : null,
+    existingPayloadHash: typeof existingChain.payloadHash === 'string' ? existingChain.payloadHash : null,
+    build: () => {
+      const timestamp = new Date().toISOString();
+      return {
+        timestamp,
+        payload: buildCampaignAnchorPayload({
+          kind,
+          campaignId,
+          batchId,
+          merkleRoot: tree.root,
+          leafCount: leaves.length,
+          timestamp,
+          leavesDigest,
+          templateSealHash: templateSealHash || undefined,
+          version: ONCHAIN_PAYLOAD_VERSION,
+        }),
+      };
+    },
+  });
+
+  const chainReserved: MerkleChainState = {
+    merkleRoot: tree.root,
+    payload: stable.payload,
+    payloadHash: stable.payloadHash,
+    timestamp: stable.timestamp,
+    nonce: existingChain.nonce ?? null,
+    txHash: existingChain.txHash ?? null,
+    status: existingChain.txHash ? existingChain.status || 'broadcast' : 'reserved',
+    retryCount: (Number(existingChain.retryCount) || 0) + (stable.reused ? 1 : 0),
+    lastError: null,
+    broadcastAt: existingChain.broadcastAt ?? null,
+    confirmedAt: existingChain.confirmedAt ?? null,
+  };
+
+  await batchRef.update({
+    merkleRoot: tree.root,
+    payload: stable.payload,
+    leavesDigest,
+    leafCount: leaves.length,
+    accepting: false,
+    chain: chainReserved,
+    ...(templateSealHash ? { templateSealHash } : {}),
+  });
+
   try {
-    const hashes = leaves.map((l) => l.leafHash);
-    const tree = await buildMerkleTree(hashes);
-    const prefix = kind === 'send' ? 'CAMPAIGN_SEND' : 'CAMPAIGN_EVENT';
-    const campSnap = kind === 'send' ? await db.collection('campaigns').doc(campaignId).get() : null;
-    const templateSealHash =
-      kind === 'send' ? String(campSnap?.data()?.waTemplateSeal?.hash || '') : '';
+    let txHash = isPolygonTxHash(chainReserved.txHash) ? chainReserved.txHash : null;
+    let nonce = typeof chainReserved.nonce === 'number' ? chainReserved.nonce : null;
+    let chainStatus = String(chainReserved.status || 'reserved');
 
-    // Digest de todas las hojas: SHA-256 del JSON de leafHashes ordenados alfabéticamente
-    // (independiente del orden del árbol). Payload v2: posición 7. v1 no tenía este campo.
-    const leavesDigest = await computeLeavesDigest(hashes);
-
-    const payloadParts = [
-      prefix,
-      ONCHAIN_PAYLOAD_VERSION,
-      campaignId,
-      batchId,
-      tree.root,
-      String(leaves.length),
-      new Date().toISOString(),
-      leavesDigest,
-    ];
-    if (templateSealHash) payloadParts.push(templateSealHash);
-    const payload = payloadParts.join('|');
-
-    const txHash = await Promise.race([
-      sendPolygonTransaction(payload),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout ancla Polygon (>40s)')), 40_000)
-      ),
-    ]);
-
-    const writes: FirebaseFirestore.WriteBatch[] = [];
-    let current = db.batch();
-    let ops = 0;
-    const flush = async () => {
-      if (ops === 0) return;
-      writes.push(current);
-      await current.commit();
-      current = db.batch();
-      ops = 0;
-    };
-
-    for (let i = 0; i < leaves.length; i++) {
-      const leaf = leaves[i];
-      const proof = getMerkleProof(tree.layers, i);
-      current.update(batchRef.collection('leaves').doc(leaf.id), { leafIndex: i, proof, merkleRoot: tree.root, txHash });
-      ops += 1;
-
-      const msgRef = db.collection('campaign_messages').doc(leaf.messageId);
-      if (kind === 'send') {
-        current.update(msgRef, {
-          'integrity.send.leafIndex': i,
-          'integrity.send.proof': proof,
-          'integrity.send.merkleRoot': tree.root,
-          'integrity.send.txHash': txHash,
-          'integrity.send.batchId': batchId,
-          txHashEnvio: txHash,
-          emailTxEnvio: txHash,
-        });
-        ops += 1;
-      } else if (leaf.eventType) {
-        const ev = leaf.eventType as IntegrityEventType;
-        current.update(msgRef, {
-          [`integrity.events.${ev}.leafIndex`]: i,
-          [`integrity.events.${ev}.proof`]: proof,
-          [`integrity.events.${ev}.merkleRoot`]: tree.root,
-          [`integrity.events.${ev}.txHash`]: txHash,
-          [`integrity.events.${ev}.batchId`]: batchId,
-          ...(ev === 'email_read' ? { emailTxLectura: txHash, txHashLectura: txHash } : {}),
-          ...(ev === 'wa_delivered' ? { waTxEntregado: txHash } : {}),
-          ...(ev === 'wa_read' ? { waTxLeido: txHash } : {}),
-        });
-        ops += 1;
-      }
-
-      if (ops >= 400) await flush();
+    if (txHash) {
+      const inspected = await inspectPolygonTx(txHash);
+      chainStatus = inspected === 'mined' ? 'mined' : inspected === 'pending' ? 'pending' : 'dropped';
+      if (inspected === 'dropped') txHash = null;
     }
 
-    current.update(batchRef, {
-      status: 'anchored',
-      merkleRoot: tree.root,
-      txHash,
-      payload,
-      leavesDigest,
-      leafCount: leaves.length,
-      sealedAt: FieldValue.serverTimestamp(),
-      accepting: false,
-      errorMsg: FieldValue.delete(),
-      ...(templateSealHash ? { templateSealHash } : {}),
-    });
-    ops += 1;
-    await flush();
-    if (ops > 0) await current.commit();
+    if (!txHash) {
+      const result = await broadcastPolygonCertification({
+        data: stable.payload,
+        certificationId: merkleBatchCertificationId(campaignId, batchId),
+        kind: 'campaign_batch',
+        entityId: batchId,
+      });
+      txHash = result.hash;
+      nonce = result.nonce;
+      chainStatus = 'broadcast';
+    }
 
-    return { status: 'anchored', txHash, merkleRoot: tree.root, leafCount: leaves.length, leavesDigest };
+    await batchRef.update({
+      txHash,
+      'chain.txHash': txHash,
+      'chain.nonce': nonce,
+      'chain.status': chainStatus,
+      'chain.broadcastAt': chainReserved.broadcastAt || new Date(),
+      'chain.lastError': null,
+      errorMsg: FieldValue.delete(),
+    });
+
+    await persistIntegrityProofs({
+      db,
+      batchRef,
+      batchId,
+      kind,
+      leaves,
+      treeRoot: tree.root,
+      treeLayers: tree.layers,
+      txHash,
+    });
+
+    if (chainStatus === 'mined') {
+      await batchRef.update({
+        status: 'anchored',
+        'chain.status': 'mined',
+        'chain.confirmedAt': new Date(),
+        sealedAt: FieldValue.serverTimestamp(),
+        accepting: false,
+      });
+      return { status: 'anchored', txHash, merkleRoot: tree.root, leafCount: leaves.length, leavesDigest };
+    }
+
+    void waitForPolygonMined(txHash)
+      .then(async (mined) => {
+        if (!mined) return;
+        await batchRef.update({
+          status: 'anchored',
+          'chain.status': 'mined',
+          'chain.confirmedAt': new Date(),
+          sealedAt: FieldValue.serverTimestamp(),
+        });
+      })
+      .catch(() => undefined);
+    void enqueueIntegrityClose(campaignId, batchId, 60).catch(() => undefined);
+
+    return { status: 'sealing', txHash, merkleRoot: tree.root, leafCount: leaves.length, leavesDigest };
   } catch (e: unknown) {
     const errorMsg = e instanceof Error ? e.message : 'Error al anclar tanda';
-    await batchRef.update({ status: 'failed', errorMsg, accepting: false });
+    const fresh = await batchRef.get();
+    const chainNow = readMerkleChain(fresh.data() as Record<string, unknown> | undefined);
+    const pendingMsg = errorMsg.startsWith('POLYGON_TX_STILL_PENDING');
+    const knownHash =
+      (isPolygonTxHash(chainNow.txHash) ? chainNow.txHash : null) ||
+      extractPolygonTxHashFromError(e);
+    const markFailed = canMarkMerkleFailed({
+      txHash: knownHash,
+      chainStatus: pendingMsg ? 'pending' : chainNow.status || 'failed',
+    });
+    if (markFailed) {
+      await batchRef.update({
+        status: 'failed',
+        errorMsg,
+        accepting: false,
+        'chain.status': 'failed',
+        'chain.lastError': errorMsg,
+      });
+      console.error('❌ closeIntegrityBatch', campaignId, batchId, errorMsg);
+      await pauseCampaignIfLimit(campaignId, errorMsg);
+      return { status: 'failed', error: errorMsg, leafCount: leaves.length };
+    }
+    await batchRef.update({
+      status: merkleBatchStatusForChain(pendingMsg ? 'pending' : String(chainNow.status || 'broadcast'), knownHash),
+      errorMsg,
+      'chain.status': pendingMsg ? 'pending' : chainNow.status || 'broadcast',
+      'chain.lastError': errorMsg,
+      ...(knownHash ? { txHash: knownHash, 'chain.txHash': knownHash } : {}),
+    });
     console.error('❌ closeIntegrityBatch', campaignId, batchId, errorMsg);
-    await pauseCampaignIfLimit(campaignId, errorMsg);
-    return { status: 'failed', error: errorMsg, leafCount: leaves.length };
+    void enqueueIntegrityClose(campaignId, batchId, 60).catch(() => undefined);
+    return {
+      status: 'sealing',
+      txHash: knownHash || undefined,
+      merkleRoot: tree.root,
+      error: errorMsg,
+      leafCount: leaves.length,
+    };
   }
+}
+
+async function persistIntegrityProofs(input: {
+  db: FirebaseFirestore.Firestore;
+  batchRef: FirebaseFirestore.DocumentReference;
+  batchId: string;
+  kind: IntegrityKind;
+  leaves: { id: string; messageId: string; leafHash: string; leafPayload: string; eventType?: string }[];
+  treeRoot: string;
+  treeLayers: string[][];
+  txHash: string;
+}): Promise<void> {
+  const { db, batchRef, batchId, kind, leaves, treeRoot, treeLayers, txHash } = input;
+  let current = db.batch();
+  let ops = 0;
+  const flush = async () => {
+    if (ops === 0) return;
+    await current.commit();
+    current = db.batch();
+    ops = 0;
+  };
+
+  for (let i = 0; i < leaves.length; i++) {
+    const leaf = leaves[i];
+    const proof = getMerkleProof(treeLayers, i);
+    current.update(batchRef.collection('leaves').doc(leaf.id), { leafIndex: i, proof, merkleRoot: treeRoot, txHash });
+    ops += 1;
+
+    const msgRef = db.collection('campaign_messages').doc(leaf.messageId);
+    if (kind === 'send') {
+      current.update(msgRef, {
+        'integrity.send.leafIndex': i,
+        'integrity.send.proof': proof,
+        'integrity.send.merkleRoot': treeRoot,
+        'integrity.send.txHash': txHash,
+        'integrity.send.batchId': batchId,
+        txHashEnvio: txHash,
+        emailTxEnvio: txHash,
+      });
+      ops += 1;
+    } else if (leaf.eventType) {
+      const ev = leaf.eventType as IntegrityEventType;
+      current.update(msgRef, {
+        [`integrity.events.${ev}.leafIndex`]: i,
+        [`integrity.events.${ev}.proof`]: proof,
+        [`integrity.events.${ev}.merkleRoot`]: treeRoot,
+        [`integrity.events.${ev}.txHash`]: txHash,
+        [`integrity.events.${ev}.batchId`]: batchId,
+        ...(ev === 'email_read' ? { emailTxLectura: txHash, txHashLectura: txHash } : {}),
+        ...(ev === 'wa_read' ? { waTxLeido: txHash } : {}),
+        ...(ev === 'wa_delivered' ? { waTxEntregado: txHash } : {}),
+      });
+      ops += 1;
+    }
+
+    if (ops >= 400) await flush();
+  }
+
+  await flush();
+  if (ops > 0) await current.commit();
 }
 
 export type IntegrityBatchVerify = {
