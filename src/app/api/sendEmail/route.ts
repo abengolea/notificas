@@ -5,8 +5,12 @@ import { sendEmailCfHeaders } from '@/lib/cf-send-auth';
 import { sealEvidenceSnapshot } from '@/lib/evidence-snapshot';
 import { getFirebaseSendEmailUrl } from '@/lib/mail-defaults';
 import { guardarContactoDesdeMail } from '@/lib/contactos-server';
+import { creditsRequiredForMailDoc } from '@/lib/envios';
+import { addOrgCredits, consumeOrgCredits, InsufficientOrgCreditsError } from '@/lib/org-credits';
 
 export async function POST(request: NextRequest) {
+  let chargedOrgCredits = 0;
+  let billedOrgId = '';
   try {
     // Verificar autenticación
     const { decoded, errorResponse } = await verifyAuthToken(request);
@@ -29,6 +33,8 @@ export async function POST(request: NextRequest) {
 
     const mailData = mailSnap.data() || {};
     const orgId = typeof mailData.orgId === 'string' ? mailData.orgId : '';
+    const campaignId = typeof mailData.campaignId === 'string' ? mailData.campaignId : '';
+    const billOrg = Boolean(orgId) && !campaignId;
     if (orgId) {
       const { assertArtOutboundClassification, assertArtPilotOutboundRecipient } = await import('@/lib/art/outbound-guards');
       const classified = assertArtOutboundClassification(orgId, mailData.notificationType);
@@ -82,6 +88,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (billOrg) {
+      billedOrgId = orgId;
+      chargedOrgCredits = creditsRequiredForMailDoc(mailData);
+      try {
+        await consumeOrgCredits(orgId, chargedOrgCredits);
+      } catch (e) {
+        if (e instanceof InsufficientOrgCreditsError) {
+          return NextResponse.json({ error: e.message, code: e.code }, { status: 402 });
+        }
+        throw e;
+      }
+    }
+
     // Llamar a la Cloud Function para enviar email + WhatsApp
     const functionUrl = getFirebaseSendEmailUrl();
     const cfController = new AbortController();
@@ -95,6 +114,9 @@ export async function POST(request: NextRequest) {
         signal: cfController.signal,
       });
     } catch (fetchErr: any) {
+      if (chargedOrgCredits > 0) {
+        await addOrgCredits(orgId, chargedOrgCredits).catch(() => undefined);
+      }
       const msg = fetchErr?.name === 'AbortError'
         ? 'Timeout al llamar la función de envío (>55s)'
         : fetchErr?.message;
@@ -105,6 +127,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (!response.ok) {
+      if (chargedOrgCredits > 0) {
+        await addOrgCredits(orgId, chargedOrgCredits).catch(() => undefined);
+      }
       const errorText = await response.text();
       console.error('❌ Error en función de Firebase:', errorText);
       return NextResponse.json({ error: 'Error al enviar email' }, { status: 500 });
@@ -148,6 +173,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
 
   } catch (error) {
+    if (chargedOrgCredits > 0 && billedOrgId) {
+      await addOrgCredits(billedOrgId, chargedOrgCredits).catch(() => undefined);
+    }
     console.error('❌ Error en endpoint sendEmail:', error);
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
   }

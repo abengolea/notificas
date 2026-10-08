@@ -3,7 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { z } from 'zod';
 import { assertAdminSession } from '@/lib/assert-admin-session';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { normalizeEnviosDisponibles } from '@/lib/envios';
+import { ensureOrgCredits } from '@/lib/org-credits';
 import type { CanalCampaign } from '@/lib/types';
 import { usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
 
@@ -161,8 +161,7 @@ export async function POST(request: NextRequest) {
       startedAt: null,
     });
 
-    const userSnap = await db.collection('users').doc(adminUserId).get();
-    const creditos = normalizeEnviosDisponibles(userSnap.data()?.creditos);
+    const creditos = await ensureOrgCredits(parsed.data.orgId);
 
     return NextResponse.json({
       id: ref.id,

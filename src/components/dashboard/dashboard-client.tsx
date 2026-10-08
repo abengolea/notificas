@@ -251,6 +251,7 @@ export default function DashboardClient({
   const [isComposeOpen, setComposeOpen] = useState(false);
 
   const [appUser, setAppUser] = useState<AppUser | null>(null);
+  const [orgCreditos, setOrgCreditos] = useState<number | null>(null);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   /** Generación del efecto mail: ignora timeouts/listeners que quedaron obsoletos al cambiar carpeta. */
   const mailListListenSeqRef = useRef(0);
@@ -323,6 +324,18 @@ export default function DashboardClient({
       unsubFirestore?.();
     };
   }, []);
+
+  useEffect(() => {
+    if (!orgId) {
+      setOrgCreditos(null);
+      return;
+    }
+    return onSnapshot(
+      doc(db, "organizations", orgId),
+      (snap) => setOrgCreditos(normalizeEnviosDisponibles(snap.data()?.creditos)),
+      () => setOrgCreditos(0),
+    );
+  }, [orgId]);
 
   /** Marca en Firestore que el usuario migrado ya pudo entrar (contraseña definida vía flujo seguro). */
   useEffect(() => {
@@ -755,7 +768,9 @@ export default function DashboardClient({
             <h1 className="text-2xl font-semibold tracking-tight">Envíos individuales</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               El mismo envío certificado 1:1 que usan los particulares: email, WhatsApp opcional y constancia.
-              {appUser ? ` Te quedan ${appUser.creditos ?? 0} envíos.` : ""}
+              {appUser
+                ? ` La empresa tiene ${(orgCreditos ?? 0).toLocaleString("es-AR")} ${(orgCreditos ?? 0) === 1 ? "envío" : "envíos"}.`
+                : ""}
             </p>
           </div>
           {appUser ? (

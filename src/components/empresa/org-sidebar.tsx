@@ -6,6 +6,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { listenWhenSignedIn } from "@/lib/listen-when-signed-in";
+import { normalizeEnviosDisponibles } from "@/lib/envios";
 import type { Organization } from "@/lib/types";
 import {
   ClipboardCheck,
@@ -42,6 +43,7 @@ export function useOrganization(orgId: string) {
               members: Array.isArray(d.members) ? d.members : [],
               plan: (d.plan as Organization["plan"]) || "starter",
               logoUrl: d.logoUrl,
+              creditos: normalizeEnviosDisponibles(d.creditos),
               createdAt: d.createdAt,
             });
           },
@@ -129,7 +131,19 @@ export function OrgSidebarNav({ orgId, org, onNavigate, className }: OrgSidebarN
       })();
     });
     return () => unsub();
-  }, []);
+  }, [orgId]);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (!user || !orgId) return;
+      void user.getIdToken().then((token) =>
+        fetch(`/api/empresa/org-credits?orgId=${encodeURIComponent(orgId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      );
+    });
+    return () => unsub();
+  }, [orgId]);
 
   const [artEnabled, setArtEnabled] = useState(false);
   const [currentUid, setCurrentUid] = useState<string | null>(null);
@@ -154,6 +168,13 @@ export function OrgSidebarNav({ orgId, org, onNavigate, className }: OrgSidebarN
       <div className="border-b border-border/70 px-4 py-4">
         <div className="truncate text-[13px] font-medium leading-5 text-foreground">{org?.nombre || "…"}</div>
         {org?.cuit ? <div className="mt-0.5 text-[12px] leading-4 text-muted-foreground">{org.cuit}</div> : null}
+        <div className="mt-2 text-[12px] leading-4 text-muted-foreground">
+          <span className="font-medium tabular-nums text-foreground">
+            {(org?.creditos ?? 0).toLocaleString("es-AR")}
+          </span>
+          {" "}
+          {(org?.creditos ?? 0) === 1 ? "envío" : "envíos"}
+        </div>
       </div>
       <nav className="flex-1 space-y-1 p-3">
         <NavLink

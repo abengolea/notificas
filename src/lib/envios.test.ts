@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   creditsRequiredForIndividualSend,
+  creditsRequiredForMailDoc,
   creditsRequiredForNotification,
   empresaMassSendSaldoMessage,
   normalizeEnviosDisponibles,
@@ -19,12 +20,15 @@ test("individual cobra 2 solo si elige ambas vías; masivo/API sigue en 1", () =
   assert.equal(creditsRequiredForIndividualSend("ambos"), 2);
   assert.equal(creditsRequiredForNotification("email"), 1);
   assert.equal(creditsRequiredForNotification("whatsapp"), 1);
+  assert.equal(creditsRequiredForMailDoc({ waOnly: true, recipientPhone: "3364000000" }), 1);
+  assert.equal(creditsRequiredForMailDoc({ waOnly: false, recipientPhone: "3364000000" }), 2);
+  assert.equal(creditsRequiredForMailDoc({ waOnly: false, recipientPhone: "" }), 1);
 });
 
 test("saldo 0 avisa que no hay envíos para hacer", () => {
   const msg = empresaMassSendSaldoMessage(0);
   assert.equal(msg.empty, true);
-  assert.match(msg.title, /No tenés envíos/);
+  assert.match(msg.title, /La empresa no tiene envíos/);
 });
 
 test("saldo positivo dice cuántos envíos hay para el masivo", () => {

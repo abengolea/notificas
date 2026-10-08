@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { assertAdminSession } from '@/lib/assert-admin-session';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { normalizeEnviosDisponibles } from '@/lib/envios';
+import { ensureOrgCredits } from '@/lib/org-credits';
 
 export async function GET(request: NextRequest) {
   const denied = assertAdminSession(request);
@@ -20,14 +20,14 @@ export async function GET(request: NextRequest) {
     }
     const org = orgSnap.data()!;
     const adminUserId = String(org.adminUserId || '');
-    const userSnap = adminUserId ? await db.collection('users').doc(adminUserId).get() : null;
+    const creditos = await ensureOrgCredits(orgId);
     return NextResponse.json({
       orgId,
       nombre: String(org.nombre || ''),
       plan: String(org.plan || 'starter'),
       adminUserId,
       adminUserEmail: String(org.adminUserEmail || ''),
-      creditos: normalizeEnviosDisponibles(userSnap?.data()?.creditos),
+      creditos,
     });
   } catch (e) {
     console.error('GET /api/admin/campaigns/billing', e);

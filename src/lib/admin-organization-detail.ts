@@ -1,5 +1,6 @@
 import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
 import { normalizeEnviosDisponibles } from "@/lib/envios";
+import { ensureOrgCredits } from "@/lib/org-credits";
 import type {
   AdminOrgContact,
   AdminOrgMember,
@@ -76,10 +77,11 @@ export async function loadAdminOrganizationDetail(orgId: string): Promise<AdminO
   const memberIds = Array.isArray(d.members) ? d.members.map((m) => String(m)).filter(Boolean) : [];
   const uids = [...new Set([adminUserId, ...memberIds].filter(Boolean))];
 
-  const [operators, campaignSnap, listSnap] = await Promise.all([
+  const [operators, campaignSnap, listSnap, enviosDisponibles] = await Promise.all([
     Promise.all(uids.map((uid) => resolveOperator(uid, adminUserId))),
     db.collection("campaigns").where("orgId", "==", orgId).get().catch(() => null),
     db.collection("recipient_lists").where("orgId", "==", orgId).get().catch(() => null),
+    ensureOrgCredits(orgId).catch(() => normalizeEnviosDisponibles(d.creditos)),
   ]);
 
   const contacts: AdminOrgContact[] = [];
@@ -121,6 +123,7 @@ export async function loadAdminOrganizationDetail(orgId: string): Promise<AdminO
     isTestOrganization: d.isTestOrganization === true,
     environment: typeof d.environment === "string" ? d.environment : null,
     createdAt: toIso(d.createdAt),
+    enviosDisponibles,
     campaignCount: campaignSnap?.size ?? 0,
     listCount: listDocs.length,
     recipientCount,

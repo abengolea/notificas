@@ -18,6 +18,17 @@ export function creditsRequiredForIndividualSend(canal: CanalIndividual): number
   return canal === "ambos" ? 2 : 1;
 }
 
+/** Misma regla 1:1 a partir del documento `mail`. */
+export function creditsRequiredForMailDoc(mail: {
+  waOnly?: unknown;
+  recipientPhone?: unknown;
+}): number {
+  const waOnly = mail.waOnly === true;
+  const phone = String(mail.recipientPhone ?? "").trim();
+  if (!waOnly && phone) return 2;
+  return 1;
+}
+
 export function canAffordCredits(available: unknown, needed: number): boolean {
   return normalizeEnviosDisponibles(available) >= Math.max(0, Math.floor(needed));
 }
@@ -34,13 +45,13 @@ export function empresaMassSendSaldoMessage(creditos: unknown): EmpresaMassSendS
   if (n <= 0) {
     return {
       empty: true,
-      title: "No tenés envíos para hacer",
-      body: "El saldo es 0. Pedile al administrador que te asigne envíos. Podés armar un borrador, pero no se puede despachar un envío masivo hasta que haya saldo.",
+      title: "La empresa no tiene envíos",
+      body: "El saldo de la empresa es 0. Pedile a Notificas que recargue envíos. Podés armar un borrador, pero no se puede despachar un envío masivo hasta que haya saldo.",
     };
   }
   return {
     empty: false,
-    title: `Tenés ${n.toLocaleString("es-AR")} ${n === 1 ? "envío" : "envíos"} para hacer masivamente`,
-    body: "Cada destinatario consume 1 envío. Si el lote supera tu saldo, el envío no arranca.",
+    title: `La empresa tiene ${n.toLocaleString("es-AR")} ${n === 1 ? "envío" : "envíos"}`,
+    body: "Cada destinatario consume 1 envío del saldo de la empresa. Si el lote supera el saldo, el envío no arranca.",
   };
 }

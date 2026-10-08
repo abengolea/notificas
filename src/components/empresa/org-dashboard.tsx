@@ -20,6 +20,7 @@ import {
   formatInt,
   parseCampaignInstant,
 } from "@/lib/empresa-dashboard-stats";
+import { useOrganization } from "@/components/empresa/org-sidebar";
 import {
   buildIndividualDashboardStats,
   type IndividualSendStatus,
@@ -107,6 +108,8 @@ export function OrgDashboard({
 }) {
   const stats = useMemo(() => buildOrgDashboardStats(campaigns), [campaigns]);
   const individual = useMemo(() => buildIndividualDashboardStats(individualSends), [individualSends]);
+  const org = useOrganization(orgId);
+  const enviosEmpresa = org?.creditos ?? 0;
   const nuevaHref = `/empresa/${orgId}/campanas/nueva`;
   const listHref = `/empresa/${orgId}/campanas`;
   const enviosHref = `/empresa/${orgId}/envios`;
@@ -116,6 +119,8 @@ export function OrgDashboard({
       <div>
         <h1 className="app-page-title">Inicio</h1>
         <p className="mt-1.5 max-w-2xl text-[13px] leading-5 text-muted-foreground">
+          {formatInt(enviosEmpresa)} {enviosEmpresa === 1 ? "envío disponible" : "envíos disponibles"}
+          {" · "}
           {formatInt(stats.campanas)} envíos masivos
           {stats.omitidasSimuladas > 0
             ? ` (${formatInt(stats.omitidasSimuladas)} simulado${stats.omitidasSimuladas === 1 ? "" : "s"} excluido${stats.omitidasSimuladas === 1 ? "" : "s"})`

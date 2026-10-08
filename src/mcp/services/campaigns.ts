@@ -3,7 +3,7 @@ import { getAdminDb } from "@/lib/firebase-admin";
 import { saveAllRecipientChunks } from "@/lib/campaign-recipients-storage";
 import { maxRecipientsForPlan } from "@/lib/org-limits-client";
 import { isSyntheticCampaignEmail, presentRecipientValue, recipientValueText } from "@/lib/parse-campaign-csv";
-import { peekAvailableCredits, creditsRequiredForNotification } from "@/lib/public-api/notifications";
+import { peekOrgAvailableCredits, creditsRequiredForNotification } from "@/lib/public-api/notifications";
 import { resolveOrgTemplate } from "@/lib/public-api/templates";
 import { assertTenant } from "@/lib/public-api/tenant";
 import { isValidEmail, normalizePhoneOrError, sanitizeMetadata } from "@/lib/public-api/validation";
@@ -117,7 +117,7 @@ export async function createCampaignDraft(ctx: McpAuthContext, raw: unknown) {
   }
 
   const creditsNeeded = creditsRequiredForNotification(input.channel) * recipients.length;
-  const creditsAvailable = await peekAvailableCredits(ctx.senderUid);
+  const creditsAvailable = await peekOrgAvailableCredits(ctx.orgId);
   if (creditsAvailable < creditsNeeded) {
     warnings.push("The account does not currently have enough credits to send this campaign from the web.");
   }

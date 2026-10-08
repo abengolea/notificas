@@ -31,32 +31,41 @@ export function EmpresaEnviosSaldoBanner({
   );
 }
 
-/** Lee `users/{uid}.creditos` del usuario de empresa logueado. */
-export function EmpresaEnviosSaldoLiveBanner() {
+/** Lee `organizations/{orgId}.creditos` del saldo compartido de la empresa. */
+export function EmpresaEnviosSaldoLiveBanner({ orgId }: { orgId: string }) {
   const [creditos, setCreditos] = useState<number | null>(null);
 
   useEffect(() => {
-    let unsubUser: (() => void) | undefined;
+    if (!orgId) {
+      setCreditos(0);
+      return;
+    }
+    let unsubOrg: (() => void) | undefined;
     const unsubAuth = auth.onAuthStateChanged((u) => {
-      unsubUser?.();
-      unsubUser = undefined;
+      unsubOrg?.();
+      unsubOrg = undefined;
       if (!u) {
         setCreditos(0);
         return;
       }
-      unsubUser = onSnapshot(
-        doc(db, "users", u.uid),
+      unsubOrg = onSnapshot(
+        doc(db, "organizations", orgId),
         (snap) => {
           setCreditos(normalizeEnviosDisponibles(snap.data()?.creditos));
         },
         () => setCreditos(0),
       );
+      void u.getIdToken().then((token) =>
+        fetch(`/api/empresa/org-credits?orgId=${encodeURIComponent(orgId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      );
     });
     return () => {
       unsubAuth();
-      unsubUser?.();
+      unsubOrg?.();
     };
-  }, []);
+  }, [orgId]);
 
   return <EmpresaEnviosSaldoBanner creditos={creditos ?? 0} loaded={creditos !== null} />;
 }

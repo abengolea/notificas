@@ -104,7 +104,7 @@ export default function CampanasListPage() {
         </Button>
       }
     >
-      <EmpresaEnviosSaldoLiveBanner />
+      <EmpresaEnviosSaldoLiveBanner orgId={orgId} />
       <div className="overflow-hidden rounded-lg border border-border/80 bg-card">
         {rows.length === 0 ? (
           <p className="px-4 py-10 text-center text-[14px] leading-6 text-muted-foreground">

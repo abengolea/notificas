@@ -2,7 +2,6 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb, getAdminBucket } from "@/lib/firebase-admin";
 import { createMailDocumentAdmin } from "@/lib/email-server";
 import { enqueuePublicApiSend } from "@/lib/cloud-tasks";
-import { normalizeEnviosDisponibles } from "@/lib/envios";
 import { buildCampaignMailHtml, campaignBodyToHtmlFragment } from "@/lib/campaign-email-html";
 import { constanciaEnvioStoragePath } from "@/lib/constancia-envio-pdf";
 import { isSyntheticCampaignEmail, phoneDigits, presentRecipientValue } from "@/lib/parse-campaign-csv";
@@ -102,27 +101,28 @@ async function orgAllowlist(orgId: string): Promise<SandboxAllowlist> {
 
 export { creditsRequiredForNotification } from "@/lib/envios";
 
-export async function peekAvailableCredits(uid: string): Promise<number> {
-  const snap = await getAdminDb().collection("users").doc(uid).get();
-  return normalizeEnviosDisponibles(snap.data()?.creditos);
+export async function peekOrgAvailableCredits(orgId: string): Promise<number> {
+  const { peekOrgCredits } = await import("@/lib/org-credits");
+  return peekOrgCredits(orgId);
 }
 
-async function consumeCredit(uid: string, origin: "public_api" | "mcp" = "public_api"): Promise<void> {
-  const db = getAdminDb();
-  const userRef = db.collection("users").doc(uid);
-  await db.runTransaction(async (t) => {
-    const snap = await t.get(userRef);
-    const available = normalizeEnviosDisponibles(snap.data()?.creditos);
-    if (available < 1) {
+async function consumeOrgCredit(
+  orgId: string,
+  senderUid: string,
+  origin: "public_api" | "mcp" = "public_api",
+): Promise<void> {
+  const { consumeOrgCredits, InsufficientOrgCreditsError } = await import("@/lib/org-credits");
+  try {
+    await consumeOrgCredits(orgId, 1);
+  } catch (e) {
+    if (e instanceof InsufficientOrgCreditsError) {
       throw unprocessable("insufficient_credits", "The account has no remaining sends.");
     }
-    t.update(userRef, {
-      creditos: FieldValue.increment(-1),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-  });
-  await db.collection("user_transactions").add({
-    userId: uid,
+    throw e;
+  }
+  await getAdminDb().collection("user_transactions").add({
+    userId: senderUid,
+    orgId,
     tipo: "envio",
     descripcion: origin === "mcp" ? "Envío MCP" : "Envío API pública",
     creditos: -1,
@@ -269,7 +269,7 @@ export async function createPublicNotification(
   const waOnly = input.channel === "whatsapp";
 
   if (realSend) {
-    await consumeCredit(ctx.senderUid, ctx.origin === "mcp" ? "mcp" : "public_api");
+    await consumeOrgCredit(ctx.orgId, ctx.senderUid, ctx.origin === "mcp" ? "mcp" : "public_api");
   }
 
   const mailId = await createMailDocumentAdmin({

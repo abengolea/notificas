@@ -3,7 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { z } from 'zod';
 import { assertAdminSession } from '@/lib/assert-admin-session';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { normalizeEnviosDisponibles } from '@/lib/envios';
+import { ensureOrgCredits } from '@/lib/org-credits';
 import { canEditWhatsAppTemplate, isUnsentCampaign, UNSENT_EDIT_ERROR, WA_TEMPLATE_EDIT_ERROR } from '@/lib/campaign-edit';
 import { whatsappTemplateCampaignPatch } from '@/lib/campaign-wa-template-patch';
 import type { CanalCampaign } from '@/lib/types';
@@ -86,9 +86,7 @@ export async function GET(
     const data = snap.data()!;
     const orgSnap = await db.collection('organizations').doc(String(data.orgId)).get();
     const org = orgSnap.data() || {};
-    const senderUid = String(data.senderUid || data.createdBy || org.adminUserId || '');
-    const userSnap = senderUid ? await db.collection('users').doc(senderUid).get() : null;
-    const creditos = normalizeEnviosDisponibles(userSnap?.data()?.creditos);
+    const creditos = await ensureOrgCredits(String(data.orgId));
 
     const successSnap = await db
       .collection('campaign_messages')

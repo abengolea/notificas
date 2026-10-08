@@ -1,5 +1,5 @@
 import { PublicApiError } from "@/lib/public-api/errors";
-import { peekAvailableCredits, creditsRequiredForNotification } from "@/lib/public-api/notifications";
+import { peekOrgAvailableCredits, creditsRequiredForNotification } from "@/lib/public-api/notifications";
 import { missingTemplateVariables, resolveOrgTemplate } from "@/lib/public-api/templates";
 import { maskEmail, maskPhone } from "@/lib/public-api/mask";
 import type { McpAuthContext } from "@/mcp/auth/context";
@@ -72,7 +72,7 @@ async function prepareCommon(
   }
 
   const creditsNeeded = creditsRequiredForNotification(channel);
-  const creditsAvailable = await peekAvailableCredits(ctx.senderUid);
+  const creditsAvailable = await peekOrgAvailableCredits(ctx.orgId);
   const warnings: string[] = [];
   if (creditsAvailable < creditsNeeded) {
     warnings.push("The account does not have enough credits to send this notification.");
@@ -144,7 +144,7 @@ export async function estimateNotification(
   const input = parseOrThrow(estimateSchema, raw);
   const per = creditsRequiredForNotification(input.channel);
   const creditsNeeded = per * input.quantity;
-  const creditsAvailable = await peekAvailableCredits(ctx.senderUid);
+  const creditsAvailable = await peekOrgAvailableCredits(ctx.orgId);
   return {
     channel: input.channel,
     quantity: input.quantity,

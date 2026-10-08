@@ -325,16 +325,23 @@ export function CampaignWizard({
 
   useEffect(() => {
     if (isAdmin) return;
+    if (!orgId) {
+      setCreditos(0);
+      setCreditosReady(true);
+      return;
+    }
     return listenWhenSignedIn(
       () => {
         const u = auth.currentUser;
-        if (!u) {
-          setCreditos(0);
-          setCreditosReady(true);
-          return () => undefined;
+        if (u) {
+          void u.getIdToken().then((token) =>
+            fetch(`/api/empresa/org-credits?orgId=${encodeURIComponent(orgId)}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            }),
+          );
         }
         return onSnapshot(
-          doc(db, "users", u.uid),
+          doc(db, "organizations", orgId),
           (s) => {
             setCreditos(normalizeEnviosDisponibles(s.data()?.creditos));
             setCreditosReady(true);
@@ -350,7 +357,7 @@ export function CampaignWizard({
         setCreditosReady(true);
       },
     );
-  }, [isAdmin]);
+  }, [isAdmin, orgId]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -2128,7 +2135,7 @@ export function CampaignWizard({
                     {" "}Se factura a {adminBillingEmail || "la empresa"}; no hace falta cargar saldo.
                   </>
                 ) : (
-                  <> Tu saldo: <strong>{creditos}</strong>.</>
+                  <> Saldo de la empresa: <strong>{creditos}</strong>.</>
                 )}
               </p>
               )}

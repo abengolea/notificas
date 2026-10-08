@@ -14,7 +14,7 @@ import {
   renderMetaTemplateBody,
   usesMetaTemplateAsEmailBody,
 } from '@/lib/campaign-mixed-message';
-import { normalizeEnviosDisponibles } from '@/lib/envios';
+import { consumeOrgCreditsInTx } from '@/lib/org-credits';
 import { invokeSendEmail } from '@/lib/send-mail-via-cf';
 import { computeContentHash } from '@/lib/certification';
 import { recordEventLeaf, recordSendError, recordSendLeaf, sendBatchId } from '@/lib/campaign-integrity';
@@ -274,7 +274,6 @@ async function processMessage(
   const batchId = String(msg.integritySendBatchId || sendBatchId(0));
   const orgId = String(msg.orgId || campaign.orgId || '');
   const mixedMeta = usesMetaTemplateAsEmailBody(canal, campaign.waTemplateName);
-  const letter = personalizeCampaignText(String(campaign.cuerpo || ''), row).trim();
   const metaFilled =
     mixedMeta && String(campaign.waTemplateBody || '').trim()
       ? renderMetaTemplateBody({
@@ -296,7 +295,6 @@ async function processMessage(
     attachments: attachmentsFor(campaign, email),
     mode: metaFilled ? 'inline' : 'teaser',
     previewText: metaFilled || undefined,
-    readerOnlyHtml: metaFilled && letter ? campaignBodyToHtmlFragment(letter) : undefined,
   });
   const adjuntos = attachmentsFor(campaign, email);
 
@@ -583,9 +581,8 @@ async function processMessage(
     console.warn('⚠️ [worker] No se pudo persistir hash WA:', e instanceof Error ? e.message : e)
   );
 
-  // Descontar crédito y marcar enviado.
+  // Descontar crédito de la empresa y marcar enviado.
   // No degradar waEstado si un webhook (o pending) ya lo subió a entregado/leido.
-  const userRef = db.collection('users').doc(uid);
   await db.runTransaction(async (t) => {
     const msgT = await t.get(msgRef);
     const m = msgT.data()!;
@@ -594,10 +591,7 @@ async function processMessage(
     if (!m.creditApplied) {
       const prepaid = typeof campaign.creditsPrepaidAmount === 'number' && campaign.creditsPrepaidAmount > 0;
       if (!prepaid && campaign.managedByAdmin !== true) {
-        const uSnap = await t.get(userRef);
-        const c = normalizeEnviosDisponibles(uSnap.data()?.creditos);
-        if (c < 1) throw new Error('Sin envíos disponibles');
-        t.update(userRef, { creditos: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() });
+        await consumeOrgCreditsInTx(t, orgId, 1);
       }
     }
     const now = FieldValue.serverTimestamp();

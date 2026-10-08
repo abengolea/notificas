@@ -66,22 +66,18 @@ export function buildCampaignMailHtml(params: {
   sender: string;
   bodyHtml: string;
   attachments: CampaignAttachment[];
-  /** inline: el cuerpo viaja en el correo (mismo texto que el template de Meta). letter: carta larga visible + mismo enlace que WhatsApp. teaser: solo enlace al lector. */
+  /** inline: el cuerpo (template de Meta) va igual al correo y al lector. letter: carta visible. teaser: solo enlace al lector. */
   mode?: CampaignMailHtmlMode;
   /** Vista previa en bandeja; si falta, se usa un texto genérico (sin jerga legal). */
   previewText?: string;
-  /** Carta larga: viaja oculta en el HTML (el lector la muestra; Gmail no). */
-  readerOnlyHtml?: string;
 }): string {
   const { recipientEmail, recipientName, sender, bodyHtml, attachments } = params;
   const showBodyInMailbox = params.mode === 'inline' || params.mode === 'letter';
+  /** Inline = el cuerpo de Meta va igual al mail y al lector; sin sobre ni carta gemela. */
+  const skipLead = params.mode === 'inline';
 
   const hasInlineBody = !!(bodyHtml?.trim());
-  const leadSecondParagraph = params.mode === 'inline' && hasInlineBody
-    ? `Recibió una comunicación de <strong>${escapeHtmlText(sender)}</strong>.
-                El texto siguiente es el mismo mensaje enviado por WhatsApp.
-                El enlace registra la apertura en Notificas.com.`
-    : params.mode === 'letter' && hasInlineBody
+  const leadSecondParagraph = params.mode === 'letter' && hasInlineBody
     ? `Recibió una comunicación de <strong>${escapeHtmlText(sender)}</strong>.
                 Puede leer el texto completo en este mismo correo. El enlace registra la apertura y es el mismo acceso que le enviamos por WhatsApp.`
     : hasInlineBody
@@ -98,25 +94,12 @@ export function buildCampaignMailHtml(params: {
     || `Comunicación de ${sender} a través de Notificas.com`;
 
   const hideAttr = showBodyInMailbox ? '' : ' data-email-hide';
-  const mailboxTwin = showBodyInMailbox && !!params.readerOnlyHtml?.trim();
   const contentSection = bodyHtml?.trim()
     ? `
-                ${mailboxTwin ? '<!-- MAILBOX_META_START -->' : ''}
-                <div class="message-content"${mailboxTwin ? ' data-reader-hide' : hideAttr} style="margin: 20px 0;">
+                <div class="message-content"${hideAttr} style="margin: 20px 0;">
                   <h2 style="color: #1e293b; margin: 0 0 16px 0; font-size: 18px; font-weight: 600;">Contenido del mensaje</h2>
                   <div style="background: #f8fafc; padding: 16px; border-radius: 6px; border-left: 4px solid #0D9488;">
                     ${bodyHtml}
-                  </div>
-                </div>
-                ${mailboxTwin ? '<!-- MAILBOX_META_END -->' : ''}`
-    : '';
-
-  const readerOnlySection = params.readerOnlyHtml?.trim()
-    ? `
-                <div class="message-content" data-email-hide style="margin: 20px 0;">
-                  <h2 style="color: #1e293b; margin: 0 0 16px 0; font-size: 18px; font-weight: 600;">Contenido del mensaje</h2>
-                  <div style="background: #f8fafc; padding: 16px; border-radius: 6px; border-left: 4px solid #0D9488;">
-                    ${params.readerOnlyHtml}
                   </div>
                 </div>`
     : '';
@@ -203,12 +186,11 @@ export function buildCampaignMailHtml(params: {
           </tr>
           <tr>
             <td class="content">
-              <p class="lead">Estimado/a ${escapeHtmlText(recipientName)},</p>
+              ${skipLead ? '' : `<p class="lead">Estimado/a ${escapeHtmlText(recipientName)},</p>
               <p class="lead">
                 ${leadSecondParagraph}
-              </p>
+              </p>`}
               ${contentSection}
-              ${readerOnlySection}
               ${attachmentsSection}
               <p style="margin: 20px 0;">
                 <a class="btn" href="#" target="_blank" rel="noopener">Acceder a la notificación</a>

@@ -1,4 +1,4 @@
-import { peekAvailableCredits } from "@/lib/public-api/notifications";
+import { peekOrgAvailableCredits } from "@/lib/public-api/notifications";
 import type { McpAuthContext } from "@/mcp/auth/context";
 import { ALL_MCP_SCOPES, type McpScope } from "@/mcp/scopes";
 
@@ -19,7 +19,7 @@ export async function getAccount(ctx: McpAuthContext) {
 }
 
 export async function getBalance(ctx: McpAuthContext) {
-  const credits = await peekAvailableCredits(ctx.senderUid);
+  const credits = await peekOrgAvailableCredits(ctx.orgId);
   return {
     credits_available: credits,
     plan: ctx.orgPlan,

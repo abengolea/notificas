@@ -182,18 +182,8 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
     }
   }
 
-  async function addCreditsToAdmin() {
-    const uid =
-      org?.operators.find((o) => o.isOrgAdmin)?.uid || org?.adminUserId || "";
+  async function addCreditsToOrg() {
     const amount = Math.floor(Number(addEnvios));
-    if (!uid) {
-      toast({
-        title: "Sin administrador",
-        description: "Esta empresa no tiene una cuenta de acceso para acreditar envíos.",
-        variant: "destructive",
-      });
-      return;
-    }
     if (!Number.isFinite(amount) || amount < 1) {
       toast({
         title: "Cantidad inválida",
@@ -204,17 +194,17 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
     }
     setAddingEnvios(true);
     try {
-      const res = await fetch("/api/admin/users", {
-        method: "PATCH",
+      const res = await fetch(`/api/admin/organizations/${encodeURIComponent(orgId)}/credits`, {
+        method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uid, addCreditos: amount }),
+        body: JSON.stringify({ add: amount }),
       });
       const data = (await res.json()) as { error?: string; enviosDisponibles?: number };
       if (!res.ok) throw new Error(data.error || "No se pudo acreditar");
       toast({
         title: "Envíos acreditados",
-        description: `Se sumaron ${amount.toLocaleString("es-AR")} envíos. Saldo: ${(data.enviosDisponibles ?? 0).toLocaleString("es-AR")}.`,
+        description: `Se sumaron ${amount.toLocaleString("es-AR")} envíos a la empresa. Saldo: ${(data.enviosDisponibles ?? 0).toLocaleString("es-AR")}.`,
       });
       await load();
     } catch (e: unknown) {
@@ -460,9 +450,9 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
             <dd>
               <div className="flex flex-col gap-2">
                 <p>
-                  Saldo:{" "}
-                  <span className="font-medium">
-                    {(admin?.enviosDisponibles ?? 0).toLocaleString("es-AR")}
+                  Saldo de la empresa:{" "}
+                  <span className="font-medium tabular-nums">
+                    {(org.enviosDisponibles ?? 0).toLocaleString("es-AR")}
                   </span>
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
@@ -480,8 +470,8 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
                   <Button
                     type="button"
                     variant="secondary"
-                    disabled={addingEnvios || !(admin?.uid || org.adminUserId)}
-                    onClick={() => void addCreditsToAdmin()}
+                    disabled={addingEnvios}
+                    onClick={() => void addCreditsToOrg()}
                   >
                     {addingEnvios ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -492,7 +482,7 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Se acreditan en la cuenta del administrador de la empresa.
+                  Se acreditan al saldo de la empresa. Todos los operadores lo ven y lo usan.
                 </p>
               </div>
             </dd>

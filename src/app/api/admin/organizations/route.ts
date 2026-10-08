@@ -116,6 +116,7 @@ export async function POST(request: NextRequest) {
       members: [...memberUids],
       plan,
       logoUrl: parsed.data.logoUrl ?? null,
+      creditos: 0,
       createdAt: FieldValue.serverTimestamp(),
       createdByAdmin: true,
       ...(parsed.data.isTestOrganization === true ? { isTestOrganization: true } : {}),

@@ -258,8 +258,8 @@ export function OrgEquipoPanel({ orgId }: { orgId: string }) {
             <dd>{me.email}</dd>
             <dt className="text-muted-foreground">Boca asignada</dt>
             <dd>{me.bocaNombre || "Sin boca"}</dd>
-            <dt className="text-muted-foreground">Envíos disponibles</dt>
-            <dd>{me.enviosDisponibles.toLocaleString("es-AR")}</dd>
+            <dt className="text-muted-foreground">Envíos de la empresa</dt>
+            <dd>{equipo.adminEnviosDisponibles.toLocaleString("es-AR")}</dd>
             <dt className="text-muted-foreground">Mis envíos</dt>
             <dd>{me.enviadosTotal.toLocaleString("es-AR")}</dd>
           </dl>
@@ -275,13 +275,12 @@ export function OrgEquipoPanel({ orgId }: { orgId: string }) {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Equipo y bocas de envío</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Administrá operadores, asigná bocas de envío y distribuí envíos disponibles. Cada operador
-          ve sus propios envíos individuales; las campañas masivas son visibles para toda la
-          organización.
+          Administrá operadores y bocas de envío. Los envíos 1:1 y masivos de esta empresa usan el
+          saldo compartido.
         </p>
         <p className="mt-2 text-sm text-muted-foreground">
-          Tus envíos disponibles:{" "}
-          <span className="font-medium text-foreground">
+          Envíos de la empresa:{" "}
+          <span className="font-medium tabular-nums text-foreground">
             {equipo.adminEnviosDisponibles.toLocaleString("es-AR")}
           </span>
         </p>

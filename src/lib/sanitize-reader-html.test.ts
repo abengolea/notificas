@@ -42,3 +42,24 @@ test("también saca el lead de campañas mixtas", () => {
   assert.equal(/Estimado\/a/.test(out), false);
   assert.match(out, /Carta/);
 });
+
+test("si el mail tenía globo de Meta y carta oculta, el lector muestra el globo", () => {
+  const html = `
+<!-- MAILBOX_META_START -->
+<div class="message-content" data-reader-hide>
+  <h2>Contenido del mensaje</h2>
+  <div><p>El Colegio le envía una intimación oficial.</p></div>
+</div>
+<!-- MAILBOX_META_END -->
+<div class="message-content" data-email-hide>
+  <h2>Contenido del mensaje</h2>
+  <div><p>PRUEBA NUEVA NUEVA</p></div>
+</div>
+<p class="lead">Estimado/a Ana,</p>
+`;
+  const out = sanitizeHtmlForReader(html);
+  assert.match(out, /intimación oficial/);
+  assert.equal(/PRUEBA NUEVA/.test(out), false);
+  assert.equal(/Estimado\/a/.test(out), false);
+  assert.equal(/data-reader-hide/.test(out), false);
+});

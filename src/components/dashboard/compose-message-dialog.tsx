@@ -49,7 +49,7 @@ import { SrtAdhesionWarning } from "@/components/art/srt-adhesion-warning";
 import { OrgWaTemplatePicker } from "@/components/empresa/org-wa-template-picker";
 import type { SavedWaTemplate, User } from "@/lib/types";
 import { scheduleEmail, sendEmailManually, type SendEmailResult } from "@/lib/email";
-import { addDoc, collection, updateDoc, doc, increment } from "firebase/firestore";
+import { addDoc, collection, updateDoc, doc, increment, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { PDFUpload } from "./pdf-upload";
 import { uploadPDF, type UploadedFile } from "@/lib/storage";
@@ -439,6 +439,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
     const [artEnabled, setArtEnabled] = useState(false);
     const [orgWaTemplate, setOrgWaTemplate] = useState<SavedWaTemplate | null>(null);
     const [orgWaChoiceReady, setOrgWaChoiceReady] = useState(false);
+    const [orgCreditos, setOrgCreditos] = useState<number | null>(null);
     const [selectedFiles, setSelectedFiles] = useState<SelectedAttachment[]>([]);
     const isExecutingRef = useRef(false);
     const currentExecutionIdRef = useRef<string | null>(null);
@@ -464,11 +465,26 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
 
     const canal = (form.watch("canal") || "email") as CanalIndividual;
     const creditsNeeded = creditsRequiredForIndividualSend(canal);
-    const saldo = normalizeEnviosDisponibles(user.creditos);
+    const saldo = orgId
+        ? normalizeEnviosDisponibles(orgCreditos)
+        : normalizeEnviosDisponibles(user.creditos);
     const canAfford = canAffordCredits(saldo, creditsNeeded);
     const needsEmail = canal === "email" || canal === "ambos";
     const needsPhone = canal === "whatsapp" || canal === "ambos";
     const isSuspended = user.estado === 'suspendido';
+
+    useEffect(() => {
+        if (!orgId) {
+            setOrgCreditos(null);
+            return;
+        }
+        const unsub = onSnapshot(
+            doc(db, "organizations", orgId),
+            (snap) => setOrgCreditos(normalizeEnviosDisponibles(snap.data()?.creditos)),
+            () => setOrgCreditos(0),
+        );
+        return () => unsub();
+    }, [orgId]);
 
     useEffect(() => {
         if (!orgId) {
@@ -790,7 +806,6 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                     })),
                     mode: "inline",
                     previewText: metaMailboxText.replace(MAILBOX_READER_URL_SENTINEL, "").slice(0, 140),
-                    readerOnlyHtml: sanitizedContent.trim() || undefined,
                 })
                 : buildComposeMailHtml({
                     recipientEmail: mailboxRecipientEmail,
@@ -846,6 +861,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
 
             try {
                 const creditOps = async () => {
+                    if (orgId) return;
                     const userRef = doc(db, 'users', user.uid);
                     await updateDoc(userRef, {
                         creditos: increment(-sendCredits),

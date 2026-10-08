@@ -31,6 +31,7 @@ export type AdminOrganizationDetail = {
   isTestOrganization: boolean;
   environment: string | null;
   createdAt: string | null;
+  enviosDisponibles: number;
   campaignCount: number;
   listCount: number;
   recipientCount: number;

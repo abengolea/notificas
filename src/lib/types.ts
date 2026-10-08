@@ -154,6 +154,8 @@ export interface Organization {
   bocas?: BocaEnvio[];
   /** Metadatos por miembro (boca asignada, etc.). */
   memberMeta?: Record<string, OrgMemberMeta>;
+  /** Saldo de envíos de la empresa (compartido por operadores). */
+  creditos?: number;
   createdAt: unknown;
 }
 

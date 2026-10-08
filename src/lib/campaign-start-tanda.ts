@@ -1,6 +1,6 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { normalizeEnviosDisponibles } from '@/lib/envios';
+import { consumeOrgCreditsInTx } from '@/lib/org-credits';
 import { campaignFanoutIsBusy, FANOUT_BUSY_MSG, planDailySend } from '@/lib/campaign-tanda';
 import { enqueueCampaignFanout, enqueueCampaignWorker } from '@/lib/cloud-tasks';
 import { sealCampaignWhatsAppTemplate } from '@/lib/wa-template-seal';
@@ -176,19 +176,18 @@ export async function startCampaignTanda(params: {
     ? (params.retryErrors ? 0 : Math.max(0, plan.thisRun - unusedPrepaid))
     : 0;
 
-  if (chargeNow > 0 && !senderUid) {
-    throw Object.assign(new Error('La campaña no tiene remitente para descontar envíos'), { status: 400 });
+  if (chargeNow > 0 && !orgId) {
+    throw Object.assign(new Error('La campaña no tiene empresa para descontar envíos'), { status: 400 });
   }
 
-  const orgSnap = await db.collection('organizations').doc(String(campaign.orgId)).get();
+  const orgSnap = await db.collection('organizations').doc(orgId).get();
   const org = orgSnap.data() || {};
-  const billedTo = senderEmail || String(org.adminUserEmail || org.nombre || campaign.orgId);
+  const billedTo = String(org.nombre || org.adminUserEmail || orgId);
   const previousEstado = estado;
   const startedAt = campaign.startedAt ? {} : { startedAt: FieldValue.serverTimestamp() };
   const startOffset = params.retryErrors || alreadySent === 0
     ? 0
     : (typeof campaign.fanoutResumeOffset === 'number' ? campaign.fanoutResumeOffset : 0);
-  const userRef = senderUid ? db.collection('users').doc(senderUid) : null;
 
   try {
     await db.runTransaction(async (t) => {
@@ -201,14 +200,8 @@ export async function startCampaignTanda(params: {
       if (campaignFanoutIsBusy(now)) {
         throw new Error(FANOUT_BUSY_MSG);
       }
-      if (chargeNow > 0 && userRef) {
-        const uSnap = await t.get(userRef);
-        const c = normalizeEnviosDisponibles(uSnap.data()?.creditos);
-        if (c < chargeNow) throw new Error(`Envíos insuficientes: necesitás ${chargeNow}, tenés ${c}`);
-        t.update(userRef, {
-          creditos: FieldValue.increment(-chargeNow),
-          updatedAt: FieldValue.serverTimestamp(),
-        });
+      if (chargeNow > 0) {
+        await consumeOrgCreditsInTx(t, orgId, chargeNow);
       }
       t.update(campRef, {
         estado: 'enviando',

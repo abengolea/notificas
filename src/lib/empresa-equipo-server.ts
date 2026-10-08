@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
 import { normalizeEnviosDisponibles } from "@/lib/envios";
+import { consumeOrgCredits, ensureOrgCredits, InsufficientOrgCreditsError } from "@/lib/org-credits";
 import { ADMIN_EMPRESA_ONBOARDING_SOURCE, hasPendingPasswordOnboarding } from "@/lib/legacy-migration";
 import { sendEmpresaOperatorOnboardingEmail } from "@/lib/send-account-setup-email";
 import type { BocaEnvio, OrgMemberMeta } from "@/lib/types";
@@ -144,7 +145,9 @@ export async function loadEmpresaEquipo(
   );
   members.sort((a, b) => Number(b.isOrgAdmin) - Number(a.isOrgAdmin) || a.email.localeCompare(b.email));
 
-  const adminMember = members.find((m) => m.isOrgAdmin);
+  const enviosEmpresa = await ensureOrgCredits(orgId).catch(() =>
+    normalizeEnviosDisponibles(d.creditos),
+  );
 
   return {
     orgId: snap.id,
@@ -152,7 +155,7 @@ export async function loadEmpresaEquipo(
     isAdmin: viewerIsAdmin,
     bocas,
     members: viewerIsAdmin ? members : members.filter((m) => m.uid === viewerUid),
-    adminEnviosDisponibles: adminMember?.enviosDisponibles ?? 0,
+    adminEnviosDisponibles: enviosEmpresa,
   };
 }
 
@@ -211,15 +214,16 @@ export async function addEmpresaMember(options: {
 
   const envios = Math.max(0, Math.floor(options.enviosIniciales ?? 0));
   if (envios > 0) {
-    const adminSnap = await db.collection("users").doc(options.adminUid).get();
-    const adminCreditos = normalizeEnviosDisponibles(
-      adminSnap.exists ? (adminSnap.data() as Record<string, unknown>).creditos : 0,
-    );
-    if (adminCreditos < envios) {
-      return {
-        error: `No tenés envíos suficientes. Disponibles: ${adminCreditos.toLocaleString("es-AR")}.`,
-        status: 400 as const,
-      };
+    try {
+      await consumeOrgCredits(options.orgId, envios);
+    } catch (e) {
+      if (e instanceof InsufficientOrgCreditsError) {
+        return {
+          error: `No hay envíos suficientes en la empresa. Disponibles: ${e.available.toLocaleString("es-AR")}.`,
+          status: 400 as const,
+        };
+      }
+      throw e;
     }
   }
 
@@ -266,9 +270,6 @@ export async function addEmpresaMember(options: {
   }
 
   if (envios > 0) {
-    batch.update(db.collection("users").doc(options.adminUid), {
-      creditos: FieldValue.increment(-envios),
-    });
     batch.set(db.collection("user_transactions").doc(), {
       userId: options.adminUid,
       tipo: "transferencia_salida",
@@ -359,36 +360,32 @@ export async function updateEmpresaMember(options: {
     const delta = target - prevCreditos;
     userUpdates.creditos = target;
     if (delta > 0) {
-      const adminSnap = await db.collection("users").doc(options.adminUid).get();
-      const adminCreditos = normalizeEnviosDisponibles(
-        adminSnap.exists ? (adminSnap.data() as Record<string, unknown>).creditos : 0,
-      );
-      if (adminCreditos < delta) {
-        return {
-          error: `No tenés envíos suficientes para completar el ajuste. Disponibles: ${adminCreditos.toLocaleString("es-AR")}.`,
-          status: 400 as const,
-        };
+      try {
+        await consumeOrgCredits(options.orgId, delta);
+      } catch (e) {
+        if (e instanceof InsufficientOrgCreditsError) {
+          return {
+            error: `No hay envíos suficientes en la empresa para completar el ajuste. Disponibles: ${e.available.toLocaleString("es-AR")}.`,
+            status: 400 as const,
+          };
+        }
+        throw e;
       }
-      batch.update(db.collection("users").doc(options.adminUid), {
-        creditos: FieldValue.increment(-delta),
-      });
     }
   } else if (options.addEnvios !== undefined && options.addEnvios > 0) {
     const add = Math.floor(options.addEnvios);
-    const adminSnap = await db.collection("users").doc(options.adminUid).get();
-    const adminCreditos = normalizeEnviosDisponibles(
-      adminSnap.exists ? (adminSnap.data() as Record<string, unknown>).creditos : 0,
-    );
-    if (adminCreditos < add) {
-      return {
-        error: `No tenés envíos suficientes. Disponibles: ${adminCreditos.toLocaleString("es-AR")}.`,
-        status: 400 as const,
-      };
+    try {
+      await consumeOrgCredits(options.orgId, add);
+    } catch (e) {
+      if (e instanceof InsufficientOrgCreditsError) {
+        return {
+          error: `No hay envíos suficientes en la empresa. Disponibles: ${e.available.toLocaleString("es-AR")}.`,
+          status: 400 as const,
+        };
+      }
+      throw e;
     }
     userUpdates.creditos = FieldValue.increment(add);
-    batch.update(db.collection("users").doc(options.adminUid), {
-      creditos: FieldValue.increment(-add),
-    });
   }
 
   if (Object.keys(orgUpdates).length) batch.update(orgRef, orgUpdates);
