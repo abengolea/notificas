@@ -55,6 +55,23 @@ test('modo letter muestra la carta en el correo y no dice que es el globo de Wha
   assert.equal(/mismo mensaje enviado por WhatsApp/.test(html), false);
 });
 
+test('inline con carta oculta deja el globo de Meta visible y la carta solo para el lector', () => {
+  const html = buildCampaignMailHtml({
+    recipientEmail: 'a@b.com',
+    recipientName: 'Ana',
+    sender: 'Colegio de Abogados de San Nicolás',
+    bodyHtml: campaignBodyToHtmlFragment('El Colegio le envía una intimación.'),
+    readerOnlyHtml: campaignBodyToHtmlFragment('Carta extendida de matrícula.'),
+    attachments: [],
+    mode: 'inline',
+  });
+  assert.match(html, /El Colegio le envía una intimación/);
+  assert.match(html, /Carta extendida de matrícula/);
+  assert.match(html, /MAILBOX_META_START/);
+  assert.match(html, /data-reader-hide/);
+  assert.match(html, /data-email-hide[\s\S]*Carta extendida/);
+});
+
 test('modo teaser oculta el cuerpo (el lector lo muestra)', () => {
   const html = buildCampaignMailHtml({
     recipientEmail: 'a@b.com',

@@ -34,6 +34,8 @@ import { canEditWhatsAppTemplate, isUnsentCampaign } from "@/lib/campaign-edit";
 import { WA_TEMPLATE_DEFAULT_VARS, csvColumnsFromWaVariables, usesNotificasDefaultTemplate } from "@/lib/wa-template-fields";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 import { WaSavedTemplates } from "@/components/empresa/wa-saved-templates";
+import { OrgWaTemplatePicker } from "@/components/empresa/org-wa-template-picker";
+import { fieldsFromSavedWaTemplate } from "@/lib/wa-saved-template";
 import { DailyQuotaField } from "@/components/empresa/daily-quota-field";
 
 type CampaignPayload = {
@@ -728,11 +730,26 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
                     Template de WhatsApp
                   </CardTitle>
                   <CardDescription>
-                    Mapeá cada {"{{N}}"} acá (o aplicá un template guardado de esta empresa). Después subí el CSV
-                    con esas columnas. <code>telefono</code> es el destino, no una variable del texto.
+                    Elegí la plantilla habilitada para esta empresa. Después mapeá cada {"{{N}}"} o aplicá un mapeo
+                    guardado. <code>telefono</code> es el destino, no una variable del texto.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  <OrgWaTemplatePicker
+                    orgId={c.orgId}
+                    mode="admin"
+                    selectedName={templateName}
+                    autoSelect={false}
+                    disabled={!canEditTpl}
+                    onSelect={(tpl) => {
+                      const next = fieldsFromSavedWaTemplate(tpl);
+                      setTemplateName(next.name);
+                      setTemplateLang(next.lang);
+                      setTemplateVars(next.variables);
+                      setTemplateUrlButton(next.urlButton);
+                      setTemplateBody(next.templateBody);
+                    }}
+                  />
                   <WaSavedTemplates
                     orgId={c.orgId}
                     mode="admin"

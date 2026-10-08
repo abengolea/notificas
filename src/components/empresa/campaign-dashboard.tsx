@@ -51,6 +51,8 @@ import { explainWhatsAppSendError, WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-tem
 import { usesMetaTemplateAsEmailBody } from "@/lib/campaign-mixed-message";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 import { WaSavedTemplates } from "@/components/empresa/wa-saved-templates";
+import { OrgWaTemplatePicker } from "@/components/empresa/org-wa-template-picker";
+import { fieldsFromSavedWaTemplate } from "@/lib/wa-saved-template";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1394,6 +1396,22 @@ export const CampaignDashboard = forwardRef<
               </p>
               {canEditTpl ? (
                 <>
+                  <OrgWaTemplatePicker
+                    orgId={orgId}
+                    mode={mode}
+                    selectedName={tplName}
+                    autoSelect={false}
+                    onSelect={(tpl) => {
+                      const next = fieldsFromSavedWaTemplate(tpl);
+                      setTplName(next.name);
+                      setTplLang(next.lang);
+                      setTplVars(next.variables);
+                      setTplUrlButton(next.urlButton);
+                      setTplBody(next.templateBody);
+                    }}
+                  />
+                  {isAdmin ? (
+                    <>
                   <WaSavedTemplates
                     orgId={orgId}
                     mode={mode}
@@ -1431,6 +1449,12 @@ export const CampaignDashboard = forwardRef<
                       setTplBody(next.templateBody || "");
                     }}
                   />
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Elegí la plantilla y guardala antes de enviar. Variables: {tplVars.filter(Boolean).join(", ") || "—"}.
+                    </p>
+                  )}
                   <Button onClick={() => void guardarTemplateWa()} disabled={savingTpl || busy} className="gap-2">
                     {savingTpl ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     Guardar template

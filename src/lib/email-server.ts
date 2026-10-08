@@ -43,6 +43,7 @@ export type CreateMailAdminParams = {
   waTemplateLang?: string;
   waTemplateVariables?: string[] | null;
   waUrlButton?: boolean;
+  waTemplateBody?: string;
   /** Campaña admin simulada: la CF sendEmail no debe despachar Mailgun/Meta. */
   simulated?: boolean;
   waOnly?: boolean;
@@ -92,6 +93,7 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
     waTemplateLang,
     waTemplateVariables,
     waUrlButton,
+    waTemplateBody,
     simulated,
     waOnly,
     orgId,
@@ -152,6 +154,7 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
   if (waTemplateLang) payload.waTemplateLang = waTemplateLang;
   if (waTemplateVariables) payload.waTemplateVariables = waTemplateVariables;
   if (waUrlButton) payload.waUrlButton = true;
+  if (waTemplateBody?.trim()) payload.waTemplateBody = waTemplateBody.trim();
   const sendNorm = normalizedEmailIdentity(senderName);
   if (sendNorm) payload.senderName = sendNorm;
   payload.createdBy = createdBy;

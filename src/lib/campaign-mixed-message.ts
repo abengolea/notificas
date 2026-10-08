@@ -1,4 +1,4 @@
-import { personalizeCampaignText } from "@/lib/campaign-email-html";
+import { campaignBodyToHtmlFragment, personalizeCampaignText } from "@/lib/campaign-email-html";
 import { recipientValueText } from "@/lib/parse-campaign-csv";
 import { isWaLiteralVar, usesNotificasDefaultTemplate, waLiteralText } from "@/lib/wa-template-fields";
 
@@ -116,6 +116,16 @@ export function renderMetaTemplateBody(input: {
 }): string {
   const values = resolveTemplateBodyValues(input);
   return fillNumericPlaceholders(input.templateBody, values).trim();
+}
+
+/** En el HTML del correo, la CF sendEmail reemplaza este ancla por la URL real del lector. */
+export const MAILBOX_READER_URL_SENTINEL = "https://notificas.com.ar/n/READ";
+
+export function htmlFromFilledMetaBody(filled: string): string {
+  const fragment = campaignBodyToHtmlFragment(filled);
+  const link =
+    '<a href="#" target="_blank" rel="noopener">[El enlace se agregará al enviar el mensaje]</a>';
+  return fragment.split(MAILBOX_READER_URL_SENTINEL).join(link);
 }
 
 /** Texto que ve el destinatario en el correo (y que se lacra como contentHash). */

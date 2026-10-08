@@ -68,20 +68,17 @@ export async function POST(request: NextRequest) {
     }
 
     const usesWa = mailData.waOnly === true || Boolean(String(mailData.recipientPhone || "").trim());
-    if (orgId && usesWa) {
-      const { usesNotificasDefaultTemplate } = await import("@/lib/wa-template-fields");
-      if (usesNotificasDefaultTemplate(mailData.waTemplateName)) {
-        const { resolvePreferredOrgWaTemplate } = await import("@/lib/resolve-org-wa-template");
-        const preferred = await resolvePreferredOrgWaTemplate(orgId);
-        if (preferred) {
-          await adminDb.collection("mail").doc(docId).update({
-            waTemplateName: preferred.templateName,
-            waTemplateLang: preferred.templateLang || "es_AR",
-            waTemplateVariables: preferred.templateVariables,
-            ...(preferred.urlButton ? { waUrlButton: true } : {}),
-            ...(preferred.templateBody ? { waTemplateBody: preferred.templateBody } : {}),
-          });
-        }
+    if (orgId && usesWa && !String(mailData.waTemplateName || "").trim()) {
+      const { resolvePreferredOrgWaTemplate } = await import("@/lib/resolve-org-wa-template");
+      const preferred = await resolvePreferredOrgWaTemplate(orgId);
+      if (preferred) {
+        await adminDb.collection("mail").doc(docId).update({
+          waTemplateName: preferred.templateName,
+          waTemplateLang: preferred.templateLang || "es_AR",
+          waTemplateVariables: preferred.templateVariables,
+          ...(preferred.urlButton ? { waUrlButton: true } : {}),
+          ...(preferred.templateBody ? { waTemplateBody: preferred.templateBody } : {}),
+        });
       }
     }
 

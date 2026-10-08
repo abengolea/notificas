@@ -70,6 +70,8 @@ export function buildCampaignMailHtml(params: {
   mode?: CampaignMailHtmlMode;
   /** Vista previa en bandeja; si falta, se usa un texto genérico (sin jerga legal). */
   previewText?: string;
+  /** Carta larga: viaja oculta en el HTML (el lector la muestra; Gmail no). */
+  readerOnlyHtml?: string;
 }): string {
   const { recipientEmail, recipientName, sender, bodyHtml, attachments } = params;
   const showBodyInMailbox = params.mode === 'inline' || params.mode === 'letter';
@@ -96,12 +98,25 @@ export function buildCampaignMailHtml(params: {
     || `Comunicación de ${sender} a través de Notificas.com`;
 
   const hideAttr = showBodyInMailbox ? '' : ' data-email-hide';
+  const mailboxTwin = showBodyInMailbox && !!params.readerOnlyHtml?.trim();
   const contentSection = bodyHtml?.trim()
     ? `
-                <div class="message-content"${hideAttr} style="margin: 20px 0;">
+                ${mailboxTwin ? '<!-- MAILBOX_META_START -->' : ''}
+                <div class="message-content"${mailboxTwin ? ' data-reader-hide' : hideAttr} style="margin: 20px 0;">
                   <h2 style="color: #1e293b; margin: 0 0 16px 0; font-size: 18px; font-weight: 600;">Contenido del mensaje</h2>
                   <div style="background: #f8fafc; padding: 16px; border-radius: 6px; border-left: 4px solid #0D9488;">
                     ${bodyHtml}
+                  </div>
+                </div>
+                ${mailboxTwin ? '<!-- MAILBOX_META_END -->' : ''}`
+    : '';
+
+  const readerOnlySection = params.readerOnlyHtml?.trim()
+    ? `
+                <div class="message-content" data-email-hide style="margin: 20px 0;">
+                  <h2 style="color: #1e293b; margin: 0 0 16px 0; font-size: 18px; font-weight: 600;">Contenido del mensaje</h2>
+                  <div style="background: #f8fafc; padding: 16px; border-radius: 6px; border-left: 4px solid #0D9488;">
+                    ${params.readerOnlyHtml}
                   </div>
                 </div>`
     : '';
@@ -193,6 +208,7 @@ export function buildCampaignMailHtml(params: {
                 ${leadSecondParagraph}
               </p>
               ${contentSection}
+              ${readerOnlySection}
               ${attachmentsSection}
               <p style="margin: 20px 0;">
                 <a class="btn" href="#" target="_blank" rel="noopener">Acceder a la notificación</a>

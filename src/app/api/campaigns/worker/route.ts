@@ -7,7 +7,13 @@ import {
   campaignBodyToHtmlFragment,
   personalizeCampaignText,
 } from '@/lib/campaign-email-html';
-import { renderCampaignMessageBody } from '@/lib/campaign-mixed-message';
+import {
+  htmlFromFilledMetaBody,
+  MAILBOX_READER_URL_SENTINEL,
+  renderCampaignMessageBody,
+  renderMetaTemplateBody,
+  usesMetaTemplateAsEmailBody,
+} from '@/lib/campaign-mixed-message';
 import { normalizeEnviosDisponibles } from '@/lib/envios';
 import { invokeSendEmail } from '@/lib/send-mail-via-cf';
 import { computeContentHash } from '@/lib/certification';
@@ -218,7 +224,7 @@ async function processMessage(
   }
 
   const canal: string = campaign.canal || 'email';
-  if ((canal === 'whatsapp' || canal === 'ambos') && usesNotificasDefaultTemplate(campaign.waTemplateName)) {
+  if ((canal === 'whatsapp' || canal === 'ambos') && !String(campaign.waTemplateName || '').trim()) {
     const { resolvePreferredOrgWaTemplate } = await import('@/lib/resolve-org-wa-template');
     const preferred = await resolvePreferredOrgWaTemplate(orgIdForArt);
     if (preferred) {
@@ -267,13 +273,30 @@ async function processMessage(
   const contentHash = await computeContentHash(bodyPlain);
   const batchId = String(msg.integritySendBatchId || sendBatchId(0));
   const orgId = String(msg.orgId || campaign.orgId || '');
+  const mixedMeta = usesMetaTemplateAsEmailBody(canal, campaign.waTemplateName);
+  const letter = personalizeCampaignText(String(campaign.cuerpo || ''), row).trim();
+  const metaFilled =
+    mixedMeta && String(campaign.waTemplateBody || '').trim()
+      ? renderMetaTemplateBody({
+          templateBody: String(campaign.waTemplateBody),
+          variables: Array.isArray(campaign.waTemplateVariables) ? campaign.waTemplateVariables : undefined,
+          urlButton: campaign.waUrlButton === true,
+          row,
+          senderName: senderEmail,
+          recipientName: row.nombre,
+          phone: row.telefono,
+          readerUrl: MAILBOX_READER_URL_SENTINEL,
+        })
+      : '';
   const html = buildCampaignMailHtml({
     recipientEmail: email,
     recipientName: row.nombre || email.split('@')[0],
     sender: senderEmail,
-    bodyHtml,
+    bodyHtml: metaFilled ? htmlFromFilledMetaBody(metaFilled) : bodyHtml,
     attachments: attachmentsFor(campaign, email),
-    mode: 'teaser',
+    mode: metaFilled ? 'inline' : 'teaser',
+    previewText: metaFilled || undefined,
+    readerOnlyHtml: metaFilled && letter ? campaignBodyToHtmlFragment(letter) : undefined,
   });
   const adjuntos = attachmentsFor(campaign, email);
 
@@ -322,6 +345,9 @@ async function processMessage(
             waTemplateLang: campaign.waTemplateLang || 'es_AR',
             waTemplateVariables: campaign.waTemplateVariables || null,
             ...(campaign.waUrlButton === true ? { waUrlButton: true } : {}),
+            ...(String(campaign.waTemplateBody || '').trim()
+              ? { waTemplateBody: String(campaign.waTemplateBody).trim() }
+              : {}),
           } : {}),
           ...(waOnly ? { waOnly: true } : {}),
           ...(isCampaignSimulated(campaign) ? { simulated: true } : {}),

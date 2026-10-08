@@ -28,6 +28,7 @@ export type ScheduleEmailParams = {
   waTemplateLang?: string;
   waTemplateVariables?: string[];
   waUrlButton?: boolean;
+  waTemplateBody?: string;
 };
 
 /** Lista de correos para `to`, `cc`, `bcc`: minúsculas + trim (alineado con queries y reglas). */
@@ -44,7 +45,7 @@ function normalizedEmailIdentity(value?: string): string | undefined {
 }
 
 export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend?: boolean }): Promise<string> {
-  const { to, subject, html, text, from, replyTo, cc, bcc, recipientName, recipientEmail, recipientPhone, recipientDni, recipientCuit, senderName, createdBy, orgId, waOnly, notificationType, waTemplateName, waTemplateLang, waTemplateVariables, waUrlButton, skipAutoSend = false } = params;
+  const { to, subject, html, text, from, replyTo, cc, bcc, recipientName, recipientEmail, recipientPhone, recipientDni, recipientCuit, senderName, createdBy, orgId, waOnly, notificationType, waTemplateName, waTemplateLang, waTemplateVariables, waUrlButton, waTemplateBody, skipAutoSend = false } = params;
 
   const payload: any = {
     to: normalizeEmailList(to),
@@ -79,6 +80,7 @@ export async function scheduleEmail(params: ScheduleEmailParams & { skipAutoSend
   if (waTemplateLang) payload.waTemplateLang = waTemplateLang;
   if (waTemplateVariables?.length) payload.waTemplateVariables = waTemplateVariables;
   if (waUrlButton) payload.waUrlButton = true;
+  if (waTemplateBody?.trim()) payload.waTemplateBody = waTemplateBody.trim();
 
   // 🚨 ID ÚNICO PARA EVITAR DUPLICADOS
   const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;

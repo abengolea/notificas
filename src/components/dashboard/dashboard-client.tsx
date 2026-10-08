@@ -45,6 +45,7 @@ import {
 import { DashboardShell, type MailFolderNavId } from './dashboard-shell';
 import { ComposeDraftPanel } from './compose-draft-panel';
 import { ComposeMessageDialog } from './compose-message-dialog';
+import { OPEN_COMPOSE_EVENT } from '@/lib/compose-draft';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -254,6 +255,12 @@ export default function DashboardClient({
   /** Generación del efecto mail: ignora timeouts/listeners que quedaron obsoletos al cambiar carpeta. */
   const mailListListenSeqRef = useRef(0);
   const migrationPasswordFlagRef = useRef(false);
+
+  useEffect(() => {
+    const openCompose = () => setComposeOpen(true);
+    window.addEventListener(OPEN_COMPOSE_EVENT, openCompose);
+    return () => window.removeEventListener(OPEN_COMPOSE_EVENT, openCompose);
+  }, []);
 
   useEffect(() => {
     let unsubFirestore: (() => void) | undefined;
@@ -546,7 +553,9 @@ export default function DashboardClient({
           </div>
 
           {selectedFolder === 'drafts' ? (
-            appUser?.uid ? <ComposeDraftPanel uid={appUser.uid} /> : null
+            appUser?.uid ? (
+              <ComposeDraftPanel uid={appUser.uid} onContinue={() => setComposeOpen(true)} />
+            ) : null
           ) : (
           <>
           <div className="relative">

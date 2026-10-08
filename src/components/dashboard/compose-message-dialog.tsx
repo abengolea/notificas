@@ -46,8 +46,7 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/hooks/use-toast"
 import { SrtAdhesionWarning } from "@/components/art/srt-adhesion-warning";
-import { listSavedWaTemplates } from "@/lib/wa-templates-client";
-import { pickPreferredOrgWaTemplate } from "@/lib/wa-saved-template";
+import { OrgWaTemplatePicker } from "@/components/empresa/org-wa-template-picker";
 import type { SavedWaTemplate, User } from "@/lib/types";
 import { scheduleEmail, sendEmailManually, type SendEmailResult } from "@/lib/email";
 import { addDoc, collection, updateDoc, doc, increment } from "firebase/firestore";
@@ -70,6 +69,13 @@ import {
     sanitizeRichTextHtml,
     stripRichTextToPlainText,
 } from "@/lib/rich-text";
+import { usesNotificasDefaultTemplate, WA_DEFAULT_TEMPLATE_NAME, WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-template-fields";
+import { buildCampaignMailHtml } from "@/lib/campaign-email-html";
+import {
+  htmlFromFilledMetaBody,
+  MAILBOX_READER_URL_SENTINEL,
+  renderMetaTemplateBody,
+} from "@/lib/campaign-mixed-message";
 
 function buildComposeMailHtml(params: {
   recipientEmail: string;
@@ -432,6 +438,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
     const [isSending, setIsSending] = useState(false);
     const [artEnabled, setArtEnabled] = useState(false);
     const [orgWaTemplate, setOrgWaTemplate] = useState<SavedWaTemplate | null>(null);
+    const [orgWaChoiceReady, setOrgWaChoiceReady] = useState(false);
     const [selectedFiles, setSelectedFiles] = useState<SelectedAttachment[]>([]);
     const isExecutingRef = useRef(false);
     const currentExecutionIdRef = useRef<string | null>(null);
@@ -467,15 +474,13 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
         if (!orgId) {
             setArtEnabled(false);
             setOrgWaTemplate(null);
+            setOrgWaChoiceReady(false);
             return;
         }
         void fetch(`/api/art/status?orgId=${encodeURIComponent(orgId)}`)
             .then((r) => r.json())
             .then((d) => setArtEnabled(d.enabled === true))
             .catch(() => setArtEnabled(false));
-        void listSavedWaTemplates("empresa", orgId)
-            .then((list) => setOrgWaTemplate(pickPreferredOrgWaTemplate(list)))
-            .catch(() => setOrgWaTemplate(null));
     }, [orgId]);
 
     const persistRecipientContact = useCallback(async () => {
@@ -695,8 +700,17 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                             waTemplateLang: orgWaTemplate.templateLang,
                             waTemplateVariables: orgWaTemplate.templateVariables,
                             waUrlButton: orgWaTemplate.urlButton,
+                            ...(orgWaTemplate.templateBody
+                              ? { waTemplateBody: orgWaTemplate.templateBody }
+                              : {}),
                           }
-                        : {}),
+                        : orgWaChoiceReady && (sendCanal === "whatsapp" || sendCanal === "ambos")
+                          ? {
+                              waTemplateName: WA_DEFAULT_TEMPLATE_NAME,
+                              waTemplateLang: "es_AR",
+                              waTemplateVariables: WA_TEMPLATE_DEFAULT_VARS,
+                            }
+                          : {}),
                 }),
                 new Promise<never>((_, reject) =>
                     setTimeout(() => reject(new Error('No se pudo crear el mensaje. Revisa tu conexión e intentá de nuevo.')), 30_000)
@@ -732,18 +746,59 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                 }
             }
 
-            const html = buildComposeMailHtml({
-                recipientEmail: realEmail && !isSyntheticCampaignEmail(realEmail)
-                    ? realEmail
-                    : (phoneForWhatsApp || recipientEmail),
-                recipientName: data.recipientName?.trim()
-                    || (realEmail && !isSyntheticCampaignEmail(realEmail) ? realEmail.split("@")[0] : undefined)
-                    || phoneForWhatsApp
-                    || recipientEmail.split("@")[0],
-                content: sanitizedContent,
-                sender,
-                uploadedAttachments,
-            });
+            const mailboxRecipientEmail = realEmail && !isSyntheticCampaignEmail(realEmail)
+                ? realEmail
+                : (phoneForWhatsApp || recipientEmail);
+            const mailboxRecipientName = data.recipientName?.trim()
+                || (realEmail && !isSyntheticCampaignEmail(realEmail) ? realEmail.split("@")[0] : undefined)
+                || phoneForWhatsApp
+                || recipientEmail.split("@")[0];
+            const useMetaMailbox =
+                sendCanal === "ambos" &&
+                !!orgWaTemplate?.templateBody?.trim() &&
+                !usesNotificasDefaultTemplate(orgWaTemplate.templateName);
+
+            const metaMailboxText = useMetaMailbox && orgWaTemplate
+                ? renderMetaTemplateBody({
+                    templateBody: orgWaTemplate.templateBody || "",
+                    variables: orgWaTemplate.templateVariables,
+                    urlButton: orgWaTemplate.urlButton,
+                    row: {
+                        nombre: mailboxRecipientName,
+                        dni: data.recipientDni?.replace(/\D/g, "") || undefined,
+                        email: realEmail || undefined,
+                        telefono: phoneForWhatsApp,
+                    },
+                    senderName: sender,
+                    recipientName: mailboxRecipientName,
+                    phone: phoneForWhatsApp,
+                    readerUrl: MAILBOX_READER_URL_SENTINEL,
+                })
+                : "";
+
+            const html = metaMailboxText
+                ? buildCampaignMailHtml({
+                    recipientEmail: mailboxRecipientEmail,
+                    recipientName: mailboxRecipientName,
+                    sender,
+                    bodyHtml: htmlFromFilledMetaBody(metaMailboxText),
+                    attachments: uploadedAttachments.map((file) => ({
+                        nombre: file.name,
+                        url: file.url,
+                        hash: file.hash || "",
+                        size: file.size,
+                    })),
+                    mode: "inline",
+                    previewText: metaMailboxText.replace(MAILBOX_READER_URL_SENTINEL, "").slice(0, 140),
+                    readerOnlyHtml: sanitizedContent.trim() || undefined,
+                })
+                : buildComposeMailHtml({
+                    recipientEmail: mailboxRecipientEmail,
+                    recipientName: mailboxRecipientName,
+                    content: sanitizedContent,
+                    sender,
+                    uploadedAttachments,
+                });
 
             const mailRef = doc(db, 'mail', mailId);
             const updateData: Record<string, unknown> = {
@@ -860,7 +915,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                 setIsSending(false);
             }
         }
-    }, [isSuspended, toast, user, handleOpenChange, form, selectedFiles, orgId, artEnabled]);
+    }, [isSuspended, toast, user, handleOpenChange, form, selectedFiles, orgId, artEnabled, orgWaTemplate, orgWaChoiceReady]);
 
     const composeActions = (
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
@@ -953,6 +1008,17 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                         <p className="text-sm text-destructive">No tenés envíos suficientes para enviar.</p>
                     )}
                 </div>
+                {needsPhone && orgId ? (
+                    <OrgWaTemplatePicker
+                        orgId={orgId}
+                        mode="empresa"
+                        selectedName={orgWaTemplate?.templateName}
+                        onSelect={(tpl) => {
+                            setOrgWaTemplate(tpl);
+                            setOrgWaChoiceReady(true);
+                        }}
+                    />
+                ) : null}
                 {artEnabled ? (
                     <div className="space-y-3 rounded-md border p-3">
                         <p className="text-sm font-medium">Clasificación del envío</p>

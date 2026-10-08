@@ -1,4 +1,10 @@
-import { isWaTemplateVarEmpty, usesNotificasDefaultTemplate, WA_TEMPLATE_MAX_VARS } from "@/lib/wa-template-fields";
+import {
+  isWaTemplateVarEmpty,
+  usesNotificasDefaultTemplate,
+  WA_DEFAULT_TEMPLATE_NAME,
+  WA_TEMPLATE_DEFAULT_VARS,
+  WA_TEMPLATE_MAX_VARS,
+} from "@/lib/wa-template-fields";
 import type { SavedWaTemplate } from "@/lib/types";
 
 export const WA_SAVED_TEMPLATES_MAX = 40;
@@ -39,4 +45,29 @@ export function pickPreferredOrgWaTemplate(list: SavedWaTemplate[]): SavedWaTemp
   const real = list.filter((t) => !usesNotificasDefaultTemplate(t.templateName));
   if (!real.length) return null;
   return real.slice().sort((a, b) => a.label.localeCompare(b.label, "es"))[0] || null;
+}
+
+export function fieldsFromSavedWaTemplate(tpl: SavedWaTemplate | null): {
+  name: string;
+  lang: string;
+  variables: string[];
+  urlButton: boolean;
+  templateBody: string;
+} {
+  if (!tpl) {
+    return {
+      name: WA_DEFAULT_TEMPLATE_NAME,
+      lang: "es_AR",
+      variables: [...WA_TEMPLATE_DEFAULT_VARS],
+      urlButton: false,
+      templateBody: "",
+    };
+  }
+  return {
+    name: tpl.templateName,
+    lang: tpl.templateLang || "es_AR",
+    variables: Array.isArray(tpl.templateVariables) ? [...tpl.templateVariables] : [],
+    urlButton: tpl.urlButton === true,
+    templateBody: tpl.templateBody || "",
+  };
 }

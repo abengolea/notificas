@@ -18,9 +18,10 @@ import { Card } from '@/components/ui/card';
 
 type ComposeDraftPanelProps = {
   uid: string;
+  onContinue?: () => void;
 };
 
-export function ComposeDraftPanel({ uid }: ComposeDraftPanelProps) {
+export function ComposeDraftPanel({ uid, onContinue }: ComposeDraftPanelProps) {
   const [draft, setDraft] = useState<ComposeDraft | null>(null);
 
   useEffect(() => {
@@ -90,7 +91,13 @@ export function ComposeDraftPanel({ uid }: ComposeDraftPanelProps) {
           )}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          <Button type="button" onClick={() => openComposeDialog()}>
+          <Button
+            type="button"
+            onClick={() => {
+              onContinue?.();
+              openComposeDialog();
+            }}
+          >
             <PenSquare className="mr-2 h-4 w-4" />
             Continuar redactando
           </Button>

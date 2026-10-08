@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   fillNumericPlaceholders,
+  htmlFromFilledMetaBody,
+  MAILBOX_READER_URL_SENTINEL,
   renderCampaignMessageBody,
   renderMetaTemplateBody,
   usesMetaTemplateAsEmailBody,
@@ -70,6 +72,15 @@ test("si hay carta, el lector usa esa y no el globo de Meta", () => {
     },
   });
   assert.equal(text, "Intimación formal a Marcela Suárez por matrícula.");
+});
+
+test("htmlFromFilledMetaBody deja el enlace del lector para que sendEmail lo complete", () => {
+  const html = htmlFromFilledMetaBody(
+    `Estimado/a Ana,\n\nLea el documento:\n${MAILBOX_READER_URL_SENTINEL}\n\nColegio.`
+  );
+  assert.match(html, /Estimado\/a Ana/);
+  assert.match(html, /El enlace se agregará al enviar el mensaje/);
+  assert.equal(html.includes(MAILBOX_READER_URL_SENTINEL), false);
 });
 
 test("sin carta, la mixta cae al BODY de Meta", () => {

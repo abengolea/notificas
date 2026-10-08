@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Mail, CheckCircle } from "lucide-react";
 import { injectContentForReader } from "@/lib/inject-content-for-reader";
 import { stripUntrackedAttachmentSectionFromMailHtml } from "@/lib/strip-reader-attachment-duplicate-html";
+import { sanitizeHtmlForReader } from "@/lib/sanitize-reader-html";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const CONFIRM_READ_URL = "https://confirmread-ju7n3yysfq-uc.a.run.app";
@@ -50,36 +51,6 @@ interface MailData {
     tracking?: any;
   }>;
   createdAt?: any;
-}
-
-// En el reader, el usuario YA accedió. Quitar bloque redundante:
-// "Acceder a la notificación" + "Si el botón no funciona... Ya accedió mediante el enlace del correo."
-// El botón "Confirmar que he leído" se muestra aparte al final de la página.
-function sanitizeHtmlForReader(
-  html: string,
-  messageId: string,
-  trackingToken?: string | null
-): string {
-  if (!html) return "";
-
-  let sanitized = html;
-
-  // 1. Quitar el párrafo "Si el boton no funciona, copie y pegue este enlace..."
-  sanitized = sanitized.replace(
-    /<p[^>]*class="muted"[^>]*>[\s\S]*?Si el boton no funciona[\s\S]*?<\/p>/gi,
-    ""
-  );
-
-  // 2. Quitar el párrafo con el botón "Acceder a la notificación" (redundante: ya está leyendo)
-  sanitized = sanitized.replace(
-    /<p[^>]*style="margin:\s*20px\s*0;"[^>]*>[\s\S]*?(?:Acceder\s+a\s+la\s+notificaci[oó]n|Leer\s+Notificaci[oó]n)[\s\S]*?<\/p>/gi,
-    ""
-  );
-
-  // 3. Si quedó un p vacío o solo espacios, limpiar
-  sanitized = sanitized.replace(/<p[^>]*>\s*<\/p>/gi, "");
-
-  return sanitized;
 }
 
 export default function ReaderPage() {
@@ -303,14 +274,12 @@ export default function ReaderPage() {
         <Card className="p-6 md:p-8">
           {/* Template de notificación (cabecera NOTIFICACIÓN, cuerpo, etc.) */}
           <div
-            className="prose prose-lg max-w-none [&_.container]:!max-w-none [&_.wrapper]:!max-w-none [&_table]:!max-w-full"
+            className="prose prose-lg max-w-none [&_.container]:!max-w-none [&_.wrapper]:!max-w-none [&_table]:!max-w-full [&_p.lead]:hidden"
             dangerouslySetInnerHTML={{
               __html: sanitizeHtmlForReader(
                 stripUntrackedAttachmentSectionFromMailHtml(
                   injectContentForReader(mail?.message?.html || "", mail)
-                ),
-                params.id as string,
-                trackingToken
+                )
               ),
             }}
           />

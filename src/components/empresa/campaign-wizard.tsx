@@ -17,7 +17,7 @@ import {
 import { auth, db } from "@/lib/firebase";
 import { listenWhenSignedIn } from "@/lib/listen-when-signed-in";
 import { normalizeEnviosDisponibles } from "@/lib/envios";
-import type { CampaignAttachment, CanalCampaign, RecipientEntry, RecipientList as RecipientListType } from "@/lib/types";
+import type { CampaignAttachment, CanalCampaign, RecipientEntry, RecipientList as RecipientListType, SavedWaTemplate } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -79,12 +79,12 @@ import {
   isWaTemplateVarEmpty,
   usesNotificasDefaultTemplate,
 } from "@/lib/wa-template-fields";
+import { fieldsFromSavedWaTemplate } from "@/lib/wa-saved-template";
 import { usesMetaTemplateAsEmailBody } from "@/lib/campaign-mixed-message";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 import { WaSavedTemplates } from "@/components/empresa/wa-saved-templates";
+import { OrgWaTemplatePicker } from "@/components/empresa/org-wa-template-picker";
 import { CampaignPadronPicker, padronRowToRecipient, type PadronRow } from "@/components/empresa/campaign-padron-picker";
-import { listSavedWaTemplates } from "@/lib/wa-templates-client";
-import { pickPreferredOrgWaTemplate } from "@/lib/wa-saved-template";
 import { SrtAdhesionWarning } from "@/components/art/srt-adhesion-warning";
 
 type WizardStepId = "canal" | "destinatarios" | "mensaje" | "whatsapp" | "confirmacion";
@@ -284,30 +284,6 @@ export function CampaignWizard({
         setArtPilotCaps(false);
       });
   }, [orgId]);
-
-  useEffect(() => {
-    if (!orgId || isEdit) return;
-    if (canal !== "whatsapp" && canal !== "ambos") return;
-    let cancelled = false;
-    void listSavedWaTemplates(isAdmin ? "admin" : "empresa", orgId)
-      .then((list) => {
-        if (cancelled) return;
-        const preferred = pickPreferredOrgWaTemplate(list);
-        if (!preferred) return;
-        setWaTemplateName((cur) => {
-          if (!usesNotificasDefaultTemplate(cur)) return cur;
-          setWaTemplateLang(preferred.templateLang);
-          setWaTemplateVariables(preferred.templateVariables);
-          setWaUrlButton(preferred.urlButton);
-          if (preferred.templateBody) setWaTemplateBody(preferred.templateBody);
-          return preferred.templateName;
-        });
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [orgId, canal, isAdmin, isEdit]);
 
   useEffect(() => {
     if (prevOrgIdRef.current === orgId) return;
@@ -1193,6 +1169,15 @@ export function CampaignWizard({
     }
   }
 
+  function applyOrgWaTemplate(tpl: SavedWaTemplate | null) {
+    const next = fieldsFromSavedWaTemplate(tpl);
+    setWaTemplateName(next.name);
+    setWaTemplateLang(next.lang);
+    setWaTemplateVariables(next.variables);
+    setWaUrlButton(next.urlButton);
+    setWaTemplateBody(next.templateBody);
+  }
+
   if (loadingCampaign) {
     return (
       <div className="max-w-3xl flex justify-center py-16">
@@ -1844,10 +1829,11 @@ export function CampaignWizard({
       {currentStepId === "whatsapp" && (
         <Card>
           <CardHeader>
-            <CardTitle>Template de WhatsApp</CardTitle>
+            <CardTitle>Plantilla de WhatsApp</CardTitle>
             <CardDescription>
-              Si esta empresa tiene plantillas habilitadas en admin, se usa esa (no el sobre de Notificas). Meta no deja
-              texto libre: mapeá cada {"{{N}}"} ahora.
+              {isAdmin
+                ? "Elegí la plantilla habilitada para esta empresa y, si hace falta, ajustá el mapeo de {{N}}."
+                : "Si esta empresa tiene varias plantillas habilitadas, elegí cuál sale en esta campaña. El mapeo lo define el administrador."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1857,6 +1843,15 @@ export function CampaignWizard({
                 <Input value={campaniaNombre} onChange={(e) => setCampaniaNombre(e.target.value)} />
               </div>
             )}
+            <OrgWaTemplatePicker
+              orgId={orgId}
+              mode={isAdmin ? "admin" : "empresa"}
+              selectedName={waTemplateName}
+              autoSelect={!isEdit}
+              onSelect={applyOrgWaTemplate}
+            />
+            {isAdmin ? (
+              <>
             <WaSavedTemplates
               orgId={orgId}
               mode={isAdmin ? "admin" : "empresa"}
@@ -1895,6 +1890,17 @@ export function CampaignWizard({
                 setWaTemplateBody(next.templateBody || "");
               }}
             />
+              </>
+            ) : !usesNotificasDefaultTemplate(waTemplateName) ? (
+              <p className="text-xs text-muted-foreground">
+                Variables de esta plantilla: {waTemplateVariables.filter(Boolean).join(", ") || "—"}.
+                {waUrlButton ? " Incluye botón con enlace al lector." : ""}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Si no hay otra plantilla habilitada, se usa el sobre de Notificas.
+              </p>
+            )}
             {!usesNotificasDefaultTemplate(waTemplateName) &&
               waTemplateVariables.some((v) => isWaTemplateVarEmpty(v)) && (
                 <p className="text-sm text-destructive">
@@ -1903,8 +1909,9 @@ export function CampaignWizard({
               )}
             {mixedMeta && !waTemplateBody.trim() && (
               <p className="text-sm text-destructive">
-                Falta el texto del BODY aprobado en Meta. Usá «Traer de Meta» o pegalo con {"{{1}}"}, {"{{2}}"}…
-                Sin eso no se puede seguir: el correo usa ese mismo mensaje.
+                {isAdmin
+                  ? <>Falta el texto del BODY aprobado en Meta. Usá «Traer de Meta» o pegalo con {"{{1}}"}, {"{{2}}"}… Sin eso no se puede seguir: el correo usa ese mismo mensaje.</>
+                  : "Falta el texto aprobado en Meta de esta plantilla. Pedile al administrador que lo complete antes de enviar."}
               </p>
             )}
             {canal === "whatsapp" && !isAdmin && (
