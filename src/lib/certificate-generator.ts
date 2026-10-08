@@ -9,7 +9,6 @@ import {
   deriveEmailEvidence,
   deriveWhatsAppEvidence,
   emailAppOpenDetected,
-  emailChannelStatusLine,
   emailLegacyPixelDetected,
   emailLinkClickedDetected,
   emailReadConfirmedDetected,
@@ -18,7 +17,6 @@ import {
   firstCertificateMovement,
   formatEvidenceStatus,
   hasCertificateMovement,
-  whatsAppChannelStatusLine,
   whatsAppLinkClickedDetected,
   whatsAppMetaReadDetected,
 } from './certificate-email-evidence';
@@ -37,7 +35,6 @@ import {
   buildEvidenceChainVisual,
   canShowWhatsAppProbatoryPhrase,
   certifiedContentLegend,
-  whatsAppProbatoryPhrase,
   whatsAppReaderLinkExplanation,
   whatsAppScopeExplanation,
 } from './evidence-chain';
@@ -764,9 +761,6 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   const emailLegacyPixel = formatEvidenceStatus(emailLegacyPixelDetected(emailEvidence));
   const emailAppOpen = formatEvidenceStatus(emailAppOpenDetected(emailEvidence));
   const mailAccepted = deliveryState.toLowerCase().includes('aceptado');
-  const emailHumanLine = emailChannelStatusLine(emailEvidence);
-  const whatsappHumanLine = whatsAppChannelStatusLine(whatsappEvidence, waDelivered);
-
   const identificationData = [
     { label: 'Remitente', value: mailData.senderName || mailData.from || 'No especificado' },
     ...(mailData.orgNombre ? [{ label: 'Organización', value: mailData.orgNombre }] : []),
@@ -832,20 +826,20 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   ];
   const emailChannelLines = [
     `Aceptado por servidor de correo: ${deliveryState}`,
-    `Apertura informada por proveedor: ${emailResendSignal}`,
-    `Apertura por pixel: ${emailLegacyPixel}`,
-    `Acceso desde enlace del correo: ${formatEvidenceStatus(emailLinkClickedDetected(emailEvidence))}`,
+    ...(emailResendSignal === 'Sí' ? [`Apertura informada por proveedor: ${emailResendSignal}`] : []),
+    ...(emailLegacyPixel === 'Sí' ? [`Apertura por pixel: ${emailLegacyPixel}`] : []),
+    ...(emailLinkClickedDetected(emailEvidence)
+      ? [`Acceso desde enlace del correo: Sí`]
+      : []),
     `Acceso al lector certificado: ${formatEvidenceStatus(emailReaderOpenDetected(emailEvidence))}`,
     `Lectura confirmada: ${formatEvidenceStatus(emailReadConfirmedDetected(emailEvidence))}`,
     ...(emailAppOpen === 'Sí' ? [`Apertura en aplicación web: ${emailAppOpen}`] : []),
-    `Estado: ${emailHumanLine}`,
   ];
   const waChannelLines = hasWhatsApp
     ? [
         `Entregado al teléfono: ${formatEvidenceStatus(waDelivered)}`,
         `Leído en el chat: ${formatEvidenceStatus(waMetaRead)}`,
         `Acceso desde enlace del mensaje: ${formatEvidenceStatus(waLinkClicked)}`,
-        `Estado: ${whatsappHumanLine}`,
       ]
     : [`Adjuntos certificados: ${attachmentsCount}`];
   const humanSummaryLine = buildNotificationHumanSummary({
@@ -864,8 +858,18 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       return h + 12 + wrapped.length * 12;
     }, 0);
   const metaHeight = resultadoMetaLines.length * 14 + 8;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  const resumenLines = doc.splitTextToSize(humanSummaryLine, contentWidth - 72);
+  const resumenBlockHeight = 14 + resumenLines.length * 12;
   const resultadoBoxHeight =
-    24 + 12 + metaHeight + 16 + Math.max(measureColumn(emailChannelLines, colWidth), measureColumn(waChannelLines, colWidth)) + 36 + 14;
+    24 +
+    12 +
+    metaHeight +
+    16 +
+    Math.max(measureColumn(emailChannelLines, colWidth), measureColumn(waChannelLines, colWidth)) +
+    resumenBlockHeight +
+    14;
   ensureSpace(resultadoBoxHeight + 8);
   doc.setDrawColor(...COLORS.textMain);
   doc.setLineWidth(1.5);
@@ -995,10 +999,12 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
         whatsappLinkClicked: whatsAppLinkClickedDetected(whatsappEvidence),
       })
     ) {
-      writeTextBlock(whatsAppProbatoryPhrase(messageId, contentHashForDoc || ''), 9, 12, {
-        color: COLORS.textMuted,
-        italics: true,
-      });
+      writeTextBlock(
+        'El acceso registrado desde WhatsApp corresponde al mismo identificador de mensaje, al mismo lector certificado y al mismo contentHash consignado en la cadena y en el anexo técnico.',
+        9,
+        12,
+        { color: COLORS.textMuted, italics: true }
+      );
     }
   }
 
@@ -1123,6 +1129,10 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     ensureSectionStart(introLines.length * 13 + firstEntryHeight + 12, 2);
     drawSectionTitle('Certificación en Blockchain (Polygon)', 2);
     introLines.forEach((line: string) => {
+      ensureSpace(14);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      setTextColor(COLORS.textMain);
       doc.text(line, margin, yPosition);
       yPosition += 13;
     });

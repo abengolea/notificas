@@ -27,6 +27,26 @@ test('C: la cronología se ordena por timestamp', () => {
   assert.equal(rows[rows.length - 1].label, 'Se registró confirmación de lectura en el lector');
 });
 
+test('cronología deduplica aceptación de correo al mismo segundo', () => {
+  const rows = buildSortedChronologyRows([
+    { type: 'email_sent', timestamp: '2026-10-08T20:21:15.000Z' },
+    { type: 'resend_sent', timestamp: '2026-10-08T20:21:15.100Z' },
+    { type: 'resend_delivered', timestamp: '2026-10-08T20:21:15.200Z' },
+  ]);
+  const acept = rows.filter((r) => r.label === 'Correo enviado y aceptado');
+  assert.equal(acept.length, 1);
+});
+
+test('cronología resume varios clicks de WhatsApp en una línea', () => {
+  const rows = buildSortedChronologyRows([
+    { type: 'whatsapp_link_clicked', timestamp: '2026-10-08T20:24:27Z' },
+    { type: 'whatsapp_link_clicked', timestamp: '2026-10-08T20:24:36Z' },
+    { type: 'whatsapp_link_clicked', timestamp: '2026-10-08T20:25:46Z' },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].label, /3 registros/);
+});
+
 test('D: terminología contenido certificado en PDF y anexo', async () => {
   const body = 'Texto intimado único para terminología.';
   const hash = await computeContentHash(body);
@@ -95,7 +115,8 @@ test('E: WhatsApp referencia messageId y hash en sección dedicada', async () =>
   const raw = pdfText(await blob.arrayBuffer());
   assert.match(raw, new RegExp(msgId));
   assert.match(raw, /Mensaje enviado por WhatsApp/);
-  assert.match(raw, /hash completo en el anexo técnico/i);
+  assert.match(raw, /cadena de evidencia/i);
+  assert.match(raw, /anexo técnico/i);
 });
 
 test('F: hash abreviado en Parte I y completo en anexo', async () => {
@@ -120,7 +141,8 @@ test('F: hash abreviado en Parte I y completo en anexo', async () => {
   const raw = pdfText(await blob.arrayBuffer());
   assert.match(raw, new RegExp(hash.slice(0, 8)));
   assert.match(raw, new RegExp(hash));
-  assert.match(raw, /hash completo en el anexo/i);
+  assert.match(raw, /cadena de evidencia/i);
+  assert.match(raw, /anexo técnico/i);
 });
 
 test('J: cadena sin WhatsApp no incluye paso de WhatsApp', () => {

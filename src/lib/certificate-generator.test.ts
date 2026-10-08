@@ -129,7 +129,7 @@ test('señal Resend y reader no se mezclan con pixel Notificas en el resultado',
   });
   const raw = pdfText(await blob.arrayBuffer());
   assert.match(raw, /Apertura informada por proveedor: S/i);
-  assert.match(raw, /Apertura por pixel: No consta/i);
+  assert.doesNotMatch(raw, /Apertura por pixel: No consta/i);
   assert.match(raw, /Acceso al lector certificado: S/i);
   assert.match(raw, /Resultado de la notificaci/i);
   assert.match(raw, /certificado-lectura\/v4/i);

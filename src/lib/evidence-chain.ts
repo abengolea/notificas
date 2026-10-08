@@ -134,20 +134,18 @@ export function buildEvidenceChainLine(input: {
     .join(' ');
 }
 
-export function whatsAppReaderLinkExplanation(messageId: string, contentHash: string): string {
-  const hashDisplay = contentHash ? shortenHash(contentHash) : '—';
+export function whatsAppReaderLinkExplanation(messageId: string, _contentHash?: string): string {
   return (
     `El enlace incluido en este mensaje conduce al lector certificado asociado al identificador ${messageId}. ` +
     `El contenido exhibido por dicho lector es el transcripto en la sección «Contenido certificado mostrado en el lector» ` +
-    `y se encuentra identificado mediante el hash SHA-256 ${hashDisplay} (hash completo en el anexo técnico).`
+    `y comparte el mismo contentHash consignado en la cadena de evidencia y en el anexo técnico.`
   );
 }
 
-export function certifiedContentLegend(messageId: string, contentHash: string): string {
-  const hashDisplay = contentHash ? shortenHash(contentHash) : '—';
+export function certifiedContentLegend(messageId: string, _contentHash?: string): string {
   return (
     `Este es el contenido certificado asociado al identificador de mensaje ${messageId}, preservado en el snapshot inmutable al momento del envío. ` +
-    `Su integridad se verifica mediante el hash SHA-256 ${hashDisplay} (hash completo en el anexo técnico).`
+    `Su integridad se verifica mediante el hash SHA-256 indicado en la cadena de evidencia y reproducido íntegro en el anexo técnico.`
   );
 }
 
