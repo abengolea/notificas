@@ -134,10 +134,17 @@ export function buildEvidenceChainLine(input: {
     .join(' ');
 }
 
-export function whatsAppReaderLinkExplanation(messageId: string, _contentHash?: string): string {
+export function whatsAppReaderLinkExplanation(
+  messageId: string,
+  _contentHash?: string,
+  hasEmail = false
+): string {
+  const contentSection = hasEmail
+    ? '«Contenido certificado enviado por correo y mostrado en el lector»'
+    : '«Contenido certificado mostrado en el lector»';
   return (
     `El enlace incluido en este mensaje conduce al lector certificado asociado al identificador ${messageId}. ` +
-    `El contenido exhibido por dicho lector es el transcripto en la sección «Contenido certificado mostrado en el lector» ` +
+    `El contenido exhibido por dicho lector es el transcripto en la sección ${contentSection} ` +
     `y comparte el mismo contentHash consignado en la cadena de evidencia y en el anexo técnico.`
   );
 }

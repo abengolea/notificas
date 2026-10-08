@@ -67,10 +67,9 @@ test('D: terminología contenido certificado en PDF y anexo', async () => {
     attachments: [],
   });
   const raw = pdfText(await blob.arrayBuffer());
-  assert.match(raw, /Contenido certificado mostrado en el lector/);
+  assert.match(raw, /Contenido certificado enviado por correo y mostrado en el lector/);
   assert.match(raw, /contenido certificado/i);
   assert.doesNotMatch(raw, /texto del correo\/lector/i);
-  assert.doesNotMatch(raw, /contenido enviado por correo/i);
   assert.match(raw, new RegExp(hash));
 });
 
@@ -105,7 +104,8 @@ test('E: WhatsApp referencia messageId y hash en sección dedicada', async () =>
       templateHash: null,
       templateId: null,
       renderedHeader: null,
-      renderedBody: 'Hola, accede aquí',
+      renderedBody:
+        'Estimado/a destinatario,\n\nEl Colegio de Abogados le envía una intimación oficial.\n\nLea el documento completo en el enlace certificado.\n\nEsta es una comunicación formal.',
       renderedFooter: null,
       variables: [],
       buttons: [{ url: `https://app.test/linkRedirect?msg=${msgId}&k=tok`, urlParameter: null, text: 'Acceder' }],
@@ -115,6 +115,14 @@ test('E: WhatsApp referencia messageId y hash en sección dedicada', async () =>
   const raw = pdfText(await blob.arrayBuffer());
   assert.match(raw, new RegExp(msgId));
   assert.match(raw, /Mensaje enviado por WhatsApp/);
+  const waTitleAt = raw.indexOf('Mensaje enviado por WhatsApp');
+  const waBodyEndAt = raw.indexOf('Esta es una comunicaci');
+  assert.ok(waTitleAt >= 0 && waBodyEndAt > waTitleAt);
+  assert.doesNotMatch(
+    raw.slice(waTitleAt, waBodyEndAt),
+    /ID de certificado: .*P[aá]gina/,
+    'el título y el mensaje humano de WhatsApp deben quedar juntos cuando caben en una página'
+  );
   assert.match(raw, /cadena de evidencia/i);
   assert.match(raw, /anexo técnico/i);
 });

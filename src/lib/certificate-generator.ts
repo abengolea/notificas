@@ -391,6 +391,16 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     yPosition += 6;
   };
 
+  const measureTextBlockHeight = (
+    text: string | null | undefined,
+    lineHeight: number,
+    monospace = false
+  ): number => {
+    if (!text) return 0;
+    const width = monospace ? contentWidth - 20 : contentWidth;
+    return doc.splitTextToSize(text, width).length * lineHeight + 6;
+  };
+
   /** Cuerpo intimado: un recuadro por página. Un solo box más alto que la hoja recorta el texto. */
   const writeQuotedContent = (text: string) => {
     const padding = 14;
@@ -757,6 +767,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       mailData.whatsappMessageId ||
       hasMovement(['whatsapp_sent', 'whatsapp_delivered', 'whatsapp_read'])
   );
+  const hasEmail = Boolean(mailData.recipientEmail && !mailData.waOnly);
   const emailResendSignal = formatEvidenceStatus(emailResendSignalDetected(emailEvidence));
   const emailLegacyPixel = formatEvidenceStatus(emailLegacyPixelDetected(emailEvidence));
   const emailAppOpen = formatEvidenceStatus(emailAppOpenDetected(emailEvidence));
@@ -786,7 +797,6 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   ];
 
   const drawIdentificationSection = () => {
-    drawSectionTitle('Identificación de las partes');
     let idBoxHeight = 18;
     identificationData.forEach((item) => {
       doc.setFont('helvetica', 'normal');
@@ -795,7 +805,8 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       idBoxHeight += 20 + (valueLines.length - 1) * 14;
     });
     idBoxHeight += 18;
-    ensureSpace(idBoxHeight + 8);
+    ensureSectionStart(idBoxHeight + 8, 1);
+    drawSectionTitle('Identificación de las partes');
     drawBox(margin, yPosition, contentWidth, idBoxHeight, false);
     let idY = yPosition + 20;
     const labelWidth = contentWidth * 0.3;
@@ -954,7 +965,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   if (hasWhatsApp || contentHashForDoc) {
     const chainVisual = buildEvidenceChainVisual({
       hasWhatsApp,
-      hasEmail: Boolean(mailData.recipientEmail && !mailData.waOnly),
+      hasEmail,
       messageId,
       contentHash: contentHashForDoc || '',
       snapshotHash: snapshotHashForDoc,
@@ -1175,7 +1186,12 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   // ========================================
   const cleanedContent = certificatePlainBody(mailData.message);
   if (cleanedContent) {
-    drawSectionTitle('Contenido certificado mostrado en el lector');
+    ensureSectionStart(104, 1);
+    drawSectionTitle(
+      hasEmail
+        ? 'Contenido certificado enviado por correo y mostrado en el lector'
+        : 'Contenido certificado mostrado en el lector'
+    );
     writeTextBlock(certifiedContentLegend(messageId, contentHash || ''), 9, 12, {
       color: COLORS.textMuted,
     });
@@ -1192,17 +1208,25 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   }
 
   if (whatsappSent) {
+    const missingTemplateText =
+      whatsappSent.templateBodyMissing && !whatsappSent.renderedBody
+        ? 'No se pudo lacrar el texto fijo de Meta en este envío. Se certifican el nombre del template, el idioma y las variables. El WhatsApp sí se envió.'
+        : !whatsappSent.renderedBody
+          ? 'No se almacena el texto fijo del template de Meta. Se transcriben las variables enviadas (ya sustituidas).'
+          : null;
+    const whatsappHumanBlockHeight =
+      measureTextBlockHeight(missingTemplateText, 12) +
+      measureTextBlockHeight(
+        whatsappSent.renderedHeader ? `Encabezado: ${whatsappSent.renderedHeader}` : null,
+        13
+      ) +
+      measureTextBlockHeight(whatsappSent.renderedBody, 14) +
+      measureTextBlockHeight(whatsappSent.renderedFooter, 12);
+    ensureSectionStart(Math.max(whatsappHumanBlockHeight, 54), 1);
     drawSectionTitle('Mensaje enviado por WhatsApp');
-    if (whatsappSent.templateBodyMissing && !whatsappSent.renderedBody) {
+    if (missingTemplateText) {
       writeTextBlock(
-        'No se pudo lacrar el texto fijo de Meta en este envío. Se certifican el nombre del template, el idioma y las variables. El WhatsApp sí se envió.',
-        9,
-        12,
-        { color: COLORS.textMuted }
-      );
-    } else if (!whatsappSent.renderedBody) {
-      writeTextBlock(
-        'No se almacena el texto fijo del template de Meta. Se transcriben las variables enviadas (ya sustituidas).',
+        missingTemplateText,
         9,
         12,
         { color: COLORS.textMuted }
@@ -1234,13 +1258,14 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       const dest = btn.url || btn.urlParameter;
       if (dest) writeTextBlock(`${label}: ${dest}`, 8, 11, { monospace: true });
     }
-    writeTextBlock(whatsAppReaderLinkExplanation(messageId, contentHash || ''), 9, 12, {
+    writeTextBlock(whatsAppReaderLinkExplanation(messageId, contentHash || '', hasEmail), 9, 12, {
       color: COLORS.textMuted,
     });
     writeTextBlock('Variables y pedido técnico completo a Meta: ver anexo técnico.', 8, 11, {
       color: COLORS.textMuted,
     });
   } else if (hasWhatsApp) {
+    ensureSectionStart(66, 1);
     drawSectionTitle('Mensaje enviado por WhatsApp');
     writeTextBlock(
       'No hay pedido a Meta en el snapshot. No se reconstruye el globo desde datos vivos.',

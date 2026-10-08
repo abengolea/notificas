@@ -207,7 +207,7 @@ test('K: certificado PDF imprime texto del snapshot una sola vez como contenido 
     attachments: [],
   });
   const raw = pdfText(await blob.arrayBuffer());
-  assert.match(raw, /Contenido certificado mostrado en el lector/);
+  assert.match(raw, /Contenido certificado enviado por correo y mostrado en el lector/);
   assert.match(raw, /Mensaje enviado por WhatsApp/);
   assert.match(raw, new RegExp(CONTENT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.match(raw, new RegExp(MESSAGE_ID));
@@ -215,7 +215,7 @@ test('K: certificado PDF imprime texto del snapshot una sola vez como contenido 
   assert.match(raw, new RegExp(SNAPSHOT_HASH.slice(0, 16)));
 });
 
-test('L: certificado incluye WAMID, cadena y no duplica título de contenido correo', async () => {
+test('L: certificado incluye WAMID, cadena y explicita el contenido enviado por correo', async () => {
   const hash = await computeContentHash(CONTENT);
   const blob = await generateCertificatePDF({
     messageId: MESSAGE_ID,
@@ -243,6 +243,7 @@ test('L: certificado incluye WAMID, cadena y no duplica título de contenido cor
   const raw = pdfText(await blob.arrayBuffer());
   assert.match(raw, /Cadena de vinculaci/);
   assert.match(raw, /WhatsApp/);
+  assert.match(raw, /Contenido certificado enviado por correo y mostrado en el lector/);
   assert.doesNotMatch(raw, /Contenido enviado por correo \(lector\)/);
   assert.match(raw, new RegExp(WAMID.replace(/\./g, '\\.')));
 });
@@ -270,7 +271,9 @@ test('M: el contenido certificado no aparece duplicado como secciones jurídicas
     attachments: [],
   });
   const raw = pdfText(await blob.arrayBuffer());
-  const sectionTitleCount = (raw.match(/Contenido certificado mostrado en el lector/g) || []).length;
+  const sectionTitleCount = (
+    raw.match(/Contenido certificado enviado por correo y mostrado en el lector/g) || []
+  ).length;
   assert.equal(sectionTitleCount, 1);
   assert.doesNotMatch(raw, /Contenido enviado por correo \(lector\)/);
   assert.doesNotMatch(raw, /Contenido enviado por WhatsApp/);
@@ -311,5 +314,8 @@ test('leyendas de certificado incluyen messageId y contentHash', () => {
   assert.match(certifiedContentLegend(MESSAGE_ID, hash), new RegExp(MESSAGE_ID));
   assert.match(certifiedContentLegend(MESSAGE_ID, hash), /cadena de evidencia/i);
   assert.match(certifiedContentLegend(MESSAGE_ID, hash), /anexo técnico/i);
-  assert.match(whatsAppReaderLinkExplanation(MESSAGE_ID, hash), /Contenido certificado mostrado en el lector/);
+  assert.match(
+    whatsAppReaderLinkExplanation(MESSAGE_ID, hash, true),
+    /Contenido certificado enviado por correo y mostrado en el lector/
+  );
 });
