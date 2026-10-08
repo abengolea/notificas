@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { ArrowLeft, Copy, KeyRound, Loader2, Save } from "lucide-react";
+import { ArrowLeft, Copy, KeyRound, Loader2, Plus, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -71,6 +71,8 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
   const [changingEmail, setChangingEmail] = useState(false);
   const [confirmEmailOpen, setConfirmEmailOpen] = useState(false);
   const [keepPreviousAsMember, setKeepPreviousAsMember] = useState(true);
+  const [addEnvios, setAddEnvios] = useState("50");
+  const [addingEnvios, setAddingEnvios] = useState(false);
 
   const applyOrg = useCallback((next: AdminOrganizationDetail) => {
     setOrg(next);
@@ -177,6 +179,52 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
       });
     } finally {
       setResettingUid(null);
+    }
+  }
+
+  async function addCreditsToAdmin() {
+    const uid =
+      org?.operators.find((o) => o.isOrgAdmin)?.uid || org?.adminUserId || "";
+    const amount = Math.floor(Number(addEnvios));
+    if (!uid) {
+      toast({
+        title: "Sin administrador",
+        description: "Esta empresa no tiene una cuenta de acceso para acreditar envíos.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!Number.isFinite(amount) || amount < 1) {
+      toast({
+        title: "Cantidad inválida",
+        description: "Indicá cuántos envíos sumar (mínimo 1).",
+        variant: "destructive",
+      });
+      return;
+    }
+    setAddingEnvios(true);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid, addCreditos: amount }),
+      });
+      const data = (await res.json()) as { error?: string; enviosDisponibles?: number };
+      if (!res.ok) throw new Error(data.error || "No se pudo acreditar");
+      toast({
+        title: "Envíos acreditados",
+        description: `Se sumaron ${amount.toLocaleString("es-AR")} envíos. Saldo: ${(data.enviosDisponibles ?? 0).toLocaleString("es-AR")}.`,
+      });
+      await load();
+    } catch (e: unknown) {
+      toast({
+        title: "No se pudieron sumar envíos",
+        description: e instanceof Error ? e.message : "",
+        variant: "destructive",
+      });
+    } finally {
+      setAddingEnvios(false);
     }
   }
 
@@ -409,7 +457,45 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
             <dt className="text-muted-foreground">Último acceso</dt>
             <dd>{formatWhen(admin?.lastLoginAt ?? null)}</dd>
             <dt className="text-muted-foreground">Envíos</dt>
-            <dd>{(admin?.enviosDisponibles ?? 0).toLocaleString("es-AR")}</dd>
+            <dd>
+              <div className="flex flex-col gap-2">
+                <p>
+                  Saldo:{" "}
+                  <span className="font-medium">
+                    {(admin?.enviosDisponibles ?? 0).toLocaleString("es-AR")}
+                  </span>
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    id="org-add-envios"
+                    type="number"
+                    min={1}
+                    step={1}
+                    inputMode="numeric"
+                    className="w-28"
+                    value={addEnvios}
+                    onChange={(e) => setAddEnvios(e.target.value)}
+                    aria-label="Cantidad de envíos a sumar"
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={addingEnvios || !(admin?.uid || org.adminUserId)}
+                    onClick={() => void addCreditsToAdmin()}
+                  >
+                    {addingEnvios ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Plus className="mr-2 h-4 w-4" />
+                    )}
+                    Sumar envíos
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Se acreditan en la cuenta del administrador de la empresa.
+                </p>
+              </div>
+            </dd>
           </dl>
           <p className="text-sm text-muted-foreground">
             Cambiá el mail para pasarle la cuenta al responsable real. Recibe el correo para definir
