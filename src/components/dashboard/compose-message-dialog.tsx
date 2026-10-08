@@ -647,12 +647,16 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
         }
 
         const sendCredits = creditsRequiredForIndividualSend(data.canal);
-        if (!canAffordCredits(user.creditos, sendCredits)) {
+        if (!canAffordCredits(saldo, sendCredits)) {
             toast({
                 title: sendCredits > 1 ? "Necesitás 2 envíos" : "Sin envíos",
                 description: sendCredits > 1
-                    ? "Email + WhatsApp se cobran como 2 envíos. Recargá tu saldo para enviar por las dos vías."
-                    : "No tenés envíos suficientes para enviar un mensaje certificado.",
+                    ? orgId
+                        ? "Email + WhatsApp se cobran como 2 envíos. Recargá el saldo de la empresa para enviar por las dos vías."
+                        : "Email + WhatsApp se cobran como 2 envíos. Recargá tu saldo para enviar por las dos vías."
+                    : orgId
+                        ? "La empresa no tiene envíos suficientes para enviar un mensaje certificado."
+                        : "No tenés envíos suficientes para enviar un mensaje certificado.",
                 variant: "destructive",
             });
             return;
