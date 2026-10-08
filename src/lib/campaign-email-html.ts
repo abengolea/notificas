@@ -97,7 +97,6 @@ export function buildCampaignMailHtml(params: {
   const contentSection = bodyHtml?.trim()
     ? `
                 <div class="message-content"${hideAttr} style="margin: 20px 0;">
-                  <h2 style="color: #1e293b; margin: 0 0 16px 0; font-size: 18px; font-weight: 600;">Contenido del mensaje</h2>
                   <div style="background: #f8fafc; padding: 16px; border-radius: 6px; border-left: 4px solid #0D9488;">
                     ${bodyHtml}
                   </div>

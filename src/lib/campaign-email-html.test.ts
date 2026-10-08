@@ -27,6 +27,7 @@ test('modo inline no marca el cuerpo para ocultarlo al enviar', () => {
   assert.equal(/blockchain/i.test(html), false);
   assert.equal(/fehaciente/i.test(html), false);
   assert.equal(/Polygon/i.test(html), false);
+  assert.equal(/Contenido del mensaje/i.test(html), false);
 });
 
 test('modo inline usa el cuerpo como preheader de bandeja', () => {
@@ -67,6 +68,7 @@ test('inline no duplica una carta distinta para el lector', () => {
     mode: 'inline',
   });
   assert.match(html, /El Colegio le envía una intimación/);
+  assert.equal(/Contenido del mensaje/i.test(html), false);
   assert.equal(/MAILBOX_META_START/.test(html), false);
   assert.equal(/data-reader-hide/.test(html), false);
   assert.equal(/Carta extendida/.test(html), false);

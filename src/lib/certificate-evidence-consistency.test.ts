@@ -43,6 +43,30 @@ test('verifyEvidenceConsistency acepta registro viejo sin campos opcionales', as
   assert.equal(result.critical.length, 0);
 });
 
+test('verifyEvidenceConsistency no confunde Message-ID SMTP con el id de Firestore', async () => {
+  const smtpId = '<3143ce96-30dd-6e75-c4ba-1a0d2fdff533@notificas.com.ar>';
+  const result = await verifyEvidenceConsistency({
+    messageId: 'kBNOet9libp3ntbJcZK',
+    mailData: {
+      tracking: { messageId: smtpId },
+      smtpMessageId: smtpId,
+      message: { contentText: 'PRUEBA 6' },
+    },
+  });
+  assert.equal(result.ok, true, result.critical.join(' | '));
+});
+
+test('verifyEvidenceConsistency rechaza un id de tracking que no es SMTP y no coincide', async () => {
+  const result = await verifyEvidenceConsistency({
+    messageId: 'kBNOet9libp3ntbJcZK',
+    mailData: {
+      tracking: { messageId: 'otroDocId' },
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.critical.join(' '), /tracking/);
+});
+
 test('verifyEvidenceConsistency valida coincidencia de contentHash', async () => {
   const text = 'Intimación de prueba';
   const hash = await computeContentHash(text);

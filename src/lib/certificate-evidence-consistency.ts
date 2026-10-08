@@ -1,4 +1,5 @@
 import { computeContentHash } from './certification';
+import { isRealSmtpMessageId } from './email-delivery-label';
 
 export type EvidenceConsistencyInput = {
   messageId: string;
@@ -8,6 +9,7 @@ export type EvidenceConsistencyInput = {
     readerUrl?: string;
     tracking?: { whatsappMessageId?: string; messageId?: string };
     whatsappMessageId?: string;
+    smtpMessageId?: string;
     polygonCertifications?: { contentHash?: string };
   };
   whatsappSent?: {
@@ -53,9 +55,19 @@ export async function verifyEvidenceConsistency(
     return { ok: false, critical, warnings };
   }
 
-  const trackingMsgId = mailData.tracking?.messageId;
-  if (trackingMsgId && String(trackingMsgId) !== id) {
-    critical.push(`messageId del tracking (${trackingMsgId}) no coincide con ${id}.`);
+  const trackingMsgId = String(mailData.tracking?.messageId || '').trim();
+  if (trackingMsgId && trackingMsgId !== id) {
+    // tracking.messageId guarda el Message-ID SMTP (`<uuid@host>`), no el id de Firestore.
+    if (isRealSmtpMessageId(trackingMsgId)) {
+      const smtp = String(mailData.smtpMessageId || '').trim();
+      if (smtp && isRealSmtpMessageId(smtp) && smtp !== trackingMsgId) {
+        critical.push(
+          `Message-ID SMTP del tracking (${trackingMsgId}) no coincide con el del envío (${smtp}).`
+        );
+      }
+    } else {
+      critical.push(`messageId del tracking (${trackingMsgId}) no coincide con ${id}.`);
+    }
   }
 
   const readerUrl = typeof mailData.readerUrl === 'string' ? mailData.readerUrl : '';
