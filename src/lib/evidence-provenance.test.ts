@@ -10,6 +10,8 @@ import {
 } from './evidence-chain';
 import { overlayMailWithSnapshot, type EvidenceSnapshot } from './evidence-snapshot';
 import { certificatePlainBody, generateCertificatePDF } from './certificate-generator';
+import { injectContentForReader } from './inject-content-for-reader';
+import { sanitizeHtmlForReader } from './sanitize-reader-html';
 
 const MESSAGE_ID = 'msgProbatory001';
 const CONTENT = 'Texto intimado original certificado.';
@@ -275,6 +277,27 @@ test('M: el contenido certificado no aparece duplicado como secciones jurídicas
   const body = certificatePlainBody({ contentText: uniqueBody });
   const occurrences = raw.split(body).length - 1;
   assert.equal(occurrences, 1, 'el texto jurídico debe aparecer una sola vez');
+});
+
+test('N: el HTML del reader usa el texto lacrado y su SHA-256 sigue siendo contentHash', async () => {
+  const hash = await computeContentHash(CONTENT);
+  const snap = baseSnapshot({ contentHash: hash });
+  const live = {
+    message: {
+      html: `<div class="message-content"><p>El Colegio le envía una intimación oficial. [El enlace se agregará al enviar el mensaje]</p></div>`,
+      contentText: 'TEXTO EDITADO POSTERIOR',
+      content: '<p>TEXTO EDITADO</p>',
+    },
+  };
+  const overlaid = overlayMailWithSnapshot(live, snap);
+  const readerHtml = sanitizeHtmlForReader(
+    injectContentForReader(String(overlaid.message.html || ''), overlaid)
+  );
+  assert.match(readerHtml, new RegExp(CONTENT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.equal(/intimación oficial/i.test(readerHtml), false);
+  assert.equal(overlaid.message.contentText, CONTENT);
+  assert.equal(await computeContentHash(String(overlaid.message.contentText)), hash);
+  assert.equal(overlaid.polygonCertifications.contentHash, hash);
 });
 
 test('tokenReference no expone el token completo', () => {

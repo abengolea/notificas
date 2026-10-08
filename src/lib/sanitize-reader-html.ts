@@ -1,8 +1,7 @@
 /**
  * En el lector el destinatario ya abrió el enlace. Sacamos el sobre del correo:
  * saludo, “use el enlace”, “lea este correo”, botón de acceso y fallback.
- * Si el mail mezclaba globo de Meta + carta oculta, dejamos el mismo texto que Gmail
- * (el de Meta) y no la carta gemela.
+ * El texto jurídico lo pone `injectContentForReader` (carta lacrada), no el globo de Meta.
  */
 export function sanitizeHtmlForReader(html: string): string {
   if (!html) return "";
