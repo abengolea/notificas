@@ -1792,9 +1792,9 @@ async function linkRedirectHandler(req, res) {
               type: isWhatsApp ? 'whatsapp_link_clicked' : 'link_clicked',
               description: isWhatsApp
                 ? recipientPhoneVerified && recipientPhoneFromLink
-                  ? `Pulsaron el enlace en WhatsApp (número del envío: +${recipientPhoneFromLink})`
-                  : 'Pulsaron el enlace en WhatsApp para abrir la notificación'
-                : 'Pulsaron el botón del correo para abrir la notificación',
+                  ? `Pulsaron el enlace del mensaje de WhatsApp (número del envío: +${recipientPhoneFromLink})`
+                  : 'Pulsaron el enlace del mensaje de WhatsApp para abrir la notificación'
+                : 'Pulsaron el enlace del correo electrónico para abrir la notificación',
               source: src || 'email',
               timestamp: new Date().toISOString(),
               userAgent: userAgentForCheck,
@@ -1955,9 +1955,9 @@ async function linkRedirectHandler(req, res) {
         type: isWhatsApp ? 'whatsapp_link_clicked' : 'link_clicked',
         description: isWhatsApp
           ? recipientPhoneVerified && recipientPhoneFromLink
-            ? `Pulsaron el enlace en WhatsApp (número del envío: +${recipientPhoneFromLink})`
-            : 'Pulsaron el enlace en WhatsApp para abrir la notificación'
-          : `Pulsaron un enlace dentro del correo: ${decodedUrl}`,
+            ? `Pulsaron el enlace del mensaje de WhatsApp (número del envío: +${recipientPhoneFromLink})`
+            : 'Pulsaron el enlace del mensaje de WhatsApp para abrir la notificación'
+          : `Pulsaron un enlace del correo electrónico: ${decodedUrl}`,
         source: src || 'email',
         timestamp: new Date().toISOString(),
         userAgent: userAgent,

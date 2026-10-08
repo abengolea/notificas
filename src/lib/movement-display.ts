@@ -66,19 +66,52 @@ export function inferClickSourceFromMovements(
 }
 
 export function readerOpenLabel(clickSource: ClickSource): string {
-  if (clickSource === "correo") return "NOTIFICACIÓN ABIERTA (DESDE CORREO)";
-  if (clickSource === "whatsapp") return "NOTIFICACIÓN ABIERTA (DESDE WHATSAPP)";
+  if (clickSource === "correo") return "NOTIFICACIÓN ABIERTA DESDE EL CORREO";
+  if (clickSource === "whatsapp") return "NOTIFICACIÓN ABIERTA DESDE WHATSAPP";
   return "NOTIFICACIÓN ABIERTA (PÁGINA WEB)";
 }
 
 export function readerOpenDescription(clickSource: ClickSource): string {
   if (clickSource === "correo") {
-    return "El destinatario abrió el mensaje desde el enlace del correo.";
+    return "El destinatario abrió el mensaje desde el enlace del correo electrónico.";
   }
   if (clickSource === "whatsapp") {
-    return "El destinatario abrió el mensaje desde el enlace de WhatsApp.";
+    return "El destinatario abrió el mensaje desde el enlace del mensaje de WhatsApp.";
   }
   return "El destinatario abrió el mensaje para leerlo. No se pudo determinar si llegó por correo o WhatsApp.";
+}
+
+export function clickSourceOriginLabel(source: ClickSource): string | null {
+  if (source === "whatsapp") return "mensaje de WhatsApp";
+  if (source === "correo") return "correo electrónico";
+  return null;
+}
+
+export function linkClickOriginLabel(type: string): string | null {
+  if (type === "whatsapp_link_clicked") return clickSourceOriginLabel("whatsapp");
+  if (type === "link_clicked") return clickSourceOriginLabel("correo");
+  return null;
+}
+
+/** Texto de listado: deja claro si el clic vino del WhatsApp o del correo. */
+export function publicLinkClickDescription(type: string, raw: string): string {
+  const text = publicMovementDescription(raw);
+  if (type === "whatsapp_link_clicked") {
+    const phone = text.match(/\+?\d{8,15}/)?.[0];
+    if (phone) {
+      const formatted = phone.startsWith("+") ? phone : `+${phone}`;
+      return `Pulsaron el enlace del mensaje de WhatsApp (número ${formatted}) para abrir la notificación.`;
+    }
+    return "Pulsaron el enlace del mensaje de WhatsApp para abrir la notificación.";
+  }
+  if (type === "link_clicked") {
+    const urlMatch = text.match(/https?:\/\/\S+/);
+    if (urlMatch) {
+      return `Pulsaron un enlace del correo electrónico: ${urlMatch[0]}`;
+    }
+    return "Pulsaron el enlace del correo electrónico para abrir la notificación.";
+  }
+  return text;
 }
 
 export function readerOpenStoredDescription(clickSource: ClickSource): string {
@@ -125,8 +158,8 @@ export const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   email_opened: "CORREO ABIERTO",
   read_confirmed: "LECTURA CONFIRMADA (PÁGINA WEB)",
   attachment_opened: "ARCHIVO ABIERTO (PÁGINA WEB)",
-  link_clicked: "ENLACE PULSADO (CORREO)",
-  whatsapp_link_clicked: "ENLACE PULSADO (WHATSAPP)",
+  link_clicked: "ENLACE PULSADO DESDE EL CORREO",
+  whatsapp_link_clicked: "ENLACE PULSADO DESDE WHATSAPP",
   whatsapp_sent: "WHATSAPP ENVIADO",
   whatsapp_delivered: "WHATSAPP ENTREGADO",
   whatsapp_read: "WHATSAPP LEÍDO",

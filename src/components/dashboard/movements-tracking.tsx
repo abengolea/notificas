@@ -20,9 +20,12 @@ import {
 import { filterRecipientVisibleMovements } from '@/lib/tracking-movements';
 import {
   MOVEMENT_TYPE_LABELS,
+  clickSourceOriginLabel,
   inferClickSourceFromMovements,
+  linkClickOriginLabel,
   movementChannel,
   movementChannelLabel,
+  publicLinkClickDescription,
   publicMovementBrowserLabel,
   publicMovementDescription,
   readerOpenDescription,
@@ -79,79 +82,57 @@ interface MovementsTrackingProps {
   recipientEmail?: string | null;
 }
 
-const getMovementIcon = (type: string) => {
-  switch (type) {
-    case 'email_sent':
-    case 'resend_sent':
-      return <Mail className="h-4 w-4 text-blue-500" />;
-    case 'resend_delivered':
-      return <CheckCircle className="h-4 w-4 text-sky-600" />;
-    case 'resend_delayed':
-    case 'resend_bounced':
-    case 'resend_failed':
-    case 'resend_suppressed':
-    case 'resend_complained':
-      return <Clock className="h-4 w-4 text-amber-600" />;
-    case 'resend_opened_signal':
-    case 'resend_clicked_signal':
-      return <Eye className="h-4 w-4 text-slate-500" />;
-    case 'email_opened':
-      return <Eye className="h-4 w-4 text-green-500" />;
-    case 'read_confirmed':
-      return <CheckCircle className="h-4 w-4 text-emerald-500" />;
-    case 'attachment_opened':
-      return <Monitor className="h-4 w-4 text-purple-500" />;
-    case 'link_clicked':
-      return <Globe className="h-4 w-4 text-orange-500" />;
-    case 'whatsapp_link_clicked':
-    case 'whatsapp_sent':
-    case 'whatsapp_delivered':
-    case 'whatsapp_read':
-    case 'whatsapp_failed':
-      return <MessageCircle className="h-4 w-4 text-green-600" />;
-    case 'app_opened':
-    case 'reader_magic_open':
-      return <Eye className="h-4 w-4 text-teal-500" />;
-    default:
-      return <Clock className="h-4 w-4 text-gray-500" />;
-  }
-};
+const CHANNEL_TONE = {
+  whatsapp: {
+    row: 'rounded-md border-l-4 border-green-500 bg-green-50/80 px-3 py-2.5',
+    chip: 'bg-green-100 text-green-800 border-green-300',
+    icon: 'text-green-600',
+    context: 'border-green-300',
+  },
+  other: {
+    row: 'rounded-md border-l-4 border-sky-400 bg-sky-50/80 px-3 py-2.5',
+    chip: 'bg-sky-100 text-sky-800 border-sky-300',
+    icon: 'text-sky-600',
+    context: 'border-sky-300',
+  },
+} as const;
 
-const getMovementColor = (type: string) => {
+function movementTone(channel: MovementChannel) {
+  return channel === 'whatsapp' ? CHANNEL_TONE.whatsapp : CHANNEL_TONE.other;
+}
+
+const getMovementIcon = (type: string, iconClass: string) => {
   switch (type) {
     case 'email_sent':
     case 'resend_sent':
-      return 'bg-blue-100 text-blue-800';
+      return <Mail className={`h-4 w-4 ${iconClass}`} />;
     case 'resend_delivered':
-      return 'bg-sky-100 text-sky-900';
+    case 'read_confirmed':
+      return <CheckCircle className={`h-4 w-4 ${iconClass}`} />;
     case 'resend_delayed':
     case 'resend_bounced':
     case 'resend_failed':
     case 'resend_suppressed':
     case 'resend_complained':
-      return 'bg-amber-100 text-amber-900';
+      return <Clock className={`h-4 w-4 ${iconClass}`} />;
     case 'resend_opened_signal':
     case 'resend_clicked_signal':
-      return 'bg-slate-100 text-slate-700';
     case 'email_opened':
-      return 'bg-green-100 text-green-800';
-    case 'read_confirmed':
-      return 'bg-emerald-100 text-emerald-800';
+    case 'app_opened':
+    case 'reader_magic_open':
+      return <Eye className={`h-4 w-4 ${iconClass}`} />;
     case 'attachment_opened':
-      return 'bg-purple-100 text-purple-800';
+      return <Monitor className={`h-4 w-4 ${iconClass}`} />;
     case 'link_clicked':
-      return 'bg-orange-100 text-orange-800';
+      return <Globe className={`h-4 w-4 ${iconClass}`} />;
     case 'whatsapp_link_clicked':
     case 'whatsapp_sent':
     case 'whatsapp_delivered':
     case 'whatsapp_read':
     case 'whatsapp_failed':
-      return 'bg-green-100 text-green-800 border border-green-300';
-    case 'app_opened':
-    case 'reader_magic_open':
-      return 'bg-teal-100 text-teal-800';
+      return <MessageCircle className={`h-4 w-4 ${iconClass}`} />;
     default:
-      return 'bg-gray-100 text-gray-800';
+      return <Clock className={`h-4 w-4 ${iconClass}`} />;
   }
 };
 
@@ -174,12 +155,6 @@ const formatTimestamp = (timestamp: any) => {
 const formatIPs = (clientIP: string, forwardedIPs: string[], realIP: string) => {
   const ips = [clientIP, ...(forwardedIPs || []), realIP].filter(ip => ip && ip !== 'Unknown' && ip !== 'Server');
   return [...new Set(ips)].join(', '); // Remove duplicates
-};
-
-const CHANNEL_CHIP_CLASS: Record<MovementChannel, string> = {
-  correo: 'bg-blue-100 text-blue-800 border-blue-200',
-  whatsapp: 'bg-green-100 text-green-800 border-green-200',
-  lectura: 'bg-teal-100 text-teal-800 border-teal-200',
 };
 
 const MOVEMENT_TYPES_WITH_RECIPIENT_CONTEXT = new Set([
@@ -225,6 +200,9 @@ function getMovementDescription(movement: Movement, allMovements: Movement[]): s
       return stored;
     }
     return readerOpenDescription(clickSource);
+  }
+  if (movement.type === 'whatsapp_link_clicked' || movement.type === 'link_clicked') {
+    return publicLinkClickDescription(movement.type, String(movement.description || ''));
   }
   return publicMovementDescription(String(movement.description || ''));
 }
@@ -287,11 +265,19 @@ export function MovementsTracking({ movements, recipientEmail }: MovementsTracki
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {sortedMovements.map((movement, index) => (
+        {sortedMovements.map((movement, index) => {
+          const channel = getMovementChannelChip(movement, sortedMovements);
+          const tone = movementTone(channel);
+          const linkOrigin =
+            linkClickOriginLabel(movement.type) ||
+            (movement.type === 'reader_magic_open'
+              ? clickSourceOriginLabel(resolveMovementClickSource(movement, sortedMovements))
+              : null);
+          return (
           <div key={movement.id}>
-            <div className="flex items-start gap-3">
+            <div className={`flex items-start gap-3 ${tone.row}`}>
               <div className="flex-shrink-0 mt-1">
-                {getMovementIcon(movement.type)}
+                {getMovementIcon(movement.type, tone.icon)}
               </div>
               
               <div className="flex-1 min-w-0">
@@ -301,13 +287,13 @@ export function MovementsTracking({ movements, recipientEmail }: MovementsTracki
                   </span>
                   <Badge
                     variant="outline"
-                    className={`text-xs ${CHANNEL_CHIP_CLASS[getMovementChannelChip(movement, sortedMovements)]}`}
+                    className={`text-xs ${tone.chip}`}
                   >
-                    {movementChannelLabel(getMovementChannelChip(movement, sortedMovements))}
+                    {movementChannelLabel(channel)}
                   </Badge>
                   <Badge 
                     variant="outline" 
-                    className={`text-xs ${getMovementColor(movement.type)}`}
+                    className={`text-xs ${tone.chip}`}
                   >
                     {getMovementLabel(movement, sortedMovements)}
                   </Badge>
@@ -317,12 +303,21 @@ export function MovementsTracking({ movements, recipientEmail }: MovementsTracki
                   {getMovementDescription(movement, sortedMovements)}
                 </p>
 
-                {MOVEMENT_TYPES_WITH_RECIPIENT_CONTEXT.has(movement.type) &&
-                  (movement.recipientEmail ||
-                    movement.mailRecipientEmail ||
-                    movement.recipientPhone ||
-                    movement.openedByEmail) && (
-                    <div className="text-xs text-muted-foreground mb-2 space-y-0.5 border-l-2 border-border pl-2">
+                {(linkOrigin ||
+                  (MOVEMENT_TYPES_WITH_RECIPIENT_CONTEXT.has(movement.type) &&
+                    (movement.recipientEmail ||
+                      movement.mailRecipientEmail ||
+                      movement.recipientPhone ||
+                      movement.openedByEmail))) && (
+                    <div className={`text-xs text-muted-foreground mb-2 space-y-0.5 border-l-2 pl-2 ${tone.context}`}>
+                      {linkOrigin ? (
+                        <div>
+                          <span className="text-foreground/80">
+                            {movement.type === 'reader_magic_open' ? 'Origen de la apertura:' : 'Origen del enlace:'}
+                          </span>{' '}
+                          <span className="font-medium text-foreground">{linkOrigin}</span>
+                        </div>
+                      ) : null}
                       {(() => {
                         const destined =
                           (movement.mailRecipientEmail || '').trim() ||
@@ -387,7 +382,8 @@ export function MovementsTracking({ movements, recipientEmail }: MovementsTracki
               <Separator className="mt-4" />
             )}
           </div>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );

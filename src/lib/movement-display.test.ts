@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import {
   MOVEMENT_TYPE_LABELS,
   inferClickSourceFromMovements,
+  linkClickOriginLabel,
   movementChannel,
   movementChannelLabel,
+  publicLinkClickDescription,
   publicMovementBrowserLabel,
   publicMovementDescription,
   readerOpenDescription,
@@ -47,8 +49,8 @@ test("reader_magic_open indica si el acceso vino por correo o WhatsApp", () => {
     { type: "reader_magic_open", timestamp: "2026-09-25T15:10:05.000Z" },
   ];
   assert.equal(inferClickSourceFromMovements(movements[1], movements), "correo");
-  assert.equal(readerOpenLabel("correo"), "NOTIFICACIÓN ABIERTA (DESDE CORREO)");
-  assert.match(readerOpenDescription("correo"), /correo/i);
+  assert.equal(readerOpenLabel("correo"), "NOTIFICACIÓN ABIERTA DESDE EL CORREO");
+  assert.match(readerOpenDescription("correo"), /correo electrónico/i);
 });
 
 test("reader_magic_open detecta click previo de WhatsApp", () => {
@@ -57,5 +59,20 @@ test("reader_magic_open detecta click previo de WhatsApp", () => {
     { type: "reader_magic_open", timestamp: "2026-09-25T15:10:04.000Z", source: "reader_whatsapp" },
   ];
   assert.equal(inferClickSourceFromMovements(movements[1], movements), "whatsapp");
-  assert.equal(readerOpenLabel("whatsapp"), "NOTIFICACIÓN ABIERTA (DESDE WHATSAPP)");
+  assert.equal(readerOpenLabel("whatsapp"), "NOTIFICACIÓN ABIERTA DESDE WHATSAPP");
+});
+
+test("el clic del enlace dice si vino del WhatsApp o del correo", () => {
+  assert.equal(MOVEMENT_TYPE_LABELS.link_clicked, "ENLACE PULSADO DESDE EL CORREO");
+  assert.equal(MOVEMENT_TYPE_LABELS.whatsapp_link_clicked, "ENLACE PULSADO DESDE WHATSAPP");
+  assert.equal(linkClickOriginLabel("whatsapp_link_clicked"), "mensaje de WhatsApp");
+  assert.equal(linkClickOriginLabel("link_clicked"), "correo electrónico");
+  assert.match(
+    publicLinkClickDescription("whatsapp_link_clicked", "Pulsaron el enlace en WhatsApp para abrir la notificación"),
+    /mensaje de WhatsApp/,
+  );
+  assert.match(
+    publicLinkClickDescription("link_clicked", "Pulsaron el botón del correo para abrir la notificación"),
+    /correo electrónico/,
+  );
 });
