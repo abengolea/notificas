@@ -84,16 +84,16 @@ interface MovementsTrackingProps {
 
 const CHANNEL_TONE = {
   whatsapp: {
-    row: 'rounded-md border-l-4 border-green-500 bg-sky-50 px-3 py-2.5',
-    chip: 'bg-green-100 text-green-800 border-green-300',
-    icon: 'text-green-600',
-    context: 'border-green-300',
+    row: 'rounded-md border-l-4 border-green-500 px-3 py-2.5',
+    chip: 'bg-green-600 text-white border-green-500',
+    icon: 'text-green-500',
+    context: 'border-green-500',
   },
   other: {
-    row: 'rounded-md border-l-4 border-sky-400 bg-sky-50 px-3 py-2.5',
-    chip: 'bg-sky-100 text-sky-800 border-sky-300',
-    icon: 'text-sky-600',
-    context: 'border-sky-300',
+    row: 'rounded-md border-l-4 border-sky-400 px-3 py-2.5',
+    chip: 'bg-sky-600 text-white border-sky-500',
+    icon: 'text-sky-400',
+    context: 'border-sky-400',
   },
 } as const;
 
