@@ -210,6 +210,8 @@ El proxy reenvía `/api/notificas/*` → `https://notificas.com.ar/api/v1/*`. Ej
 - `docs/examples/express-proxy.js`
 - `docs/examples/embed.html`
 
+Kit para pegar el widget en **gestión-regatas** (Regatas+): `docs/examples/gestion-regatas-embed/` (parche `apply-in-gestion-regatas.patch`). Página de prueba: `/dashboard/admin/notificas`.
+
 Demo sin API: `Notificas.embed("#el", { demo: true })` o `data-demo="true"`.
 
 ## Preparado para agentes / iPaaS
