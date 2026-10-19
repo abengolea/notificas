@@ -13,6 +13,7 @@ import { MarketingRecipientPreview, type PreviewContact } from "./marketing-reci
 import { countryName } from "@/lib/marketing/countries";
 import { CAMPAIGN_OUTCOME_LABEL, CAMPAIGN_OUTCOMES, sendMatchesOutcome } from "@/lib/marketing/admin-filters";
 import { MarketingCampaignActions } from "./marketing-campaign-actions";
+import { MarketingCampaignRecontact } from "./marketing-campaign-recontact";
 import { MarketingEmailEditor } from "./marketing-email-editor";
 import {
   Collapsible,
@@ -541,6 +542,8 @@ export function MarketingCampaignDetail({ campaignId }: { campaignId: string }) 
           Hacé clic en un tile para filtrar la tabla. La apertura se registra solo cuando el servidor de correo notifica.
         </p>
       </div>
+
+      {campaign.status === "sent" ? <MarketingCampaignRecontact campaignId={campaignId} /> : null}
 
       {campaign.status === "sending" ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">

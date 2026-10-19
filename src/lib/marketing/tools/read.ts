@@ -14,6 +14,7 @@ import {
   getTemplateSchema,
   listTaxonomySchema,
   previewCampaignSchema,
+  searchCampaignRecipientsSchema,
   previewLinkedinCampaignSchema,
   searchCampaignsSchema,
   searchCompaniesSchema,
@@ -26,6 +27,7 @@ import {
   searchTemplatesSchema,
   getLinkedinCampaignSchema,
 } from "./schemas";
+import { searchCampaignRecipients as searchCampaignRecipientsRows } from "../recontact";
 import { TAXONOMY_INDUSTRIES, TAXONOMY_USE_CASES } from "../taxonomy/seed";
 import { DETAIL_LIMIT, pageLimit, summarizeCompany } from "./helpers";
 import { sanitizeCrmPayload } from "./sanitize";
@@ -259,6 +261,29 @@ export async function getCampaign(
     entityIds: [campaign.id],
     summary: `Campaña ${campaign.name} (${campaign.status})`,
   });
+}
+
+export async function searchCampaignRecipients(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof searchCampaignRecipientsSchema>,
+): Promise<CrmToolSuccess> {
+  void ctx;
+  const page = await searchCampaignRecipientsRows(runtime.recontact, {
+    campaignId: input.campaignId,
+    engagementStatus: input.engagementStatus,
+    limit: pageLimit(input.limit),
+    cursor: input.cursor,
+  });
+  return ok(
+    "search_campaign_recipients",
+    page,
+    {
+      entityType: "campaign",
+      entityIds: [page.campaignId],
+      summary: `Destinatarios de ${page.campaignName}: ${page.items.length} en esta página, ${page.stats.notOpened} sin apertura registrada, ${page.stats.eligibleForRecontact} elegibles para recontacto.`,
+    },
+  );
 }
 
 export async function searchLists(
@@ -704,6 +729,7 @@ export const CRM_READ_HANDLERS = {
   search_opportunities: { schema: searchOpportunitiesSchema, run: searchOpportunities },
   get_opportunity: { schema: getOpportunitySchema, run: getOpportunity },
   preview_campaign: { schema: previewCampaignSchema, run: previewCampaign },
+  search_campaign_recipients: { schema: searchCampaignRecipientsSchema, run: searchCampaignRecipients },
   search_linkedin_campaigns: { schema: searchLinkedinCampaignsSchema, run: searchLinkedinCampaigns },
   get_linkedin_campaign: { schema: getLinkedinCampaignSchema, run: getLinkedinCampaign },
   preview_linkedin_campaign: { schema: previewLinkedinCampaignSchema, run: previewLinkedinCampaign },

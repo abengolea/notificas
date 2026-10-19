@@ -36,7 +36,7 @@ Workspace: siempre `getMarketingWorkspaceId()`. El modelo no puede mandar `works
 
 Un scope **omitido o vacío** cae a `crm:read`. Un scope **explícito desconocido** (o una mezcla con uno desconocido) responde `invalid_scope` en authorize/consent y en `/oauth/token` si se envía `scope` contra el resource CRM. Nunca se reescribe un token inventado a `crm:read`.
 
-Los tokens ya emitidos con solo `crm:read` siguen pudiendo **ejecutar** lecturas CRM. No ganan `notifications:*` ni `certificates:read`. `tools/list` anónimo publica las 59 tools (CRM + campañas de email + LinkedIn + lectura/preparación certificada) con `securitySchemes`; con Bearer válido, `tools/list` filtra al catálogo autorizado por el token. Tras un deploy que agregue tools o scopes, hay que **reconectar** el conector de ChatGPT: `initialize` declara `tools.listChanged=true`, pero ChatGPT no refresca solo.
+Los tokens ya emitidos con solo `crm:read` siguen pudiendo **ejecutar** lecturas CRM. No ganan `notifications:*` ni `certificates:read`. `tools/list` anónimo publica las 61 tools (CRM + campañas de email + LinkedIn + lectura/preparación certificada) con `securitySchemes`; con Bearer válido, `tools/list` filtra al catálogo autorizado por el token. Tras un deploy que agregue tools o scopes, hay que **reconectar** el conector de ChatGPT: `initialize` declara `tools.listChanged=true`, pero ChatGPT no refresca solo.
 
 `POST /mcp/crm` permite sin Bearer: `initialize`, `notifications/initialized`, `ping` y `tools/list` (solo el menú: nombre, descripción, schema, annotations, securitySchemes). **No** lee ni escribe CRM. `tools/call` exige OAuth: Bearer, resource `{base}/mcp/crm`, allowlist `CRM_MCP_ALLOWED_USERS` y el scope de esa tool. Si falta token o scope, responde JSON-RPC 200 `isError` con `_meta["mcp/www_authenticate"]` (no corta el transporte con HTTP 401).
 
@@ -44,11 +44,11 @@ Los tokens ya emitidos con solo `crm:read` siguen pudiendo **ejecutar** lecturas
 
 Lectura (`crm:read`, y campañas también con `campaigns:read`):
 
-`search_companies`, `get_company`, `search_contacts`, `get_contact`, `search_campaigns`, `get_campaign`, `preview_campaign`, `search_lists`, `get_list`, `search_templates`, `get_template`, `get_company_activity`, `get_contact_activity`, `get_pending_tasks`, `get_crm_stats`, `list_taxonomy`, `search_opportunities`, `get_opportunity`.
+`search_companies`, `get_company`, `search_contacts`, `get_contact`, `search_campaigns`, `get_campaign`, `preview_campaign`, `search_campaign_recipients`, `search_lists`, `get_list`, `search_templates`, `get_template`, `get_company_activity`, `get_contact_activity`, `get_pending_tasks`, `get_crm_stats`, `list_taxonomy`, `search_opportunities`, `get_opportunity`.
 
 Escritura CRM (`crm:write`):
 
-`create_company`, `update_company`, `create_contact`, `update_contact`, `create_task`, `complete_task`, `cancel_task`, `create_note`, `create_opportunity`, `update_opportunity`, `create_list`, `add_contact_to_list`.
+`create_company`, `update_company`, `create_contact`, `update_contact`, `create_task`, `complete_task`, `cancel_task`, `create_note`, `create_opportunity`, `update_opportunity`, `create_list`, `add_contact_to_list`, `create_recontact_list_from_campaign`.
 
 Escritura campañas (`campaigns:write`):
 
@@ -66,7 +66,7 @@ Notificaciones certificadas (empresa seleccionada en el consentimiento, no el wo
 - `notifications:read`: `get_notification`, `get_delivery_status`
 - `certificates:read`: `get_certificate`, `verify_notification`
 
-`send_whatsapp` y `send_email` no están publicados. `tools/list` anónimo muestra las 59 tools; con un access token, solo las del scope concedido.
+`send_whatsapp` y `send_email` no están publicados. `tools/list` anónimo muestra las 61 tools; con un access token, solo las del scope concedido.
 
 Paginación: default 20, máximo 100, cursor opaco. `get_*` recorta listas relacionadas (~8 ítems). No hay `execute_crm_query`.
 

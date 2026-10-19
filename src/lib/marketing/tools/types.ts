@@ -1,5 +1,6 @@
 import type { MarketingServiceContext } from "../context";
 import type { MarketingDuplicateWarning } from "../errors";
+import type { RecontactStore } from "../recontact";
 import type { MarketingServices } from "../services";
 
 export const CRM_READ_TOOL_NAMES = [
@@ -21,6 +22,7 @@ export const CRM_READ_TOOL_NAMES = [
   "search_opportunities",
   "get_opportunity",
   "preview_campaign",
+  "search_campaign_recipients",
   "search_linkedin_campaigns",
   "get_linkedin_campaign",
   "preview_linkedin_campaign",
@@ -39,6 +41,7 @@ export const CRM_WRITE_TOOL_NAMES = [
   "cancel_task",
   "create_list",
   "add_contact_to_list",
+  "create_recontact_list_from_campaign",
   "create_note",
   "create_opportunity",
   "update_opportunity",
@@ -252,4 +255,5 @@ export type CrmToolRuntime = {
   catalog: CampaignListCatalog;
   stats: CrmStatsPort;
   idempotency: IdempotencyStore;
+  recontact: RecontactStore;
 };

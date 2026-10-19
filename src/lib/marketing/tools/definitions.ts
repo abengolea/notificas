@@ -176,6 +176,24 @@ export const CRM_READ_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     inputSchema: obj({ campaignId: { type: "string" } }, ["campaignId"]),
   },
   {
+    name: "search_campaign_recipients",
+    access: "read",
+    description:
+      "List individual recipients of a commercial CRM email campaign with engagement flags. Read-only and paginated. not_opened means sent with no recorded open event; that does not prove the message was unread. Never sends email and never dumps thousands of rows.",
+    inputSchema: obj(
+      {
+        campaignId: { type: "string" },
+        engagementStatus: {
+          type: "string",
+          enum: ["all", "opened", "not_opened", "clicked", "replied", "bounced", "unsubscribed", "failed"],
+        },
+        limit,
+        cursor,
+      },
+      ["campaignId"],
+    ),
+  },
+  {
     name: "search_linkedin_campaigns",
     access: "read",
     description:
@@ -397,6 +415,21 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
     access: "write",
     description: "Add one existing contact to a named list. Not for bulk imports.",
     inputSchema: obj({ listId: { type: "string" }, contactId: { type: "string" } }, ["listId", "contactId"]),
+  },
+  {
+    name: "create_recontact_list_from_campaign",
+    access: "write",
+    description:
+      "Create a NEW CRM list of recipients from a sent campaign who were sent but have no recorded open, after applying exclusion rules (opened, clicked, replied, unsubscribed, bounced, failed, do_not_contact, invalid email, deleted, already recontacted). Never modifies the original list or campaign, never sends email, and never creates a campaign. Idempotent on idempotencyKey.",
+    inputSchema: obj(
+      {
+        campaignId: { type: "string" },
+        filter: { type: "string", enum: ["not_opened"], description: "Only not_opened is supported." },
+        name: { type: "string", description: "Optional list name. Default: RECONTACTO 01 | No apertura | <campaign>." },
+        idempotencyKey: { type: "string" },
+      },
+      ["campaignId", "idempotencyKey"],
+    ),
   },
   {
     name: "create_note",
@@ -757,7 +790,7 @@ export const CRM_WRITE_TOOL_DEFINITIONS: CrmToolDefinition[] = [
         memberId: { type: "string" },
         action: {
           type: "string",
-          enum: ["connection_sent", "connected", "message_sent", "followup_sent", "replied", "interested", "not_interested"],
+          enum: ["connection_sent", "connected", "message_drafted", "message_sent", "followup_sent", "replied", "interested", "not_interested"],
         },
         occurredAt: { type: "string" },
         notes: { type: "string" },

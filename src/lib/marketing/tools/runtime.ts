@@ -8,17 +8,27 @@ import { createLiveCrmStats, createMemoryCrmStats } from "./stats";
 import type { CampaignListCatalog, CrmStatsPort, CrmToolRuntime, IdempotencyStore } from "./types";
 import type { MarketingRepositories } from "../repositories/types";
 import type { MarketingServices } from "../services";
+import {
+  createLiveRecontactStore,
+  createMemoryRecontactStore,
+  type MemoryRecontactSeed,
+  type RecontactStore,
+} from "../recontact";
 
 export function createCrmToolRuntime(opts: {
   services: MarketingServices;
   catalog: CampaignListCatalog;
   stats: CrmStatsPort;
   idempotency: IdempotencyStore;
+  recontact: RecontactStore;
 }): CrmToolRuntime {
   return opts;
 }
 
-export function createMemoryCrmToolRuntime(repos?: MarketingRepositories): {
+export function createMemoryCrmToolRuntime(
+  repos?: MarketingRepositories,
+  recontactSeed?: MemoryRecontactSeed,
+): {
   runtime: CrmToolRuntime;
   repos: MarketingRepositories;
 } {
@@ -30,6 +40,7 @@ export function createMemoryCrmToolRuntime(repos?: MarketingRepositories): {
       catalog: createMemoryCampaignCatalog(),
       stats: createMemoryCrmStats(memory),
       idempotency: createMemoryIdempotencyStore(),
+      recontact: createMemoryRecontactStore(recontactSeed),
     }),
   };
 }
@@ -44,6 +55,7 @@ export function getLiveCrmToolRuntime(): CrmToolRuntime {
       catalog: createLiveCampaignCatalog(),
       stats: createLiveCrmStats(),
       idempotency: createLiveIdempotencyStore(),
+      recontact: createLiveRecontactStore(),
     });
   }
   return liveRuntime;

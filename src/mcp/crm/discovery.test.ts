@@ -121,8 +121,8 @@ test("ChatGPT discovery is public; tools/call stays OAuth-gated", async () => {
     const listed = await crmRpc({ jsonrpc: "2.0", id: 2, method: "tools/list" });
     assert.equal(listed.status, 200);
     const tools = (listed.json.result as { tools: Array<Record<string, unknown>> }).tools;
-    assert.equal(tools.length, 59);
-    assert.equal(listAllCrmMcpTools().length, 59);
+    assert.equal(tools.length, 61);
+    assert.equal(listAllCrmMcpTools().length, 61);
     assert.ok(tools.some((t) => t.name === "search_linkedin_campaigns"));
     assert.ok(tools.some((t) => t.name === "create_linkedin_campaign_draft"));
     assert.ok(tools.some((t) => t.name === "search_linkedin_outreach"));

@@ -112,6 +112,24 @@ export const previewCampaignSchema = z.object({
   campaignId: idSchema,
 });
 
+export const searchCampaignRecipientsSchema = z.object({
+  campaignId: idSchema,
+  engagementStatus: z
+    .enum(["all", "opened", "not_opened", "clicked", "replied", "bounced", "unsubscribed", "failed"])
+    .optional(),
+  limit: toolLimitSchema,
+  cursor: toolCursorSchema,
+});
+
+export const createRecontactListFromCampaignSchema = z
+  .object({
+    campaignId: idSchema,
+    filter: z.literal("not_opened").optional(),
+    name: optStr(160),
+    idempotencyKey: z.string().min(1).max(128),
+  })
+  .strict();
+
 const idempotencyKeySchema = z.string().min(1).max(128).optional();
 
 export const createCompanySchema = z
@@ -153,6 +171,7 @@ const linkedinStatusSchema = z.enum([
   "connection_sent",
   "connected",
   "message_ready",
+  "message_drafted",
   "message_sent",
   "follow_up_due",
   "follow_up_sent",
@@ -331,6 +350,7 @@ const linkedinMemberStatusSchema = z.enum([
   "connection_sent",
   "connected",
   "message_ready",
+  "message_drafted",
   "message_sent",
   "follow_up_due",
   "follow_up_sent",
@@ -347,6 +367,7 @@ const linkedinMemberStatusSchema = z.enum([
 const linkedinActionSchema = z.enum([
   "connection_sent",
   "connected",
+  "message_drafted",
   "message_sent",
   "followup_sent",
   "follow_up_sent",

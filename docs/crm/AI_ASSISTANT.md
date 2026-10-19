@@ -45,9 +45,9 @@ usuario (admin email) pidió
 
 ## Tools
 
-Lectura (mismas que MCP): `search_companies`, `get_company`, `search_contacts`, `get_contact`, `search_campaigns`, `get_campaign`, `search_lists`, `get_list`, `search_templates`, `get_template`, `get_company_activity`, `get_contact_activity`, `get_pending_tasks`, `get_crm_stats`.
+Lectura (mismas que MCP): `search_companies`, `get_company`, `search_contacts`, `get_contact`, `search_campaigns`, `get_campaign`, `search_campaign_recipients`, `search_lists`, `get_list`, `search_templates`, `get_template`, `get_company_activity`, `get_contact_activity`, `get_pending_tasks`, `get_crm_stats`.
 
-Escritura segura: `create_company`, `update_company`, `create_contact`, `update_contact`, `create_task`, `complete_task`, `create_list`, `add_contact_to_list`, `create_note`, `create_opportunity`, `update_opportunity`, `create_campaign_draft`.
+Escritura segura: `create_company`, `update_company`, `create_contact`, `update_contact`, `create_task`, `complete_task`, `create_list`, `add_contact_to_list`, `create_recontact_list_from_campaign`, `create_note`, `create_opportunity`, `update_opportunity`, `create_campaign_draft`.
 
 No existen: `send_campaign`, `send_email`, `delete_*`, bulk delete, merge automático.
 

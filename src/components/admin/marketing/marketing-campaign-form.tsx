@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { MarketingSubnav } from "./marketing-subnav";
 import { MarketingListUpload } from "./marketing-list-upload";
@@ -41,10 +41,12 @@ type Audience = {
 
 export function MarketingCampaignForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const presetListId = (searchParams.get("listId") || "").trim();
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
-  const [source, setSource] = useState<"crm" | "list">("crm");
-  const [listId, setListId] = useState("");
+  const [source, setSource] = useState<"crm" | "list">(presetListId ? "list" : "crm");
+  const [listId, setListId] = useState(presetListId);
   const [lists, setLists] = useState<ListOption[] | null>(null);
   const [catalog, setCatalog] = useState<TaxonomyCatalog | null>(null);
   const [countryCode, setCountryCode] = useState("");

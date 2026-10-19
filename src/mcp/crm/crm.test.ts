@@ -95,6 +95,7 @@ test("crm:read token still sees additive reads and never writes, pause, resume o
   for (const phaseB of Object.keys(CRM_MCP_PHASE_B_TOOL_SCOPES)) assert.equal(names.includes(phaseB), false);
   assert.ok(names.includes("search_companies"));
   assert.ok(names.includes("search_campaigns"));
+  assert.ok(names.includes("search_campaign_recipients"));
   assert.ok(names.includes("preview_campaign"));
   assert.ok(names.includes("list_taxonomy"));
   assert.ok(names.includes("search_opportunities"));
@@ -114,6 +115,7 @@ test("Fase A write scopes never publish pause, resume or send", () => {
   const names = namesFor(PHASE_A_SCOPES);
   assert.ok(names.includes("create_company"));
   assert.ok(names.includes("cancel_task"));
+  assert.ok(names.includes("create_recontact_list_from_campaign"));
   assert.ok(names.includes("create_campaign_draft"));
   assert.ok(names.includes("update_campaign_draft"));
   assert.ok(names.includes("copy_campaign"));

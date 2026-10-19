@@ -45,6 +45,7 @@ test("MCP CRM registry with crm:read stays additive-read and has no send/write t
   assert.ok(names.includes("search_companies"));
   assert.ok(names.includes("get_crm_stats"));
   assert.ok(names.includes("preview_campaign"));
+  assert.ok(names.includes("search_campaign_recipients"));
   assert.ok(names.includes("list_taxonomy"));
   assert.ok(names.includes("search_linkedin_campaigns"));
   assert.ok(names.includes("get_linkedin_pending_actions"));
@@ -749,6 +750,98 @@ test("LinkedIn CRM tools run manual campaign, member, action, and pending flows"
   assert.equal(archivedCampaign.status, "archived");
   assert.ok(archivedCampaign.archivedAt);
   assert.equal(archivedCampaign.countryCode, null);
+});
+
+test("search_campaign_recipients is paginated and create_recontact_list never sends", async () => {
+  const { runtime } = createMemoryCrmToolRuntime(undefined, {
+    campaigns: [
+      {
+        id: "camp_vaca",
+        name: "Vaca Muerta",
+        status: "sent",
+        listId: "list_orig",
+        listName: "Original",
+        country: "AR",
+      },
+    ],
+    lists: [{ id: "list_orig", name: "Original", contactCount: 3 }],
+    sends: [
+      {
+        id: "s1",
+        campaignId: "camp_vaca",
+        contactId: "c1",
+        email: "ana@example.com",
+        name: "Ana",
+        status: "sent",
+        sentAt: "2026-10-01T12:00:00.000Z",
+      },
+      {
+        id: "s2",
+        campaignId: "camp_vaca",
+        contactId: "c2",
+        email: "bruno@example.com",
+        name: "Bruno",
+        status: "opened",
+        sentAt: "2026-10-01T12:00:00.000Z",
+        openedAt: "2026-10-01T13:00:00.000Z",
+      },
+      {
+        id: "s3",
+        campaignId: "camp_vaca",
+        contactId: "c3",
+        email: "carla@example.com",
+        name: "Carla",
+        status: "sent",
+        sentAt: "2026-10-01T12:00:00.000Z",
+      },
+    ],
+    contacts: [
+      { id: "c1", email: "ana@example.com", name: "Ana", stage: "sent", listIds: ["list_orig"] },
+      { id: "c2", email: "bruno@example.com", name: "Bruno", stage: "opened", listIds: ["list_orig"] },
+      { id: "c3", email: "carla@example.com", name: "Carla", stage: "sent", listIds: ["list_orig"] },
+    ],
+  });
+  const ctxLocal = {
+    ...marketingContext("notificas-internal", { actorType: "user", actorId: "adrian" }),
+    userId: "adrian",
+  };
+  const listed = await executeCrmTool({
+    runtime,
+    ctx: ctxLocal,
+    name: "search_campaign_recipients",
+    args: { campaignId: "camp_vaca", engagementStatus: "not_opened", limit: 1 },
+    mode: "read",
+  });
+  assert.equal(listed.ok, true);
+  if (!listed.ok) return;
+  const page = listed.data as { items: Array<{ contactId: string }>; stats: { eligibleForRecontact: number }; nextCursor?: string };
+  assert.equal(page.items.length, 1);
+  assert.equal(page.items[0].contactId, "c1");
+  assert.equal(page.stats.eligibleForRecontact, 2);
+  assert.ok(page.nextCursor);
+
+  const created = await executeCrmTool({
+    runtime,
+    ctx: ctxLocal,
+    name: "create_recontact_list_from_campaign",
+    args: { campaignId: "camp_vaca", filter: "not_opened", idempotencyKey: "k-mcp" },
+    mode: "readwrite",
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  const data = created.data as { list: { listId: string; added: number }; sent: boolean; campaignCreated: boolean };
+  assert.equal(data.sent, false);
+  assert.equal(data.campaignCreated, false);
+  assert.equal(data.list.added, 2);
+
+  const sendAttempt = await executeCrmTool({
+    runtime,
+    ctx: ctxLocal,
+    name: "send_campaign",
+    args: { campaignId: "camp_vaca" },
+    mode: "readwrite",
+  });
+  assert.equal(sendAttempt.ok, false);
 });
 
 test("LinkedIn send tools are absent and forbidden", async () => {

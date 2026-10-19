@@ -15,6 +15,7 @@ import {
   createCompanySchema,
   createContactSchema,
   createListSchema,
+  createRecontactListFromCampaignSchema,
   createLinkedinCampaignDraftSchema,
   createNoteSchema,
   createOpportunitySchema,
@@ -35,6 +36,7 @@ import {
   linkedInActionForStatus,
   linkedInOutreachView,
 } from "../linkedin-outreach";
+import { createRecontactListFromCampaign as createRecontactList } from "../recontact";
 
 function ok(
   tool: CrmToolSuccess["tool"],
@@ -332,6 +334,40 @@ export async function addContactToList(
     { listId: input.listId, contactId: contact.id },
     { entityType: "list", entityIds: [input.listId, contact.id], summary: `Contacto agregado a la lista` },
   );
+}
+
+export async function createRecontactListFromCampaign(
+  runtime: CrmToolRuntime,
+  ctx: CrmToolContext,
+  input: z.infer<typeof createRecontactListFromCampaignSchema>,
+): Promise<CrmToolSuccess> {
+  const key = crmIdempotencyKey([
+    ctx.workspaceId,
+    "create_recontact_list_from_campaign",
+    ctx.idempotencyKey,
+    input.idempotencyKey,
+    input.campaignId,
+    input.filter || "not_opened",
+  ]);
+  return remember(runtime, key, async () => {
+    const created = await createRecontactList(runtime.recontact, {
+      campaignId: input.campaignId,
+      filter: input.filter || "not_opened",
+      name: input.name,
+      idempotencyKey: input.idempotencyKey,
+    });
+    return ok(
+      "create_recontact_list_from_campaign",
+      { list: created, sent: false, campaignCreated: false },
+      {
+        entityType: "list",
+        entityIds: [created.listId],
+        summary: created.reused
+          ? `Lista de recontacto ya existía: ${created.listName}`
+          : `Lista de recontacto creada: ${created.listName}. ${created.added} incorporados, ${created.excluded} excluidos. No se envió correo ni se creó una campaña.`,
+      },
+    );
+  });
 }
 
 export async function createNote(
@@ -887,6 +923,10 @@ export const CRM_WRITE_HANDLERS = {
   cancel_task: { schema: cancelTaskSchema, run: cancelTask },
   create_list: { schema: createListSchema, run: createList },
   add_contact_to_list: { schema: addContactToListSchema, run: addContactToList },
+  create_recontact_list_from_campaign: {
+    schema: createRecontactListFromCampaignSchema,
+    run: createRecontactListFromCampaign,
+  },
   create_note: { schema: createNoteSchema, run: createNote },
   create_opportunity: { schema: createOpportunitySchema, run: createOpportunity },
   update_opportunity: { schema: updateOpportunitySchema, run: updateOpportunity },
