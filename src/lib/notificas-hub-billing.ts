@@ -42,25 +42,65 @@ type BillingHubSnapshot = {
   data(): Record<string, unknown>;
 };
 
-function billingEmitUrl(): string | undefined {
+export function hubBillingBaseUrl(): string | undefined {
+  const hubBase = process.env.NOTIFICASHUB_URL?.trim().replace(/\/+$/, '');
+  return hubBase || undefined;
+}
+
+export function billingEmitUrl(): string | undefined {
   const explicit =
     process.env.NOTIFICASHUB_BILLING_EMIT_URL ||
     process.env.NOTIFICAS_HUB_BILLING_EMIT_URL;
   const explicitUrl = explicit?.trim();
   if (explicitUrl) return explicitUrl;
 
-  const hubBase = process.env.NOTIFICASHUB_URL?.trim().replace(/\/+$/, '');
+  const hubBase = hubBillingBaseUrl();
   if (!hubBase) return undefined;
 
   return `${hubBase}/api/integrations/notificas/billing/emit`;
 }
 
-function billingSharedSecret(): string | undefined {
+export function billingSharedSecret(): string | undefined {
   const raw =
     process.env.NOTIFICAS_BILLING_SHARED_SECRET ||
     process.env.NOTIFICASHUB_BILLING_SHARED_SECRET;
   const secret = raw?.trim();
   return secret || undefined;
+}
+
+/** GET only. Never point this at the emit endpoint. */
+export function hubBillingHealthUrl(): string | undefined {
+  const explicit =
+    process.env.NOTIFICASHUB_BILLING_HEALTH_URL ||
+    process.env.NOTIFICAS_HUB_BILLING_HEALTH_URL;
+  const explicitUrl = explicit?.trim();
+  if (explicitUrl) return explicitUrl;
+
+  const hubBase = hubBillingBaseUrl();
+  if (hubBase) return `${hubBase}/api/integrations/notificas/billing/health`;
+
+  const emit = billingEmitUrl();
+  if (!emit) return undefined;
+  try {
+    const url = new URL(emit);
+    if (/\/emit\/?$/i.test(url.pathname)) {
+      return `${url.origin}/api/integrations/notificas/billing/health`;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+export function isHubBillingConfigured(): boolean {
+  return Boolean(billingSharedSecret() && (hubBillingHealthUrl() || billingEmitUrl()));
+}
+
+export function isHubInvoiceEmitEnabled(): boolean {
+  return (
+    process.env.MERCADOPAGO_HUB_EMIT_FACTURA === 'true' ||
+    process.env.NOTIFICASHUB_BILLING_FORCE_EMIT === 'true'
+  );
 }
 
 function metadataOf(payment: PaymentRecord): Record<string, unknown> {

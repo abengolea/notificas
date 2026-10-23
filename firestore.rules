@@ -379,6 +379,9 @@ service cloud.firestore {
     match /marketing_ai_idempotency/{id} { allow read, write: if false; }
     match /marketing_mcp_audit/{id} { allow read, write: if false; }
 
+    // Chequeo diario de facturación Hub/ARCA: solo Admin SDK.
+    match /billing_health/{id} { allow read, write: if false; }
+
     match /{document=**} {
       allow read, write: if false;
     }

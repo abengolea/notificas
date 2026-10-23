@@ -71,3 +71,13 @@ export function getCampaignAutoPauseNotifyEmail(): string {
     DEFAULT_CAMPAIGN_AUTO_PAUSE_NOTIFY_EMAIL
   );
 }
+
+/** Aviso cuando el chequeo diario de facturación Hub/ARCA falla. */
+export const DEFAULT_BILLING_HEALTH_NOTIFY_EMAIL = DEFAULT_CAMPAIGN_AUTO_PAUSE_NOTIFY_EMAIL;
+
+export function getBillingHealthNotifyEmail(): string {
+  return (
+    process.env.BILLING_HEALTH_NOTIFY_EMAIL?.trim() ||
+    DEFAULT_BILLING_HEALTH_NOTIFY_EMAIL
+  );
+}

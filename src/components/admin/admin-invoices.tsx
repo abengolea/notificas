@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Download, Loader2, RefreshCw, RotateCcw, Search } from "lucide-react";
+import { Activity, Download, Loader2, RefreshCw, RotateCcw, Search } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,7 @@ import {
   type AdminInvoiceRow,
   type AdminInvoiceStatus,
 } from "@/lib/admin-invoice-status";
+import type { BillingHealthSnapshot } from "@/lib/billing-health";
 
 type StatusFilter = "all" | AdminInvoiceStatus;
 
@@ -74,6 +75,8 @@ export default function AdminInvoices() {
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [health, setHealth] = useState<BillingHealthSnapshot | null>(null);
+  const [healthBusy, setHealthBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,6 +92,7 @@ export default function AdminInvoices() {
         invoices?: AdminInvoiceRow[];
         counts?: AdminInvoiceCounts;
         truncated?: boolean;
+        health?: BillingHealthSnapshot | null;
         error?: string;
       };
       if (!res.ok) {
@@ -97,6 +101,7 @@ export default function AdminInvoices() {
       setInvoices(Array.isArray(data.invoices) ? data.invoices : []);
       if (data.counts) setCounts(data.counts);
       setTruncated(data.truncated === true);
+      setHealth(data.health ?? null);
     } catch (e) {
       toast({
         title: "No se pudieron cargar las facturas",
@@ -144,6 +149,42 @@ export default function AdminInvoices() {
     }
   };
 
+  const runHealthCheck = async () => {
+    setHealthBusy(true);
+    try {
+      const res = await fetch("/api/admin/invoices/health", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        health?: BillingHealthSnapshot;
+        error?: string;
+      };
+      if (!res.ok || !data.health) {
+        throw new Error(data.error || "No se pudo chequear la facturación");
+      }
+      setHealth(data.health);
+      toast({
+        title:
+          data.health.level === "ok"
+            ? "Chequeo OK"
+            : data.health.level === "warn"
+              ? "Chequeo con pendientes"
+              : "Chequeo falló",
+        description: data.health.problems[0] ?? "Hub y compras de las últimas 24 h revisados.",
+        variant: data.health.level === "fail" ? "destructive" : undefined,
+      });
+    } catch (e) {
+      toast({
+        title: "No se pudo chequear",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setHealthBusy(false);
+    }
+  };
+
   const retryInvoice = async (row: AdminInvoiceRow) => {
     setBusyId(row.id);
     try {
@@ -171,8 +212,74 @@ export default function AdminInvoices() {
     }
   };
 
+  const healthTone =
+    health?.level === "ok"
+      ? "border-emerald-200 bg-emerald-50/70"
+      : health?.level === "warn"
+        ? "border-amber-200 bg-amber-50/70"
+        : health
+          ? "border-destructive/30 bg-destructive/5"
+          : "border-border";
+
   return (
     <div className="space-y-4">
+      <Card className={healthTone}>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5" />
+              Chequeo diario
+            </CardTitle>
+            <CardDescription>
+              Revisa config, si el Hub responde y si las compras de las últimas 24 h tienen factura.
+              No emite comprobantes.
+            </CardDescription>
+          </div>
+          <Button type="button" variant="outline" size="sm" disabled={healthBusy} onClick={() => void runHealthCheck()}>
+            {healthBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            Chequear ahora
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          {!health ? (
+            <p className="text-muted-foreground">
+              Todavía no hay un chequeo guardado. El cron diario lo corre a la mañana, o podés lanzarlo
+              ahora.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                {health.level === "ok" ? (
+                  <Badge className="bg-emerald-600 hover:bg-emerald-600">OK</Badge>
+                ) : health.level === "warn" ? (
+                  <Badge className="bg-amber-600 hover:bg-amber-600">Atención</Badge>
+                ) : (
+                  <Badge variant="destructive">Falla</Badge>
+                )}
+                <span className="text-muted-foreground">
+                  {health.checkedAt
+                    ? format(new Date(health.checkedAt), "dd/MM/yy HH:mm", { locale: es })
+                    : "—"}
+                </span>
+                <span className="text-muted-foreground">
+                  24 h: {health.counts24h.issued} emitidas · {health.counts24h.pending} pendientes ·{" "}
+                  {health.counts24h.failed + health.counts24h.none} sin emitir
+                </span>
+              </div>
+              {health.problems.length > 0 ? (
+                <ul className="list-disc space-y-1 pl-5 text-destructive">
+                  {health.problems.map((problem) => (
+                    <li key={problem}>{problem}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-muted-foreground">El Hub respondió y no hay compras fallidas en las últimas 24 h.</p>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">

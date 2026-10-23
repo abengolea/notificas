@@ -2724,6 +2724,41 @@ exports.resumeCampaignDailyTandas = onSchedule(
   }
 );
 
+/**
+ * Chequeo diario de facturación Hub/ARCA (no emite comprobantes).
+ * Pega a /api/internal/billing/health: config, ping al Hub y compras de las últimas 24 h.
+ */
+exports.checkBillingHealthDaily = onSchedule(
+  {
+    schedule: '30 8 * * *',
+    timeZone: 'America/Argentina/Buenos_Aires',
+    region: REGION,
+    secrets: [campaignWorkerSecret],
+    timeoutSeconds: 120,
+  },
+  async () => {
+    const secret = (campaignWorkerSecret.value() || '').trim();
+    if (!secret) {
+      console.error('checkBillingHealthDaily: CAMPAIGN_WORKER_SECRET vacío');
+      return;
+    }
+    const res = await fetch(`${APP_HOSTING_URL}/api/internal/billing/health`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Worker-Secret': secret,
+      },
+      body: '{}',
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      console.error('checkBillingHealthDaily HTTP', res.status, text.slice(0, 500));
+      return;
+    }
+    console.log('checkBillingHealthDaily', text.slice(0, 1500));
+  }
+);
+
 /** Copia adjuntos y certificados al bucket WORM (5 años, no se pisan ni se borran). */
 exports.sealEvidenceObject = onObjectFinalized(
   {
