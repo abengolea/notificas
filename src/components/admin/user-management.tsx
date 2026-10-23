@@ -46,6 +46,10 @@ import {
 } from "@/components/ui/select"
 import type { AdminUser } from "@/lib/types"
 import type { ColegioCollegeRow } from "@/lib/colegio-discount-types"
+import {
+  adminInvoiceStatusLabel,
+  type AdminInvoiceStatus,
+} from "@/lib/admin-invoice-status"
 import { MoreHorizontal, ToggleLeft, Gift, XCircle, CheckCircle, Loader2, History, Scale, Pencil, Search, X } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -62,6 +66,7 @@ type HistorialRow = {
   descripcion: string
   creditos: number
   monto: number
+  facturaStatus?: AdminInvoiceStatus | null
 }
 
 function normalizeForSearch(value: string): string {
@@ -348,6 +353,13 @@ export default function UserManagement() {
                 descripcion: String(h.descripcion ?? ""),
                 creditos: typeof h.creditos === "number" ? h.creditos : 0,
                 monto: typeof h.monto === "number" ? h.monto : 0,
+                facturaStatus:
+                  h.facturaStatus === "issued" ||
+                  h.facturaStatus === "pending" ||
+                  h.facturaStatus === "failed" ||
+                  h.facturaStatus === "none"
+                    ? h.facturaStatus
+                    : null,
               })),
             );
             if (rows.length === 0) {
@@ -712,7 +724,7 @@ export default function UserManagement() {
     </Dialog>
 
     <Dialog open={isHistorialOpen} onOpenChange={setHistorialOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
                 <DialogTitle>Historial — {selectedUser?.nombre}</DialogTitle>
                 <DialogDescription>{selectedUser?.email}</DialogDescription>
@@ -731,6 +743,7 @@ export default function UserManagement() {
                       <TableHead>Fecha</TableHead>
                       <TableHead>Tipo</TableHead>
                       <TableHead>Detalle</TableHead>
+                      <TableHead>Factura</TableHead>
                       <TableHead className="text-right">Envíos</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -743,6 +756,11 @@ export default function UserManagement() {
                         <TableCell className="text-xs">{h.tipo}</TableCell>
                         <TableCell className="text-xs max-w-[180px] truncate" title={h.descripcion}>
                           {h.descripcion}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {h.tipo === "compra" && h.facturaStatus
+                            ? adminInvoiceStatusLabel(h.facturaStatus)
+                            : "—"}
                         </TableCell>
                         <TableCell className="text-right text-xs tabular-nums">
                           {h.creditos > 0 ? `+${h.creditos}` : h.creditos}

@@ -1,4 +1,5 @@
 import { Timestamp } from "firebase-admin/firestore";
+import { normalizeAdminInvoiceStatus, type AdminInvoiceStatus } from "@/lib/admin-invoice-status";
 import { getAdminDb } from "@/lib/firebase-admin";
 import {
   COLEGIO_COLLEGES_COLLECTION,
@@ -222,6 +223,9 @@ export type UserHistorialItem = {
   descripcion: string;
   creditos: number;
   monto: number;
+  paymentId?: string | null;
+  facturaStatus?: AdminInvoiceStatus | null;
+  facturaCae?: string | null;
 };
 
 export async function getUserHistorial(uid: string): Promise<UserHistorialItem[]> {
@@ -236,13 +240,18 @@ export async function getUserHistorial(uid: string): Promise<UserHistorialItem[]
 
   for (const doc of txSnap.docs) {
     const d = doc.data() as Record<string, unknown>;
+    const tipo = String(d.tipo ?? "movimiento");
+    const billingHub = (d.billingHub ?? {}) as Record<string, unknown>;
     items.push({
       id: doc.id,
       fecha: toIso(d.fecha),
-      tipo: String(d.tipo ?? "movimiento"),
+      tipo,
       descripcion: String(d.descripcion ?? ""),
       creditos: typeof d.creditos === "number" ? d.creditos : 0,
       monto: typeof d.monto === "number" ? d.monto : 0,
+      paymentId: typeof d.paymentId === "string" ? d.paymentId : null,
+      facturaStatus: tipo === "compra" ? normalizeAdminInvoiceStatus(d.billingHub) : null,
+      facturaCae: typeof billingHub.cae === "string" ? billingHub.cae : null,
     });
   }
 

@@ -26,6 +26,7 @@ export const adminNavLinks = [
   { href: "/admin/verificacion-meta", label: "Verificación Meta" },
   { href: "/admin/verificacion-resend", label: "Verificación Resend" },
   { href: "/admin/plans", label: "Planes" },
+  { href: "/admin/facturas", label: "Facturas" },
   { href: "/admin/email-test", label: "Test Emails" },
   { href: "/admin/api-keys", label: "API Keys" },
   { href: "/docs/api", label: "Docs API" },
