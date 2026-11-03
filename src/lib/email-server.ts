@@ -32,6 +32,7 @@ export type CreateMailAdminParams = {
   recipientMonto?: string;
   recipientCuotas?: string;
   senderName?: string;
+  orgNombre?: string;
   createdBy: string;
   campaignId?: string;
   campaignMessageId?: string;
@@ -84,6 +85,7 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
     recipientMonto,
     recipientCuotas,
     senderName,
+    orgNombre,
     createdBy,
     campaignId,
     campaignMessageId,
@@ -157,6 +159,7 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
   if (waTemplateBody?.trim()) payload.waTemplateBody = waTemplateBody.trim();
   const sendNorm = normalizedEmailIdentity(senderName);
   if (sendNorm) payload.senderName = sendNorm;
+  if (orgNombre?.trim()) payload.orgNombre = orgNombre.trim();
   payload.createdBy = createdBy;
 
   const fromNorm = normalizedEmailIdentity(from);

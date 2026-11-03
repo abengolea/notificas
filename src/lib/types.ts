@@ -244,6 +244,8 @@ export interface Campaign {
   recipientChunkCount?: number;
   senderUid?: string;
   senderEmail?: string;
+  /** Nombre de la organización, visible como remitente en el sobre. */
+  orgNombre?: string;
   canal?: CanalCampaign;
   // Template de WhatsApp específico para esta campaña (sobreescribe el global)
   waTemplateName?: string;

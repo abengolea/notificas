@@ -47,6 +47,7 @@ import { uploadPDF } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
 import { buildCampaignDeliveryPreview } from "@/lib/campaign-delivery-preview";
 import { CampaignDeliveryPreview } from "@/components/empresa/campaign-delivery-preview";
+import { resolveCampaignSenderDisplay, resolveCampaignSenderEmail } from "@/lib/campaign-sender";
 import { Loader2, Mail, MessageCircle, Layers, HelpCircle, Copy, Check, Upload, X, FileText, FlaskConical } from "lucide-react";
 import {
   Popover,
@@ -243,6 +244,7 @@ export function CampaignWizard({
   const [simRecipientCount, setSimRecipientCount] = useState(SIM_RECIPIENT_DEFAULT);
   const [adminBillingEmail, setAdminBillingEmail] = useState("");
   const [adminOrgPlan, setAdminOrgPlan] = useState("starter");
+  const [orgNombre, setOrgNombre] = useState("");
   const [existingRecipientCount, setExistingRecipientCount] = useState(0);
   const [existingAttachments, setExistingAttachments] = useState<CampaignAttachment[]>([]);
   const [existingPaired, setExistingPaired] = useState<Record<string, CampaignAttachment[]> | null>(null);
@@ -373,6 +375,7 @@ export function CampaignWizard({
           doc(db, "organizations", orgId),
           (s) => {
             setCreditos(normalizeEnviosDisponibles(s.data()?.creditos));
+            setOrgNombre(String(s.data()?.nombre || ""));
             setCreditosReady(true);
           },
           () => {
@@ -402,6 +405,7 @@ export function CampaignWizard({
         setCreditos(0);
         setAdminBillingEmail("");
         setAdminOrgPlan("starter");
+        setOrgNombre("");
       }
       return;
     }
@@ -411,6 +415,7 @@ export function CampaignWizard({
         setCreditos(typeof d.creditos === "number" ? d.creditos : 0);
         setAdminBillingEmail(String(d.adminUserEmail || ""));
         setAdminOrgPlan(String(d.plan || "starter"));
+        setOrgNombre(String(d.nombre || ""));
       })
       .catch(() => undefined);
   }, [isAdmin, orgId]);
@@ -536,12 +541,23 @@ export function CampaignWizard({
     return { n, sample };
   }, [recipientTotal, csvInspect, recipients]);
 
+  const campaignSenderEmail = resolveCampaignSenderEmail({
+    managedByAdmin: isAdmin,
+    orgAdminEmail:
+      adminBillingEmail || adminOrgs.find((o) => o.id === orgId)?.adminUserEmail,
+    actorEmail: auth.currentUser?.email,
+  });
+  const campaignSenderDisplay = resolveCampaignSenderDisplay({
+    orgNombre: orgNombre || adminOrgs.find((o) => o.id === orgId)?.nombre,
+    fallbackEmail: campaignSenderEmail,
+  });
+
   const deliveryPreview = useMemo(() => {
     const r0 = recipients[0];
     const nombre = r0?.nombre || csvInspect?.sample?.[0] || "Destinatario";
     return buildCampaignDeliveryPreview({
       canal,
-      sender: auth.currentUser?.email || "remitente",
+      sender: campaignSenderDisplay || "la empresa",
       cuerpo,
       waTemplateName,
       waTemplateBody,
@@ -561,6 +577,7 @@ export function CampaignWizard({
     });
   }, [
     canal,
+    campaignSenderDisplay,
     recipients,
     csvInspect,
     cuerpo,
@@ -1133,6 +1150,9 @@ export function CampaignWizard({
           ...content,
           orgId,
           createdBy: user.uid,
+          senderUid: user.uid,
+          senderEmail: user.email || "",
+          ...(orgNombre.trim() ? { orgNombre: orgNombre.trim() } : {}),
           ...(adjuntosPorDestinatario ? { adjuntosPorDestinatario } : {}),
           recipientCount: recipientSaveCount,
           stats: {
@@ -2141,12 +2161,18 @@ export function CampaignWizard({
               <div className="flex gap-4 flex-wrap">
                 <span><strong>Canal:</strong> {canal === "email" ? "Email" : canal === "whatsapp" ? "WhatsApp" : "Email + WhatsApp"}</span>
                 <span><strong>Destinatarios:</strong> {recipientTotal.toLocaleString("es-AR")}</span>
+                <span><strong>Remitente:</strong> {campaignSenderDisplay || "la empresa"}</span>
                 {needsMensajeStep ? (
                   <span><strong>Asunto:</strong> {asunto}</span>
                 ) : (
                   <span><strong>Campaña:</strong> {campaniaNombre}</span>
                 )}
               </div>
+              {isAdmin ? (
+                <p className="text-xs text-muted-foreground">
+                  El sobre muestra el nombre de la empresa, no un mail ni tu usuario de Admin.
+                </p>
+              ) : null}
               {needsWaTemplateStep && (
                 <p>
                   <strong>Template WA:</strong>{" "}

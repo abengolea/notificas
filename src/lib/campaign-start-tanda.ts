@@ -6,6 +6,7 @@ import { enqueueCampaignFanout, enqueueCampaignWorker } from '@/lib/cloud-tasks'
 import { sealCampaignWhatsAppTemplate } from '@/lib/wa-template-seal';
 import { scheduleNextDailySend } from '@/lib/campaign-daily';
 import { pauseCampaignIfLimit } from '@/lib/campaign-auto-pause';
+import { resolveCampaignSenderEmail } from '@/lib/campaign-sender';
 import type { RecipientEntry } from '@/lib/types';
 
 export type StartTandaOk = {
@@ -167,8 +168,6 @@ export async function startCampaignTanda(params: {
 
   const managedByAdmin = campaign.managedByAdmin === true;
   const chargeCredits = params.chargeCredits === true && managedByAdmin !== true;
-  const senderUid = String(params.actorUid || campaign.senderUid || campaign.createdBy || '');
-  const senderEmail = String(params.actorEmail || campaign.senderEmail || '');
   const prepaidAlready = typeof campaign.creditsPrepaidAmount === 'number' ? campaign.creditsPrepaidAmount : 0;
   const refundedAlready = typeof campaign.creditsRefunded === 'number' ? campaign.creditsRefunded : 0;
   const unusedPrepaid = Math.max(0, prepaidAlready - refundedAlready - alreadySent);
@@ -180,8 +179,17 @@ export async function startCampaignTanda(params: {
     throw Object.assign(new Error('La campaña no tiene empresa para descontar envíos'), { status: 400 });
   }
 
-  const orgSnap = await db.collection('organizations').doc(orgId).get();
-  const org = orgSnap.data() || {};
+  const orgSnap = orgId ? await db.collection('organizations').doc(orgId).get() : null;
+  const org = orgSnap?.data() || {};
+  const senderEmail = resolveCampaignSenderEmail({
+    managedByAdmin,
+    campaignSenderEmail: campaign.senderEmail,
+    orgAdminEmail: org.adminUserEmail,
+    actorEmail: params.actorEmail,
+  });
+  const senderUid = managedByAdmin
+    ? String(campaign.senderUid || org.adminUserId || campaign.createdBy || '')
+    : String(params.actorUid || campaign.senderUid || campaign.createdBy || '');
   const billedTo = String(org.nombre || org.adminUserEmail || orgId);
   const previousEstado = estado;
   const startedAt = campaign.startedAt ? {} : { startedAt: FieldValue.serverTimestamp() };
@@ -210,6 +218,7 @@ export async function startCampaignTanda(params: {
         ...plan.dayFields,
         senderUid,
         senderEmail,
+        ...(String(org.nombre || '').trim() ? { orgNombre: String(org.nombre).trim() } : {}),
         ...(chargeNow > 0 ? { creditsPrepaidAmount: prepaidAlready + chargeNow } : {}),
         'stats.total': total,
         'stats.pendientes': remaining,

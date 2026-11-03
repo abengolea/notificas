@@ -152,6 +152,7 @@ export async function POST(request: NextRequest) {
         : {}),
       senderUid: adminUserId,
       senderEmail: adminUserEmail,
+      orgNombre: String(org.nombre || ''),
       estado: 'borrador',
       ...(parsed.data.notificationType
         ? { notificationType: parsed.data.notificationType }

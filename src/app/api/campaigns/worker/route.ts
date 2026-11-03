@@ -9,6 +9,7 @@ import {
   personalizeCampaignText,
 } from '@/lib/campaign-email-html';
 import { renderCampaignMessageBody } from '@/lib/campaign-mixed-message';
+import { resolveCampaignSenderDisplay, resolveCampaignSenderEmail } from '@/lib/campaign-sender';
 import { consumeOrgCreditsInTx } from '@/lib/org-credits';
 import { invokeSendEmail } from '@/lib/send-mail-via-cf';
 import { computeContentHash } from '@/lib/certification';
@@ -251,7 +252,26 @@ async function processMessage(
     cuotas: presentRecipientValue(msg.recipientCuotas) ? recipientValueText(msg.recipientCuotas) : undefined,
   };
 
-  const senderEmail = String(campaign.senderEmail || campaign.createdBy || 'contacto@notificas.com');
+  const orgId = String(msg.orgId || campaign.orgId || '');
+  let senderEmail = resolveCampaignSenderEmail({
+    managedByAdmin: campaign.managedByAdmin === true,
+    campaignSenderEmail: campaign.senderEmail,
+  });
+  let orgNombre = String(campaign.orgNombre || '').trim();
+  if (orgId && (!senderEmail || !orgNombre)) {
+    const orgSnap = await db.collection('organizations').doc(orgId).get();
+    orgNombre = orgNombre || String(orgSnap.data()?.nombre || '').trim();
+    senderEmail = resolveCampaignSenderEmail({
+      managedByAdmin: campaign.managedByAdmin === true,
+      campaignSenderEmail: campaign.senderEmail,
+      orgAdminEmail: orgSnap.data()?.adminUserEmail,
+    });
+  }
+  if (!senderEmail) senderEmail = 'contacto@notificas.com';
+  const senderDisplay = resolveCampaignSenderDisplay({
+    orgNombre,
+    fallbackEmail: senderEmail,
+  });
   const uid = String(campaign.senderUid || campaign.createdBy || '');
   const subject = personalizeCampaignText(String(campaign.asunto || 'Notificación'), row);
   const bodyPlain = renderCampaignMessageBody({
@@ -262,16 +282,15 @@ async function processMessage(
     waUrlButton: campaign.waUrlButton === true,
     cuerpo: campaign.cuerpo,
     row,
-    senderName: senderEmail,
+    senderName: senderDisplay,
   });
   const bodyHtml = campaignBodyToHtmlFragment(bodyPlain);
   const contentHash = await computeContentHash(bodyPlain);
   const batchId = String(msg.integritySendBatchId || sendBatchId(0));
-  const orgId = String(msg.orgId || campaign.orgId || '');
   const html = buildCampaignMailHtml({
     recipientEmail: email,
     recipientName: row.nombre || email.split('@')[0],
-    sender: senderEmail,
+    sender: senderDisplay,
     bodyHtml,
     attachments: attachmentsFor(campaign, email),
     mode: CAMPAIGN_MAILBOX_MODE,
@@ -304,7 +323,8 @@ async function processMessage(
           text: bodyPlain,
           from: 'contacto@notificas.com',
           replyTo: senderEmail.includes('@') ? senderEmail : undefined,
-          senderName: senderEmail,
+          senderName: senderDisplay,
+          orgNombre: orgNombre || undefined,
           recipientName: row.nombre || email.split('@')[0],
           recipientEmail: email,
           recipientPhone: row.telefono?.trim() || undefined,
