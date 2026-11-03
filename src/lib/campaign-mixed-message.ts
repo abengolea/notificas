@@ -25,6 +25,26 @@ export function fillNumericPlaceholders(template: string, values: string[]): str
   });
 }
 
+/** BODY de Meta ({{1}}, {{2}}) → carta editable del lector ({{nombre}}, {{dni}}, …). */
+export function readerLetterFromMetaTemplate(input: {
+  templateBody?: string | null;
+  variables?: string[] | null;
+  urlButton?: boolean;
+}): string {
+  const templateBody = String(input.templateBody || "").trim();
+  if (!templateBody) return "";
+  const urlButton = input.urlButton === true;
+  const fields = (input.variables || []).filter(
+    (field) => !(urlButton && (field === "url_lectura" || field === "boton_url"))
+  );
+  const values = fields.map((field) => {
+    if (isWaLiteralVar(field)) return waLiteralText(field);
+    const f = String(field || "").trim();
+    return f ? `{{${f}}}` : "";
+  });
+  return fillNumericPlaceholders(templateBody, values).trim();
+}
+
 export type MixedMessageRow = {
   nombre?: string;
   dni?: string;

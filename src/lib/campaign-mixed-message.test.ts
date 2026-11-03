@@ -5,6 +5,7 @@ import {
   htmlFromFilledMetaBody,
   MAILBOX_READER_URL_SENTINEL,
   mixedWhatsAppUsesReaderLink,
+  readerLetterFromMetaTemplate,
   renderCampaignMessageBody,
   renderMetaTemplateBody,
   usesMetaTemplateAsEmailBody,
@@ -49,6 +50,25 @@ test("conserva 0 en cuotas (valor válido para Meta)", () => {
     row: { cuotas: "0" },
   });
   assert.equal(text, "0 cuota(s)");
+});
+
+test("la carta del lector copia el BODY de WhatsApp con {{nombre}} en vez de {{1}}", () => {
+  const letter = readerLetterFromMetaTemplate({
+    templateBody: DEUDA,
+    variables: ["nombre", "dni", "fecha", "monto", "dias"],
+  });
+  assert.equal(
+    letter,
+    "Hola {{nombre}}, DNI {{dni}}. Registramos una deuda vencida desde {{fecha}} por ${{monto}} con {{dias}} días de mora."
+  );
+});
+
+test("texto fijo del template queda escrito, no como variable", () => {
+  const letter = readerLetterFromMetaTemplate({
+    templateBody: "Hola {{1}}, ref {{2}}",
+    variables: ["nombre", "=GOcuotas"],
+  });
+  assert.equal(letter, "Hola {{nombre}}, ref GOcuotas");
 });
 
 test("texto fijo (=) no sale del CSV", () => {

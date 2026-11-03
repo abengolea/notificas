@@ -45,12 +45,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { PDFUpload } from "@/components/dashboard/pdf-upload";
 import { uploadPDF } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
-import {
-  buildCampaignMailHtml,
-  CAMPAIGN_MAILBOX_MODE,
-  campaignBodyToHtmlFragment,
-  personalizeCampaignText,
-} from "@/lib/campaign-email-html";
+import { buildCampaignDeliveryPreview } from "@/lib/campaign-delivery-preview";
+import { CampaignDeliveryPreview } from "@/components/empresa/campaign-delivery-preview";
 import { Loader2, Mail, MessageCircle, Layers, HelpCircle, Copy, Check, Upload, X, FileText, FlaskConical } from "lucide-react";
 import {
   Popover,
@@ -81,7 +77,11 @@ import {
   usesNotificasDefaultTemplate,
 } from "@/lib/wa-template-fields";
 import { fieldsFromSavedWaTemplate } from "@/lib/wa-saved-template";
-import { mixedWhatsAppUsesReaderLink, usesMetaTemplateAsEmailBody } from "@/lib/campaign-mixed-message";
+import {
+  mixedWhatsAppUsesReaderLink,
+  readerLetterFromMetaTemplate,
+  usesMetaTemplateAsEmailBody,
+} from "@/lib/campaign-mixed-message";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 import { WaSavedTemplates } from "@/components/empresa/wa-saved-templates";
 import { OrgWaTemplatePicker } from "@/components/empresa/org-wa-template-picker";
@@ -116,6 +116,18 @@ const CSV_EXTRA_HELP: Record<string, { ej: string; nota: string }> = {
   cuotas: { ej: "7", nota: "Cantidad de cuotas (no confundir con días de atraso)" },
   area: { ej: "Legales", nota: "Área" },
 };
+
+const READER_SUBJECT_PLACEHOLDER = "Notificación para {{nombre}}";
+const READER_BODY_PLACEHOLDER = `Estimado/a {{nombre}},
+
+Le notificamos que registra una comunicación pendiente.
+
+DNI: {{dni}}
+Monto: {{monto}}
+Fecha: {{fecha}}
+Días: {{dias}}
+
+Esta carta se muestra al abrir el enlace. El envío y la apertura quedan registrados.`;
 
 function campaignCopyFields(
   canal: CanalCampaign,
@@ -256,6 +268,15 @@ export function CampaignWizard({
   const needsMensajeStep = canal === "email" || canal === "ambos";
   const needsWaTemplateStep = (canal === "whatsapp" || canal === "ambos") && !simulated;
   const mixedMeta = usesMetaTemplateAsEmailBody(canal, waTemplateName);
+  const waReaderLetter = useMemo(
+    () =>
+      readerLetterFromMetaTemplate({
+        templateBody: waTemplateBody,
+        variables: waTemplateVariables,
+        urlButton: waUrlButton,
+      }),
+    [waTemplateBody, waTemplateVariables, waUrlButton]
+  );
   const waCsvExtraColumns = useMemo(() => {
     if (!needsWaTemplateStep || usesNotificasDefaultTemplate(waTemplateName)) return [];
     return csvColumnsFromWaVariables(waTemplateVariables);
@@ -270,6 +291,12 @@ export function CampaignWizard({
   useEffect(() => {
     setStep((s) => Math.min(s, stepIds.length));
   }, [stepIds.length]);
+
+  useEffect(() => {
+    if (currentStepId !== "mensaje" || !mixedMeta || !waReaderLetter) return;
+    setCuerpo((cur) => (cur.trim() ? cur : waReaderLetter));
+    setAsunto((cur) => (cur.trim() ? cur : READER_SUBJECT_PLACEHOLDER));
+  }, [currentStepId, mixedMeta, waReaderLetter]);
 
   useEffect(() => {
     void fetch(`/api/art/status?orgId=${encodeURIComponent(orgId)}`)
@@ -509,31 +536,39 @@ export function CampaignWizard({
     return { n, sample };
   }, [recipientTotal, csvInspect, recipients]);
 
-  const firstHtml = useMemo(() => {
+  const deliveryPreview = useMemo(() => {
     const r0 = recipients[0];
     const nombre = r0?.nombre || csvInspect?.sample?.[0] || "Destinatario";
-    const row = {
-      nombre,
-      dni: r0?.dni,
-      legajo: r0?.legajo,
-      email: r0?.email,
-      telefono: r0?.telefono,
-      dias: r0?.dias,
-      fecha: r0?.fecha,
-      monto: r0?.monto,
-      cuotas: presentRecipientValue(r0?.cuotas) ? recipientValueText(r0?.cuotas) : undefined,
-    };
-    const bodyPlain = personalizeCampaignText(cuerpo, row);
-    const body = campaignBodyToHtmlFragment(bodyPlain);
-    return buildCampaignMailHtml({
-      recipientEmail: r0?.email || "destinatario@ejemplo.com",
-      recipientName: nombre,
+    return buildCampaignDeliveryPreview({
+      canal,
       sender: auth.currentUser?.email || "remitente",
-      bodyHtml: body,
-      attachments: [],
-      mode: CAMPAIGN_MAILBOX_MODE,
+      cuerpo,
+      waTemplateName,
+      waTemplateBody,
+      waTemplateVariables,
+      waUrlButton,
+      row: {
+        nombre,
+        dni: r0?.dni,
+        legajo: r0?.legajo,
+        email: r0?.email,
+        telefono: r0?.telefono,
+        dias: r0?.dias,
+        fecha: r0?.fecha,
+        monto: r0?.monto,
+        cuotas: presentRecipientValue(r0?.cuotas) ? recipientValueText(r0?.cuotas) : undefined,
+      },
     });
-  }, [recipients, cuerpo, csvInspect]);
+  }, [
+    canal,
+    recipients,
+    csvInspect,
+    cuerpo,
+    waTemplateName,
+    waTemplateBody,
+    waTemplateVariables,
+    waUrlButton,
+  ]);
 
   const recvSig = useMemo(
     () =>
@@ -1748,33 +1783,84 @@ export function CampaignWizard({
       {currentStepId === "mensaje" && (
         <Card>
           <CardHeader>
-            <CardTitle>Mensaje</CardTitle>
+            <CardTitle>Carta del lector</CardTitle>
             <CardDescription>
-              El correo es un aviso con enlace. Este texto es el del lector (la intimación). WhatsApp lleva la plantilla
-              de Meta de la empresa; el enlace del lector solo si esa plantilla lo incluye.
+              {mixedMeta && waReaderLetter
+                ? "La carta del lector sale copiada de la plantilla de WhatsApp. Podés dejarla así o editarla. Gmail solo muestra el asunto y el botón de acceso."
+                : "WhatsApp ya salió de la plantilla de Meta. Acá se arma lo que certifica el correo: el asunto de Gmail y la carta que se ve al abrir el enlace."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {canal === "ambos" && needsWaTemplateStep && (
+              <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground space-y-1">
+                <p>
+                  <strong className="text-foreground">Gmail:</strong> asunto + botón «Acceder a la notificación». No
+                  muestra esta carta.
+                </p>
+                <p>
+                  <strong className="text-foreground">Lector:</strong> el cuerpo de abajo. Por defecto es el mismo texto
+                  que WhatsApp.
+                </p>
+                <p>
+                  <strong className="text-foreground">WhatsApp:</strong>{" "}
+                  {mixedWhatsAppUsesReaderLink(waUrlButton)
+                    ? "la plantilla de Meta y el mismo enlace al lector."
+                    : "la plantilla de Meta tal cual está aprobada (su propio enlace, si tiene)."}
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Nombre interno del envío masivo</Label>
-              <Input value={campaniaNombre} onChange={(e) => setCampaniaNombre(e.target.value)} />
+              <Input
+                value={campaniaNombre}
+                onChange={(e) => setCampaniaNombre(e.target.value)}
+                placeholder="Solo lo ves vos en el listado"
+              />
+              <p className="text-xs text-muted-foreground">No lo ve el destinatario.</p>
             </div>
             <div className="space-y-2">
-              <Label>Asunto</Label>
-              <Input value={asunto} onChange={(e) => setAsunto(e.target.value)} />
-            </div>
-
-            {canal === "ambos" && needsWaTemplateStep && (
-              <p className="text-xs text-muted-foreground rounded-md border bg-muted/40 px-3 py-2">
-                {mixedWhatsAppUsesReaderLink(waUrlButton)
-                  ? "El destinatario no ve esta carta en Gmail: ve un botón «Acceder a la notificación». WhatsApp lleva la plantilla de Meta y el mismo enlace al lector. La lectura se registra cuando abre el lector."
-                  : "El destinatario no ve esta carta en Gmail: ve un botón «Acceder a la notificación». WhatsApp lleva la plantilla de Meta tal cual está aprobada (su propio enlace, si tiene). La lectura certificada se registra cuando abre el lector del correo."}
+              <Label>Asunto del correo</Label>
+              <Input
+                value={asunto}
+                onChange={(e) => setAsunto(e.target.value)}
+                placeholder={READER_SUBJECT_PLACEHOLDER}
+              />
+              <p className="text-xs text-muted-foreground">
+                Lo que aparece en Gmail. Podés usar {`{{nombre}}`}, {`{{dni}}`}, {`{{monto}}`}.
               </p>
-            )}
+            </div>
 
             <div className="space-y-2">
-              <Label>Cuerpo (vista de lectura)</Label>
-              <Textarea value={cuerpo} onChange={(e) => setCuerpo(e.target.value)} rows={10} />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>Carta que se ve en el lector</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (waReaderLetter) {
+                      setCuerpo(waReaderLetter);
+                      if (!asunto.trim()) setAsunto(READER_SUBJECT_PLACEHOLDER);
+                      return;
+                    }
+                    if (!asunto.trim()) setAsunto(READER_SUBJECT_PLACEHOLDER);
+                    setCuerpo(READER_BODY_PLACEHOLDER);
+                  }}
+                >
+                  {waReaderLetter ? "Usar texto de WhatsApp" : "Pegar ejemplo"}
+                </Button>
+              </div>
+              <Textarea
+                value={cuerpo}
+                onChange={(e) => setCuerpo(e.target.value)}
+                rows={10}
+                placeholder={waReaderLetter || READER_BODY_PLACEHOLDER}
+              />
+              <p className="text-xs text-muted-foreground">
+                {waReaderLetter
+                  ? "Copiado de la plantilla de Meta. {{1}} ya está pasado a {{nombre}}, {{dni}}, etc. del CSV."
+                  : `Este texto se lacra. Variables del CSV: {{nombre}} {{dni}} {{legajo}} {{monto}} {{fecha}} {{dias}} {{cuotas}}.`}
+              </p>
             </div>
             {!isAdmin && (
               <>
@@ -2135,11 +2221,7 @@ export function CampaignWizard({
               </div>
             )}
 
-            {/* Preview del primer mensaje */}
-            {(canal === "email" || canal === "ambos") && firstHtml && (
-              <div className="border rounded-md p-3 max-h-64 overflow-auto text-xs bg-muted/30 prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: firstHtml }} />
-            )}
+            <CampaignDeliveryPreview canal={canal} preview={deliveryPreview} />
 
             {/* Créditos y programación */}
             <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm space-y-2">

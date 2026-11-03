@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCampaignMailHtml, CAMPAIGN_MAILBOX_MODE, campaignBodyToHtmlFragment, personalizeCampaignText } from './campaign-email-html';
+import { buildCampaignMailHtml, CAMPAIGN_MAILBOX_MODE, campaignBodyToHtmlFragment, personalizeCampaignText, stripMailboxHiddenHtml } from './campaign-email-html';
 
 test('personalizeCampaignText cubre monto, fecha y días', () => {
   const out = personalizeCampaignText(
@@ -88,4 +88,7 @@ test('modo teaser oculta el cuerpo (el lector lo muestra)', () => {
   assert.match(html, /Secreto/);
   assert.match(html, /Le recomendamos abrir el mensaje/);
   assert.equal(/en este mismo correo/.test(html), false);
+  const mailbox = stripMailboxHiddenHtml(html);
+  assert.equal(/Secreto/.test(mailbox), false);
+  assert.match(mailbox, /Le recomendamos abrir el mensaje/);
 });

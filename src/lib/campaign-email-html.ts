@@ -221,3 +221,40 @@ export function buildCampaignMailHtml(params: {
 </body>
 </html>`;
 }
+
+/**
+ * Igual que `sendEmail`: `$('[data-email-hide]').remove()`.
+ * El wizard no puede pintar el HTML crudo: el atributo no oculta nada en el navegador.
+ */
+export function stripMailboxHiddenHtml(html: string): string {
+  if (!html || !html.includes('data-email-hide')) return html;
+  return removeDivsWithAttr(html, 'data-email-hide');
+}
+
+function removeDivsWithAttr(html: string, attr: string): string {
+  const openRe = new RegExp(`<div\\b[^>]*\\b${attr}\\b[^>]*>`, 'i');
+  let out = html;
+  for (;;) {
+    const match = openRe.exec(out);
+    if (!match) break;
+    const start = match.index;
+    let depth = 1;
+    let i = start + match[0].length;
+    const lower = out.toLowerCase();
+    while (i < out.length && depth > 0) {
+      const nextOpen = lower.indexOf('<div', i);
+      const nextClose = lower.indexOf('</div>', i);
+      if (nextClose < 0) break;
+      if (nextOpen >= 0 && nextOpen < nextClose) {
+        depth += 1;
+        i = nextOpen + 4;
+      } else {
+        depth -= 1;
+        i = nextClose + 6;
+      }
+    }
+    out = `${out.slice(0, start)}${out.slice(i)}`;
+    openRe.lastIndex = 0;
+  }
+  return out;
+}
