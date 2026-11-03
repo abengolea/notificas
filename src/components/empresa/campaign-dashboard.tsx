@@ -48,10 +48,11 @@ import { canEditWhatsAppTemplate, isAdminManagedCampaign, isUnsentCampaign } fro
 import { DailyQuotaField } from "@/components/empresa/daily-quota-field";
 import { DEFAULT_TANDA_SIZE } from "@/lib/campaign-tanda";
 import { explainWhatsAppSendError, WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-template-fields";
-import { usesMetaTemplateAsEmailBody } from "@/lib/campaign-mixed-message";
+import { mixedWhatsAppUsesReaderLink, usesMetaTemplateAsEmailBody } from "@/lib/campaign-mixed-message";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 import { WaSavedTemplates } from "@/components/empresa/wa-saved-templates";
 import { OrgWaTemplatePicker } from "@/components/empresa/org-wa-template-picker";
+import { MixedChannelOptions } from "@/components/empresa/mixed-channel-options";
 import { fieldsFromSavedWaTemplate } from "@/lib/wa-saved-template";
 import {
   DropdownMenu,
@@ -1378,9 +1379,13 @@ export const CampaignDashboard = forwardRef<
               ) : (
                 <p className="text-muted-foreground">Sin asunto cargado.</p>
               )}
-              {campaign.cuerpo && !showWa && (
+              {campaign.cuerpo ? (
                 <p className="text-muted-foreground whitespace-pre-wrap border-t pt-2">{campaign.cuerpo}</p>
-              )}
+              ) : showWa ? (
+                <p className="text-xs text-muted-foreground">
+                  El correo es un aviso con enlace. La carta del lector se carga en el cuerpo de la campaña.
+                </p>
+              ) : null}
             </div>
           )}
           {!messagePanel && showWa && (
@@ -1391,8 +1396,10 @@ export const CampaignDashboard = forwardRef<
               </p>
               <p className="text-xs text-muted-foreground">
                 {usesMetaTemplateAsEmailBody(campaign.canal, campaign.waTemplateName)
-                  ? "El correo es un aviso con enlace al lector. WhatsApp lleva la plantilla de Meta con el mismo acceso. La carta está en el lector."
-                  : "El aviso de WhatsApp no es el cuerpo de email: Meta solo acepta el template aprobado, con las mismas variables y en el mismo orden."}
+                  ? mixedWhatsAppUsesReaderLink(campaign.waUrlButton)
+                    ? "El correo es un aviso con enlace al lector. WhatsApp lleva la plantilla de Meta y el mismo acceso. La carta está en el lector."
+                    : "El correo es un aviso con enlace al lector. WhatsApp lleva la plantilla de Meta; su enlace, si tiene, es el de la empresa (no el lector). La carta certificada está en el lector."
+                  : "El correo es un aviso con enlace al lector. Si WhatsApp usa el sobre de Notificas, lleva el mismo acceso. La carta está en el lector."}
               </p>
               {canEditTpl ? (
                 <>
@@ -1410,6 +1417,13 @@ export const CampaignDashboard = forwardRef<
                       setTplBody(next.templateBody);
                     }}
                   />
+                  {campaign.canal === "ambos" ? (
+                    <MixedChannelOptions
+                      templateName={tplName}
+                      urlButton={tplUrlButton}
+                      onUrlButtonChange={setTplUrlButton}
+                    />
+                  ) : null}
                   {isAdmin ? (
                     <>
                   <WaSavedTemplates
@@ -1484,7 +1498,11 @@ export const CampaignDashboard = forwardRef<
                     </p>
                   )}
                   {campaign.waUrlButton ? (
-                    <p className="text-muted-foreground">Botón URL: sí</p>
+                    <p className="text-muted-foreground">Botón URL: enlace al lector</p>
+                  ) : usesMetaTemplateAsEmailBody(campaign.canal, campaign.waTemplateName) ? (
+                    <p className="text-muted-foreground">
+                      Botón URL del lector: no. WhatsApp usa el enlace de la plantilla de Meta.
+                    </p>
                   ) : null}
                   {campaign.waTemplateBody ? (
                     <p className="text-muted-foreground whitespace-pre-wrap border-t pt-2">{campaign.waTemplateBody}</p>

@@ -47,6 +47,7 @@ import { uploadPDF } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
 import {
   buildCampaignMailHtml,
+  CAMPAIGN_MAILBOX_MODE,
   campaignBodyToHtmlFragment,
   personalizeCampaignText,
 } from "@/lib/campaign-email-html";
@@ -80,10 +81,11 @@ import {
   usesNotificasDefaultTemplate,
 } from "@/lib/wa-template-fields";
 import { fieldsFromSavedWaTemplate } from "@/lib/wa-saved-template";
-import { usesMetaTemplateAsEmailBody } from "@/lib/campaign-mixed-message";
+import { mixedWhatsAppUsesReaderLink, usesMetaTemplateAsEmailBody } from "@/lib/campaign-mixed-message";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 import { WaSavedTemplates } from "@/components/empresa/wa-saved-templates";
 import { OrgWaTemplatePicker } from "@/components/empresa/org-wa-template-picker";
+import { MixedChannelOptions } from "@/components/empresa/mixed-channel-options";
 import { CampaignPadronPicker, padronRowToRecipient, type PadronRow } from "@/components/empresa/campaign-padron-picker";
 import { SrtAdhesionWarning } from "@/components/art/srt-adhesion-warning";
 
@@ -529,7 +531,7 @@ export function CampaignWizard({
       sender: auth.currentUser?.email || "remitente",
       bodyHtml: body,
       attachments: [],
-      mode: "teaser",
+      mode: CAMPAIGN_MAILBOX_MODE,
     });
   }, [recipients, cuerpo, csvInspect]);
 
@@ -1326,9 +1328,9 @@ export function CampaignWizard({
             <div className="grid grid-cols-3 gap-3">
               {(
                 [
-                  { value: "email",     label: "Email",     icon: Mail,          desc: "Notificación por correo con certificación Polygon" },
-                  { value: "whatsapp",  label: "WhatsApp",  icon: MessageCircle, desc: "Mensaje WA con registro blockchain" },
-                  { value: "ambos",     label: "Ambos",     icon: Layers,        desc: "Email + WhatsApp simultáneo" },
+                  { value: "email",     label: "Email",     icon: Mail,          desc: "Aviso por correo con enlace al lector certificado" },
+                  { value: "whatsapp",  label: "WhatsApp",  icon: MessageCircle, desc: "Plantilla de Meta; se registra entregado y leído" },
+                  { value: "ambos",     label: "Ambos",     icon: Layers,        desc: "Correo al lector + WhatsApp de la empresa" },
                 ] as const
               ).map(({ value, label, icon: Icon, desc }) => (
                 <button
@@ -1370,6 +1372,14 @@ export function CampaignWizard({
                 </p>
               )}
             </div>
+            {canal === "ambos" && !simulated && (
+              <MixedChannelOptions
+                forceChoices
+                templateName={waTemplateName}
+                urlButton={waUrlButton}
+                onUrlButtonChange={setWaUrlButton}
+              />
+            )}
             <Button onClick={() => setStep((s) => s + 1)} disabled={isAdmin && !orgId}>Siguiente</Button>
           </CardContent>
         </Card>
@@ -1741,7 +1751,7 @@ export function CampaignWizard({
             <CardTitle>Mensaje</CardTitle>
             <CardDescription>
               El correo es un aviso con enlace. Este texto es el del lector (la intimación). WhatsApp lleva la plantilla
-              de Meta con el mismo enlace.
+              de Meta de la empresa; el enlace del lector solo si esa plantilla lo incluye.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1756,8 +1766,9 @@ export function CampaignWizard({
 
             {canal === "ambos" && needsWaTemplateStep && (
               <p className="text-xs text-muted-foreground rounded-md border bg-muted/40 px-3 py-2">
-                El destinatario no ve esta carta en Gmail: ve un botón «Acceder a la notificación». El mismo enlace va
-                en WhatsApp. La lectura se registra cuando abre el lector.
+                {mixedWhatsAppUsesReaderLink(waUrlButton)
+                  ? "El destinatario no ve esta carta en Gmail: ve un botón «Acceder a la notificación». WhatsApp lleva la plantilla de Meta y el mismo enlace al lector. La lectura se registra cuando abre el lector."
+                  : "El destinatario no ve esta carta en Gmail: ve un botón «Acceder a la notificación». WhatsApp lleva la plantilla de Meta tal cual está aprobada (su propio enlace, si tiene). La lectura certificada se registra cuando abre el lector del correo."}
               </p>
             )}
 
@@ -1857,6 +1868,13 @@ export function CampaignWizard({
               autoSelect={!isEdit}
               onSelect={applyOrgWaTemplate}
             />
+            {canal === "ambos" && (
+              <MixedChannelOptions
+                templateName={waTemplateName}
+                urlButton={waUrlButton}
+                onUrlButtonChange={setWaUrlButton}
+              />
+            )}
             {isAdmin ? (
               <>
             <WaSavedTemplates
@@ -1901,7 +1919,9 @@ export function CampaignWizard({
             ) : !usesNotificasDefaultTemplate(waTemplateName) ? (
               <p className="text-xs text-muted-foreground">
                 Variables de esta plantilla: {waTemplateVariables.filter(Boolean).join(", ") || "—"}.
-                {waUrlButton ? " Incluye botón con enlace al lector." : ""}
+                {waUrlButton
+                  ? " Incluye botón con enlace al lector."
+                  : " El botón o enlace de WhatsApp es el de la plantilla (no el lector)."}
               </p>
             ) : (
               <p className="text-xs text-muted-foreground">
@@ -1917,7 +1937,7 @@ export function CampaignWizard({
             {mixedMeta && !waTemplateBody.trim() && (
               <p className="text-sm text-destructive">
                 {isAdmin
-                  ? <>Falta el texto del BODY aprobado en Meta. Usá «Traer de Meta» o pegalo con {"{{1}}"}, {"{{2}}"}… Sin eso no se puede seguir: el correo usa ese mismo mensaje.</>
+                  ? <>Falta el texto del BODY aprobado en Meta. Usá «Traer de Meta» o pegalo con {"{{1}}"}, {"{{2}}"}… Sin eso no se puede armar el globo de WhatsApp.</>
                   : "Falta el texto aprobado en Meta de esta plantilla. Pedile al administrador que lo complete antes de enviar."}
               </p>
             )}
@@ -2059,8 +2079,9 @@ export function CampaignWizard({
               )}
               {canal === "ambos" && (
                 <p className="text-muted-foreground">
-                  El correo es un aviso con enlace. WhatsApp lleva la plantilla de Meta. Los dos abren el mismo lector
-                  (esta carta).
+                  {mixedWhatsAppUsesReaderLink(waUrlButton)
+                    ? "El correo es un aviso con enlace al lector. WhatsApp lleva la plantilla de Meta y el mismo acceso. El lector muestra esta carta."
+                    : "El correo es un aviso con enlace al lector (esta carta). WhatsApp lleva la plantilla de Meta; no abre el lector salvo que esa plantilla lo pida."}
                 </p>
               )}
             </div>

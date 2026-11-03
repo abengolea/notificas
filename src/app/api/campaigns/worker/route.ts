@@ -4,16 +4,11 @@ import { getAdminDb } from '@/lib/firebase-admin';
 import { createMailDocumentAdmin } from '@/lib/email-server';
 import {
   buildCampaignMailHtml,
+  CAMPAIGN_MAILBOX_MODE,
   campaignBodyToHtmlFragment,
   personalizeCampaignText,
 } from '@/lib/campaign-email-html';
-import {
-  htmlFromFilledMetaBody,
-  MAILBOX_READER_URL_SENTINEL,
-  renderCampaignMessageBody,
-  renderMetaTemplateBody,
-  usesMetaTemplateAsEmailBody,
-} from '@/lib/campaign-mixed-message';
+import { renderCampaignMessageBody } from '@/lib/campaign-mixed-message';
 import { consumeOrgCreditsInTx } from '@/lib/org-credits';
 import { invokeSendEmail } from '@/lib/send-mail-via-cf';
 import { computeContentHash } from '@/lib/certification';
@@ -273,28 +268,13 @@ async function processMessage(
   const contentHash = await computeContentHash(bodyPlain);
   const batchId = String(msg.integritySendBatchId || sendBatchId(0));
   const orgId = String(msg.orgId || campaign.orgId || '');
-  const mixedMeta = usesMetaTemplateAsEmailBody(canal, campaign.waTemplateName);
-  const metaFilled =
-    mixedMeta && String(campaign.waTemplateBody || '').trim()
-      ? renderMetaTemplateBody({
-          templateBody: String(campaign.waTemplateBody),
-          variables: Array.isArray(campaign.waTemplateVariables) ? campaign.waTemplateVariables : undefined,
-          urlButton: campaign.waUrlButton === true,
-          row,
-          senderName: senderEmail,
-          recipientName: row.nombre,
-          phone: row.telefono,
-          readerUrl: MAILBOX_READER_URL_SENTINEL,
-        })
-      : '';
   const html = buildCampaignMailHtml({
     recipientEmail: email,
     recipientName: row.nombre || email.split('@')[0],
     sender: senderEmail,
-    bodyHtml: metaFilled ? htmlFromFilledMetaBody(metaFilled) : bodyHtml,
+    bodyHtml,
     attachments: attachmentsFor(campaign, email),
-    mode: metaFilled ? 'inline' : 'teaser',
-    previewText: metaFilled || undefined,
+    mode: CAMPAIGN_MAILBOX_MODE,
   });
   const adjuntos = attachmentsFor(campaign, email);
 

@@ -60,13 +60,16 @@ export function campaignBodyToHtmlFragment(body: string): string {
 
 export type CampaignMailHtmlMode = 'teaser' | 'inline' | 'letter';
 
+/** Campañas (email o mixta): Gmail es un sobre; la carta vive en el lector. */
+export const CAMPAIGN_MAILBOX_MODE: CampaignMailHtmlMode = 'teaser';
+
 export function buildCampaignMailHtml(params: {
   recipientEmail: string;
   recipientName: string;
   sender: string;
   bodyHtml: string;
   attachments: CampaignAttachment[];
-  /** inline: el cuerpo (template de Meta) va igual al correo y al lector. letter: carta visible. teaser: solo enlace al lector. */
+  /** inline: 1:1. letter: carta visible en Gmail. teaser: campañas — solo enlace al lector. */
   mode?: CampaignMailHtmlMode;
   /** Vista previa en bandeja; si falta, se usa un texto genérico (sin jerga legal). */
   previewText?: string;
@@ -80,9 +83,6 @@ export function buildCampaignMailHtml(params: {
   const leadSecondParagraph = params.mode === 'letter' && hasInlineBody
     ? `Recibió una comunicación de <strong>${escapeHtmlText(sender)}</strong>.
                 Puede leer el texto completo en este mismo correo. El enlace registra la apertura y es el mismo acceso que le enviamos por WhatsApp.`
-    : hasInlineBody
-    ? `Recibió una comunicación de <strong>${escapeHtmlText(sender)}</strong>.
-                Puede leer el texto en este mismo correo. El enlace registra la apertura en Notificas.com.`
     : `Recibió una comunicación de <strong>${escapeHtmlText(sender)}</strong>.
                 <strong>Le recomendamos abrir el mensaje</strong> mediante el enlace para ver el contenido.`;
 

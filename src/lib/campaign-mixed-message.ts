@@ -2,12 +2,20 @@ import { campaignBodyToHtmlFragment, personalizeCampaignText } from "@/lib/campa
 import { recipientValueText } from "@/lib/parse-campaign-csv";
 import { isWaLiteralVar, usesNotificasDefaultTemplate, waLiteralText } from "@/lib/wa-template-fields";
 
-/** Campaña email+WhatsApp con template propio de Meta (no el default de Notificas). */
+/**
+ * Campaña email+WhatsApp con plantilla propia de Meta (no el sobre default de Notificas).
+ * El globo no va a Gmail: el correo es un aviso al lector. Sirve para exigir el BODY
+ * aprobado y, si no hay carta, lacrar ese texto en el lector.
+ */
 export function usesMetaTemplateAsEmailBody(
   canal: string | undefined | null,
   waTemplateName: string | undefined | null
 ): boolean {
   return String(canal || "") === "ambos" && !usesNotificasDefaultTemplate(waTemplateName);
+}
+
+export function mixedWhatsAppUsesReaderLink(urlButton: boolean | undefined | null): boolean {
+  return urlButton === true;
 }
 
 export function fillNumericPlaceholders(template: string, values: string[]): string {
@@ -128,7 +136,7 @@ export function htmlFromFilledMetaBody(filled: string): string {
   return fragment.split(MAILBOX_READER_URL_SENTINEL).join(link);
 }
 
-/** Texto que ve el destinatario en el correo (y que se lacra como contentHash). */
+/** Texto lacrado (contentHash) y mostrado en el lector. El sobre de Gmail no lo exhibe. */
 export function renderCampaignMessageBody(input: {
   canal?: string | null;
   waTemplateName?: string | null;

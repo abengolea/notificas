@@ -233,9 +233,9 @@ export function WaTemplateFields({
               El template tiene un botón de enlace
             </label>
             <p className="text-xs text-muted-foreground">
-              Activalo solo si en Meta agregaste un botón URL. Notificas manda ahí el link del lector.
-              En Meta el botón debe ser: dominio de Notificas + variable, por ejemplo{" "}
-              <code>https://notificas.com.ar/{"{{1}}"}</code>.
+              Activalo solo si el botón de Meta debe abrir el lector de Notificas. En Meta: dominio de
+              Notificas + variable, por ejemplo <code>https://notificas.com.ar/{"{{1}}"}</code>. Si el
+              botón va a otra web (pago, portal), dejalos apagado: se respeta el enlace de la plantilla.
             </p>
           </div>
         </div>

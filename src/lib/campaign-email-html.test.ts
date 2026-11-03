@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCampaignMailHtml, campaignBodyToHtmlFragment, personalizeCampaignText } from './campaign-email-html';
+import { buildCampaignMailHtml, CAMPAIGN_MAILBOX_MODE, campaignBodyToHtmlFragment, personalizeCampaignText } from './campaign-email-html';
 
 test('personalizeCampaignText cubre monto, fecha y días', () => {
   const out = personalizeCampaignText(
@@ -78,10 +78,14 @@ test('modo teaser oculta el cuerpo (el lector lo muestra)', () => {
   const html = buildCampaignMailHtml({
     recipientEmail: 'a@b.com',
     recipientName: 'Ana',
-    sender: 'Notificas',
+    sender: 'GOcuotas',
     bodyHtml: campaignBodyToHtmlFragment('Secreto'),
     attachments: [],
+    mode: CAMPAIGN_MAILBOX_MODE,
   });
+  assert.equal(CAMPAIGN_MAILBOX_MODE, 'teaser');
   assert.match(html, /data-email-hide/);
   assert.match(html, /Secreto/);
+  assert.match(html, /Le recomendamos abrir el mensaje/);
+  assert.equal(/en este mismo correo/.test(html), false);
 });

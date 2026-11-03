@@ -4,20 +4,24 @@ import {
   fillNumericPlaceholders,
   htmlFromFilledMetaBody,
   MAILBOX_READER_URL_SENTINEL,
+  mixedWhatsAppUsesReaderLink,
   renderCampaignMessageBody,
   renderMetaTemplateBody,
   usesMetaTemplateAsEmailBody,
 } from "./campaign-mixed-message";
+import { buildCampaignMailHtml, CAMPAIGN_MAILBOX_MODE, campaignBodyToHtmlFragment } from "./campaign-email-html";
 
 const DEUDA =
   "Hola {{1}}, DNI {{2}}. Registramos una deuda vencida desde {{3}} por ${{4}} con {{5}} días de mora.";
 
-test("mixtas con template custom usan el globo de Meta en el mail", () => {
+test("mixtas con template custom no usan el sobre default de Notificas", () => {
   assert.equal(usesMetaTemplateAsEmailBody("ambos", "notificacion_deuda_180_dias"), true);
   assert.equal(usesMetaTemplateAsEmailBody("ambos", ""), false);
   assert.equal(usesMetaTemplateAsEmailBody("ambos", "notificaciones_notificas"), false);
   assert.equal(usesMetaTemplateAsEmailBody("whatsapp", "notificacion_deuda_180_dias"), false);
   assert.equal(usesMetaTemplateAsEmailBody("email", "notificacion_deuda_180_dias"), false);
+  assert.equal(mixedWhatsAppUsesReaderLink(false), false);
+  assert.equal(mixedWhatsAppUsesReaderLink(true), true);
 });
 
 test("renderiza el BODY de Meta con el mismo orden de {{N}} que WhatsApp", () => {
@@ -113,4 +117,30 @@ test("email-only sigue personalizando el cuerpo escrito", () => {
 
 test("fillNumericPlaceholders deja {{n}} si falta el valor", () => {
   assert.equal(fillNumericPlaceholders("A {{1}} B {{2}}", ["x"]), "A x B {{2}}");
+});
+
+test("campaña mixta: Gmail es sobre; el lector lacra la carta, no el globo", () => {
+  const letter = renderCampaignMessageBody({
+    canal: "ambos",
+    waTemplateName: "notificacion_deuda_180_dias",
+    waTemplateBody: DEUDA,
+    waTemplateVariables: ["nombre", "dni", "fecha", "monto", "dias"],
+    cuerpo: "Intimación formal a {{nombre}} por ${{monto}}.",
+    row: { nombre: "Marcela Suárez", monto: "50000" },
+  });
+  assert.equal(letter, "Intimación formal a Marcela Suárez por $50000.");
+  const html = buildCampaignMailHtml({
+    recipientEmail: "a@b.com",
+    recipientName: "Marcela Suárez",
+    sender: "GOcuotas",
+    bodyHtml: campaignBodyToHtmlFragment(letter),
+    attachments: [],
+    mode: CAMPAIGN_MAILBOX_MODE,
+  });
+  assert.equal(CAMPAIGN_MAILBOX_MODE, "teaser");
+  assert.match(html, /data-email-hide/);
+  assert.match(html, /Le recomendamos abrir el mensaje/);
+  assert.match(html, /Intimación formal a Marcela Suárez/);
+  assert.equal(/Registramos una deuda vencida/.test(html), false);
+  assert.equal(/en este mismo correo/.test(html), false);
 });
