@@ -4,6 +4,7 @@ import { LandingHeader } from '@/components/landing-header';
 import { PublicFooter } from '@/components/public-footer';
 import { JsonLd } from '@/components/json-ld';
 import { createPageMetadata, SITE_CONTACT, SITE_LEGAL_NAME } from '@/lib/seo';
+import { PDF_SCHEMA } from '@/lib/pdf-evidence-format';
 import { breadcrumbJsonLd } from '@/lib/structured-data';
 import {
   LEAF_SPEC_PATH,
@@ -60,8 +61,10 @@ export default function LeafSpecV2Page() {
               CAMPAIGN_EVENT|v2|{'{campaignId}'}|{'{batchId}'}|{'{merkleRoot}'}|{'{leafCount}'}|{'{timestamp}'}|{'{leavesDigest}'}
             </p>
             <p className="mt-3">
-              v1 no tiene <code>leavesDigest</code>. El PDF de lote v4 solo se emite si el digest del
-              payload v2 coincide con las hojas impresas.
+              v1 no tiene <code>leavesDigest</code>. El PDF de lote ({PDF_SCHEMA.actaTanda}) solo se emite
+              si el digest del payload v2 coincide con las hojas impresas. El campo{' '}
+              <code>timestamp</code> es el instante en que se armó el payload (ISO 8601 UTC, milisegundos);
+              el momento del anclaje es el timestamp del bloque de la transacción, siempre posterior.
             </p>
           </section>
 
@@ -94,6 +97,47 @@ export default function LeafSpecV2Page() {
               <code>eventType</code>: <code>email_read</code>, <code>wa_delivered</code> o{' '}
               <code>wa_read</code>.
             </p>
+            <p className="font-medium mt-4">Evento sin evidencia de Meta (v1)</p>
+            <p className={`${CODE} mt-2 rounded-md bg-muted px-3 py-2`}>
+              v1|event|campaignId|messageId|eventType|occurredAt|sendLeafHash
+            </p>
+            <p className="mt-3">
+              Los hechos que no traen <code>rawPayloadHash</code> (por ejemplo la apertura del correo)
+              usan esta forma de siete campos dentro de un lote cuyo payload on-chain sigue siendo v2.
+            </p>
+            <p className="font-medium mt-4">Cómo se serializa cada campo</p>
+            <ul className="list-disc pl-5 mt-2 space-y-1">
+              <li>
+                Los campos se unen con <code>|</code>. Un campo vacío es una cadena vacía (queda{' '}
+                <code>||</code>); no se escribe <code>null</code> ni <code>undefined</code>.
+              </li>
+              <li>
+                En los valores de texto, <code>|</code> se reemplaza por <code>/</code>, los saltos de
+                línea por un espacio y se recortan los extremos.
+              </li>
+              <li>
+                <code>email</code> va en minúsculas; <code>phone</code> y <code>dni</code> solo con
+                dígitos; <code>attHashes</code> son los SHA-256 de adjuntos ordenados y separados por coma
+                (vacío si no hay).
+              </li>
+              <li>
+                <code>contentHash</code> = SHA-256(UTF-8(trim(texto plano))) del cuerpo enviado. El texto
+                se hashea tal cual, con sus saltos de línea y líneas en blanco; unir las líneas con espacios
+                da otro hash.
+              </li>
+              <li>
+                <code>waBodyHash</code> = SHA-256 del pedido a Meta canonicalizado (
+                <code>WA_BODY|v2|…</code>: destinatario, plantilla, idioma, encabezado, cuerpo renderizado,
+                pie y variables). Incluye el <code>templateHash</code> del pedido, que es un dato distinto
+                del <code>templateSealHash</code>.
+              </li>
+              <li>
+                <code>templateSealHash</code> es el sello de la plantilla aprobada de la campaña. Es el
+                «Hash plantilla» del PDF de lote y el último campo de la hoja de envío. El «Hash del pedido
+                a Meta» que figura en la constancia individual es el <code>templateHash</code> del request,
+                no este sello.
+              </li>
+            </ul>
           </section>
 
           <section>
@@ -101,7 +145,34 @@ export default function LeafSpecV2Page() {
             <p>
               Padre = SHA-256(UTF-8(left + &quot;|&quot; + right)). Hoja impar: se duplica la última.
               Un solo nodo: la raíz es esa hoja. La raíz viaja en el payload on-chain. El PDF de lote
-              no incluye pruebas Merkle por destinatario; eso está en la constancia individual.
+              no incluye pruebas Merkle por destinatario; están en el anexo técnico de la constancia
+              individual, junto con la preimagen de cada hoja.
+            </p>
+            <p className="mt-3 font-medium">Orden de las hojas</p>
+            <p className="mt-1">
+              Al cerrar la tanda, las hojas se ordenan por su id (<code>messageId</code> en los envíos,{' '}
+              <code>messageId_eventType</code> en los hechos) y recién entonces se asigna{' '}
+              <code>leafIndex</code> y se arma el árbol. No es el instante de sellado ni el orden
+              alfabético de los hashes: el <code>sort</code> de la sección 3 se aplica solo al calcular el{' '}
+              <code>leavesDigest</code>. Para verificar no hace falta reproducir ese orden: el PDF imprime
+              el índice de cada hoja y el camino de hermanos, y con eso se recalcula la raíz. Armar el árbol
+              con los hashes ordenados alfabéticamente da otra raíz.
+            </p>
+            <p className="mt-3 font-medium">Verificar una prueba</p>
+            <p className={`${CODE} mt-2 whitespace-pre-line rounded-md bg-muted px-3 py-2`}>
+              h = leafHash; i = leafIndex{'\n'}
+              por cada hermano s del camino: si i es par, h = SHA-256(h + &quot;|&quot; + s); si es impar,
+              h = SHA-256(s + &quot;|&quot; + h); luego i = floor(i / 2){'\n'}
+              al final, h debe ser igual a merkleRoot del payload on-chain
+            </p>
+            <p className="mt-3 font-medium">Límites del esquema</p>
+            <p className="mt-1">
+              El árbol no distingue hojas de nodos internos (no hay prefijo de dominio) y duplica la
+              última hoja cuando el nivel es impar, así que dos listas de hojas distintas pueden dar la
+              misma raíz si una es la otra con su última hoja repetida. El payload on-chain fija{' '}
+              <code>leafCount</code> y cada hoja lleva su <code>messageId</code>, lo que descarta esa
+              ambigüedad en lotes legítimos; un esquema con prefijos de dominio sería una versión nueva
+              del formato (v3), no un cambio de esta.
             </p>
           </section>
 
@@ -126,11 +197,50 @@ export default function LeafSpecV2Page() {
                 </Link>{' '}
                 el parámetro <code>leaf</code> es el hash de esa hoja.
               </li>
+              <li>
+                Constancia individual: en el anexo técnico, recalculá SHA-256 de la preimagen de cada hoja
+                (debe dar su <code>leafHash</code>), recorré el camino de hermanos como en la sección 5 y
+                comprobá que termina en la raíz de la TX. Los hechos citan el <code>leafHash</code> de
+                envío en su campo 7. Esa última comparación, raíz contra la transacción, se hace a mano en
+                el explorador: el PDF imprime la raíz y la TX completas, pero no puede atestiguar lo que
+                dice la cadena.
+              </li>
+              <li>
+                Orden temporal: compará el timestamp del bloque de la TX de envío con el de cada hecho. El
+                PDF imprime cada TX completa para poder hacerlo en el explorador.
+              </li>
             </ol>
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold mb-2">7. Lo que esto no prueba</h2>
+            <h2 className="text-lg font-semibold mb-2">7. Revisiones de esta spec</h2>
+            <p>
+              Esta página se versiona por revisión. Un cambio de formato que altere cómo se calcula una
+              hoja, un digest o una raíz es una spec nueva (v3) y esta se conserva en su URL. Los ajustes
+              de redacción o los datos que se agregan al PDF suben solo la revisión.
+            </p>
+            <p className="mt-2">
+              La cadena prueba los payloads anclados, no este instructivo, y esta página está en un sitio
+              que controla Notificas. Quien la use como referencia debe dejar constancia de la fecha y la
+              revisión que leyó (por ejemplo, con una copia archivada de la página ese día).
+            </p>
+            <ul className="list-disc pl-5 mt-2 space-y-1">
+              <li>
+                <strong>v2, rev. 2026-11-04</strong>: se definen la serialización de campos, el orden de las
+                hojas en el árbol, la verificación de una prueba, el cálculo de <code>contentHash</code>, la
+                diferencia entre <code>templateSealHash</code> y el hash del pedido a Meta, el evento v1
+                dentro de un lote v2 y los límites del esquema. Sin cambios en el cálculo de ninguna hoja,
+                digest o raíz ya emitidos.
+              </li>
+              <li>
+                <strong>v2, rev. inicial</strong>: dirección emisora, payloads, digest, forma de las hojas y
+                árbol.
+              </li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold mb-2">8. Lo que esto no prueba</h2>
             <p>
               No es notificación fehaciente, no identifica civilmente al titular del teléfono y no
               prueba la deuda que declare el cliente. La inmutabilidad la aporta la transacción, no el

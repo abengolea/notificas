@@ -1088,10 +1088,24 @@ export async function verifyCampaignMessage(campaignId: string, messageId: strin
     { batchId?: string; leafHash?: string; proof?: string[]; merkleRoot?: string; txHash?: string; occurredAt?: string; leafIndex?: number }
   >;
 
+  /** Preimagen de la hoja tal como se selló (sirve para que un perito recalcule SHA-256(leafPayload)). */
+  const readLeafPayload = async (batchId: string | undefined, leafId: string): Promise<string | null> => {
+    if (!batchId) return null;
+    try {
+      const leafSnap = await batchesCol(campaignId).doc(batchId).collection('leaves').doc(leafId).get();
+      const payload = leafSnap.data()?.leafPayload;
+      return typeof payload === 'string' && payload ? payload : null;
+    } catch {
+      return null;
+    }
+  };
+  const sendLeafPayload = await readLeafPayload(send?.batchId, messageId);
+
   const eventResults = await Promise.all(
     (['email_read', 'wa_delivered', 'wa_read'] as IntegrityEventType[]).map(async (type) => {
       const ev = events[type];
       if (!ev?.leafHash) return { type, present: false as const };
+      const leafPayload = await readLeafPayload(ev.batchId, `${messageId}_${type}`);
       let proofOk: boolean | null = null;
       if (ev.proof && ev.merkleRoot != null && typeof (ev as { leafIndex?: number }).leafIndex === 'number') {
         proofOk = await verifyMerkleProof(
@@ -1109,6 +1123,7 @@ export async function verifyCampaignMessage(campaignId: string, messageId: strin
         txHash: ev.txHash,
         merkleRoot: ev.merkleRoot,
         leafHash: ev.leafHash,
+        leafPayload,
         leafIndex: typeof (ev as { leafIndex?: number }).leafIndex === 'number' ? (ev as { leafIndex: number }).leafIndex : null,
         proof: Array.isArray(ev.proof) ? ev.proof : null,
         batchId: ev.batchId,
@@ -1134,6 +1149,9 @@ export async function verifyCampaignMessage(campaignId: string, messageId: strin
       txHash: send?.txHash || null,
       merkleRoot: send?.merkleRoot || null,
       leafHash: send?.leafHash || null,
+      leafPayload: sendLeafPayload,
+      leafIndex: typeof send?.leafIndex === 'number' ? send.leafIndex : null,
+      proof: Array.isArray(send?.proof) ? send.proof : null,
       merkleValid,
       onChainRoot,
       onChainMatch,

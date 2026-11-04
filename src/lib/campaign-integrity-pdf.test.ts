@@ -7,6 +7,7 @@ import {
   lotePositiveStatement,
   mixedActaSharesMessageBody,
   normalizeActaBodyText,
+  printedActaBody,
   type ActaDestinatarioInput,
   type ActaTandaInput,
 } from './campaign-integrity-pdf';
@@ -258,3 +259,104 @@ test('CUIT de cliente inválido no se imprime; el emisor sigue siendo Notificas'
   assert.equal(raw.includes('30-12345678-9'), false);
 });
 
+
+const PARAS =
+  'Hola Ana, DNI 1.\n\nPor medio de la presente le notificamos una deuda.\n\nSi ya regularizó su deuda, por favor descarte este mensaje.';
+
+test('printedActaBody conserva las líneas en blanco que entran en el contentHash', async () => {
+  const { sha256Hex } = await import('./merkle');
+  assert.equal(printedActaBody(`  ${PARAS}\n`), PARAS);
+  assert.equal(await sha256Hex(printedActaBody(PARAS)), await sha256Hex(PARAS));
+  // lo sellado se transcribe tal cual, también si trae etiquetas: nada de limpiar lo que entró en el hash
+  const html = '<p>Hola  Ana</p>\n\n<p>Chau</p>';
+  assert.equal(printedActaBody(html), html);
+  assert.equal(await sha256Hex(printedActaBody(html)), await sha256Hex(html));
+});
+
+test('el anexo imprime preimagen, camino Merkle y TX completas, sin truncar', async () => {
+  const { sha256Hex, buildMerkleTree, getMerkleProof } = await import('./merkle');
+  const sendPayload = 'v2|send|camp1|msg1|ana@example.com|5493364000000|1|Ana|100|1||' + 'a'.repeat(64) + '||<id@x>|wamid.X|' + 'b'.repeat(64) + '|' + 'c'.repeat(64);
+  const sendLeaf = await sha256Hex(sendPayload);
+  const other = await sha256Hex('otra');
+  const tree = await buildMerkleTree([other, sendLeaf]);
+  const proof = getMerkleProof(tree.layers, 1);
+  const tx1 = '0x' + '12bd1f389356806e0af7c775f07d290588e57d8a200445bc6245152479a214a1'.slice(0, 64);
+  const tx2 = '0xc5c162591a0a69ad84daf9d7922ea07892f4eb29d4da33780ce07cf3ea536af4';
+  const hash = await sha256Hex(PARAS);
+  const buf = await buildActaDestinatarioPdf(
+    sampleMixed({
+      cuerpoPersonalizado: PARAS,
+      contentHash: hash,
+      storedHash: hash,
+      send: {
+        batchId: 'send-0',
+        txHash: tx2,
+        merkleRoot: tree.root,
+        leafHash: sendLeaf,
+        leafPayload: sendPayload,
+        leafIndex: 1,
+        proof,
+        templateSealHash: 'c'.repeat(64),
+        merkleValid: true,
+        onChainMatch: true,
+      },
+      events: [
+        {
+          type: 'wa_delivered',
+          present: true,
+          occurredAt: '2026-11-03T22:36:41Z',
+          merkleValid: true,
+          txHash: tx1,
+          batchId: 'events-2026-11-03',
+          merkleRoot: tree.root,
+          leafHash: other,
+          leafPayload: 'v1|event|camp1|msg1|wa_delivered|2026-11-03T22:36:41Z|' + sendLeaf,
+          leafIndex: 0,
+          proof: [sendLeaf],
+        },
+      ],
+    })
+  );
+  const raw = pdfText(buf);
+  assert.match(raw, /Prueba de pertenencia al árbol/);
+  assert.ok(raw.includes(tx1), 'la TX del evento debe figurar completa');
+  assert.ok(raw.includes(tx2), 'la TX de envío debe figurar completa');
+  assert.ok(raw.includes(sendLeaf));
+  assert.ok(raw.includes(proof[0]), 'el hermano del camino debe estar impreso entero');
+  assert.ok(raw.includes(tree.root));
+  assert.ok(raw.includes('wamid.X'), 'la preimagen de la hoja debe estar impresa');
+  assert.equal(raw.includes('...'), false, 'no puede haber hashes ni TX recortados con puntos suspensivos');
+  assert.match(raw, /reproduce la huella de contenido/);
+});
+
+test('sin preimagen guardada el anexo lo dice en vez de omitirlo', async () => {
+  const buf = await buildActaDestinatarioPdf(
+    sampleMixed({
+      send: {
+        batchId: 'b1',
+        txHash: '0x' + 'ab'.repeat(32),
+        merkleRoot: 'cd'.repeat(32),
+        leafHash: 'ef'.repeat(32),
+        leafPayload: null,
+        leafIndex: 0,
+        proof: null,
+        merkleValid: null,
+        onChainMatch: null,
+      },
+    })
+  );
+  const raw = pdfText(buf);
+  assert.match(raw, /Preimagen no disponible en el registro/);
+  assert.match(raw, /Sin camino Merkle registrado/);
+});
+
+test('la tabla de hechos no dice Sí cuando no hay prueba Merkle', async () => {
+  const buf = await buildActaDestinatarioPdf(
+    sampleMixed({
+      events: [{ type: 'wa_read', present: true, occurredAt: '2026-11-03T22:37:30Z', merkleValid: null, batchId: 'events-x' }],
+    })
+  );
+  const raw = pdfText(buf);
+  const row = raw.slice(raw.indexOf('Hechos posteriores anclados'));
+  assert.match(row, /Pendiente/);
+});

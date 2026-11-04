@@ -22,6 +22,7 @@ import { maskPhoneForLote } from '@/lib/mask-phone';
 import { formatCuit } from '@/lib/cuit';
 import { LEAF_SPEC_PATH } from '@/lib/polygon-published';
 import { assertPrintedLoteIntegrity, asLeafHash } from '@/lib/lote-leaf-hash';
+import { sha256Hex } from '@/lib/merkle';
 
 export type ActaLeafRow = {
   leafIndex?: number;
@@ -506,6 +507,12 @@ export type ActaDestinatarioInput = {
     txHash: string | null;
     merkleRoot: string | null;
     leafHash: string | null;
+    /** Preimagen de la hoja de envío: SHA-256(UTF-8(leafPayload)) = leafHash. */
+    leafPayload?: string | null;
+    leafIndex?: number | null;
+    /** Hermanos desde la hoja hasta la raíz (spec §5). */
+    proof?: string[] | null;
+    templateSealHash?: string | null;
     merkleValid: boolean | null;
     onChainMatch: boolean | null;
   };
@@ -515,6 +522,12 @@ export type ActaDestinatarioInput = {
     occurredAt?: string;
     merkleValid?: boolean | null;
     txHash?: string;
+    batchId?: string;
+    merkleRoot?: string;
+    leafHash?: string;
+    leafPayload?: string | null;
+    leafIndex?: number | null;
+    proof?: string[] | null;
   }>;
   verifyRef?: string;
 };
@@ -525,21 +538,13 @@ function checkLabel(ok: boolean | null | undefined): string {
   return 'Pendiente';
 }
 
-function stripHtml(html: string): string {
-  return html
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/\s+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+/**
+ * Cuerpo tal como se imprime en la Parte I. El contentHash es SHA-256(UTF-8(trim(texto))) sobre el texto
+ * sellado, byte a byte: se transcribe sin limpiar nada (ni HTML, ni líneas en blanco, ni espacios), para que
+ * lo impreso sea exactamente lo hasheado. Si el texto sellado trae etiquetas, se imprimen tal cual.
+ */
+export function printedActaBody(raw: string): string {
+  return String(raw || '').trim();
 }
 
 function canalLabel(canal?: string): string {
@@ -648,7 +653,9 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     hash: input.contentHash || input.storedHash || undefined,
   });
   const email = input.recipientEmail && !isSyntheticEmail(input.recipientEmail) ? input.recipientEmail : '';
-  const cuerpo = stripHtml(input.cuerpoPersonalizado || '');
+  const cuerpo = printedActaBody(input.cuerpoPersonalizado || '');
+  const printedBodyHash = cuerpo ? await sha256Hex(cuerpo) : '';
+  const printedBodyMatches = cuerpo && input.contentHash ? printedBodyHash === input.contentHash : null;
   const asunto = (input.asuntoPersonalizado || input.campaignAsunto || '').trim();
   const destinatario = input.recipientNombre || email || (input.evidenceSealed === false ? 'Destinatario no transcrito' : 'el destinatario');
   const remitente = input.orgNombre || 'la organización remitente';
@@ -917,7 +924,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     y = writeWrapped(
       doc,
       `Template Meta: ${waSent.templateName} · ${waSent.templateLang}` +
-        (waSent.templateHash ? ` · Template Hash: ${waSent.templateHash}` : '') +
+        (waSent.templateHash ? ` · Hash del pedido a Meta: ${waSent.templateHash}` : '') +
         (waSent.templateId ? ` · ID ${waSent.templateId}` : ''),
       14,
       y,
@@ -1197,8 +1204,11 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     columnStyles: { 0: { cellWidth: 130 }, 1: { cellWidth: 50, fontStyle: 'bold' } },
     body: [
       ['El texto del snapshot coincide con la huella guardada', checkLabel(input.contentMatch)],
+      ...(printedBodyMatches === null
+        ? []
+        : [['El texto impreso en la Parte I reproduce la huella de contenido (recalculado al emitir)', checkLabel(printedBodyMatches)]]),
       ['La foja entra en el árbol de su tanda', checkLabel(input.send.merkleValid)],
-      ['La raíz coincide con la transacción en Polygon', checkLabel(input.send.onChainMatch)],
+      ['La raíz coincide con la transacción en Polygon (lo verificó Notificas al emitir; el perito debe repetirlo en el explorador)', checkLabel(input.send.onChainMatch)],
     ],
   });
   y = lastAutoY(doc, y) + 8;
@@ -1226,16 +1236,82 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     doc.text(explorerUrl, 16, y + 35);
   }
   y += 48;
+  if (cuerpo) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(71, 85, 105);
+    y = writeWrapped(
+      doc,
+      `Texto hasheado: ${new TextEncoder().encode(cuerpo).length} bytes UTF-8, ${cuerpo.split('\n').length} líneas. ` +
+        'Los cortes de renglón dentro de un párrafo de la Parte I son tipográficos; los saltos reales del texto (incluidas las líneas en blanco) cuentan en el hash. ' +
+        'Para que no haya ambigüedad se transcribe también en hexadecimal (UTF-8, una sola cadena; los cortes de renglón son tipográficos). ' +
+        'Pasar ese hex a bytes y calcular SHA-256 reproduce la huella, p. ej. con: xxd -r -p texto.hex | sha256sum.',
+      14,
+      y - 2,
+      182,
+      3.4
+    );
+    y += 1;
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(15, 23, 42);
+    y = writeWrapped(doc, Array.from(new TextEncoder().encode(cuerpo), (b) => b.toString(16).padStart(2, '0')).join(''), 14, y, 182, 3);
+    y += 4;
+  }
   doc.setFont('helvetica', 'normal');
+
+  // Pruebas de cada hoja (preimagen + camino Merkle). Los "Sí" de arriba son afirmaciones del emisor;
+  // esto es lo que permite recalcularlos sin la base de datos (spec §5 y §6).
+  const proofBlocks: Array<{
+    label: string;
+    batchId?: string | null;
+    leafPayload?: string | null;
+    leafHash?: string | null;
+    leafIndex?: number | null;
+    proof?: string[] | null;
+    merkleRoot?: string | null;
+    txHash?: string | null;
+    occurredAt?: string;
+    extra?: Array<[string, string]>;
+  }> = [];
+  if (input.send.txHash) {
+    proofBlocks.push({
+      label: 'Envío',
+      batchId: input.send.batchId,
+      leafPayload: input.send.leafPayload,
+      leafHash: input.send.leafHash,
+      leafIndex: input.send.leafIndex,
+      proof: input.send.proof,
+      merkleRoot: input.send.merkleRoot,
+      txHash: input.send.txHash,
+      extra: input.send.templateSealHash
+        ? [['templateSealHash (último campo de la hoja de envío; es el «Hash plantilla» del lote)', input.send.templateSealHash]]
+        : undefined,
+    });
+  }
+  for (const ev of input.events) {
+    if (!ev.present || (input.canal === 'whatsapp' && ev.type === 'email_read')) continue;
+    proofBlocks.push({
+      label: EVENT_LABEL[ev.type] || ev.type,
+      batchId: ev.batchId,
+      leafPayload: ev.leafPayload,
+      leafHash: ev.leafHash,
+      leafIndex: ev.leafIndex,
+      proof: ev.proof,
+      merkleRoot: ev.merkleRoot,
+      txHash: ev.txHash,
+      occurredAt: ev.occurredAt,
+    });
+  }
 
   const eventRows = input.events
     .filter((ev) => input.canal !== 'whatsapp' || ev.type !== 'email_read')
     .map((ev) => [
-    EVENT_LABEL[ev.type] || ev.type,
-    ev.present ? formatTs(ev.occurredAt) : 'Pendiente',
-    ev.present ? checkLabel(ev.merkleValid ?? true) : '—',
-    ev.txHash || '—',
-  ]);
+      EVENT_LABEL[ev.type] || ev.type,
+      ev.present ? formatTs(ev.occurredAt) : 'Pendiente',
+      ev.present ? checkLabel(ev.merkleValid ?? null) : '—',
+      ev.present ? (ev.batchId || '—') : '—',
+    ]);
   if (eventRows.length > 0) {
     y = ensureY(doc, y, 20);
     doc.setTextColor(15, 23, 42);
@@ -1245,14 +1321,98 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     y += 4;
     autoTable(doc, {
       startY: y,
-      head: [['Hecho', 'Fecha', 'En el árbol', 'TX']],
+      head: [['Hecho', 'Fecha', 'En el árbol', 'Lote (la TX completa está en el detalle de abajo)']],
       body: eventRows,
-      styles: { fontSize: 7, font: 'helvetica', cellPadding: 1.4, overflow: 'ellipsize' },
+      styles: { fontSize: 7, font: 'helvetica', cellPadding: 1.4 },
       margin: PDF_TABLE_MARGIN,
       headStyles: { ...PDF_TABLE_HEAD, fontSize: 7 },
-      columnStyles: { 3: { cellWidth: 52, font: 'courier', fontSize: 6 } },
     });
     y = lastAutoY(doc, y) + 8;
+  }
+
+  if (proofBlocks.length > 0) {
+    y = ensureY(doc, y, 70);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text('Prueba de pertenencia al árbol, hoja por hoja', 14, y);
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(51, 65, 85);
+    y = writeWrapped(
+      doc,
+      'Cada bloque trae la preimagen de la hoja (una sola línea; los cortes de renglón son tipográficos), su SHA-256, el índice, los hermanos del camino y la raíz y la TX completas. ' +
+        'Con eso se recalcula la raíz sin consultar a Notificas (pasos 6 a 8).',
+      14,
+      y,
+      182,
+      3.4
+    );
+    y += 3;
+
+    const mono = (text: string, label: string) => {
+      y = ensureY(doc, y, 10);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(label, 14, y);
+      y += 3;
+      doc.setFont('courier', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(15, 23, 42);
+      y = writeWrapped(doc, text, 14, y, 182, 3);
+      y += 1;
+    };
+
+    for (const block of proofBlocks) {
+      y = ensureY(doc, y, 36);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      doc.text(
+        `${block.label}${block.occurredAt ? ` · ${formatTs(block.occurredAt)}` : ''} · lote ${block.batchId || '—'} · hoja #${
+          typeof block.leafIndex === 'number' ? block.leafIndex : '—'
+        }`,
+        14,
+        y
+      );
+      y += 4;
+      if (block.leafPayload) {
+        mono(block.leafPayload, 'leafPayload (UTF-8, una sola línea)');
+      } else {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(...PDF_BRAND.warnText);
+        y = writeWrapped(
+          doc,
+          'Preimagen no disponible en el registro de esta hoja: no se puede recalcular el hash a partir de este PDF.',
+          14,
+          y,
+          182,
+          3.4
+        );
+      }
+      mono(block.leafHash || '—', 'leafHash = SHA-256(UTF-8(leafPayload))');
+      for (const [k, v] of block.extra || []) mono(v, k);
+      if (block.proof && block.proof.length > 0 && typeof block.leafIndex === 'number') {
+        mono(
+          block.proof.map((s, i) => `${i + 1}  ${s}`).join('\n'),
+          `Hermanos desde la hoja hasta la raíz (índice ${block.leafIndex}; par: SHA-256(h|s), impar: SHA-256(s|h))`
+        );
+      } else if (block.proof && block.proof.length === 0) {
+        mono('(sin hermanos: la tanda tiene una sola hoja y la raíz es la hoja)', 'Camino Merkle');
+      } else {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(...PDF_BRAND.warnText);
+        y = writeWrapped(doc, 'Sin camino Merkle registrado para esta hoja.', 14, y, 182, 3.4);
+      }
+      mono(block.merkleRoot || '—', 'Raíz Merkle (campo 5 del payload on-chain)');
+      mono(block.txHash || '—', 'Transacción Polygon (completa)');
+      y += 3;
+    }
+    doc.setFont('helvetica', 'normal');
   }
 
   y = ensureY(doc, y, 28);
@@ -1272,6 +1432,9 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
       ? '4. Recalcular SHA-256(UTF-8(trim(cuerpo))) del texto bajo «Texto del mensaje (común a correo y WhatsApp)»: debe coincidir con la huella de contenido. El encabezado y el pie de WhatsApp no entran en esa huella.'
       : '4. Recalcular SHA-256(UTF-8(trim(texto_plano_personalizado))) del texto transcrito en la Parte I: debe coincidir con la huella de contenido.',
     '5. Si se altera esta foja, la raíz Merkle deja de coincidir con la registrada on-chain.',
+    `6. Hoja: SHA-256(UTF-8(leafPayload)) debe dar el leafHash del bloque correspondiente. En la hoja de envío el campo 12 es la huella de contenido y el 17 el templateSealHash; en una hoja de evento el campo 7 es el leafHash de envío (sendLeafHash). Formato completo: ${publicAppBase()}${LEAF_SPEC_PATH}.`,
+    '7. Camino: h = leafHash; i = índice. Por cada hermano s, en orden: si i es par h = SHA-256(UTF-8(h + "|" + s)), si es impar h = SHA-256(UTF-8(s + "|" + h)); luego i = floor(i / 2). El resultado final debe ser la raíz Merkle de la TX de esa tanda (campo 5 del payload).',
+    '8. Orden temporal: la TX de envío y la TX de cada hecho figuran completas arriba. Comparar el timestamp de su bloque con la fecha de cada hecho.',
   ];
   for (const line of steps) {
     y = writeWrapped(doc, line, 14, y, 182, 3.5);

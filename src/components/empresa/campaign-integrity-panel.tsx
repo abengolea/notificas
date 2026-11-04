@@ -687,7 +687,7 @@ export function CampaignIntegrityPanel({
                     {result.events.map((ev) => (
                       <YesNo
                         key={ev.type}
-                        ok={ev.present ? ev.merkleValid ?? true : null}
+                        ok={ev.present ? ev.merkleValid ?? null : null}
                         label={
                           ev.type === "email_read"
                             ? "Mail abierto en el lector"
