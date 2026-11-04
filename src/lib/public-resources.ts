@@ -155,6 +155,13 @@ export const LEGAL_PUBLIC_PAGES = [
     description: "Ejercé el derecho de arrepentimiento sobre planes contratados en Notificas.",
     blurb: "Plazo y canal para arrepentirse de una contratación.",
   },
+  {
+    path: "/spec/v2",
+    title: "Spec de hojas v2",
+    description:
+      "Formato de hojas Merkle, payload on-chain y dirección emisora publicada de Notificas SRL en Polygon.",
+    blurb: "Cómo verificar un lote anclado: payload, digest y dirección firmante.",
+  },
 ] as const satisfies readonly PublicResource[];
 
 export type SeoGuidePath = (typeof SEO_GUIDE_PAGES)[number]["path"];

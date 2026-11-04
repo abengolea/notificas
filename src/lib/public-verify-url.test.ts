@@ -38,6 +38,19 @@ test('parsea query del validador', () => {
   assert.equal(q.hash, 'b'.repeat(64));
 });
 
+test('URL de constancia individual acepta leaf de 64 hex', () => {
+  const leaf = 'c'.repeat(64);
+  const url = publicCertificateVerifyUrl({
+    campaignId: 'camp1',
+    kind: 'campaign_acta_recipient',
+    leaf,
+  });
+  assert.match(url, /kind=campaign_acta_recipient/);
+  assert.match(url, new RegExp(`leaf=${leaf}`));
+  const q = verifyQueryFromSearchParams(new URL(url).searchParams);
+  assert.equal(q.leaf, leaf);
+});
+
 test('verify-ref de certificado individual toma el messageId', () => {
   const q = verifyQueryFromSearchParams(
     new URLSearchParams('ref=ntf:mail_certificate:mail:abcMailId')

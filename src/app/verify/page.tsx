@@ -155,17 +155,25 @@ export default function VerifyPage() {
   const { toast } = useToast();
 
   const autoVerifyDone = useRef(false);
+  const campaignIdFromUrl = useRef("");
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = (params.get("id") || params.get("messageId") || "").trim();
     const campaignId = (params.get("campaignId") || "").trim();
+    campaignIdFromUrl.current = campaignId;
     const batchId = (params.get("batchId") || "").trim();
     const kind = (params.get("kind") || "").trim();
     const hash = (params.get("hash") || params.get("h") || "").trim().toLowerCase();
-    if ((!id && !campaignId && !batchId && !hash) || autoVerifyDone.current) return;
+    const leaf = (params.get("leaf") || "").trim().toLowerCase();
+    if (kind === "campaign_acta_recipient" && !id && !leaf) {
+      setHashInput("");
+      return;
+    }
+    if ((!id && !campaignId && !batchId && !hash && !leaf) || autoVerifyDone.current) return;
     autoVerifyDone.current = true;
     setMessageIdInput(id || campaignId);
     if (hash) setHashInput(hash);
+    if (leaf) setHashInput(leaf);
     void (async () => {
       setIsVerifying(true);
       try {
@@ -178,6 +186,7 @@ export default function VerifyPage() {
             ...(batchId ? { batchId } : {}),
             ...(kind ? { kind } : {}),
             ...(hash ? { hash } : {}),
+            ...(leaf ? { leaf } : {}),
           }),
         });
         if (response.ok) {
@@ -210,13 +219,22 @@ export default function VerifyPage() {
       return;
     }
 
+    const looksLeaf = /^[a-f0-9]{64}$/i.test(messageId);
     setIsVerifying(true);
     setResult(null);
     try {
       const response = await fetch("/api/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messageId }),
+        body: JSON.stringify(
+          looksLeaf
+            ? {
+                leaf: messageId.toLowerCase(),
+                campaignId: campaignIdFromUrl.current || undefined,
+                kind: "campaign_acta_recipient",
+              }
+            : { messageId }
+        ),
       });
 
       if (response.ok) {

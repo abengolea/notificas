@@ -1,7 +1,11 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
-import { formatEvidenceTimestamp, PDF_SCHEMA } from '@/lib/pdf-evidence-format';
+import {
+  formatEvidenceTimestamp,
+  formatEvidenceTimestampArtCell,
+  PDF_SCHEMA,
+} from '@/lib/pdf-evidence-format';
 import {
   PDF_BRAND,
   PDF_MM,
@@ -12,7 +16,12 @@ import {
   drawWarnPanelMm,
   stampPdfChromeMm,
 } from '@/lib/pdf-brand';
-import { publicCertificateVerifyUrl } from '@/lib/public-verify-url';
+import { publicAppBase, publicCertificateVerifyUrl } from '@/lib/public-verify-url';
+import { SITE_CONTACT, SITE_LEGAL_NAME } from '@/lib/seo';
+import { maskPhoneForLote } from '@/lib/mask-phone';
+import { formatCuit } from '@/lib/cuit';
+import { LEAF_SPEC_PATH } from '@/lib/polygon-published';
+import { assertPrintedLoteIntegrity, asLeafHash } from '@/lib/lote-leaf-hash';
 
 export type ActaLeafRow = {
   leafIndex?: number;
@@ -34,12 +43,17 @@ export type ActaTandaInput = {
   campaignId: string;
   campaignNombre: string;
   campaignAsunto?: string;
+  templateName?: string;
+  templateHash?: string;
   batchId: string;
   kind: 'send' | 'event';
   status: string;
   leafCount: number;
   merkleRoot?: string;
   txHash?: string;
+  txFrom?: string;
+  blockNumber?: number;
+  blockTime?: string;
   payload?: string;
   sealedAt?: string;
   generatedAt: string;
@@ -50,7 +64,7 @@ export type ActaTandaInput = {
 };
 
 const EVENT_LABEL: Record<string, string> = {
-  email_read: 'Mail abierto (reader)',
+  email_read: 'Correo abierto',
   wa_delivered: 'WhatsApp entregado',
   wa_read: 'WhatsApp leído',
 };
@@ -61,36 +75,170 @@ function formatTs(v?: string): string {
   return formatted === '—' ? v : formatted;
 }
 
+function artDateLong(value?: string): string {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('es-AR', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(d);
+}
+
+function blockTimePair(iso?: string): string {
+  if (!iso) return '—';
+  const utc = formatEvidenceTimestamp(iso).split(' (')[0] || iso;
+  const art = formatEvidenceTimestampArtCell(iso);
+  return `${utc} UTC · ${art} ART`;
+}
+
+/** Parte strings largos en el delimitador (URLs en &, payload en |) para no cortar a mitad de un token. */
+function wrapAtDelimiter(doc: jsPDF, text: string, maxWidth: number, delim: string): string[] {
+  const parts = text.split(delim);
+  const lines: string[] = [];
+  let cur = parts[0] || '';
+  for (let i = 1; i < parts.length; i++) {
+    const piece = delim + parts[i];
+    const trial = cur + piece;
+    if (doc.getTextWidth(trial) <= maxWidth) {
+      cur = trial;
+      continue;
+    }
+    if (cur) lines.push(cur);
+    if (doc.getTextWidth(piece) <= maxWidth) {
+      cur = piece;
+      continue;
+    }
+    const forced = doc.splitTextToSize(piece, maxWidth) as string[];
+    lines.push(...forced.slice(0, -1));
+    cur = forced[forced.length - 1] || '';
+  }
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [text];
+}
+
+export function loteHechoLabel(eventType?: string, kind?: string): string {
+  if (kind === 'error') return 'Error de envío';
+  if (eventType && EVENT_LABEL[eventType]) return EVENT_LABEL[eventType];
+  if (kind === 'send' || (!eventType && kind !== 'event')) return 'Envío';
+  return eventType || 'Hecho';
+}
+
+export function loteClosingSentence(input: ActaTandaInput): string {
+  const n = input.leaves.length || input.leafCount;
+  const when =
+    artDateLong(input.blockTime) ||
+    artDateLong(input.leaves.find((l) => l.occurredAt)?.occurredAt) ||
+    '';
+  const types = input.leaves.map((l) => l.eventType).filter(Boolean);
+  const onlyWaDelivered = types.length > 0 && types.every((t) => t === 'wa_delivered');
+  const onlyWaRead = types.length > 0 && types.every((t) => t === 'wa_read');
+  const onlyMailRead = types.length > 0 && types.every((t) => t === 'email_read');
+  let what: string;
+  if (input.kind === 'send') what = `${n} envío${n === 1 ? '' : 's'}`;
+  else if (onlyWaDelivered) what = `${n} entrega${n === 1 ? '' : 's'} de WhatsApp`;
+  else if (onlyWaRead) what = `${n} lectura${n === 1 ? '' : 's'} de WhatsApp`;
+  else if (onlyMailRead) what = `${n} apertura${n === 1 ? '' : 's'} de correo`;
+  else what = `${n} hecho${n === 1 ? '' : 's'} (sin lecturas si no constan)`;
+  const camp = input.campaignNombre || 'la campaña';
+  const anchored = input.status === 'anchored' && Boolean(input.merkleRoot && input.txHash);
+  const verb = n === 1 ? 'se registró' : 'se registraron';
+  const dateBit = when ? `El ${when} ${verb}` : verb.charAt(0).toUpperCase() + verb.slice(1);
+  const chain = anchored ? 'El lote quedó anclado en Polygon' : 'El lote aún no está anclado en Polygon';
+  return `${dateBit} ${what} de la campaña ${camp}. ${chain}.`;
+}
+
+export function lotePositiveStatement(input: ActaTandaInput): string {
+  const delivered = input.leaves.filter((l) => l.eventType === 'wa_delivered').length;
+  const waRead = input.leaves.filter((l) => l.eventType === 'wa_read').length;
+  const mailRead = input.leaves.filter((l) => l.eventType === 'email_read').length;
+  const parts: string[] = [];
+  if (delivered) {
+    parts.push(
+      `Meta Platforms informó estado «delivered» para ${delivered} mensaje${delivered === 1 ? '' : 's'} de esta campaña${loteArtRange(input.leaves)}`
+    );
+  }
+  if (waRead) {
+    parts.push(`informó lectura de WhatsApp para ${waRead}`);
+  }
+  if (mailRead) {
+    parts.push(`se registró apertura del lector en ${mailRead} correo${mailRead === 1 ? '' : 's'}`);
+  }
+  if (!parts.length) {
+    return input.kind === 'send'
+      ? 'Este lote registra el pedido de envío. Lo que cada destinatario recibió consta en su constancia individual.'
+      : 'Este lote no incluye lecturas; solo los hechos que figuran en la tabla.';
+  }
+  const block =
+    input.blockNumber != null && input.blockTime
+      ? ` Ese conjunto fue sellado en el bloque ${input.blockNumber} de Polygon el ${blockTimePair(input.blockTime)}.`
+      : input.txHash
+        ? ' Ese conjunto fue anclado en la transacción citada.'
+        : '';
+  return `${parts.join('; ')}.${block}`;
+}
+
+function loteArtRange(leaves: ActaLeafRow[]): string {
+  const times = leaves
+    .map((l) => l.occurredAt)
+    .filter((t): t is string => Boolean(t))
+    .sort();
+  if (!times.length) return '';
+  const a = formatEvidenceTimestampArtCell(times[0]);
+  const b = formatEvidenceTimestampArtCell(times[times.length - 1]);
+  if (a === '—' || b === '—') return '';
+  if (a === b) return ` el ${a} ART`;
+  return ` entre ${a} y ${b} ART`;
+}
+
 function isSyntheticEmail(email: string) {
   return email.endsWith('@notificas.internal') || email.endsWith('@wa.internal');
 }
 
 export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuffer> {
+  const printed = await assertPrintedLoteIntegrity(input);
+  const leaves = input.leaves.map((leaf, i) => ({ ...leaf, leafHash: printed.hashes[i] }));
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const kindLabel = input.kind === 'send' ? 'ENVÍO' : 'HECHOS (recepción / lectura)';
   const explorerUrl = input.txHash ? `https://polygonscan.com/tx/${input.txHash}` : '';
+  const specUrl = `${publicAppBase()}${LEAF_SPEC_PATH}`;
   const verifyUrl = publicCertificateVerifyUrl({
     campaignId: input.campaignId,
     batchId: input.batchId,
     kind: 'campaign_acta',
     hash: input.merkleRoot,
   });
+  const individualUrl = `${publicAppBase()}/verify?campaignId=${encodeURIComponent(input.campaignId)}&kind=campaign_acta_recipient&leaf=`;
   const anchored = input.status === 'anchored' && Boolean(input.merkleRoot && input.txHash);
-  const docTitle = 'Acta de integridad de tanda';
+  const docTitle = 'Constancia técnica de integridad del lote';
+  const closing = loteClosingSentence(input);
+  const issuerCuit = formatCuit(SITE_CONTACT.cuit) || SITE_CONTACT.cuit;
+  const issuer = `${SITE_LEGAL_NAME} · CUIT ${issuerCuit}`;
+  const orgCuit = formatCuit(input.orgCuit);
+  const templateHash = input.templateHash
+    ? (() => {
+        try {
+          return asLeafHash(input.templateHash, 'hash plantilla');
+        } catch {
+          return '';
+        }
+      })()
+    : '';
 
   doc.setProperties({
     title: `${docTitle} — ${input.batchId}`,
-    subject: 'Constancia técnica de tanda de campaña anclada en Polygon',
-    creator: 'Notificas.com',
-    author: 'Notificas.com',
+    subject: 'Índice anclado de un lote de campaña. No sustituye la constancia individual.',
+    creator: SITE_LEGAL_NAME,
+    author: SITE_LEGAL_NAME,
   });
 
   let y = drawPdfLetterheadMm(doc, {
     mode: 'first',
     documentTitle: docTitle,
     lines: [
-      input.kind === 'send' ? 'Tanda de envío' : 'Tanda de hechos (recepción / lectura)',
-      'La inmutabilidad la aporta la transacción citada, no este PDF.',
+      closing,
+      'Índice anclado. No sustituye la constancia individual. La inmutabilidad la aporta la transacción, no este PDF.',
     ],
   });
 
@@ -100,204 +248,204 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
     doc.addImage(qr, 'PNG', 176, y, 18, 18);
     doc.setFontSize(6);
     doc.setTextColor(...PDF_BRAND.textMuted);
-    doc.text('Validar', 179, y + 20);
+    doc.text('Validar en la red', 175, y + 20);
     doc.setTextColor(...PDF_BRAND.textMain);
   } catch {
     /* QR opcional */
   }
 
   const metaWidth = 155;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...PDF_BRAND.textMuted);
+  doc.text('Emisor de esta constancia', 14, y);
+  y += 4;
   doc.setFontSize(10);
   doc.setTextColor(...PDF_BRAND.textMain);
-  doc.text(`Organización: ${input.orgNombre}${input.orgCuit ? `  ·  CUIT ${input.orgCuit}` : ''}`, 14, y);
+  doc.text(issuer, 14, y);
+  y += 6;
+  doc.setFontSize(8);
+  doc.setTextColor(...PDF_BRAND.textMuted);
+  doc.text('Organización (cliente)', 14, y);
+  y += 4;
+  doc.setFontSize(10);
+  doc.setTextColor(...PDF_BRAND.textMain);
+  const orgLine = `${input.orgNombre}${orgCuit ? `  ·  CUIT ${orgCuit}` : ''}`;
+  doc.text(doc.splitTextToSize(orgLine, metaWidth), 14, y);
   y += 6;
   doc.text(`Campaña: ${input.campaignNombre}`, 14, y);
   y += 5;
   doc.setFontSize(8);
   doc.setTextColor(...PDF_BRAND.textMuted);
-  doc.text(`ID campaña: ${input.campaignId}`, 14, y);
-  if (input.campaignAsunto) {
-    y += 5;
-    const asunto = doc.splitTextToSize(`Asunto: ${input.campaignAsunto}`, metaWidth);
-    doc.text(asunto, 14, y);
-    y += asunto.length * 4;
+  doc.text(`ID campaña: ${input.campaignId}  ·  Lote: ${input.batchId}`, 14, y);
+  y += 4;
+  if (templateHash) {
+    doc.setFont('courier', 'normal');
+    const hashLines = doc.splitTextToSize(`Hash plantilla: ${templateHash}`, metaWidth);
+    doc.text(hashLines, 14, y);
+    y += hashLines.length * 3.4;
+    doc.setFont('helvetica', 'normal');
   }
-  y += 6;
-  doc.setTextColor(...PDF_BRAND.textMain);
-  doc.setFontSize(10);
-  doc.text(`Tanda: ${input.batchId}   ·   Tipo: ${kindLabel}`, 14, y);
-  y += 5;
-  doc.text(
-    `Estado: ${anchored ? 'Anclada en Polygon' : input.status}   ·   Hojas: ${input.leafCount}   ·   Cierre: ${input.sealedAt || '—'}`,
-    14,
-    y
-  );
-  y += 5;
-  doc.setFontSize(8);
-  doc.setTextColor(...PDF_BRAND.textMuted);
-  doc.text(`Acta generada: ${input.generatedAt}`, 14, y);
-  y += 8;
-  y = Math.max(y, blockStart + 24);
+  doc.setTextColor(...PDF_BRAND.primary);
+  const verifyLines = wrapAtDelimiter(doc, verifyUrl, metaWidth, '&');
+  doc.text(verifyLines, 14, y);
+  y += verifyLines.length * 3.4 + 2;
+  y = Math.max(y, blockStart + 26);
 
   if (!anchored) {
-    drawWarnPanelMm(doc, 14, y - 4, 182, 10);
+    drawWarnPanelMm(doc, 14, y, 182, 10);
     doc.setTextColor(...PDF_BRAND.warnText);
     doc.setFontSize(8);
     doc.text(
-      'Esta tanda todavía no está anclada en blockchain. El listado es informativo; no constituye prueba on-chain.',
+      'Este lote todavía no está anclado en blockchain. El listado es informativo; no constituye prueba on-chain.',
       16,
-      y + 2
+      y + 6
     );
-    y += 12;
+    y += 14;
     doc.setTextColor(...PDF_BRAND.textMain);
   }
 
-  const hashBoxH = input.kind === 'send' ? 42 : 38;
-  drawSoftPanelMm(doc, 14, y, 182, hashBoxH);
-  doc.setFontSize(8);
+  const chainLines = [
+    `Transacción: ${input.txHash || '—'}`,
+    input.txFrom ? `Emitida desde ${input.txFrom}` : `Dirección emisora: ver ${specUrl}`,
+    input.blockNumber != null
+      ? `Bloque ${input.blockNumber} · ${blockTimePair(input.blockTime)}`
+      : 'Número de bloque: no consta (la fecha cierta es la del bloque, no la del servidor).',
+    explorerUrl || '',
+    input.merkleRoot ? `Raíz Merkle: ${input.merkleRoot}` : '',
+    `Spec de hojas: ${specUrl} · dirección emisora publicada ahí`,
+  ].filter(Boolean);
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(6.5);
+  const chainWrapped = chainLines.map((line) => doc.splitTextToSize(line, 178) as string[]);
+  const chainH = 7 + chainWrapped.reduce((n, w) => n + w.length * 3.5, 0);
+  drawSoftPanelMm(doc, 14, y, 182, chainH);
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(6.5);
   doc.setTextColor(...PDF_BRAND.textMain);
-  doc.text('Raíz Merkle (SHA-256)', 16, y + 5);
-  doc.setFont('courier', 'normal');
-  doc.setFontSize(7);
-  const rootLines = doc.splitTextToSize(input.merkleRoot || '—', 178);
-  doc.text(rootLines, 16, y + 10);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.text('Transacción Polygon (Chain ID 137)', 16, y + 18);
-  doc.setFont('courier', 'normal');
-  doc.setFontSize(7);
-  const txLines = doc.splitTextToSize(input.txHash || '—', 178);
-  doc.text(txLines, 16, y + 23);
-  if (explorerUrl) {
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(...PDF_BRAND.primary);
-    doc.setFontSize(7);
-    doc.text(explorerUrl, 16, y + 30);
+  let cy = y + 4.5;
+  for (const wrapped of chainWrapped) {
+    doc.text(wrapped, 16, cy);
+    cy += wrapped.length * 3.5;
   }
-  y += hashBoxH + 4;
+  y += chainH + 3;
 
   if (input.payload) {
-    doc.setTextColor(71, 85, 105);
-    doc.setFontSize(7);
-    doc.text('Payload UTF-8 registrado en la transacción:', 14, y);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...PDF_BRAND.textMain);
+    doc.text('Payload UTF-8 registrado en la transacción', 14, y);
     y += 4;
     doc.setFont('courier', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(51, 65, 85);
     const payloadLines = doc.splitTextToSize(input.payload, 182);
     doc.text(payloadLines, 14, y);
-    y += payloadLines.length * 3.4 + 4;
+    y += payloadLines.length * 3.2 + 2;
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7);
+    doc.setTextColor(...PDF_BRAND.textMuted);
+    doc.text(
+      'El payload on-chain es una sola línea, sin saltos. Los cortes de renglón de este PDF son tipográficos.',
+      14,
+      y
+    );
+    y += 5;
     doc.setFont('helvetica', 'normal');
-    if (input.digestMatch === true) {
+    doc.setFontSize(8);
+    if (printed.payloadDigest && printed.payloadDigest === printed.computedDigest) {
       doc.setTextColor(21, 128, 61);
-      doc.text('leavesDigest: las hojas de este acta coinciden con el digest del payload v2.', 14, y);
-      y += 5;
-    } else if (input.digestMatch === false) {
-      doc.setTextColor(185, 28, 28);
-      doc.text('leavesDigest: NO coincide con el payload. Las hojas publicadas no son las ancladas.', 14, y);
+      doc.text('leavesDigest: las hojas impresas coinciden con el digest del payload v2.', 14, y);
       y += 5;
     }
-    doc.setTextColor(71, 85, 105);
-  }
-
-  doc.setTextColor(15, 23, 42);
-  doc.setFontSize(9);
-  doc.text('Cómo verifica un perito (sin depender de la base de datos)', 14, y);
-  y += 5;
-  doc.setFontSize(7);
-  doc.setTextColor(51, 65, 85);
-  const steps =
-    input.kind === 'send'
-      ? [
-          '1. Abrir la transacción en polygonscan.com y decodificar el campo Input Data (UTF-8).',
-          '2. Payload v2: CAMPAIGN_SEND|v2|{campaignId}|{batchId}|{merkleRoot}|{leafCount}|{timestamp}|{leavesDigest}|{templateSealHash?}. Una TX por tanda de hasta 500. Las tandas v1 no tienen leavesDigest (en v1 la posición 7, si existe, es el sello del template).',
-          '3. El templateSealHash es la huella del formulario WA de toda la campaña (nombre, idioma, variables). Es el mismo para los 150 mil.',
-          '4. Recalcular SHA-256(UTF-8(trim(texto_plano_personalizado))) de un destinatario: debe coincidir con su contentHash.',
-          '5. Hoja de envío v2: SHA-256(v2|send|campaignId|messageId|email|telefono|dni|nombre|monto|cuotas|rowHash|contentHash|adjuntos|smtp|wamid|waBodyHash|templateSealHash). Las tandas antiguas usan v1 (sin DNI/monto). Hoja de error: SHA-256(v2|error|…).',
-          '6. leavesDigest = SHA-256(JSON.stringify(leafHashes.sort())) del lote. Si no coincide con el de la TX, las hojas publicadas no son las ancladas.',
-          '7. Con la prueba Merkle (hermano a hermano: SHA-256(left|right)) se llega a la raíz. Si coincide con la TX, ese renglón no se modificó.',
-        ]
-      : [
-          '1. Abrir la transacción en polygonscan.com y decodificar Input Data (UTF-8).',
-          '2. Payload v2: CAMPAIGN_EVENT|v2|{campaignId}|{batchId}|{merkleRoot}|{leafCount}|{timestamp}|{leavesDigest}. Las tandas v1 no incluyen leavesDigest.',
-          '3. Cada hecho (mail abierto, WA entregado, WA leído) es una hoja atada al leafHash del envío.',
-          '4. Verificar la prueba Merkle hasta la raíz de esta tanda. El sobre de envío no se reabre: este acta es el de los hechos posteriores.',
-        ];
-  for (const line of steps) {
-    const wrapped = doc.splitTextToSize(line, 182);
-    doc.text(wrapped, 14, y);
-    y += wrapped.length * 3.5 + 1;
   }
 
   const tableHead =
     input.kind === 'send'
-      ? ['#', 'Destinatario', 'Email / Teléfono', 'DNI', 'Hash contenido', 'Hoja Merkle']
-      : ['#', 'Destinatario', 'Email / Teléfono', 'Hecho', 'Fecha', 'Hoja Merkle'];
+      ? ['#', 'Destinatario', 'Teléfono', 'Estado']
+      : ['#', 'Destinatario', 'Teléfono', 'Hecho', 'ART (UTC-3)'];
 
-  const tableBody = input.leaves.map((leaf, i) => {
-    const idx = leaf.leafIndex ?? i;
-    const email = leaf.email && !isSyntheticEmail(leaf.email) ? leaf.email : '';
-    const contact = [email, leaf.telefono].filter(Boolean).join(' / ') || '—';
+  const tableBody = leaves.map((leaf, i) => {
+    const idx = String(leaf.leafIndex ?? i);
+    const nombre = leaf.nombre || '—';
+    const tel = maskPhoneForLote(leaf.telefono);
     if (input.kind === 'send') {
-      return [
-        String(idx),
-        leaf.kind === 'error' ? `${leaf.nombre || '—'} (error)` : leaf.nombre || '—',
-        contact,
-        leaf.dni || '—',
-        leaf.contentHash || '—',
-        leaf.leafHash,
-      ];
+      return [idx, leaf.kind === 'error' ? `${nombre} (error)` : nombre, tel, loteHechoLabel(leaf.eventType, leaf.kind)];
     }
-    return [
-      String(idx),
-      leaf.nombre || '—',
-      contact,
-      EVENT_LABEL[leaf.eventType || ''] || leaf.eventType || '—',
-      formatTs(leaf.occurredAt),
-      leaf.leafHash,
-    ];
+    return [idx, nombre, tel, loteHechoLabel(leaf.eventType, leaf.kind), formatEvidenceTimestampArtCell(leaf.occurredAt)];
   });
 
   autoTable(doc, {
-    startY: Math.min(y + 4, 250),
+    startY: Math.min(y + 2, 250),
     head: [tableHead],
     body: tableBody,
     margin: PDF_TABLE_MARGIN,
-    styles: { fontSize: 6, font: 'courier', cellPadding: 1.2, overflow: 'ellipsize' },
-    headStyles: { ...PDF_TABLE_HEAD, font: 'helvetica', fontSize: 7 },
+    tableWidth: 182,
+    styles: { fontSize: 8, font: 'helvetica', cellPadding: 1.6, overflow: 'linebreak' },
+    headStyles: { ...PDF_TABLE_HEAD, font: 'helvetica', fontSize: 7.5 },
     columnStyles:
       input.kind === 'send'
-        ? { 0: { cellWidth: 10 }, 4: { cellWidth: 42 }, 5: { cellWidth: 42 } }
-        : { 0: { cellWidth: 10 }, 5: { cellWidth: 48 } },
+        ? { 0: { cellWidth: 10 }, 2: { cellWidth: 42 }, 3: { cellWidth: 36 } }
+        : { 0: { cellWidth: 10 }, 1: { cellWidth: 'auto' }, 2: { cellWidth: 34 }, 3: { cellWidth: 38 }, 4: { cellWidth: 36 } },
   });
 
-  const finalY =
-    (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y;
-  let footY = finalY + 8;
-  if (footY > PDF_MM.contentBottom) {
-    doc.addPage();
-    footY = PDF_MM.continueTop;
+  let afterTable = lastAutoY(doc, y) + 4;
+  afterTable = ensureY(doc, afterTable, 14);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(...PDF_BRAND.textMain);
+  doc.text('Hashes de hoja (mismo orden que la tabla; para el leavesDigest)', 14, afterTable);
+  afterTable += 4;
+  doc.setFont('courier', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(51, 65, 85);
+  for (let i = 0; i < leaves.length; i++) {
+    const leaf = leaves[i];
+    const idx = leaf.leafIndex ?? i;
+    const line = `${idx}  ${leaf.leafHash}`;
+    const wrapped = doc.splitTextToSize(line, 182);
+    afterTable = ensureY(doc, afterTable, wrapped.length * 3.2 + 1);
+    doc.text(wrapped, 14, afterTable);
+    afterTable += wrapped.length * 3.2 + 0.8;
   }
+
+  afterTable = ensureY(doc, afterTable + 3, 20);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
+  doc.setFontSize(8);
+  doc.setTextColor(...PDF_BRAND.textMain);
+  const judicial = doc.splitTextToSize(
+    `Para la constancia individual de un destinatario (no este lote), pegá el hash de hoja de esa fila después de leaf=: ${individualUrl}`,
+    182
+  );
+  doc.text(judicial, 14, afterTable);
+  afterTable += judicial.length * 3.4 + 3;
+
+  afterTable = ensureY(doc, afterTable, 12);
+  doc.setFontSize(8);
+  const positive = doc.splitTextToSize(lotePositiveStatement(input), 182);
+  doc.text(positive, 14, afterTable);
+  afterTable += positive.length * 3.6 + 3;
+
+  afterTable = ensureY(doc, afterTable, 16);
+  doc.setFontSize(6.5);
   doc.setTextColor(...PDF_BRAND.textMuted);
   const disclaimer = doc.splitTextToSize(
-      'Este documento es una constancia técnica de lo pedido a WhatsApp/correo y de lo anclado en Polygon. ' +
+    'Este documento es una constancia técnica de lo pedido a WhatsApp/correo y de lo anclado en Polygon. ' +
       'No prueba por sí solo la identidad civil del titular del teléfono, ni que haya leído o comprendido el contenido, ni que la deuda declarada por el cliente sea cierta. ' +
       'DNI, monto y nombre se transcriben de la hoja Merkle (si es v2) o se omiten; no se toman de la base viva. ' +
       'La inmutabilidad la aporta la transacción citada, no este PDF. ' +
       'WhatsApp “entregado” significa que Meta informó entrega a un wa_id, no notificación fehaciente al deudor.',
     182
   );
-  doc.text(disclaimer, 14, footY);
+  doc.text(disclaimer, 14, afterTable);
 
   stampPdfChromeMm(doc, {
     pagesWithFirstHeader: [1],
     continueTitle: () => docTitle,
     footerLine1: (page, pageCount) =>
-      `Notificas.com · ${PDF_SCHEMA.actaTanda} · tanda ${input.batchId} · pág. ${page} de ${pageCount}`,
+      `${SITE_LEGAL_NAME} · ${PDF_SCHEMA.actaTanda} · lote ${input.batchId} · pág. ${page} de ${pageCount}`,
     footerLine2: () =>
-      [input.verifyRef && `verify-ref: ${input.verifyRef}`, input.txHash?.slice(0, 18) && `${input.txHash.slice(0, 18)}…`]
-        .filter(Boolean)
-        .join('  ·  ') || undefined,
+      [input.verifyRef && `verify-ref: ${input.verifyRef}`, input.txHash].filter(Boolean).join('  ·  ') || undefined,
   });
 
   return doc.output('arraybuffer') as ArrayBuffer;

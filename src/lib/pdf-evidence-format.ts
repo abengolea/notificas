@@ -2,7 +2,7 @@
 export const PDF_SCHEMA = {
   constanciaEnvio: 'constancia-envio/v2',
   certificadoLectura: 'certificado-lectura/v4',
-  actaTanda: 'acta-tanda/v3',
+  actaTanda: 'acta-tanda/v5',
   actaIndividual: 'acta-individual/v7',
   campaignReport: 'campaign-report/v2',
   metaVerification: 'meta-verification/v2',
@@ -71,6 +71,22 @@ export function formatEvidenceTimestampCompact(value?: unknown): string {
   if (!d) return '—';
   const utc = d.toISOString().replace(/\.\d{3}Z$/, 'Z');
   return `${utc.slice(0, 10)}\n${utc.slice(11, 19)}Z`;
+}
+
+/** Celda de tabla del lote: hora Argentina 24 h, sin sufijo (el encabezado dice ART). */
+export function formatEvidenceTimestampArtCell(value?: unknown): string {
+  const d = toDate(value);
+  if (!d) return '—';
+  return new Intl.DateTimeFormat('es-AR', {
+    timeZone: ART_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(d);
 }
 
 /** Fecha/hora local Argentina para lectura humana en tablas (Parte I). */

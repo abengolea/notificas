@@ -4,7 +4,7 @@ import { adminDb, getAdminDb } from "@/lib/firebase-admin";
 import { findIssuedDocument, type IssuedDocumentRecord } from "@/lib/issued-documents";
 import { buildPublicEvidence } from "@/lib/public-evidence";
 import { extractVerifyHints, type IssuedDocKind, type VerifyHints } from "@/lib/verify-hints";
-import { verifyQueryFromSearchParams } from "@/lib/public-verify-url";
+import { asSha256Hex, verifyQueryFromSearchParams } from "@/lib/public-verify-url";
 
 const PAGE_SIZE = 200;
 
@@ -202,9 +202,36 @@ function buildCampaignPayload(
   };
 }
 
+async function findMessageIdByLeafHash(
+  db: FirebaseFirestore.Firestore,
+  campaignId: string | undefined,
+  leafHash: string
+): Promise<string | null> {
+  if (!campaignId) return null;
+  const batches = await db.collection("campaigns").doc(campaignId).collection("integrity_batches").get();
+  for (const batch of batches.docs) {
+    const hit = await batch.ref.collection("leaves").where("leafHash", "==", leafHash).limit(1).get();
+    if (!hit.empty) {
+      const messageId = String(hit.docs[0].data()?.messageId || "");
+      if (messageId) return messageId;
+    }
+  }
+  return null;
+}
+
 async function resolveCampaignFromHints(hints: VerifyHints): Promise<IssuedDocumentRecord | null> {
-  if (!hints.campaignId && !hints.messageId && !hints.batchId && !hints.campaignNombre) return null;
+  if (!hints.campaignId && !hints.messageId && !hints.batchId && !hints.campaignNombre && !hints.leafHash) {
+    return null;
+  }
   const db = getAdminDb();
+
+  if (hints.leafHash && !hints.messageId) {
+    const fromLeaf = await findMessageIdByLeafHash(db, hints.campaignId, hints.leafHash);
+    if (fromLeaf) {
+      hints.messageId = fromLeaf;
+      hints.kind = hints.kind || "campaign_acta_recipient";
+    }
+  }
 
   if (hints.messageId && hints.kind === "campaign_acta_recipient") {
     const msg = await db.collection("campaign_messages").doc(hints.messageId).get();
@@ -400,6 +427,8 @@ export async function POST(request: NextRequest) {
     if (typeof body?.kind === "string" && body.kind.trim()) {
       hints.kind = body.kind as IssuedDocKind;
     }
+    const leaf = typeof body?.leaf === "string" ? asSha256Hex(body.leaf) : undefined;
+    if (leaf) hints.leafHash = leaf;
     if (messageId && !hints.messageId) hints.messageId = messageId;
 
     const fromQr =
@@ -587,6 +616,21 @@ export async function GET(request: NextRequest) {
       });
     }
     return NextResponse.json({ error: "Documento no encontrado", messageId: q.id }, { status: 404 });
+  }
+  if (q.leaf) {
+    const fromLeaf = await resolveCampaignFromHints({
+      campaignId: q.campaignId,
+      batchId: q.batchId,
+      kind: q.kind || "campaign_acta_recipient",
+      leafHash: q.leaf,
+    });
+    if (fromLeaf) {
+      return NextResponse.json({
+        success: true,
+        data: { ...buildCampaignPayload(fromLeaf, q.leaf), issuedByNotificas: true },
+      });
+    }
+    return NextResponse.json({ error: "Hoja no encontrada", leaf: q.leaf }, { status: 404 });
   }
   if (q.campaignId || q.batchId) {
     const fromCampaign = await resolveCampaignFromHints({

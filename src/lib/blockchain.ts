@@ -532,6 +532,7 @@ export async function getTransactionInfo(txHash: string) {
 
     return {
       hash: tx?.hash,
+      from: tx?.from,
       blockNumber: receipt?.blockNumber,
       gasUsed: receipt?.gasUsed,
       status: receipt?.status,

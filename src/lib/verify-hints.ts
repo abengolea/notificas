@@ -12,6 +12,7 @@ export type VerifyHints = {
   campaignNombre?: string;
   batchId?: string;
   messageId?: string;
+  leafHash?: string;
 };
 
 export function campaignVerifyRef(

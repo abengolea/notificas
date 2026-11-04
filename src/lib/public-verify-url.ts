@@ -45,6 +45,7 @@ export function publicCertificateVerifyUrl(q: {
   batchId?: string;
   kind?: IssuedDocKind;
   hash?: string;
+  leaf?: string;
 }): string {
   const base = publicAppBase();
   const params = new URLSearchParams();
@@ -54,6 +55,8 @@ export function publicCertificateVerifyUrl(q: {
   if (q.kind) params.set('kind', q.kind);
   const hash = asSha256Hex(q.hash);
   if (hash) params.set('hash', hash);
+  const leaf = asSha256Hex(q.leaf);
+  if (leaf) params.set('leaf', leaf);
   const qs = params.toString();
   return qs ? `${base}/verify?${qs}` : `${base}/verify`;
 }
@@ -64,6 +67,7 @@ export function verifyQueryFromSearchParams(search: URLSearchParams): {
   batchId?: string;
   kind?: IssuedDocKind;
   hash?: string;
+  leaf?: string;
 } {
   const ref = (search.get('ref') || '').trim();
   const fromRef = ref ? extractVerifyHints(`verify-ref: ${ref}`) : {};
@@ -73,11 +77,13 @@ export function verifyQueryFromSearchParams(search: URLSearchParams): {
   const kindRaw = (search.get('kind') || fromRef.kind || '').trim();
   const kind = (kindRaw || undefined) as IssuedDocKind | undefined;
   const hash = asSha256Hex(search.get('hash') || search.get('h'));
+  const leaf = asSha256Hex(search.get('leaf'));
   return {
     id: id || undefined,
     campaignId: campaignId || undefined,
     batchId: batchId || undefined,
     kind,
     hash,
+    leaf,
   };
 }

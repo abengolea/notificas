@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { verifyCampaignMessage, verifyIntegrityBatch, parseSendLeafPayload } from '@/lib/campaign-integrity';
+import {
+  verifyCampaignMessage,
+  parseSendLeafPayload,
+  parseEventLeafPayload,
+} from '@/lib/campaign-integrity';
+import { getTransactionInfo } from '@/lib/blockchain';
 import { buildActaDestinatarioPdf, buildActaTandaPdf, type ActaLeafRow } from '@/lib/campaign-integrity-pdf';
+import { LotePdfIntegrityError } from '@/lib/lote-leaf-hash';
+import { formatCuit } from '@/lib/cuit';
 import { findEvidenceSnapshot } from '@/lib/evidence-snapshot';
 import {
   listProviderEventsForCampaignMessage,
@@ -13,26 +20,6 @@ import { campaignVerifyRef } from '@/lib/verify-hints';
 import { formatEvidenceTimestamp } from '@/lib/pdf-evidence-format';
 import { describeWhatsAppSentContent } from '@/lib/whatsapp-evidence';
 import { isRealSmtpMessageId } from '@/lib/email-delivery-label';
-
-function formatSealedAt(v: unknown): string | undefined {
-  if (!v) return undefined;
-  if (typeof v === 'string') {
-    const d = new Date(v);
-    return Number.isNaN(d.getTime()) ? v : d.toLocaleString('es-AR');
-  }
-  if (typeof v === 'object' && v && 'toDate' in v && typeof (v as { toDate: () => Date }).toDate === 'function') {
-    try {
-      return (v as { toDate: () => Date }).toDate().toLocaleString('es-AR');
-    } catch {
-      return undefined;
-    }
-  }
-  if (typeof v === 'object' && v && ('_seconds' in v || 'seconds' in v)) {
-    const secs = Number((v as { _seconds?: number; seconds?: number })._seconds ?? (v as { seconds?: number }).seconds);
-    if (Number.isFinite(secs)) return new Date(secs * 1000).toLocaleString('es-AR');
-  }
-  return undefined;
-}
 
 function toIso(v: unknown): string | undefined {
   if (!v) return undefined;
@@ -153,7 +140,9 @@ export async function GET(request: NextRequest) {
 
     const pdf = await buildActaDestinatarioPdf({
       orgNombre: String(snapshot?.sender.orgNombre || org.nombre || ''),
-      orgCuit: snapshot?.sender.orgCuit || (typeof org.cuit === 'string' ? org.cuit : undefined),
+      orgCuit:
+        formatCuit(snapshot?.sender.orgCuit || (typeof org.cuit === 'string' ? org.cuit : undefined)) ||
+        undefined,
       campaignId,
       campaignNombre: String(campaign.nombre || ''),
       campaignAsunto: snapshot?.subject || (typeof campaign.asunto === 'string' ? campaign.asunto : undefined),
@@ -270,47 +259,68 @@ export async function GET(request: NextRequest) {
   }
 
   const leaves: ActaLeafRow[] = rawLeaves.map((leaf, i) => {
-    const parsed = parseSendLeafPayload(typeof leaf.leafPayload === 'string' ? leaf.leafPayload : undefined);
-    const sealedSend = (msgById.get(String(leaf.messageId || ''))?.integrity?.send || {}) as Record<string, unknown>;
+    const payload = typeof leaf.leafPayload === 'string' ? leaf.leafPayload : undefined;
+    const parsedSend = parseSendLeafPayload(payload);
+    const parsedEvent = parseEventLeafPayload(payload);
+    const msg = msgById.get(String(leaf.messageId || '')) || {};
+    const sealedSend = (msg.integrity?.send || {}) as Record<string, unknown>;
     return {
       leafIndex: typeof leaf.leafIndex === 'number' ? leaf.leafIndex : i,
       messageId: String(leaf.messageId || ''),
       leafHash: String(leaf.leafHash || ''),
-      kind: typeof leaf.kind === 'string' ? leaf.kind : undefined,
-      contentHash: parsed?.contentHash || (typeof leaf.contentHash === 'string' ? leaf.contentHash : undefined),
-      eventType: typeof leaf.eventType === 'string' ? leaf.eventType : undefined,
-      occurredAt: typeof leaf.occurredAt === 'string' ? leaf.occurredAt : undefined,
-      nombre: parsed?.nombre || String(leaf.nombre || sealedSend.nombre || ''),
-      email: parsed?.email || '',
-      telefono: parsed?.phone || '',
-      dni: parsed?.dni || String(leaf.dni || sealedSend.dni || ''),
+      kind: typeof leaf.kind === 'string' ? leaf.kind : parsedEvent ? 'event' : undefined,
+      contentHash: parsedSend?.contentHash || (typeof leaf.contentHash === 'string' ? leaf.contentHash : undefined),
+      eventType: typeof leaf.eventType === 'string' ? leaf.eventType : parsedEvent?.eventType,
+      occurredAt:
+        typeof leaf.occurredAt === 'string'
+          ? leaf.occurredAt
+          : parsedEvent?.occurredAt,
+      nombre:
+        parsedSend?.nombre ||
+        String(leaf.nombre || sealedSend.nombre || msg.recipientNombre || ''),
+      email: parsedSend?.email || String(msg.recipientEmail || ''),
+      telefono: parsedSend?.phone || String(msg.recipientTelefono || ''),
+      dni: parsedSend?.dni || String(leaf.dni || sealedSend.dni || msg.recipientDni || ''),
     };
   });
 
   try {
-    const batchVerify =
-      String(batch.status || '') === 'anchored'
-        ? await verifyIntegrityBatch(campaignId, batchId).catch(() => null)
-        : null;
+    const txHash = typeof batch.txHash === 'string' ? batch.txHash : undefined;
+    let txFrom: string | undefined;
+    let blockNumber: number | undefined;
+    let blockTime: string | undefined;
+    if (txHash) {
+      try {
+        const info = await getTransactionInfo(txHash);
+        txFrom = typeof info.from === 'string' ? info.from : undefined;
+        if (typeof info.blockNumber === 'number') blockNumber = info.blockNumber;
+        if (typeof info.timestamp === 'number') {
+          blockTime = new Date(info.timestamp * 1000).toISOString();
+        }
+      } catch {
+        /* el PDF sale igual; el bloque es opcional si Polygon no responde */
+      }
+    }
+    const seal = (campaign.waTemplateSeal || {}) as { hash?: string; templateName?: string };
     const pdf = await buildActaTandaPdf({
       orgNombre: String(org.nombre || ''),
-      orgCuit: typeof org.cuit === 'string' ? org.cuit : undefined,
+      orgCuit: formatCuit(typeof org.cuit === 'string' ? org.cuit : undefined) || undefined,
       campaignId,
       campaignNombre: String(campaign.nombre || ''),
-      campaignAsunto: typeof campaign.asunto === 'string' ? campaign.asunto : undefined,
+      templateHash: typeof seal.hash === 'string' ? seal.hash : undefined,
       batchId,
       kind: batch.kind === 'event' ? 'event' : 'send',
       status: String(batch.status || 'open'),
       leafCount: leaves.length,
       merkleRoot: typeof batch.merkleRoot === 'string' ? batch.merkleRoot : undefined,
-      txHash: typeof batch.txHash === 'string' ? batch.txHash : undefined,
+      txHash,
+      txFrom,
+      blockNumber,
+      blockTime,
       payload: typeof batch.payload === 'string' ? batch.payload : undefined,
-      sealedAt: formatSealedAt(batch.sealedAt),
       generatedAt: formatEvidenceTimestamp(new Date()),
       leaves,
       verifyRef: campaignVerifyRef('campaign_acta', campaignId, batchId),
-      leavesDigest: batchVerify?.computedDigest || undefined,
-      digestMatch: batchVerify?.digestMatch ?? null,
     });
 
     const hash = sha256Hex(pdf);
@@ -335,6 +345,9 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (e) {
+    if (e instanceof LotePdfIntegrityError) {
+      return NextResponse.json({ error: e.message }, { status: 422 });
+    }
     console.error('GET /api/campaigns/integrity/acta', e);
     return NextResponse.json({ error: 'Error al generar el acta PDF' }, { status: 500 });
   }
