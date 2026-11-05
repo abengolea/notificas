@@ -66,6 +66,15 @@ export default function LeafSpecV2Page() {
               <code>timestamp</code> es el instante en que se armó el payload (ISO 8601 UTC, milisegundos);
               el momento del anclaje es el timestamp del bloque de la transacción, siempre posterior.
             </p>
+            <p className="mt-3">
+              El timestamp del bloque es la fecha cierta de la <strong>publicación</strong> de las huellas.
+              El envío y los hechos (entrega, lectura, apertura) son anteriores y se publican después, en
+              transacciones distintas; el orden en que se minan esas transacciones no prueba el orden de los
+              hechos. El puntero entre un hecho y su envío es el <code>sendLeafHash</code> (campo 7 de la
+              hoja de evento), no cuál de las dos transacciones se minó primero. La fecha y la hora de cada
+              hecho están en su hoja (<code>occurredAt</code> y, para entrega y lectura, lo que informó
+              Meta).
+            </p>
           </section>
 
           <section>
@@ -206,8 +215,9 @@ export default function LeafSpecV2Page() {
                 dice la cadena.
               </li>
               <li>
-                Orden temporal: compará el timestamp del bloque de la TX de envío con el de cada hecho. El
-                PDF imprime cada TX completa para poder hacerlo en el explorador.
+                Publicación: compará el timestamp del bloque de cada TX para ver cuándo se publicó cada
+                conjunto de huellas, no para datar el hecho. El PDF imprime cada TX completa para poder
+                hacerlo en el explorador. La fecha y la hora de cada hecho están en su hoja.
               </li>
             </ol>
           </section>
@@ -225,6 +235,11 @@ export default function LeafSpecV2Page() {
               revisión que leyó (por ejemplo, con una copia archivada de la página ese día).
             </p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
+              <li>
+                <strong>v2, rev. 2026-11-05</strong>: se aclara que el timestamp del bloque data la
+                publicación de las huellas y no el envío ni cada hecho, y que el orden de minado de las
+                transacciones no prueba el orden de los hechos. Sin cambios de formato ni de cálculo.
+              </li>
               <li>
                 <strong>v2, rev. 2026-11-04</strong>: se definen la serialización de campos, el orden de las
                 hojas en el árbol, la verificación de una prueba, el cálculo de <code>contentHash</code>, la

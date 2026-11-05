@@ -240,6 +240,7 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
     lines: [
       closing,
       'Índice anclado. No sustituye la constancia individual. La inmutabilidad la aporta la transacción, no este PDF.',
+      'La transacción prueba que estas huellas existían a la hora de su bloque; las horas de la tabla son las de cada hecho.',
     ],
   });
 
@@ -311,7 +312,10 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
     input.txFrom ? `Emitida desde ${input.txFrom}` : `Dirección emisora: ver ${specUrl}`,
     input.blockNumber != null
       ? `Bloque ${input.blockNumber} · ${blockTimePair(input.blockTime)}`
-      : 'Número de bloque: no consta (la fecha cierta es la del bloque, no la del servidor).',
+      : 'Número de bloque: no consta (la fecha cierta es la del bloque, no la del servidor ni la de cada fila de la tabla).',
+    ...(input.blockNumber != null
+      ? ['La fecha cierta es la del bloque (publicación de estas huellas): no la del servidor ni la de cada fila de la tabla.']
+      : []),
     explorerUrl || '',
     input.merkleRoot ? `Raíz Merkle: ${input.merkleRoot}` : '',
     `Spec de hojas: ${specUrl} · dirección emisora publicada ahí`,
@@ -434,7 +438,7 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
     'Este documento es una constancia técnica de lo pedido a WhatsApp/correo y de lo anclado en Polygon. ' +
       'No prueba por sí solo la identidad civil del titular del teléfono, ni que haya leído o comprendido el contenido, ni que la deuda declarada por el cliente sea cierta. ' +
       'DNI, monto y nombre se transcriben de la hoja Merkle (si es v2) o se omiten; no se toman de la base viva. ' +
-      'La inmutabilidad la aporta la transacción citada, no este PDF. ' +
+      'La inmutabilidad la aporta la transacción citada, no este PDF: prueba que esas huellas existían a la hora de su bloque, mientras que las horas de la tabla son las de cada hecho. ' +
       'WhatsApp “entregado” significa que Meta informó entrega a un wa_id, no notificación fehaciente al deudor.',
     182
   );
@@ -659,6 +663,19 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   const asunto = (input.asuntoPersonalizado || input.campaignAsunto || '').trim();
   const destinatario = input.recipientNombre || email || (input.evidenceSealed === false ? 'Destinatario no transcrito' : 'el destinatario');
   const remitente = input.orgNombre || 'la organización remitente';
+  const publicationSentence = input.send.txHash
+    ? 'La huella de esa copia se publicó después en Polygon (bloque y transacción en el anexo): la fecha cierta que aporta la cadena es la de ese bloque, no la del envío ni la de cada hecho.'
+    : 'La huella de esa copia todavía no se publicó en Polygon.';
+  const origenRows: string[][] = [
+    [
+      'Origen del texto y de las partes',
+      input.evidenceSealed ? 'Copia guardada al enviar (registro de escritura única)' : 'Sin copia de escritura única del envío',
+    ],
+    [
+      'Publicación de la huella',
+      input.send.txHash ? 'Después, en Polygon; bloque y TX en el anexo' : 'Todavía no publicada en Polygon',
+    ],
+  ];
 
   const docTitle = 'Constancia individual de comunicación digital';
 
@@ -727,7 +744,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     doc.setFontSize(8);
     y = writeWrapped(
       doc,
-      'No hay copia inalterable del envío. Esta constancia no transcribe identidad ni texto desde registros que se pueden modificar. El anexo técnico, si existe, muestra huellas y Merkle.',
+      'No hay copia de escritura única del envío. Esta constancia no transcribe identidad ni texto desde registros que se pueden modificar. El anexo técnico, si existe, muestra huellas y Merkle.',
       16,
       y,
       178,
@@ -747,12 +764,12 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   const declaracion = input.evidenceSealed
     ? isMixedCanal(input.canal)
       ? `Notificas.com deja constancia de un envío mixto de ${remitente}${input.orgCuit ? ` (CUIT ${input.orgCuit})` : ''} a ${destinatario}, en la campaña «${input.campaignNombre}»: un correo${email ? ` a ${email}` : ''} y un WhatsApp${input.recipientTelefono ? ` al ${input.recipientTelefono}` : ''}. ` +
-        `Son dos despachos independientes (SMTP y Meta), no un único mensaje duplicado. En el instante del envío el sistema guarda una copia inalterable de quién envió, a quién se dirigió y qué se envió por cada canal. Esa copia no se vuelve a armar después con datos actuales de la campaña. ` +
+        `Son dos despachos independientes (SMTP y Meta), no un único mensaje duplicado. En el momento del envío el sistema guarda una copia de quién envió, a quién se dirigió y qué se envió por cada canal, en un registro de escritura única (WORM) de Notificas. Esa copia no se vuelve a armar después con datos actuales de la campaña. ${publicationSentence} ` +
         `Los hechos posteriores (aceptación del correo por el proveedor, o entrega y lectura que informe WhatsApp) se anotan aparte, según lo que esos terceros comunicaron después. No sustituyen ni modifican el texto original. El modo técnico de conservar y verificar esa copia consta en el anexo para perito.`
       : `Notificas.com deja constancia de una comunicación digital enviada por ${remitente}${input.orgCuit ? ` (CUIT ${input.orgCuit})` : ''} a ${destinatario}, en la campaña «${input.campaignNombre}». ` +
-        `En el instante del envío el sistema guarda una copia inalterable de quién envió, a quién se dirigió y qué se envió. Esa copia no se vuelve a armar después con datos actuales de la campaña: lo transcrito en las páginas siguientes es exactamente lo que quedó registrado entonces. ` +
+        `En el momento del envío el sistema guarda una copia de quién envió, a quién se dirigió y qué se envió, en un registro de escritura única (WORM) de Notificas. Esa copia no se vuelve a armar después con datos actuales de la campaña: lo transcrito en las páginas siguientes es exactamente lo que quedó registrado entonces. ${publicationSentence} ` +
         `Los hechos posteriores (aceptación del correo por el proveedor, o entrega y lectura que informe WhatsApp) se anotan aparte, según lo que esos terceros comunicaron después. No sustituyen ni modifican el texto original. El modo técnico de conservar y verificar esa copia consta en el anexo para perito.`
-    : `No se transcribe el contenido ni la identidad desde registros que se pueden modificar. Consulte el anexo técnico y, si existe, la constancia de envío inalterable.`;
+    : `No se transcribe el contenido ni la identidad desde registros que se pueden modificar. Consulte el anexo técnico y, si existe, la copia de escritura única del envío.`;
   y = writeWrapped(doc, declaracion, 14, y, 182, 4.2);
   y += 6;
 
@@ -772,7 +789,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
         ['Campaña', input.campaignNombre],
         ['Canal', canalLabel(input.canal)],
         ['Identificador interno', input.messageId],
-        ['Origen del texto y de las partes', input.evidenceSealed ? 'Copia inalterable tomada al enviar' : 'Sin copia inalterable del envío'],
+        ...origenRows,
         ['Fecha de emisión', input.generatedAt],
         tableSectionRow('Canal correo electrónico'),
         ...(email ? [['Casilla de destino', email]] : [['Casilla de destino', 'No consignada']]),
@@ -803,7 +820,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
         ...(input.wamid ? [['WAMID (Meta)', input.wamid]] : []),
         ...(input.phoneNumberId ? [['Phone Number ID (Meta)', input.phoneNumberId]] : []),
         ...(input.wabaId ? [['WABA ID (Meta)', input.wabaId]] : []),
-        ['Origen del texto y de las partes', input.evidenceSealed ? 'Copia inalterable tomada al enviar' : 'Sin copia inalterable del envío'],
+        ...origenRows,
         ['Fecha de emisión', input.generatedAt],
       ];
   autoTable(doc, {
@@ -1156,7 +1173,8 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     'El evidence_snapshot es un registro de escritura única (WORM): se sella al enviar y no se modifica. Conserva identidad de las partes, texto o pedido a Meta, hashes de adjuntos, WAMID y Message-ID SMTP si existen. ' +
       'Esta acta no reconstruye el mensaje desde la campaña viva (plantilla, asunto o variables actuales): transcribe el snapshot. ' +
       'El recálculo del perito es una operación distinta: SHA-256(UTF-8(trim(texto_plano))) del texto de la Parte I debe coincidir con contentHash del snapshot y, si hay tanda, con la hoja Merkle anclada en Polygon. ' +
-      'El recálculo no sustituye al snapshot: lo confronta. Si el PDF o el texto se alteran, el hash deja de coincidir.',
+      'El recálculo no sustituye al snapshot: lo confronta. Si el PDF o el texto se alteran, el hash deja de coincidir. ' +
+      'La publicación en Polygon de la huella de este registro es posterior al envío: la fecha cierta de la cadena es la de su bloque, no la del envío ni la de cada hecho.',
     14,
     y,
     182,
@@ -1183,7 +1201,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     );
     doc.text(
       input.intact
-        ? 'Estado: íntegro — el texto y la foja coinciden con el lacre en Polygon.'
+        ? 'Estado: íntegro — el texto y la foja coinciden con la huella publicada en Polygon.'
         : `Estado: ${input.summary}`,
       14,
       y
@@ -1434,7 +1452,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     '5. Si se altera esta foja, la raíz Merkle deja de coincidir con la registrada on-chain.',
     `6. Hoja: SHA-256(UTF-8(leafPayload)) debe dar el leafHash del bloque correspondiente. En la hoja de envío el campo 12 es la huella de contenido y el 17 el templateSealHash; en una hoja de evento el campo 7 es el leafHash de envío (sendLeafHash). Formato completo: ${publicAppBase()}${LEAF_SPEC_PATH}.`,
     '7. Camino: h = leafHash; i = índice. Por cada hermano s, en orden: si i es par h = SHA-256(UTF-8(h + "|" + s)), si es impar h = SHA-256(UTF-8(s + "|" + h)); luego i = floor(i / 2). El resultado final debe ser la raíz Merkle de la TX de esa tanda (campo 5 del payload).',
-    '8. Orden temporal: la TX de envío y la TX de cada hecho figuran completas arriba. Comparar el timestamp de su bloque con la fecha de cada hecho.',
+    '8. Publicación: cada TX figura completa arriba. El timestamp de su bloque es la fecha cierta de la publicación de esas huellas, no la del hecho; la fecha de cada hecho está en su hoja (occurredAt). El orden en que se minaron las TX no prueba el orden de los hechos: el vínculo entre un hecho y su envío es el sendLeafHash.',
   ];
   for (const line of steps) {
     y = writeWrapped(doc, line, 14, y, 182, 3.5);
@@ -1445,7 +1463,8 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   y = writeWrapped(
     doc,
     'Este anexo es una constancia técnica de un destinatario. No es notificación fehaciente ni prueba de la deuda. ' +
-      'La inmutabilidad la aporta la transacción citada, no este PDF. ' +
+      'La inmutabilidad del registro la aporta la transacción citada, no este PDF. ' +
+      'La transacción prueba que la huella existía a la hora de su bloque; el momento del envío y de cada hecho surge de los datos de la hoja y, para entrega y lectura, de lo que informó Meta. ' +
       `Acta generada: ${input.generatedAt}.`,
     14,
     y,

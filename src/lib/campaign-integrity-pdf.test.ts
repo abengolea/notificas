@@ -360,3 +360,19 @@ test('la tabla de hechos no dice Sí cuando no hay prueba Merkle', async () => {
   const row = raw.slice(raw.indexOf('Hechos posteriores anclados'));
   assert.match(row, /Pendiente/);
 });
+
+test('el texto separa la copia al enviar de la publicación en Polygon y no usa "inalterable" ni "lacre"', async () => {
+  const ind = pdfText(
+    await buildActaDestinatarioPdf(sampleMixed({ send: { ...sampleMixed().send, txHash: '0x' + 'ab'.repeat(32) } }))
+  );
+  assert.match(ind, /Publicación de la huella/);
+  assert.match(ind, /Copia guardada al enviar/);
+  assert.match(ind, /la fecha cierta que aporta la cadena es la de ese bloque/);
+  assert.equal(/inalterable|lacre/i.test(ind), false);
+  const sinPublicar = pdfText(await buildActaDestinatarioPdf(sampleMixed({ send: { ...sampleMixed().send, txHash: null } })));
+  assert.match(sinPublicar, /todavía no se publicó en Polygon/);
+
+  const lote = pdfText(await buildActaTandaPdf(await sampleLote()));
+  assert.match(lote, /las horas de la tabla son las de cada hecho/);
+  assert.match(lote, /no la del servidor ni la de cada fila de la tabla/);
+});
