@@ -178,3 +178,68 @@ export function orderBatchesSendFirst<T extends { id: string; kind?: string }>(b
   const rank = (b: T) => (b.kind === 'send' ? 0 : 1);
   return [...batches].sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id));
 }
+
+/** Mensajes (no hechos) por invocación al sellar los hechos aparcados de una tanda de envío. */
+export const DRAIN_CHUNK_SIZE = 50;
+export const DRAIN_NEXT_DELAY_SEC = 5;
+export const DRAIN_RETRY_DELAY_SEC = 30;
+/** Invocaciones seguidas sin avanzar antes de dejar de reprogramar (los hechos siguen aparcados, no se pierden). */
+export const DRAIN_MAX_ATTEMPTS = 20;
+
+/** Tras agotar una ronda de reintentos se reanuda una sola vez, más tarde (no cada 30 s para siempre). */
+export const DRAIN_GIVE_UP_DELAY_SEC = 900;
+
+export type DrainProgress = { offset: number; done: boolean; attempts: number };
+
+/**
+ * Arranque de una ronda: si la anterior agotó DRAIN_MAX_ATTEMPTS sin terminar, esta empieza con attempts en 0 y el
+ * mismo offset (no se saltean mensajes). Así un cierre nuevo no hereda el tope de la ronda anterior.
+ */
+export function startDrainRound(state: Partial<DrainProgress>): Partial<DrainProgress> {
+  if (state.done) return state;
+  if ((Number(state.attempts) || 0) >= DRAIN_MAX_ATTEMPTS) return { ...state, attempts: 0 };
+  return state;
+}
+
+export function nextDrainSlice<T>(
+  ids: readonly T[],
+  offset: number,
+  chunkSize = DRAIN_CHUNK_SIZE
+): { slice: T[]; nextOffset: number; done: boolean } {
+  const start = Math.min(Math.max(0, Math.floor(offset) || 0), ids.length);
+  const nextOffset = Math.min(start + Math.max(1, Math.floor(chunkSize)), ids.length);
+  return { slice: ids.slice(start, nextOffset), nextOffset, done: nextOffset >= ids.length };
+}
+
+export function shouldStopDrain(nowMs: number, deadlineMs: number): boolean {
+  return nowMs >= deadlineMs;
+}
+
+/**
+ * Qué hacer después de procesar un trozo. Si el trozo quedó completo se avanza el offset; si no, se reintenta el
+ * mismo trozo más tarde (hasta DRAIN_MAX_ATTEMPTS seguidos) sin saltear mensajes con hechos todavía aparcados.
+ */
+export function planDrainStep(input: {
+  state: Partial<DrainProgress>;
+  nextOffset: number;
+  sliceDone: boolean;
+  chunkComplete: boolean;
+}): { progress: DrainProgress; reschedule: boolean; delaySec: number; gaveUp: boolean } {
+  const offset = Number(input.state.offset) || 0;
+  if (input.chunkComplete) {
+    return {
+      progress: { offset: input.nextOffset, done: input.sliceDone, attempts: 0 },
+      reschedule: !input.sliceDone,
+      delaySec: DRAIN_NEXT_DELAY_SEC,
+      gaveUp: false,
+    };
+  }
+  const attempts = (Number(input.state.attempts) || 0) + 1;
+  const gaveUp = attempts >= DRAIN_MAX_ATTEMPTS;
+  return {
+    progress: { offset, done: false, attempts },
+    reschedule: !gaveUp,
+    delaySec: DRAIN_RETRY_DELAY_SEC,
+    gaveUp,
+  };
+}

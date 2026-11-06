@@ -14,12 +14,19 @@ import {
   canMarkMerkleFailed,
   decideEventLeafPlacement,
   decideMerkleClose,
+  DRAIN_GIVE_UP_DELAY_SEC,
+  DRAIN_NEXT_DELAY_SEC,
   merkleBatchCertificationId,
   merkleBatchStatusForChain,
+  nextDrainSlice,
   orderBatchesSendFirst,
   parkedEventLeafId,
+  planDrainStep,
   readMerkleChain,
   resolveStableAnchorPayload,
+  shouldStopDrain,
+  startDrainRound,
+  type DrainProgress,
   type MerkleChainState,
 } from '@/lib/merkle-anchor-logic';
 import { extractPolygonTxHashFromError, isPolygonTxHash } from '@/lib/polygon-send-logic';
@@ -517,7 +524,10 @@ async function eventLeafPersisted(messageId: string, eventType: IntegrityEventTy
   return Boolean(msg?.integrity?.events?.[eventType]?.leafHash);
 }
 
-/** Sella los hechos aparcados de estos mensajes cuyo envío ya está anclado. Devuelve los lotes usados y lo que quedó. */
+/**
+ * Sella los hechos aparcados de estos mensajes cuyo envío ya está anclado. Corta al vencer el presupuesto sin
+ * seguir leyendo: lo no procesado cuenta como `left`. Devuelve los lotes usados.
+ */
 export async function drainParkedEventLeaves(
   campaignId: string,
   messageIds: string[],
@@ -527,12 +537,17 @@ export async function drainParkedEventLeaves(
   const sealedBatchIds = new Set<string>();
   const sealed: Record<string, RecordEventLeafResult> = {};
   let left = 0;
-  for (const messageId of messageIds) {
+  for (let i = 0; i < messageIds.length; i++) {
+    if (shouldStopDrain(Date.now(), deadline)) {
+      left += messageIds.length - i;
+      break;
+    }
+    const messageId = messageIds[i];
     const refs = INTEGRITY_EVENT_TYPES.map((t) => parkedEventsCol(campaignId).doc(parkedEventLeafId(messageId, t)));
     const snaps = await Promise.all(refs.map((r) => r.get()));
     const parked = snaps.filter((s) => s.exists);
     if (parked.length === 0) continue;
-    if (Date.now() > deadline || (await eventPlacementForMessage(messageId)) !== 'seal') {
+    if ((await eventPlacementForMessage(messageId)) !== 'seal') {
       left += parked.length;
       continue;
     }
@@ -547,7 +562,7 @@ export async function drainParkedEventLeaves(
         meta: d.meta ?? undefined,
       });
       // Solo se suelta el aparcado si la hoja quedó escrita: si las tentativas se agotaron sin sellar, el hecho sigue
-      // aparcado y lo retoma el próximo cierre.
+      // aparcado y lo retoma el próximo trozo.
       if (res.already || (await eventLeafPersisted(d.messageId, d.eventType))) {
         if (res.batchId) sealedBatchIds.add(res.batchId);
         sealed[snap.id] = res;
@@ -560,30 +575,61 @@ export async function drainParkedEventLeaves(
   return { sealedBatchIds: [...sealedBatchIds], left, sealed };
 }
 
-/**
- * Tras anclarse una tanda de envío: sella los hechos que estaban esperándola. Si la campaña ya terminó, cierra
- * los lotes de hechos que recibieron hojas (nadie más los cerraría hasta la inactividad). Lo que no entra en el
- * presupuesto de tiempo lo retoma un cierre posterior de la misma tanda.
- */
-export async function drainParkedEventsForSendBatch(campaignId: string, sendBatchId: string): Promise<void> {
-  const leaves = await batchesCol(campaignId).doc(sendBatchId).collection('leaves').get();
-  const { sealedBatchIds, left } = await drainParkedEventLeaves(
-    campaignId,
-    leaves.docs.map((d) => d.id)
+/** Programa el drenaje de hechos de una tanda de envío recién anclada, fuera del request que armó el Merkle y la TX. */
+function scheduleParkedEventDrain(campaignId: string, sendBatchId: string, delaySec = DRAIN_NEXT_DELAY_SEC): void {
+  void enqueueIntegrityClose(campaignId, sendBatchId, delaySec, { idle: true }).catch((e) =>
+    console.warn('⚠️ No se pudo programar el drenaje de hechos aparcados:', e?.message)
   );
-  if (left > 0) {
-    void enqueueIntegrityClose(campaignId, sendBatchId, 30, { idle: true }).catch((e) =>
-      console.warn('⚠️ No se pudo reprogramar el drenaje de hechos:', e?.message)
-    );
-  }
-  if (sealedBatchIds.length === 0) return;
+}
+
+/** Si la campaña ya terminó, cierra los lotes de hechos abiertos con hojas: nadie más los cerraría hasta la inactividad. */
+async function closeEventBatchesIfCampaignCompleted(campaignId: string): Promise<void> {
   const camp = (await getAdminDb().collection('campaigns').doc(campaignId).get()).data();
   if (camp?.estado !== 'completada') return;
-  for (const id of sealedBatchIds) {
-    await closeIntegrityBatch(campaignId, id, { force: true }).catch((e) =>
+  const open = await batchesCol(campaignId).where('status', '==', 'open').get();
+  for (const d of open.docs) {
+    if (d.data().kind !== 'event' || !(Number(d.data().leafCount) > 0)) continue;
+    await closeIntegrityBatch(campaignId, d.id, { force: true }).catch((e) =>
       console.warn('⚠️ No se pudo cerrar la tanda de hechos al drenar:', e?.message)
     );
   }
+}
+
+/**
+ * Sella los hechos que esperaban a una tanda de envío ya anclada, UN trozo de DRAIN_CHUNK_SIZE mensajes por
+ * invocación (a 2000/día son olas de 500, no un drenaje de 2000). El avance se guarda en la tanda
+ * (`eventDrain`); si el trozo quedó incompleto se reintenta el mismo, y si hay más trozos se reprograma un cierre.
+ * Al terminar la última, si la campaña está completada, se cierran los lotes de hechos que recibieron hojas.
+ */
+export async function drainParkedEventsForSendBatch(campaignId: string, sendBatchId: string): Promise<void> {
+  const batchRef = batchesCol(campaignId).doc(sendBatchId);
+  const stored = ((await batchRef.get()).data()?.eventDrain ?? {}) as Partial<DrainProgress>;
+  if (stored.done) return;
+  const state = startDrainRound(stored);
+
+  const ids = (await batchRef.collection('leaves').select().get()).docs
+    .map((d) => d.id)
+    .sort((a, b) => a.localeCompare(b));
+  const { slice, nextOffset, done } = nextDrainSlice(ids, state.offset ?? 0);
+  const result = await drainParkedEventLeaves(campaignId, slice);
+  const step = planDrainStep({ state, nextOffset, sliceDone: done, chunkComplete: result.left === 0 });
+
+  // Dos drenajes pueden coincidir si Polygon tarda: el avance nunca retrocede.
+  await getAdminDb().runTransaction(async (t) => {
+    const cur = ((await t.get(batchRef)).data()?.eventDrain ?? {}) as Partial<DrainProgress>;
+    if (cur.done || (Number(cur.offset) || 0) > step.progress.offset) return;
+    t.update(batchRef, { eventDrain: { ...step.progress, updatedAt: FieldValue.serverTimestamp() } });
+  });
+
+  if (step.gaveUp) {
+    console.warn(
+      `⚠️ Drenaje de hechos de ${campaignId}/${sendBatchId} sin avanzar tras ${step.progress.attempts} intentos; quedan aparcados y se reanuda en ${DRAIN_GIVE_UP_DELAY_SEC}s.`
+    );
+    scheduleParkedEventDrain(campaignId, sendBatchId, DRAIN_GIVE_UP_DELAY_SEC);
+  } else if (step.reschedule) {
+    scheduleParkedEventDrain(campaignId, sendBatchId, step.delaySec);
+  }
+  if (step.progress.done) await closeEventBatchesIfCampaignCompleted(campaignId);
 }
 
 async function sealEventLeaf(params: EventLeafParams): Promise<RecordEventLeafResult> {
@@ -949,11 +995,7 @@ export async function closeIntegrityBatch(
         sealedAt: FieldValue.serverTimestamp(),
         accepting: false,
       });
-      if (kind === 'send') {
-        await drainParkedEventsForSendBatch(campaignId, batchId).catch((e) =>
-          console.warn('⚠️ Drenaje de hechos aparcados:', e instanceof Error ? e.message : e)
-        );
-      }
+      if (kind === 'send') scheduleParkedEventDrain(campaignId, batchId);
       return { status: 'anchored', txHash, merkleRoot: tree.root, leafCount: leaves.length, leavesDigest };
     }
 
@@ -966,7 +1008,7 @@ export async function closeIntegrityBatch(
           'chain.confirmedAt': new Date(),
           sealedAt: FieldValue.serverTimestamp(),
         });
-        if (kind === 'send') await drainParkedEventsForSendBatch(campaignId, batchId);
+        if (kind === 'send') scheduleParkedEventDrain(campaignId, batchId);
       })
       .catch(() => undefined);
     void enqueueIntegrityClose(campaignId, batchId, 60).catch(() => undefined);

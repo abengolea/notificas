@@ -8,6 +8,15 @@ import {
   merkleBatchStatusForChain,
   resolveStableAnchorPayload,
   decideEventLeafPlacement,
+  DRAIN_CHUNK_SIZE,
+  DRAIN_GIVE_UP_DELAY_SEC,
+  DRAIN_MAX_ATTEMPTS,
+  DRAIN_NEXT_DELAY_SEC,
+  DRAIN_RETRY_DELAY_SEC,
+  nextDrainSlice,
+  planDrainStep,
+  shouldStopDrain,
+  startDrainRound,
   orderBatchesSendFirst,
   parkedEventLeafId,
 } from './merkle-anchor-logic';
@@ -180,4 +189,117 @@ test('al cerrar, las tandas de envío van antes que las de hechos (aunque el id 
     { id: 'send-0', kind: 'send' },
   ]).map((b) => b.id);
   assert.deepEqual(ordered, ['send-0', 'send-1', 'events-2026-11-03', 'events-2026-11-03-2']);
+});
+
+test('el drenaje corta una tanda de 500 mensajes en 10 trozos de 50, el último parcial si hace falta', () => {
+  const ids = Array.from({ length: 500 }, (_, i) => `m${String(i).padStart(3, '0')}`);
+  assert.equal(DRAIN_CHUNK_SIZE, 50);
+  let offset = 0;
+  let chunks = 0;
+  for (;;) {
+    const { slice, nextOffset, done } = nextDrainSlice(ids, offset);
+    assert.ok(slice.length <= DRAIN_CHUNK_SIZE);
+    assert.equal(slice[0], ids[offset]);
+    chunks += 1;
+    offset = nextOffset;
+    if (done) break;
+  }
+  assert.equal(chunks, 10);
+  assert.equal(offset, 500);
+});
+
+test('nextDrainSlice: offset 0, 50, 50, último parcial y vacío', () => {
+  const ids = Array.from({ length: 120 }, (_, i) => i);
+  const a = nextDrainSlice(ids, 0);
+  assert.equal(a.slice.length, 50);
+  assert.deepEqual([a.nextOffset, a.done], [50, false]);
+  const b = nextDrainSlice(ids, 50);
+  assert.equal(b.slice[0], 50);
+  assert.deepEqual([b.slice.length, b.nextOffset, b.done], [50, 100, false]);
+  const c = nextDrainSlice(ids, 100);
+  assert.deepEqual([c.slice.length, c.nextOffset, c.done], [20, 120, true]);
+  const empty = nextDrainSlice([], 0);
+  assert.deepEqual([empty.slice.length, empty.nextOffset, empty.done], [0, 0, true]);
+  const past = nextDrainSlice(ids, 999);
+  assert.deepEqual([past.slice.length, past.nextOffset, past.done], [0, 120, true]);
+  assert.equal(nextDrainSlice(ids, 0, 120).done, true);
+});
+
+test('shouldStopDrain: antes, en y después del deadline', () => {
+  assert.equal(shouldStopDrain(999, 1000), false);
+  assert.equal(shouldStopDrain(1000, 1000), true);
+  assert.equal(shouldStopDrain(1001, 1000), true);
+});
+
+test('planDrainStep avanza solo con el trozo completo y reintenta el mismo si no', () => {
+  const ok = planDrainStep({ state: { offset: 50, attempts: 3 }, nextOffset: 100, sliceDone: false, chunkComplete: true });
+  assert.deepEqual(ok.progress, { offset: 100, done: false, attempts: 0 });
+  assert.equal(ok.reschedule, true);
+  assert.equal(ok.delaySec, DRAIN_NEXT_DELAY_SEC);
+
+  const last = planDrainStep({ state: { offset: 450 }, nextOffset: 500, sliceDone: true, chunkComplete: true });
+  assert.deepEqual(last.progress, { offset: 500, done: true, attempts: 0 });
+  assert.equal(last.reschedule, false);
+
+  const blocked = planDrainStep({ state: { offset: 50, attempts: 1 }, nextOffset: 100, sliceDone: false, chunkComplete: false });
+  assert.deepEqual(blocked.progress, { offset: 50, done: false, attempts: 2 });
+  assert.equal(blocked.reschedule, true);
+  assert.equal(blocked.delaySec, DRAIN_RETRY_DELAY_SEC);
+
+  const gaveUp = planDrainStep({
+    state: { offset: 50, attempts: DRAIN_MAX_ATTEMPTS - 1 },
+    nextOffset: 100,
+    sliceDone: false,
+    chunkComplete: false,
+  });
+  assert.equal(gaveUp.gaveUp, true);
+  assert.equal(gaveUp.reschedule, false);
+  assert.equal(gaveUp.progress.offset, 50);
+});
+
+test('startDrainRound: una ronda agotada reanuda con attempts 0 y el mismo offset', () => {
+  assert.deepEqual(startDrainRound({ offset: 50, attempts: DRAIN_MAX_ATTEMPTS, done: false }), {
+    offset: 50,
+    attempts: 0,
+    done: false,
+  });
+  assert.equal(startDrainRound({ offset: 50, attempts: DRAIN_MAX_ATTEMPTS + 1, done: false }).attempts, 0);
+  // no resetea una ronda en curso
+  const mid = { offset: 50, attempts: 3, done: false };
+  assert.deepEqual(startDrainRound(mid), mid);
+  // no toca lo que ya terminó
+  const finished = { offset: 500, attempts: DRAIN_MAX_ATTEMPTS, done: true };
+  assert.deepEqual(startDrainRound(finished), finished);
+});
+
+test('tras un gaveUp y startDrainRound, un trozo incompleto cuenta 1 (no 21) y se reanuda en 15 min', () => {
+  const stuck = planDrainStep({
+    state: { offset: 50, attempts: DRAIN_MAX_ATTEMPTS - 1 },
+    nextOffset: 100,
+    sliceDone: false,
+    chunkComplete: false,
+  });
+  assert.equal(stuck.gaveUp, true);
+  assert.equal(stuck.reschedule, false);
+  assert.equal(stuck.progress.attempts, DRAIN_MAX_ATTEMPTS);
+  assert.equal(DRAIN_GIVE_UP_DELAY_SEC, 900);
+
+  const next = planDrainStep({
+    state: startDrainRound(stuck.progress),
+    nextOffset: 100,
+    sliceDone: false,
+    chunkComplete: false,
+  });
+  assert.equal(next.progress.attempts, 1);
+  assert.equal(next.progress.offset, 50);
+  assert.equal(next.gaveUp, false);
+  assert.equal(next.reschedule, true);
+
+  const resumed = planDrainStep({
+    state: startDrainRound(stuck.progress),
+    nextOffset: 100,
+    sliceDone: false,
+    chunkComplete: true,
+  });
+  assert.deepEqual(resumed.progress, { offset: 100, done: false, attempts: 0 });
 });
