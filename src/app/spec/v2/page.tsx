@@ -255,11 +255,11 @@ export default function LeafSpecV2Page() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold mb-2">8. Lo que esto no prueba</h2>
+            <h2 className="text-lg font-semibold mb-2">8. Alcance</h2>
             <p>
-              No es notificación fehaciente, no identifica civilmente al titular del teléfono y no
-              prueba la deuda que declare el cliente. La inmutabilidad la aporta la transacción, no el
-              PDF.
+              Esta spec describe cómo se verifican la integridad de los registros y la fecha de su
+              publicación en la cadena. La inmutabilidad la aporta la transacción, no el PDF. La
+              valoración jurídica de los hechos corresponde al juez.
             </p>
           </section>
         </div>

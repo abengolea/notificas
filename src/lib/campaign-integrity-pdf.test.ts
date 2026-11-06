@@ -394,3 +394,16 @@ test('el rango de "delivered" del lote usa solo las entregas, no las horas de le
   assert.equal(statement.includes('20:40:45'), false, 'la hora de una lectura no puede cerrar el rango de entregas');
   assert.match(statement, /informó lectura de WhatsApp para 2/);
 });
+
+test('las actas de campaña no se autodescalifican: dejan la valoración jurídica al juez', async () => {
+  const ind = pdfText(await buildActaDestinatarioPdf(sampleMixed({ send: { ...sampleMixed().send, txHash: '0x' + 'ab'.repeat(32) } })));
+  const lote = pdfText(await buildActaTandaPdf(await sampleLote()));
+  for (const raw of [ind, lote]) {
+    assert.equal(/No es notificación fehaciente/i.test(raw), false);
+    assert.equal(/no notificación fehaciente/i.test(raw), false);
+    assert.equal(/ni prueba de la deuda/i.test(raw), false);
+    assert.equal(/identidad civil/i.test(raw), false);
+    assert.match(raw, /corresponde al juez/);
+  }
+  assert.match(ind, /NOTIFICACIÓN FEHACIENTE CON FINES FISCALES/);
+});

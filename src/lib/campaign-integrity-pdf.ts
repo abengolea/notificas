@@ -436,10 +436,9 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
   doc.setTextColor(...PDF_BRAND.textMuted);
   const disclaimer = doc.splitTextToSize(
     'Este documento es una constancia técnica de lo pedido a WhatsApp/correo y de lo anclado en Polygon. ' +
-      'No prueba por sí solo la identidad civil del titular del teléfono, ni que haya leído o comprendido el contenido, ni que la deuda declarada por el cliente sea cierta. ' +
       'DNI, monto y nombre se transcriben de la hoja Merkle (si es v2) o se omiten; no se toman de la base viva. ' +
       'La inmutabilidad la aporta la transacción citada, no este PDF: prueba que esas huellas existían a la hora de su bloque, mientras que las horas de la tabla son las de cada hecho. ' +
-      'WhatsApp “entregado” significa que Meta informó entrega a un wa_id, no notificación fehaciente al deudor.',
+      '«Entregado» significa que Meta informó entrega a un wa_id. La valoración jurídica de estos hechos corresponde al juez.',
     182
   );
   doc.text(disclaimer, 14, afterTable);
@@ -1132,15 +1131,15 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   doc.setFontSize(8);
   const statements = mixed
     ? [
-        'Esta Parte I relata dos despachos (correo y WhatsApp), a qué destino técnico de cada canal y qué informaron después los proveedores. No califica valor legal ni prueba por sí sola la identidad civil del receptor.',
+        'Esta Parte I relata dos despachos (correo y WhatsApp), a qué destino técnico de cada canal y qué informaron después los proveedores. La valoración jurídica de estos hechos corresponde al juez.',
         'La integridad del cuerpo común se puede comprobar con la huella SHA-256 y, si la tanda está anclada, con la transacción de Polygon. Alterar el texto hace que la huella deje de coincidir.',
-        'Que el servidor de correo haya aceptado el mensaje no significa que haya llegado a la casilla. “Entregado” o “leído” de WhatsApp se consignan solo si Meta los informó; no equivalen a que una persona determinada haya tomado conocimiento. Un canal no prueba al otro.',
+        'La aceptación del correo por el servidor SMTP y los estados «entregado» y «leído» de WhatsApp se consignan tal como los informaron esos terceros. Un canal no prueba al otro.',
         `Emisión: ${input.generatedAt}.`,
       ]
     : [
-        'Esta Parte I relata qué se pidió enviar, a qué destino técnico y qué informaron después los proveedores. No califica valor legal ni prueba por sí sola la identidad civil del receptor.',
+        'Esta Parte I relata qué se pidió enviar, a qué destino técnico y qué informaron después los proveedores. La valoración jurídica de estos hechos corresponde al juez.',
         'La integridad del texto se puede comprobar con la huella SHA-256 y, si la tanda está anclada, con la transacción de Polygon. Alterar el texto hace que la huella deje de coincidir.',
-        'Que el servidor de correo haya aceptado el mensaje no significa que haya llegado a la casilla. “Entregado” o “leído” de WhatsApp se consignan solo si Meta los informó; no equivalen a que una persona determinada haya tomado conocimiento.',
+        'La aceptación del correo por el servidor SMTP y los estados «entregado» y «leído» de WhatsApp se consignan tal como los informaron esos terceros.',
         `Emisión: ${input.generatedAt}.`,
       ];
   for (const statement of statements) {
@@ -1462,9 +1461,9 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   doc.setTextColor(71, 85, 105);
   y = writeWrapped(
     doc,
-    'Este anexo es una constancia técnica de un destinatario. No es notificación fehaciente ni prueba de la deuda. ' +
+    'Este anexo es una constancia técnica de un destinatario. ' +
       'La inmutabilidad del registro la aporta la transacción citada, no este PDF. ' +
-      'La transacción prueba que la huella existía a la hora de su bloque; el momento del envío y de cada hecho surge de los datos de la hoja y, para entrega y lectura, de lo que informó Meta. ' +
+      'La transacción prueba que la huella existía a la hora de su bloque; el momento del envío y de cada hecho surge de los datos de la hoja y, para entrega y lectura, de lo que informó Meta. La valoración jurídica corresponde al juez. ' +
       `Acta generada: ${input.generatedAt}.`,
     14,
     y,
