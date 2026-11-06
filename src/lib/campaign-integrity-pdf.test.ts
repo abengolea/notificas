@@ -376,3 +376,21 @@ test('el texto separa la copia al enviar de la publicación en Polygon y no usa 
   assert.match(lote, /las horas de la tabla son las de cada hecho/);
   assert.match(lote, /no la del servidor ni la de cada fila de la tabla/);
 });
+
+test('el rango de "delivered" del lote usa solo las entregas, no las horas de lectura', async () => {
+  const base = await sampleLote({ kind: 'event' });
+  const input = {
+    ...base,
+    leaves: [
+      { ...base.leaves[0], eventType: 'wa_delivered', occurredAt: '2026-11-03T22:37:06Z' },
+      { ...base.leaves[1], eventType: 'wa_delivered', occurredAt: '2026-11-03T23:36:54Z' },
+      { ...base.leaves[2], eventType: 'wa_read', occurredAt: '2026-11-03T23:40:45Z' },
+      { ...base.leaves[2], eventType: 'wa_read', occurredAt: '2026-11-03T22:41:28Z' },
+    ],
+  };
+  const statement = lotePositiveStatement(input);
+  assert.match(statement, /«delivered» para 2 mensajes/);
+  assert.match(statement, /entre 03\/11\/2026, 19:37:06 y 03\/11\/2026, 20:36:54 ART/);
+  assert.equal(statement.includes('20:40:45'), false, 'la hora de una lectura no puede cerrar el rango de entregas');
+  assert.match(statement, /informó lectura de WhatsApp para 2/);
+});

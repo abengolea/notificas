@@ -158,7 +158,7 @@ export function lotePositiveStatement(input: ActaTandaInput): string {
   const parts: string[] = [];
   if (delivered) {
     parts.push(
-      `Meta Platforms informó estado «delivered» para ${delivered} mensaje${delivered === 1 ? '' : 's'} de esta campaña${loteArtRange(input.leaves)}`
+      `Meta Platforms informó estado «delivered» para ${delivered} mensaje${delivered === 1 ? '' : 's'} de esta campaña${loteArtRange(input.leaves.filter((l) => l.eventType === 'wa_delivered'))}`
     );
   }
   if (waRead) {
