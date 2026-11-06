@@ -68,6 +68,7 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
   const [plan, setPlan] = useState("starter");
   const [telefono, setTelefono] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
+  const [adminNombre, setAdminNombre] = useState("");
   const [changingEmail, setChangingEmail] = useState(false);
   const [confirmEmailOpen, setConfirmEmailOpen] = useState(false);
   const [keepPreviousAsMember, setKeepPreviousAsMember] = useState(true);
@@ -82,6 +83,7 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
     setPlan(next.plan || "starter");
     const admin = next.operators.find((o) => o.isOrgAdmin) || next.operators[0];
     setTelefono(admin?.telefono || "");
+    setAdminNombre(admin?.nombre || "");
     setAdminEmail(admin?.email || next.adminUserEmail || "");
   }, []);
 
@@ -128,6 +130,7 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           nombre: nombre.trim(),
+          adminNombre: adminNombre.trim(),
           cuit: cuit.trim(),
           tipo,
           plan,
@@ -428,9 +431,20 @@ export function OrganizationAdminDetail({ orgId }: { orgId: string }) {
               </div>
             </div>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="org-admin-nombre">Nombre de quien entra</Label>
+            <Input
+              id="org-admin-nombre"
+              value={adminNombre}
+              onChange={(e) => setAdminNombre(e.target.value)}
+              placeholder="Colegio de Abogados de San Nicolás"
+            />
+            <p className="text-xs text-muted-foreground">
+              Sale del perfil del usuario, no del mail. Cambiar el email no lo modifica. Guardá los
+              cambios para actualizarlo.
+            </p>
+          </div>
           <dl className="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-3 text-sm">
-            <dt className="text-muted-foreground">Nombre</dt>
-            <dd>{admin?.nombre || "—"}</dd>
             <dt className="text-muted-foreground">Teléfono</dt>
             <dd>{admin?.telefono || telefono || "—"}</dd>
             <dt className="text-muted-foreground">Estado</dt>

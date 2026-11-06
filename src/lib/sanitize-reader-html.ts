@@ -19,12 +19,12 @@ export function sanitizeHtmlForReader(html: string): string {
   sanitized = sanitized.replace(/<p\b[^>]*\bclass="[^"]*\blead\b[^"]*"[^>]*>[\s\S]*?<\/p>/gi, "");
 
   sanitized = sanitized.replace(
-    /<p[^>]*class="muted"[^>]*>[\s\S]*?Si el boton no funciona[\s\S]*?<\/p>/gi,
+    /<p[^>]*class="muted"[^>]*>[\s\S]*?(?:Si el boton no funciona|El enlace se agregar|El envío y la lectura quedan registrados)[\s\S]*?<\/p>/gi,
     ""
   );
 
   sanitized = sanitized.replace(
-    /<p[^>]*style="margin:\s*20px\s*0;"[^>]*>[\s\S]*?(?:Acceder\s+a\s+la\s+notificaci[oó]n|Leer\s+Notificaci[oó]n)[\s\S]*?<\/p>/gi,
+    /<p[^>]*style="margin:\s*20px\s*0[^"]*"[^>]*>[\s\S]*?(?:Acceder\s+a\s+la\s+notificaci[oó]n|Leer\s+Notificaci[oó]n)[\s\S]*?<\/p>/gi,
     ""
   );
 

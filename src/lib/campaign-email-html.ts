@@ -83,8 +83,7 @@ export function buildCampaignMailHtml(params: {
   const leadSecondParagraph = params.mode === 'letter' && hasInlineBody
     ? `Recibió una comunicación de <strong>${escapeHtmlText(sender)}</strong>.
                 Puede leer el texto completo en este mismo correo. El enlace registra la apertura y es el mismo acceso que le enviamos por WhatsApp.`
-    : `Recibió una comunicación de <strong>${escapeHtmlText(sender)}</strong>.
-                <strong>Le recomendamos abrir el mensaje</strong> mediante el enlace para ver el contenido.`;
+    : `<strong>${escapeHtmlText(sender)}</strong> le envió una comunicación.`;
 
   const previewRaw = String(params.previewText || '')
     .replace(/\s+/g, ' ')
@@ -177,10 +176,7 @@ export function buildCampaignMailHtml(params: {
           <tr>
             <td class="header">
               <span class="badge">NOTIFICACION</span>
-              <div class="title">Nueva comunicacion para usted</div>
-              <div style="margin-top:6px;font-size:13px;opacity:.9;">
-                Enviada por <strong>${escapeHtmlText(sender)}</strong> mediante <strong>Notificas.com</strong>
-              </div>
+              <div class="title">${escapeHtmlText(sender)}</div>
             </td>
           </tr>
           <tr>
@@ -191,26 +187,21 @@ export function buildCampaignMailHtml(params: {
               </p>`}
               ${contentSection}
               ${attachmentsSection}
-              <p style="margin: 20px 0;">
+              <p style="margin: 20px 0 12px 0;">
                 <a class="btn" href="#" target="_blank" rel="noopener">Acceder a la notificación</a>
               </p>
               <p class="muted">
-                Si el boton no funciona, copie y pegue este enlace en su navegador:<br>
                 <a href="#" target="_blank" rel="noopener" style="color:inherit;">[El enlace se agregará al enviar el mensaje]</a>
               </p>
-              <div class="divider"></div>
-              <p class="muted">
-                El envío y la apertura quedan registrados en Notificas.com.
-                Esta constancia no implica conformidad con el contenido.
+              <p class="muted" style="margin-top:16px;">
+                El envío y la lectura quedan registrados.
               </p>
             </td>
           </tr>
           <tr>
             <td class="footer">
               <div class="muted">
-                 ${year} Notificas.com  Este mensaje fue destinado a ${escapeHtmlText(recipientEmail)}.
-                Si no reconoce esta notificacion, ignore este correo o responda a
-                <a href="mailto:contacto@notificas.com" style="color:inherit;">contacto@notificas.com</a>.
+                ${year} Notificas.com · ${escapeHtmlText(recipientEmail)}
               </div>
             </td>
           </tr>

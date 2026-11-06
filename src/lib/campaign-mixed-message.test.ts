@@ -159,7 +159,7 @@ test("campaña mixta: Gmail es sobre; el lector lacra la carta, no el globo", ()
   });
   assert.equal(CAMPAIGN_MAILBOX_MODE, "teaser");
   assert.match(html, /data-email-hide/);
-  assert.match(html, /Le recomendamos abrir el mensaje/);
+  assert.match(html, /le envió una comunicación/);
   assert.match(html, /Intimación formal a Marcela Suárez/);
   assert.equal(/Registramos una deuda vencida/.test(html), false);
   assert.equal(/en este mismo correo/.test(html), false);

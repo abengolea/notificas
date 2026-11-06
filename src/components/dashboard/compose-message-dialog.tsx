@@ -65,169 +65,12 @@ import {
     escapeHtml,
     normalizeLinkInput,
     plainTextToHtml,
-    renderRichMessageContent,
     sanitizeRichTextHtml,
     stripRichTextToPlainText,
 } from "@/lib/rich-text";
 import { usesNotificasDefaultTemplate, WA_DEFAULT_TEMPLATE_NAME, WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-template-fields";
-import { buildCampaignMailHtml } from "@/lib/campaign-email-html";
-import {
-  htmlFromFilledMetaBody,
-  MAILBOX_READER_URL_SENTINEL,
-  renderMetaTemplateBody,
-} from "@/lib/campaign-mixed-message";
-
-function buildComposeMailHtml(params: {
-  recipientEmail: string;
-  recipientName?: string;
-  content: string;
-  sender: string;
-  uploadedAttachments: UploadedFile[];
-}): string {
-  const { recipientEmail, content, sender, uploadedAttachments } = params;
-  const recipientName = params.recipientName?.trim() || recipientEmail.split("@")[0];
-  const contentSection = content?.trim()
-    ? `
-                <div class="message-content" data-email-hide style="margin: 20px 0;">
-                  <h2 style="color: #1e293b; margin: 0 0 16px 0; font-size: 18px; font-weight: 600;">Contenido del Mensaje:</h2>
-                  <div class="rich-message-content" style="background: #f8fafc; padding: 16px; border-radius: 6px; border-left: 4px solid #0D9488; line-height: 1.6; color: #334155;">
-                    ${renderRichMessageContent(content)}
-                  </div>
-                </div>`
-    : "";
-
-  const attachmentsSection =
-    uploadedAttachments.length > 0
-      ? `
-                <div data-email-hide style="margin-bottom: 20px;">
-                    <h2 style="color: #1e293b; margin: 0 0 16px 0; font-size: 18px; font-weight: 600;">📎 Documentos Adjuntos (${uploadedAttachments.length}):</h2>
-                    <div style="background: #f8fafc; padding: 16px; border-radius: 6px; border-left: 4px solid #0D9488;">
-                        ${uploadedAttachments
-                          .map(
-                            (file) => `
-                            <div style="margin-bottom: 12px; padding: 12px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px;">
-                                <div style="display: flex; align-items: center; gap: 12px;">
-                                    <div style="width: 40px; height: 40px; background: #dc2626; border-radius: 6px; display: flex; align-items: center; justify-content: center;">
-                                        <span style="color: white; font-weight: bold; font-size: 12px;">${String(file.name.split(".").pop() || "DOC").toUpperCase()}</span>
-                                    </div>
-                                    <div style="flex: 1;">
-                                        <h4 style="margin: 0 0 4px 0; color: #1e293b; font-size: 14px; font-weight: 600;">${escapeHtml(file.name)}</h4>
-                                        <p style="margin: 0; color: #64748b; font-size: 12px;">${(file.size / 1024 / 1024).toFixed(2)} MB • Con hash de integridad</p>
-                                    </div>
-                                    <a href="${file.url}"
-                                       style="background: #0D9488; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 600; display: inline-block;">
-                                        Ver Documento
-                                    </a>
-                                </div>
-                                ${file.hash ? `
-                                    <div style="margin-top: 8px; padding: 8px; background: #f0f9ff; border-radius: 4px; border: 1px solid #0ea5e9;">
-                                        <p style="margin: 0; color: #0c4a6e; font-size: 11px; font-family: monospace; word-break: break-all;">
-                                            <strong>Hash SHA-256:</strong> ${file.hash}
-                                        </p>
-                                    </div>
-                                ` : ""}
-                            </div>
-                        `
-                          )
-                          .join("")}
-                        <p style="margin: 12px 0 0 0; color: #64748b; font-size: 11px; font-style: italic;">
-                            💡 Los documentos adjuntos incluyen hash de integridad para verificar que no han sido modificados.
-                        </p>
-                    </div>
-                </div>
-            `
-      : "";
-
-  const year = new Date().getFullYear();
-  const hasInlineBody = !!stripRichTextToPlainText(content || "");
-  const leadSecondParagraph = hasInlineBody
-    ? `Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>${escapeHtml(sender)}</strong>.
-                Puede leer el texto en este mismo correo; para la <strong>constancia fehaciente de lectura</strong> en la plataforma, use el enlace siguiente.`
-    : `Ha recibido una <strong>comunicacion fehaciente digital</strong> de <strong>${escapeHtml(sender)}</strong>.
-                <strong>Le recomendamos abrir el mensaje</strong> mediante el enlace para conocer el contenido y dejar constancia certificada de lectura.`;
-
-  return `<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <title>Nueva notificacion digital</title>
-  <style>
-    body, table, td, a { font-family: "Inter", -apple-system, Segoe UI, Roboto, Arial, sans-serif !important; }
-    body { margin: 0; padding: 0; background-color: #F8FAFC; color: #1E293B; }
-    .wrapper { width: 100%; table-layout: fixed; background-color: #F8FAFC; padding: 24px 0; }
-    .container { width: 100%; max-width: 800px; background: #ffffff; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid #E2E8F0; }
-    .header { background: #0D9488; color: #ffffff; padding: 20px 24px; }
-    .badge { display: inline-block; background: #1E3A8A; color: #fff; font-size: 12px; letter-spacing: .4px; padding: 4px 8px; border-radius: 999px; }
-    .title { margin: 10px 0 0 0; font-size: 20px; line-height: 1.3; font-weight: 700; }
-    .content { padding: 24px; }
-    .lead { font-size: 16px; line-height: 1.6; margin: 0 0 16px 0; }
-    .list { padding-left: 18px; margin: 0 0 16px 0; }
-    .btn { display: inline-block; background: #0D9488; color: #ffffff !important; text-decoration: none; padding: 12px 20px; border-radius: 8px; font-weight: 700; }
-    .btn:hover { background: #0F766E; }
-    .muted { color: #64748B; font-size: 12px; line-height: 1.6; }
-    .divider { height: 1px; background: #E2E8F0; margin: 20px 0; }
-    .footer { padding: 16px 24px 24px; }
-  </style>
-</head>
-<body>
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-    Notificacion digital enviada por ${escapeHtml(sender)} a traves de Notificas.com
-  </div>
-  <table role="presentation" class="wrapper" width="100%" cellspacing="0" cellpadding="0">
-    <tr>
-      <td align="center">
-        <table role="presentation" class="container" cellspacing="0" cellpadding="0">
-          <tr>
-            <td class="header">
-              <span class="badge">NOTIFICACION</span>
-              <div class="title">Nueva comunicacion para usted</div>
-              <div style="margin-top:6px;font-size:13px;opacity:.9;">
-                Enviada por <strong>${escapeHtml(sender)}</strong> mediante <strong>Notificas.com</strong>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td class="content">
-              <p class="lead">Estimado/a ${escapeHtml(recipientName)},</p>
-              <p class="lead">
-                ${leadSecondParagraph}
-              </p>
-
-              ${contentSection}
-
-              ${attachmentsSection}
-
-              <p style="margin: 20px 0;">
-                <a class="btn" href="#" target="_blank" rel="noopener">Acceder a la notificación</a>
-              </p>
-              <p class="muted">
-                Si el boton no funciona, copie y pegue este enlace en su navegador:<br>
-                <a href="#" target="_blank" rel="noopener" style="color:inherit;">[El enlace se agregará al enviar el mensaje]</a>
-              </p>
-              <div class="divider"></div>
-              <p class="muted">
-                La notificacion, sus metadatos de envio,
-                recepcion y lectura quedan <strong>certificados y registrados</strong> en la blockchain de Polygon a traves de Notificas.com.
-                Esta constancia tecnica no implica conformidad con el contenido.
-              </p>
-            </td>
-          </tr>
-          <tr>
-            <td class="footer">
-              <div class="muted">
-                 ${year} Notificas.com  Este mensaje fue destinado a ${escapeHtml(recipientEmail)}.
-                Si no reconoce esta notificacion, ignore este correo o responda a
-                <a href="mailto:contacto@notificas.com" style="color:inherit;">contacto@notificas.com</a>.
-              </div>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-}
+import { buildCampaignMailHtml, CAMPAIGN_MAILBOX_MODE, campaignBodyToHtmlFragment } from "@/lib/campaign-email-html";
+import { resolveCampaignSenderDisplay } from "@/lib/campaign-sender";
 
 type SelectedAttachment = {
   file: File;
@@ -440,6 +283,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
     const [orgWaTemplate, setOrgWaTemplate] = useState<SavedWaTemplate | null>(null);
     const [orgWaChoiceReady, setOrgWaChoiceReady] = useState(false);
     const [orgCreditos, setOrgCreditos] = useState<number | null>(null);
+    const [orgNombre, setOrgNombre] = useState("");
     const [selectedFiles, setSelectedFiles] = useState<SelectedAttachment[]>([]);
     const isExecutingRef = useRef(false);
     const currentExecutionIdRef = useRef<string | null>(null);
@@ -476,12 +320,20 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
     useEffect(() => {
         if (!orgId) {
             setOrgCreditos(null);
+            setOrgNombre("");
             return;
         }
         const unsub = onSnapshot(
             doc(db, "organizations", orgId),
-            (snap) => setOrgCreditos(normalizeEnviosDisponibles(snap.data()?.creditos)),
-            () => setOrgCreditos(0),
+            (snap) => {
+                const data = snap.data();
+                setOrgCreditos(normalizeEnviosDisponibles(data?.creditos));
+                setOrgNombre(String(data?.nombre || "").trim());
+            },
+            () => {
+                setOrgCreditos(0);
+                setOrgNombre("");
+            },
         );
         return () => unsub();
     }, [orgId]);
@@ -683,7 +535,11 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                     : `wa-${phoneDigits(phoneForWhatsApp)}@notificas.internal`)
                 : realEmail;
 
-            const sender = auth.currentUser?.email || user.email;
+            const senderEmail = auth.currentUser?.email || user.email;
+            const senderDisplay = resolveCampaignSenderDisplay({
+                orgNombre: orgNombre || user.perfil?.nombre,
+                fallbackEmail: senderEmail,
+            });
 
             if (realEmail && !isSyntheticCampaignEmail(realEmail)) {
                 void persistirContactoDestinatario(user.uid, realEmail, phoneForWhatsApp || data.recipientPhone?.trim());
@@ -697,8 +553,8 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                     subject,
                     html: '<p>Cargando contenido...</p>',
                     from: 'contacto@notificas.com',
-                    replyTo: sender,
-                    senderName: user.email,
+                    replyTo: senderEmail,
+                    senderName: senderDisplay,
                     recipientName: data.recipientName?.trim()
                         || (realEmail && !isSyntheticCampaignEmail(realEmail) ? realEmail.split('@')[0] : undefined)
                         || phoneForWhatsApp
@@ -773,51 +629,20 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                 || (realEmail && !isSyntheticCampaignEmail(realEmail) ? realEmail.split("@")[0] : undefined)
                 || phoneForWhatsApp
                 || recipientEmail.split("@")[0];
-            const useMetaMailbox =
-                sendCanal === "ambos" &&
-                !!orgWaTemplate?.templateBody?.trim() &&
-                !usesNotificasDefaultTemplate(orgWaTemplate.templateName);
-
-            const metaMailboxText = useMetaMailbox && orgWaTemplate
-                ? renderMetaTemplateBody({
-                    templateBody: orgWaTemplate.templateBody || "",
-                    variables: orgWaTemplate.templateVariables,
-                    urlButton: orgWaTemplate.urlButton,
-                    row: {
-                        nombre: mailboxRecipientName,
-                        dni: data.recipientDni?.replace(/\D/g, "") || undefined,
-                        email: realEmail || undefined,
-                        telefono: phoneForWhatsApp,
-                    },
-                    senderName: sender,
-                    recipientName: mailboxRecipientName,
-                    phone: phoneForWhatsApp,
-                    readerUrl: MAILBOX_READER_URL_SENTINEL,
-                })
-                : "";
-
-            const html = metaMailboxText
-                ? buildCampaignMailHtml({
-                    recipientEmail: mailboxRecipientEmail,
-                    recipientName: mailboxRecipientName,
-                    sender,
-                    bodyHtml: htmlFromFilledMetaBody(metaMailboxText),
-                    attachments: uploadedAttachments.map((file) => ({
-                        nombre: file.name,
-                        url: file.url,
-                        hash: file.hash || "",
-                        size: file.size,
-                    })),
-                    mode: "inline",
-                    previewText: metaMailboxText.replace(MAILBOX_READER_URL_SENTINEL, "").slice(0, 140),
-                })
-                : buildComposeMailHtml({
-                    recipientEmail: mailboxRecipientEmail,
-                    recipientName: mailboxRecipientName,
-                    content: sanitizedContent,
-                    sender,
-                    uploadedAttachments,
-                });
+            const html = buildCampaignMailHtml({
+                recipientEmail: mailboxRecipientEmail,
+                recipientName: mailboxRecipientName,
+                sender: senderDisplay,
+                bodyHtml: campaignBodyToHtmlFragment(sanitizedContent || plainContent),
+                attachments: uploadedAttachments.map((file) => ({
+                    nombre: file.name,
+                    url: file.url,
+                    hash: file.hash || "",
+                    size: file.size,
+                })),
+                mode: CAMPAIGN_MAILBOX_MODE,
+                previewText: `${senderDisplay} le envió una comunicación.`,
+            });
 
             const mailRef = doc(db, 'mail', mailId);
             const updateData: Record<string, unknown> = {

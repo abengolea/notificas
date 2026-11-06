@@ -41,14 +41,16 @@ test("la previa de Gmail no lleva la carta; el lector sí", () => {
 
   assert.equal(/GOcuotas le notifica/.test(preview.mailboxHtml), false);
   assert.equal(/DNI: 25715970/.test(preview.mailboxHtml), false);
-  assert.match(preview.mailboxHtml, /Le recomendamos abrir el mensaje/);
+  assert.match(preview.mailboxHtml, /le envió una comunicación/);
   assert.match(preview.mailboxHtml, /Acceder a la notificación/);
   assert.equal(/data-email-hide/.test(preview.mailboxHtml), false);
+  assert.equal(/intimación oficial/i.test(preview.mailboxHtml), false);
 
   assert.match(preview.readerHtml, /GOcuotas le notifica/);
   assert.match(preview.readerHtml, /DNI: 25715970/);
-  assert.equal(/Le recomendamos abrir el mensaje/.test(preview.readerHtml), false);
+  assert.equal(/le envió una comunicación/.test(preview.readerHtml), false);
   assert.equal(/Acceder a la notificación/.test(preview.readerHtml), false);
+  assert.equal(/El enlace se agregará/.test(preview.readerHtml), false);
 
   assert.match(preview.waText, /Hola Adrian Bengolea/);
   assert.match(preview.waText, /deuda 25715970/);

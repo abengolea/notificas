@@ -86,9 +86,14 @@ test('modo teaser oculta el cuerpo (el lector lo muestra)', () => {
   assert.equal(CAMPAIGN_MAILBOX_MODE, 'teaser');
   assert.match(html, /data-email-hide/);
   assert.match(html, /Secreto/);
-  assert.match(html, /Le recomendamos abrir el mensaje/);
+  assert.match(html, /le envió una comunicación/);
   assert.equal(/en este mismo correo/.test(html), false);
+  assert.equal(/Nueva comunicacion para usted/.test(html), false);
   const mailbox = stripMailboxHiddenHtml(html);
   assert.equal(/Secreto/.test(mailbox), false);
-  assert.match(mailbox, /Le recomendamos abrir el mensaje/);
+  assert.match(mailbox, /le envió una comunicación/);
+  assert.match(mailbox, /Acceder a la notificación/);
+  assert.match(mailbox, />GOcuotas</);
+  assert.equal(/Si el boton no funciona/.test(mailbox), false);
+  assert.equal(/abengolea1@hotmail/.test(mailbox), false);
 });

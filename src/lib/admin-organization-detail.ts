@@ -68,6 +68,34 @@ async function resolveOperator(
   };
 }
 
+/** Nombre y teléfono de quien entra como administrador. No es el nombre de la empresa. */
+export async function updateOrgAdminProfile(
+  adminUserId: string,
+  patch: { nombre?: string; telefono?: string },
+): Promise<void> {
+  const uid = String(adminUserId || "").trim();
+  if (!uid) return;
+  const nombre = patch.nombre !== undefined ? patch.nombre.trim() : undefined;
+  const telefono = patch.telefono !== undefined ? patch.telefono.trim() : undefined;
+  if (nombre === undefined && telefono === undefined) return;
+
+  const db = getAdminDb();
+  const userRef = db.collection("users").doc(uid);
+  const userSnap = await userRef.get();
+  const prev = userSnap.exists ? (userSnap.data() as Record<string, unknown>) : {};
+  const perfil =
+    prev.perfil && typeof prev.perfil === "object"
+      ? { ...(prev.perfil as Record<string, unknown>) }
+      : {};
+  if (nombre !== undefined) perfil.nombre = nombre;
+  if (telefono !== undefined) perfil.telefono = telefono;
+  await userRef.set({ perfil }, { merge: true });
+
+  if (nombre !== undefined) {
+    await getAdminAuth().updateUser(uid, { displayName: nombre }).catch(() => null);
+  }
+}
+
 export async function loadAdminOrganizationDetail(orgId: string): Promise<AdminOrganizationDetail | null> {
   const db = getAdminDb();
   const snap = await db.collection("organizations").doc(orgId).get();

@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { assertAdminSession } from "@/lib/assert-admin-session";
 import { getAdminDb } from "@/lib/firebase-admin";
-import { loadAdminOrganizationDetail } from "@/lib/admin-organization-detail";
+import { loadAdminOrganizationDetail, updateOrgAdminProfile } from "@/lib/admin-organization-detail";
 
 const cuitRegex = /^\d{2}-\d{8}-\d{1}$/;
 
 const patchSchema = z.object({
   nombre: z.string().min(2).max(200).optional(),
+  adminNombre: z.string().min(2).max(200).optional(),
   cuit: z.string().regex(cuitRegex, "CUIT con formato XX-XXXXXXXX-X").optional(),
   tipo: z.enum(["empresa", "estudio_juridico", "consumidores", "art", "otro"]).optional(),
   plan: z.enum(["starter", "business", "enterprise"]).optional(),
@@ -65,18 +66,13 @@ export async function PATCH(
       await ref.update(orgUpdates);
     }
 
-    if (parsed.data.telefono !== undefined) {
+    if (parsed.data.adminNombre !== undefined || parsed.data.telefono !== undefined) {
       const adminUserId = String(snap.data()?.adminUserId ?? "");
       if (adminUserId) {
-        const userRef = db.collection("users").doc(adminUserId);
-        const userSnap = await userRef.get();
-        const prev = userSnap.exists ? (userSnap.data() as Record<string, unknown>) : {};
-        const perfil =
-          prev.perfil && typeof prev.perfil === "object"
-            ? { ...(prev.perfil as Record<string, unknown>) }
-            : {};
-        perfil.telefono = parsed.data.telefono.trim();
-        await userRef.set({ perfil }, { merge: true });
+        await updateOrgAdminProfile(adminUserId, {
+          nombre: parsed.data.adminNombre,
+          telefono: parsed.data.telefono,
+        });
       }
     }
 
