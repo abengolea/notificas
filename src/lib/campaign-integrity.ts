@@ -12,9 +12,12 @@ import { pauseCampaignIfLimit } from '@/lib/campaign-auto-pause';
 import {
   buildCampaignAnchorPayload,
   canMarkMerkleFailed,
+  decideEventLeafPlacement,
   decideMerkleClose,
   merkleBatchCertificationId,
   merkleBatchStatusForChain,
+  orderBatchesSendFirst,
+  parkedEventLeafId,
   readMerkleChain,
   resolveStableAnchorPayload,
   type MerkleChainState,
@@ -429,14 +432,161 @@ export async function recordSendError(params: {
   }
 }
 
-export async function recordEventLeaf(params: {
+type EventLeafParams = {
   campaignId: string;
   orgId: string;
   messageId: string;
   eventType: IntegrityEventType;
   occurredAt?: string;
   meta?: EventLeafMetaEvidence;
-}): Promise<{ leafHash: string; already: boolean; batchId: string }> {
+};
+
+export type RecordEventLeafResult = {
+  leafHash: string;
+  already: boolean;
+  batchId: string;
+  /** Hecho aparcado: se sella cuando la tanda de envío que cita esté minada. */
+  parked?: 'no_send_leaf' | 'send_not_anchored';
+};
+
+const INTEGRITY_EVENT_TYPES: IntegrityEventType[] = ['email_read', 'wa_delivered', 'wa_read'];
+/** Tope de tiempo de un drenaje dentro de un request; lo que sobra lo retoma un cierre posterior. */
+const DRAIN_BUDGET_MS = 40_000;
+
+function parkedEventsCol(campaignId: string) {
+  return getAdminDb().collection('campaigns').doc(campaignId).collection('integrity_parked_events');
+}
+
+async function eventPlacementForMessage(messageId: string) {
+  const db = getAdminDb();
+  const msg = (await db.collection('campaign_messages').doc(messageId).get()).data();
+  const send = msg?.integrity?.send as { leafHash?: string; batchId?: string } | undefined;
+  let sendBatchStatus: string | null = null;
+  const campaignId = typeof msg?.campaignId === 'string' ? msg.campaignId : '';
+  if (send?.leafHash && send.batchId && campaignId) {
+    sendBatchStatus = String((await batchesCol(campaignId).doc(send.batchId).get()).data()?.status || '');
+  }
+  return decideEventLeafPlacement({ sendLeafHash: send?.leafHash, sendBatchStatus });
+}
+
+/**
+ * Registra un hecho (entrega, lectura, apertura). Solo lo sella en un árbol de eventos si la hoja de envío que
+ * cita ya está anclada; si no, lo aparca con su hora real y lo sella cuando esa tanda de envío se mine.
+ * No se pierde ningún hecho y el orden de despacho no cambia (el WAMID y el SMTP id existen recién al enviar).
+ */
+export async function recordEventLeaf(params: EventLeafParams): Promise<RecordEventLeafResult> {
+  const occurredAt = params.occurredAt || new Date().toISOString();
+  const placement = await eventPlacementForMessage(params.messageId);
+  if (placement === 'seal') return sealEventLeaf({ ...params, occurredAt });
+
+  try {
+    await parkedEventsCol(params.campaignId)
+      .doc(parkedEventLeafId(params.messageId, params.eventType))
+      .create({
+        campaignId: params.campaignId,
+        orgId: params.orgId,
+        messageId: params.messageId,
+        eventType: params.eventType,
+        occurredAt,
+        meta: params.meta ?? null,
+        reason: placement,
+        parkedAt: FieldValue.serverTimestamp(),
+      });
+  } catch (e: unknown) {
+    // Ya aparcado (reintento de Meta): se conserva el primero, con su hora.
+    const code = (e as { code?: number | string })?.code;
+    if (code !== 6 && code !== 'already-exists') throw e;
+  }
+
+  // Carrera: la tanda pudo anclarse entre la lectura y el aparcado.
+  if ((await eventPlacementForMessage(params.messageId)) === 'seal') {
+    const drained = await drainParkedEventLeaves(params.campaignId, [params.messageId]);
+    const done = drained.sealed[parkedEventLeafId(params.messageId, params.eventType)];
+    if (done) return done;
+  }
+  return {
+    leafHash: '',
+    already: false,
+    batchId: '',
+    parked: placement === 'park_no_send_leaf' ? 'no_send_leaf' : 'send_not_anchored',
+  };
+}
+
+async function eventLeafPersisted(messageId: string, eventType: IntegrityEventType): Promise<boolean> {
+  const msg = (await getAdminDb().collection('campaign_messages').doc(messageId).get()).data();
+  return Boolean(msg?.integrity?.events?.[eventType]?.leafHash);
+}
+
+/** Sella los hechos aparcados de estos mensajes cuyo envío ya está anclado. Devuelve los lotes usados y lo que quedó. */
+export async function drainParkedEventLeaves(
+  campaignId: string,
+  messageIds: string[],
+  budgetMs = DRAIN_BUDGET_MS
+): Promise<{ sealedBatchIds: string[]; left: number; sealed: Record<string, RecordEventLeafResult> }> {
+  const deadline = Date.now() + budgetMs;
+  const sealedBatchIds = new Set<string>();
+  const sealed: Record<string, RecordEventLeafResult> = {};
+  let left = 0;
+  for (const messageId of messageIds) {
+    const refs = INTEGRITY_EVENT_TYPES.map((t) => parkedEventsCol(campaignId).doc(parkedEventLeafId(messageId, t)));
+    const snaps = await Promise.all(refs.map((r) => r.get()));
+    const parked = snaps.filter((s) => s.exists);
+    if (parked.length === 0) continue;
+    if (Date.now() > deadline || (await eventPlacementForMessage(messageId)) !== 'seal') {
+      left += parked.length;
+      continue;
+    }
+    for (const snap of parked) {
+      const d = snap.data() as EventLeafParams & { occurredAt: string };
+      const res = await sealEventLeaf({
+        campaignId: d.campaignId,
+        orgId: d.orgId,
+        messageId: d.messageId,
+        eventType: d.eventType,
+        occurredAt: d.occurredAt,
+        meta: d.meta ?? undefined,
+      });
+      // Solo se suelta el aparcado si la hoja quedó escrita: si las tentativas se agotaron sin sellar, el hecho sigue
+      // aparcado y lo retoma el próximo cierre.
+      if (res.already || (await eventLeafPersisted(d.messageId, d.eventType))) {
+        if (res.batchId) sealedBatchIds.add(res.batchId);
+        sealed[snap.id] = res;
+        await snap.ref.delete();
+      } else {
+        left += 1;
+      }
+    }
+  }
+  return { sealedBatchIds: [...sealedBatchIds], left, sealed };
+}
+
+/**
+ * Tras anclarse una tanda de envío: sella los hechos que estaban esperándola. Si la campaña ya terminó, cierra
+ * los lotes de hechos que recibieron hojas (nadie más los cerraría hasta la inactividad). Lo que no entra en el
+ * presupuesto de tiempo lo retoma un cierre posterior de la misma tanda.
+ */
+export async function drainParkedEventsForSendBatch(campaignId: string, sendBatchId: string): Promise<void> {
+  const leaves = await batchesCol(campaignId).doc(sendBatchId).collection('leaves').get();
+  const { sealedBatchIds, left } = await drainParkedEventLeaves(
+    campaignId,
+    leaves.docs.map((d) => d.id)
+  );
+  if (left > 0) {
+    void enqueueIntegrityClose(campaignId, sendBatchId, 30, { idle: true }).catch((e) =>
+      console.warn('⚠️ No se pudo reprogramar el drenaje de hechos:', e?.message)
+    );
+  }
+  if (sealedBatchIds.length === 0) return;
+  const camp = (await getAdminDb().collection('campaigns').doc(campaignId).get()).data();
+  if (camp?.estado !== 'completada') return;
+  for (const id of sealedBatchIds) {
+    await closeIntegrityBatch(campaignId, id, { force: true }).catch((e) =>
+      console.warn('⚠️ No se pudo cerrar la tanda de hechos al drenar:', e?.message)
+    );
+  }
+}
+
+async function sealEventLeaf(params: EventLeafParams): Promise<RecordEventLeafResult> {
   const db = getAdminDb();
   const occurredAt = params.occurredAt || new Date().toISOString();
   const at = new Date(occurredAt);
@@ -574,9 +724,11 @@ async function maybeEnqueueClose(
 export async function closeOpenBatches(campaignId: string, force = false): Promise<string[]> {
   const snap = await batchesCol(campaignId).where('status', '==', 'open').get();
   const closed: string[] = [];
-  for (const doc of snap.docs) {
-    const res = await closeIntegrityBatch(campaignId, doc.id, { force });
-    if (res.status === 'anchored' || res.status === 'empty') closed.push(doc.id);
+  // Envío primero: su TX tiene que salir antes que la de los hechos que la citan.
+  const ordered = orderBatchesSendFirst(snap.docs.map((d) => ({ id: d.id, kind: String(d.data().kind || '') })));
+  for (const { id } of ordered) {
+    const res = await closeIntegrityBatch(campaignId, id, { force });
+    if (res.status === 'anchored' || res.status === 'empty') closed.push(id);
   }
   return closed;
 }
@@ -662,6 +814,12 @@ export async function closeIntegrityBatch(
       return { status: 'open', leafCount: claimed.data.leafCount, deferredSec: claimed.deferSec };
     }
     if (claimed.data.status === 'anchored') {
+      // Una tanda de envío ya anclada puede tener hechos esperándola (cierre anterior interrumpido).
+      if (claimed.data.kind === 'send') {
+        await drainParkedEventsForSendBatch(campaignId, batchId).catch((e) =>
+          console.warn('⚠️ Drenaje de hechos aparcados:', e instanceof Error ? e.message : e)
+        );
+      }
       return {
         status: 'anchored',
         txHash: claimed.data.txHash,
@@ -791,6 +949,11 @@ export async function closeIntegrityBatch(
         sealedAt: FieldValue.serverTimestamp(),
         accepting: false,
       });
+      if (kind === 'send') {
+        await drainParkedEventsForSendBatch(campaignId, batchId).catch((e) =>
+          console.warn('⚠️ Drenaje de hechos aparcados:', e instanceof Error ? e.message : e)
+        );
+      }
       return { status: 'anchored', txHash, merkleRoot: tree.root, leafCount: leaves.length, leavesDigest };
     }
 
@@ -803,6 +966,7 @@ export async function closeIntegrityBatch(
           'chain.confirmedAt': new Date(),
           sealedAt: FieldValue.serverTimestamp(),
         });
+        if (kind === 'send') await drainParkedEventsForSendBatch(campaignId, batchId);
       })
       .catch(() => undefined);
     void enqueueIntegrityClose(campaignId, batchId, 60).catch(() => undefined);

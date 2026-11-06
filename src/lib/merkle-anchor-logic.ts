@@ -153,3 +153,28 @@ export function readMerkleChain(data: Record<string, unknown> | null | undefined
     merkleRoot: typeof raw.merkleRoot === 'string' ? raw.merkleRoot : typeof data?.merkleRoot === 'string' ? data.merkleRoot : raw.merkleRoot,
   };
 }
+
+export type EventLeafPlacement = 'seal' | 'park_no_send_leaf' | 'park_send_not_anchored';
+
+/**
+ * Una hoja de hecho solo entra a un árbol de eventos si la hoja de envío que cita ya existe y su tanda
+ * está minada en Polygon. Si no, se aparca: el hecho no se pierde y el árbol de eventos nunca apunta a un
+ * `sendLeafHash` que la cadena todavía no publicó.
+ */
+export function decideEventLeafPlacement(input: {
+  sendLeafHash?: string | null;
+  sendBatchStatus?: string | null;
+}): EventLeafPlacement {
+  if (!String(input.sendLeafHash || '').trim()) return 'park_no_send_leaf';
+  return input.sendBatchStatus === 'anchored' ? 'seal' : 'park_send_not_anchored';
+}
+
+export function parkedEventLeafId(messageId: string, eventType: string): string {
+  return `${messageId}_${eventType}`;
+}
+
+/** Tandas de envío primero: sus TX deben salir antes que las de hechos que las citan. */
+export function orderBatchesSendFirst<T extends { id: string; kind?: string }>(batches: T[]): T[] {
+  const rank = (b: T) => (b.kind === 'send' ? 0 : 1);
+  return [...batches].sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id));
+}

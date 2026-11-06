@@ -7,6 +7,9 @@ import {
   decideMerkleClose,
   merkleBatchStatusForChain,
   resolveStableAnchorPayload,
+  decideEventLeafPlacement,
+  orderBatchesSendFirst,
+  parkedEventLeafId,
 } from './merkle-anchor-logic';
 
 const HASH = `0x${'ab'.repeat(32)}`;
@@ -147,4 +150,34 @@ test('7. error después de broadcast no crea otro payload ni otra TX', () => {
     }),
     'skip_in_flight'
   );
+});
+
+test('un hecho solo se sella si su envío ya está anclado; si no, se aparca', () => {
+  const leaf = '62eee5dda8699da3deaef281846845a675ca0d654b2327249c94eb8e3c072c29';
+  assert.equal(decideEventLeafPlacement({ sendLeafHash: leaf, sendBatchStatus: 'anchored' }), 'seal');
+  assert.equal(decideEventLeafPlacement({ sendLeafHash: leaf, sendBatchStatus: 'sealing' }), 'park_send_not_anchored');
+  assert.equal(decideEventLeafPlacement({ sendLeafHash: leaf, sendBatchStatus: 'open' }), 'park_send_not_anchored');
+  assert.equal(decideEventLeafPlacement({ sendLeafHash: leaf, sendBatchStatus: 'failed' }), 'park_send_not_anchored');
+  assert.equal(decideEventLeafPlacement({ sendLeafHash: leaf, sendBatchStatus: null }), 'park_send_not_anchored');
+});
+
+test('un hecho sin hoja de envío no se sella con el puntero vacío', () => {
+  assert.equal(decideEventLeafPlacement({ sendLeafHash: '', sendBatchStatus: 'anchored' }), 'park_no_send_leaf');
+  assert.equal(decideEventLeafPlacement({ sendLeafHash: '   ' }), 'park_no_send_leaf');
+  assert.equal(decideEventLeafPlacement({}), 'park_no_send_leaf');
+});
+
+test('el aparcado de un hecho es idempotente por mensaje y tipo', () => {
+  assert.equal(parkedEventLeafId('m1', 'wa_delivered'), 'm1_wa_delivered');
+  assert.notEqual(parkedEventLeafId('m1', 'wa_delivered'), parkedEventLeafId('m1', 'wa_read'));
+});
+
+test('al cerrar, las tandas de envío van antes que las de hechos (aunque el id de hechos sea menor)', () => {
+  const ordered = orderBatchesSendFirst([
+    { id: 'events-2026-11-03', kind: 'event' },
+    { id: 'send-1', kind: 'send' },
+    { id: 'events-2026-11-03-2', kind: 'event' },
+    { id: 'send-0', kind: 'send' },
+  ]).map((b) => b.id);
+  assert.deepEqual(ordered, ['send-0', 'send-1', 'events-2026-11-03', 'events-2026-11-03-2']);
 });
