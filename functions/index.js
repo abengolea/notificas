@@ -1002,26 +1002,35 @@ exports.sendEmail = onRequest(
               const redirectAtt = `${LINK_REDIRECT_URL}?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}&att=${encodeURIComponent(String(att.id))}`;
               const hrefEsc = escapeHrefAmpersands(redirectAtt);
               const ext = escapeHtmlTextEmail(String(att.fileName || '').split('.').pop() || 'DOC').toUpperCase();
-              return `<div style="margin-bottom:12px;padding:12px;background:#ffffff;border:1px solid #e2e8f0;border-radius:6px;">
-                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-                  <div style="width:40px;height:40px;background:#dc2626;border-radius:6px;display:flex;align-items:center;justify-content:center;">
-                    <span style="color:white;font-weight:bold;font-size:12px;">${ext}</span>
-                  </div>
-                  <div style="flex:1;min-width:140px;">
-                    <strong style="color:#1e293b;font-size:14px;">${name}</strong>
-                  </div>
-                  <a href="${hrefEsc}" style="background:#0D9488;color:white;padding:8px 16px;border-radius:6px;text-decoration:none;font-size:12px;font-weight:600;display:inline-block;">Ver documento</a>
-                </div>
-              </div>`;
+              // Tabla en vez de flex: el nombre (largo, a veces sin espacios) se parte en su celda
+              // y nunca pisa el botón, también en Gmail móvil y Outlook.
+              return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;margin:0 0 10px 0;background:#ffffff;border:1px solid #e2e8f0;border-radius:6px;">
+                <tr>
+                  <td width="44" valign="middle" style="width:44px;padding:12px 0 12px 12px;">
+                    <div style="width:40px;height:40px;line-height:40px;background:#dc2626;border-radius:6px;text-align:center;color:#ffffff;font-weight:bold;font-size:11px;">${ext}</div>
+                  </td>
+                  <td valign="middle" style="padding:12px;color:#1e293b;font-size:14px;font-weight:600;line-height:1.4;word-break:break-word;overflow-wrap:anywhere;">${name}</td>
+                  <td valign="middle" align="right" width="1" style="width:1px;padding:12px 12px 12px 0;white-space:nowrap;">
+                    <a href="${hrefEsc}" style="background:#0D9488;color:#ffffff;padding:8px 14px;border-radius:6px;text-decoration:none;font-size:12px;font-weight:600;display:inline-block;white-space:nowrap;">Ver documento</a>
+                  </td>
+                </tr>
+              </table>`;
             })
             .join('');
-          const outer = `<div style="margin:24px 0;padding:16px;background:#f8fafc;border-radius:8px;border-left:4px solid #0D9488;">
-            <h2 style="color:#1e293b;margin:0 0 8px 0;font-size:18px;font-weight:600;">📎 Documentos adjuntos (${valid.length})</h2>
+          // Va dentro de la tarjeta (antes del botón «Acceder a la notificación»), no pegado
+          // al final del <body> fuera del contenedor.
+          const outer = `<div style="margin:20px 0;padding:16px;background:#f8fafc;border-radius:6px;border-left:4px solid #0D9488;">
+            <p style="margin:0 0 4px 0;color:#1e293b;font-size:16px;font-weight:600;">📎 Documentos adjuntos (${valid.length})</p>
             <p style="margin:0 0 12px 0;color:#64748b;font-size:13px;line-height:1.5;">Descargue o visualice cada archivo desde este correo. El acceso queda registrado como constancia en la notificación.</p>
             ${blocks}
           </div>`;
           const $inj = cheerio.load(htmlToProcess, { decodeEntities: false });
-          if ($inj('body').length) {
+          const $btnP = $inj('a.btn').first().closest('p');
+          if ($btnP.length) {
+            $btnP.before(outer);
+          } else if ($inj('td.content').length) {
+            $inj('td.content').first().append(outer);
+          } else if ($inj('body').length) {
             $inj('body').append(outer);
           } else {
             $inj.root().append(outer);
