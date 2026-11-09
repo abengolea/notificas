@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FieldPath, type QueryDocumentSnapshot } from "firebase-admin/firestore";
+import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { adminDb, getAdminDb } from "@/lib/firebase-admin";
 import { findIssuedDocument, type IssuedDocumentRecord } from "@/lib/issued-documents";
 import { buildPublicEvidence } from "@/lib/public-evidence";
 import { extractVerifyHints, type IssuedDocKind, type VerifyHints } from "@/lib/verify-hints";
 import { asSha256Hex, verifyQueryFromSearchParams } from "@/lib/public-verify-url";
-
-const PAGE_SIZE = 200;
+import { enforceVerifyRateLimit } from "@/lib/verify-rate-limit";
 
 type MailDocument = QueryDocumentSnapshot<FirebaseFirestore.DocumentData>;
 
@@ -369,45 +368,14 @@ async function queryByCertificateHash(hash: string) {
   return null;
 }
 
-async function scanMailCollection(hash: string) {
-  const collectionRef = adminDb.collection("mail");
-  let lastId: string | undefined;
-
-  while (true) {
-    let queryRef = collectionRef
-      .orderBy(FieldPath.documentId())
-      .limit(PAGE_SIZE);
-
-    if (lastId) {
-      queryRef = queryRef.startAfter(lastId);
-    }
-
-    const snapshot = await queryRef.get();
-    if (snapshot.empty) break;
-
-    for (const doc of snapshot.docs) {
-      const attachment = findAttachmentByHash(doc, hash);
-      if (attachment) {
-        return { doc, attachment, isCertificate: false };
-      }
-    }
-
-    if (snapshot.size < PAGE_SIZE) {
-      break;
-    }
-
-    lastId = snapshot.docs[snapshot.docs.length - 1].id;
-  }
-
-  return null;
-}
-
 /**
  * Verifica un documento por hash (adjuntos) o por messageId (certificado de lectura).
  * El certificado de lectura PDF se genera dinámicamente y su hash no se guarda,
  * por eso se permite verificar ingresando el ID del mensaje que figura en el certificado.
  */
 export async function POST(request: NextRequest) {
+  const limited = await enforceVerifyRateLimit(request);
+  if (limited) return limited;
   try {
     const body = await request.json().catch(() => ({}));
     const hash = typeof body?.hash === "string" ? normalizeHash(body.hash) : null;
@@ -543,10 +511,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const quickMatch =
-      (await queryByHashIndex(hash)) ||
-      (await queryByCertificateHash(hash)) ||
-      (await scanMailCollection(hash));
+    // Solo por índice: nunca se recorre toda la colección por una consulta pública.
+    const quickMatch = (await queryByHashIndex(hash)) || (await queryByCertificateHash(hash));
 
     if (!quickMatch) {
       return NextResponse.json(
@@ -576,6 +542,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const limited = await enforceVerifyRateLimit(request);
+  if (limited) return limited;
   const q = verifyQueryFromSearchParams(request.nextUrl.searchParams);
   if (q.hash) {
     const matched = await matchHashToRecord(q.hash, {

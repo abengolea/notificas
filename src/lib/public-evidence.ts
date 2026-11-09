@@ -150,7 +150,6 @@ export async function buildPublicEvidence(mailId: string) {
     docId: mailId,
     messageId: mail.tracking?.messageId || mailId,
     senderName: snapshot?.sender.email || mail.senderName || mail.from,
-    senderUid: snapshot?.sender.uid || mail.createdBy || null,
     orgNombre: snapshot?.sender.orgNombre || null,
     orgCuit: snapshot?.sender.orgCuit || null,
     recipientEmail: snapshot?.recipient.email || mail.recipientEmail || mail.to?.[0],
