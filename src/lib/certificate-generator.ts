@@ -3,6 +3,8 @@ import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import { computeContentHash } from './certification';
 import { POLYGON_CERT_DISPLAY_ORDER, polygonCertLabel } from './polygon-cert-labels';
+import type { CertificateChainTx } from './certificate-chain-evidence';
+import { POLYGON_PUBLISHED_SIGNER } from './polygon-published';
 import { emailDeliveryLabel } from './email-delivery-label';
 import {
   buildNotificationHumanSummary,
@@ -151,6 +153,8 @@ interface CertificateData {
   whatsappSent?: WhatsAppSentContent | null;
   waDeliveredWebhookPreserved?: boolean;
   waReadWebhookPreserved?: boolean;
+  /** Bloque, fecha, emisor y payload de cada TX, consultados a la red al emitir (congelados en el PDF). */
+  chainTransactions?: CertificateChainTx[];
 }
 
 type MovementLike = {
@@ -244,6 +248,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     whatsappSent,
     waDeliveredWebhookPreserved,
     waReadWebhookPreserved,
+    chainTransactions = [],
   } = data;
 
   const consistency = await verifyEvidenceConsistency({
@@ -1097,6 +1102,20 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       value: 'SHA-256( UTF-8( trim(texto_plano_del_contenido_certificado) ) ) — Texto intimado certificado mostrado en el lector. Implementación: crypto.subtle.digest("SHA-256", new TextEncoder().encode(texto.trim())) — Web Crypto API estándar.',
       monospace: false
     });
+    const hashedText = (mailData.message?.contentText || '').trim();
+    if (hashedText) {
+      const hashedBytes = new TextEncoder().encode(hashedText);
+      techData.push({
+        label: `Texto hasheado, en hexadecimal (${hashedBytes.length} bytes UTF-8; los cortes de renglón son tipográficos)`,
+        value: Array.from(hashedBytes, (b) => b.toString(16).padStart(2, '0')).join(''),
+        monospace: true
+      });
+      techData.push({
+        label: 'Cómo reproducirlo con el hexadecimal',
+        value: 'Pasar ese hex a bytes y calcular SHA-256 reproduce el hash de integridad, p. ej.: xxd -r -p texto.hex | sha256sum. Es el mismo texto que figura en la Parte I, con sus saltos de línea reales; copiarlo de la página puede alterar espacios y renglones.',
+        monospace: false
+      });
+    }
   }
 
   try {
@@ -1149,25 +1168,79 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     });
     yPosition += 10;
 
+    const chainByTx = new Map(chainTransactions.map((c) => [c.txHash.toLowerCase(), c]));
+    const monoBlock = (text: string, label: string) => {
+      ensureSpace(26);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      setTextColor(COLORS.textMuted);
+      doc.text(label, margin + 14, yPosition);
+      yPosition += 11;
+      doc.setFont('courier', 'normal');
+      doc.setFontSize(7.5);
+      setTextColor(COLORS.textMain);
+      doc.splitTextToSize(text, contentWidth - 28).forEach((line: string) => {
+        ensureSpace(11);
+        doc.text(line, margin + 14, yPosition);
+        yPosition += 10;
+      });
+      yPosition += 4;
+    };
+
     polygonEntries.forEach((entry) => {
       const url = `${POLYGON_EXPLORER}/tx/${entry.txHash}`;
-      const shortHash = `${entry.txHash!.slice(0, 10)}…${entry.txHash!.slice(-8)}`;
-      ensureSpace(58);
+      const chain = chainByTx.get(String(entry.txHash).toLowerCase());
+      ensureSpace(70);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
       setTextColor(COLORS.textMain);
       doc.text(entry.label, margin + 14, yPosition);
       yPosition += 14;
-      doc.setFont('courier', 'normal');
-      doc.setFontSize(9);
-      doc.text(`TX: ${shortHash}`, margin + 14, yPosition);
-      yPosition += 14;
+      monoBlock(String(entry.txHash), 'Transacción (completa)');
+      const blockLine =
+        chain?.blockNumber != null && chain.blockTime
+          ? `Bloque ${chain.blockNumber} · ${formatDate(chain.blockTime)}`
+          : chain
+            ? 'Bloque: sin datos al emitir (la red no respondió o la transacción aún no estaba minada). Consultar en PolygonScan.'
+            : 'Bloque: no consultado al emitir. Consultar en PolygonScan.';
+      monoBlock(blockLine, 'Bloque y fecha cierta de la publicación');
+      if (chain?.from) {
+        const matches = chain.from.toLowerCase() === POLYGON_PUBLISHED_SIGNER.toLowerCase();
+        monoBlock(
+          `${chain.from}${matches ? ' (coincide con la dirección emisora publicada)' : ' (NO coincide con la dirección emisora publicada)'}`,
+          'Emitida desde'
+        );
+      }
+      if (chain?.payload) monoBlock(chain.payload, 'Payload on-chain (UTF-8, una sola línea; los cortes de renglón son tipográficos)');
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       setTextColor(LINK_COLOR);
       doc.textWithLink('Ver en PolygonScan', margin + 14, yPosition, { url });
       yPosition += 20;
     });
+
+    const verifySteps = [
+      'Cómo verifica un perito estas transacciones',
+      '1. Abrir cada TX en PolygonScan y decodificar Input Data como UTF-8: debe ser igual al payload impreso.',
+      `2. Comprobar que la dirección emisora es la publicada: ${POLYGON_PUBLISHED_SIGNER} (spec: https://notificas.com.ar/spec/v2). Los formatos de estos payloads figuran en https://notificas.com.ar/verify.`,
+      '3. Formatos: SEND|messageId|usuario|rcpt:…|contentHash|smtp:…|timestamp · WA|v2|messageId|wamidc:…|hashPedidoMeta|plantilla|timestamp · WA_DELIVERED / WA_READ|messageId|usuario|…|wamidc:…|ref:TXenvío|timestamp.',
+      '4. Compromisos: rcpt = SHA-256(UTF-8("rcpt|" + messageId + "|" + email del destinatario en minúsculas)); wamidc = SHA-256(UTF-8("wamid|" + messageId + "|" + wamid completo)). El email y el wamid (que lleva el teléfono codificado) no se publican en la cadena; este certificado los imprime para poder recalcular. Las TX anteriores a este formato los llevan en claro.',
+      '5. El timestamp del bloque es la fecha cierta de la publicación del payload, no la del hecho. La hora de cada hecho está en la cronología, y cada hecho cita la TX de envío con ref:. El orden en que se minaron las TX no prueba el orden de los hechos.',
+      '6. La TX que ancla el hash de este PDF se emite después de la emisión y no puede figurar aquí: se consulta en https://notificas.com.ar/verify con el identificador del certificado.',
+    ];
+    verifySteps.forEach((line, idx) => {
+      ensureSpace(idx === 0 ? 30 : 24);
+      doc.setFont('helvetica', idx === 0 ? 'bold' : 'normal');
+      doc.setFontSize(idx === 0 ? 9.5 : 8);
+      setTextColor(idx === 0 ? COLORS.textMain : COLORS.textMuted);
+      doc.splitTextToSize(line, contentWidth).forEach((l: string) => {
+        ensureSpace(11);
+        doc.text(l, margin, yPosition);
+        yPosition += 11;
+      });
+      yPosition += idx === 0 ? 4 : 3;
+    });
+    yPosition += 6;
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);

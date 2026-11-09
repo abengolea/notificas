@@ -181,3 +181,48 @@ test('enlace de WhatsApp y lectura confirmada aparecen en el resumen humano', as
   assert.match(raw, /acceso desde el enlace del mensaje/i);
   assert.match(raw, /lectura confirmada en el lector certificado/i);
 });
+
+test('el anexo imprime cada TX completa con bloque, fecha, emisor, payload y las fórmulas de los compromisos', async () => {
+  const txSend = '0x' + 'fb494615'.repeat(8);
+  const txRead = '0x' + 'c5c16259'.repeat(8);
+  const payload = 'SEND|mail_1|uid_1|rcpt:' + 'ab'.repeat(32) + '|' + 'cd'.repeat(32) + '|smtp:<id@x>|2026-11-03T22:36:41.000Z';
+  const text = 'Hola Ana.\n\nSu cuenta registra una deuda.';
+  const blob = await generateCertificatePDF({
+    messageId: 'testAnexoChain',
+    issuedAt: new Date('2026-11-04T19:19:49Z'),
+    evidenceSealed: true,
+    mailData: {
+      from: 'a@b.c',
+      recipientEmail: 'ana@example.com',
+      message: { subject: 'Asunto', content: text, contentText: text },
+      polygonCertifications: { send: txSend, waRead: txRead },
+    },
+    chainTransactions: [
+      {
+        key: 'send',
+        txHash: txSend,
+        blockNumber: 96693320,
+        blockTime: '2026-11-03T22:37:16.000Z',
+        from: '0x1Cc132e0BeAD9A53aeB7885259DF9FEFb3ede66A',
+        payload,
+      },
+      { key: 'waRead', txHash: txRead, blockNumber: null, blockTime: null, from: null, payload: null },
+    ],
+    movements: [],
+    attachments: [],
+  });
+  const raw = pdfText(await blob.arrayBuffer());
+  assert.ok(raw.includes(txSend), 'la TX de envío debe figurar completa');
+  assert.ok(raw.includes(txRead), 'la TX de lectura debe figurar completa');
+  assert.equal(raw.includes(txSend.slice(0, 10) + '…'), false, 'no puede quedar la TX recortada con puntos suspensivos');
+  assert.match(raw, /Bloque 96693320/);
+  assert.match(raw, /coincide con la dirección emisora publicada/);
+  assert.match(raw, /rcpt:abababab/);
+  assert.match(raw, /sin datos al emitir/);
+  assert.match(raw, /"wamid\|"/);
+  assert.match(raw, /"rcpt\|"/);
+  assert.match(raw, /no puede figurar aquí/);
+  // hex del texto hasheado: "Hola Ana." = 486f6c6120416e612e
+  assert.match(raw, /486f6c6120416e612e0a0a/);
+  assert.match(raw, /xxd -r -p/);
+});

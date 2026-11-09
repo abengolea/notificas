@@ -8,6 +8,7 @@ import { certificarDocumento } from '@/lib/certification-polygon';
 import { findEvidenceSnapshot, overlayMailWithSnapshot } from '@/lib/evidence-snapshot';
 import { listProviderEventsForMail } from '@/lib/provider-events';
 import { describeWhatsAppSentContent } from '@/lib/whatsapp-evidence';
+import { collectChainTransactions } from '@/lib/certificate-chain-evidence';
 
 function certificateStoragePath(messageId: string) {
   return `certificates/${messageId}/certificado-lectura.pdf`;
@@ -224,6 +225,9 @@ export async function POST(request: NextRequest) {
         );
       });
 
+    // Bloque, fecha, emisor y payload de cada TX, consultados una vez y congelados en el PDF.
+    const chainTransactions = await collectChainTransactions(sealedMail.polygonCertifications);
+
     const certificateData = {
       messageId,
       issuedAt: parseIssuedAt(mailDataFresh.certificateIssuedAt) || issuedAt,
@@ -246,7 +250,8 @@ export async function POST(request: NextRequest) {
           sealedMail.whatsappMessageId || sealedMail.tracking?.whatsappMessageId,
       },
       movements,
-      attachments: sealedMail.attachments || []
+      attachments: sealedMail.attachments || [],
+      chainTransactions,
     };
 
     let pdfBlob: Blob;
