@@ -229,7 +229,7 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
 
   doc.setProperties({
     title: `${docTitle} — ${input.batchId}`,
-    subject: 'Índice anclado de un lote de campaña. No sustituye la constancia individual.',
+    subject: 'Índice anclado de un lote de campaña. El detalle de cada destinatario consta en su constancia individual.',
     creator: SITE_LEGAL_NAME,
     author: SITE_LEGAL_NAME,
   });
@@ -239,7 +239,7 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
     documentTitle: docTitle,
     lines: [
       closing,
-      'Índice anclado. No sustituye la constancia individual. La inmutabilidad la aporta la transacción, no este PDF.',
+      'Índice anclado: el detalle de cada destinatario consta en su constancia individual. La inmutabilidad la aporta la transacción, no este PDF.',
       'La transacción prueba que estas huellas existían a la hora de su bloque; las horas de la tabla son las de cada hecho.',
     ],
   });
@@ -299,7 +299,7 @@ export async function buildActaTandaPdf(input: ActaTandaInput): Promise<ArrayBuf
     doc.setTextColor(...PDF_BRAND.warnText);
     doc.setFontSize(8);
     doc.text(
-      'Este lote todavía no está anclado en blockchain. El listado es informativo; no constituye prueba on-chain.',
+      'Este lote todavía no está anclado en blockchain. El listado es informativo hasta que se ancle.',
       16,
       y + 6
     );
@@ -1133,7 +1133,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     ? [
         'Esta Parte I relata dos despachos (correo y WhatsApp), a qué destino técnico de cada canal y qué informaron después los proveedores. La valoración jurídica de estos hechos corresponde al juez.',
         'La integridad del cuerpo común se puede comprobar con la huella SHA-256 y, si la tanda está anclada, con la transacción de Polygon. Alterar el texto hace que la huella deje de coincidir.',
-        'La aceptación del correo por el servidor SMTP y los estados «entregado» y «leído» de WhatsApp se consignan tal como los informaron esos terceros. Un canal no prueba al otro.',
+        'La aceptación del correo por el servidor SMTP y los estados «entregado» y «leído» de WhatsApp se consignan tal como los informaron esos terceros.',
         `Emisión: ${input.generatedAt}.`,
       ]
     : [
@@ -1187,7 +1187,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     doc.setTextColor(...PDF_BRAND.warnText);
     doc.setFontSize(8);
     doc.text(
-      'Esta persona todavía no está en una tanda cerrada. El anexo es informativo; no constituye prueba on-chain.',
+      'Esta persona todavía no está en una tanda cerrada. El anexo es informativo hasta que la tanda se ancle.',
       16,
       y + 2
     );

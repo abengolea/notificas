@@ -112,11 +112,11 @@ export function movementForResendEvent(
     },
     "email.opened": {
       type: "resend_opened_signal",
-      description: "Señal técnica de apertura del correo. No es lectura fehaciente.",
+      description: "Señal técnica de apertura del correo.",
     },
     "email.clicked": {
       type: "resend_clicked_signal",
-      description: "Señal técnica de clic en el correo. No es lectura fehaciente.",
+      description: "Señal técnica de clic en el correo.",
     },
   };
   const spec = labels[eventType];

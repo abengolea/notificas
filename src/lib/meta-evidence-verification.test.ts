@@ -675,11 +675,11 @@ test("resumen ejecutivo Meta: Graph + HMAC + Merkle, sin afirmar lectura viva", 
     disclaimer: "",
   });
   assert.equal(lines.length, 5);
-  assert.match(lines[0], /No es el certificado de lectura/);
+  assert.match(lines[0], /anexo técnico de la comunicación WhatsApp/);
   assert.match(lines[1], /verificados hoy contra Meta Graph API/);
   assert.match(lines[2], /HMAC-SHA256 verificado/);
   assert.match(lines[3], /Polygon/);
-  assert.match(lines[4], /no reconsulta hoy el WAMID/);
+  assert.match(lines[4], /inmutabilidad la aporta Polygon/);
 });
 
 test("constancia PDF de verificación Meta arranca como PDF y no es certificado de lectura", async () => {
@@ -759,7 +759,7 @@ test("constancia PDF de verificación Meta arranca como PDF y no es certificado 
   assert.equal(bytes.subarray(0, 4).toString("ascii"), "%PDF");
   const latin = bytes.toString("latin1");
   assert.match(latin, /Constancia de verificaci/);
-  assert.match(latin, /No es el certificado de lectura/);
+  assert.match(latin, /informados por Meta en su momento/);
   assert.match(latin, /Resumen para quien valida/);
   assert.match(latin, /meta-verification\/v2/);
   assert.match(latin, /Nombre del template/);

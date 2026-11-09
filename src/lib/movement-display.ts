@@ -180,9 +180,9 @@ const RESEND_DESCRIPTION_REWRITES: Array<[RegExp, string]> = [
   [/Resend informó marca de spam\.?/gi, "Marcaron el correo como spam."],
   [
     /Señal técnica de apertura informada por Resend \(pixel\/proxy\)\.?/gi,
-    "Señal técnica de apertura del correo. No es lectura fehaciente.",
+    "Señal técnica de apertura del correo.",
   ],
-  [/Señal técnica de clic informada por Resend\.?/gi, "Señal técnica de clic en el correo. No es lectura fehaciente."],
+  [/Señal técnica de clic informada por Resend\.?/gi, "Señal técnica de clic en el correo."],
   [/\bResend\b/g, "el servicio de correo"],
 ];
 

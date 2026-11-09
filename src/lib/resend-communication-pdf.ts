@@ -112,25 +112,25 @@ export function resendVerificationExecutiveLines(report: ResendCommunicationRepo
   let hechos = "Hechos: no constan webhooks históricos de Resend autenticados en esta emisión.";
   if (delivered && hmacVerified(delivered)) {
     hechos =
-      "Hechos: Resend informó delivered (MTA receptor aceptó). HMAC-SHA256 verificado. No afirma bandeja de entrada.";
+      "Hechos: Resend informó delivered (MTA receptor aceptó). HMAC-SHA256 verificado.";
   } else if (delivered) {
     hechos =
-      "Hechos: consta delivered histórico de Resend, sin recomputación HMAC. No afirma bandeja de entrada.";
+      "Hechos: consta delivered histórico de Resend, sin recomputación HMAC.";
   } else if (report.chronology.some((e) => e.kind === "sent")) {
     hechos = "Hechos: Resend aceptó el mensaje para entrega. No consta delivered histórico autenticado.";
   }
   if (opened) {
-    hechos += " opened es señal técnica (pixel/proxy), no lectura fehaciente.";
+    hechos += " opened es una señal técnica (pixel/proxy).";
   }
 
   return [
-    "Qué es: anexo técnico de la comunicación email vía Resend. No es el certificado de lectura.",
+    "Qué es: anexo técnico de la comunicación email vía Resend.",
     liveOk
       ? "Consulta ahora: GET /emails/{id} contra api.resend.com respondió con last_event."
       : "Consulta ahora: la API de Resend no está completa en esta emisión. Eso no invalida la historia.",
     hechos,
-    "HMAC histórico: autentica el webhook recibido. No es por sí solo una notificación fehaciente.",
-    "Qué no afirma: bandeja de entrada, identidad civil, ni que open/click sean lectura fehaciente.",
+    "HMAC histórico: autentica el webhook recibido.",
+    "Qué informa: estados de entrega y señales técnicas de apertura y clic, tal como los comunicó Resend.",
   ];
 }
 
@@ -156,7 +156,7 @@ export async function buildResendVerificationPdf(report: ResendCommunicationRepo
     documentTitle: "Constancia de verificación Resend",
     lines: [
       "Anexo técnico de la comunicación email (Resend).",
-      "No es el certificado de lectura. delivered no afirma bandeja de entrada.",
+      "Estados de entrega y señales de apertura y clic informados por Resend.",
     ],
   });
 
@@ -217,7 +217,7 @@ export async function buildResendVerificationPdf(report: ResendCommunicationRepo
   y = para(
     doc,
     y,
-    "GET https://api.resend.com/emails/{id}. last_event no equivale a bandeja de entrada ni a lectura.",
+    "GET https://api.resend.com/emails/{id}. Informa el último evento (last_event) registrado por Resend.",
     true
   );
   if (report.liveUnavailable) {
@@ -251,7 +251,7 @@ export async function buildResendVerificationPdf(report: ResendCommunicationRepo
   y = para(
     doc,
     y,
-    "Los estados de entrega y las señales de open/click no se reconsultan como hechos fehacientes. Corresponden a eventos que Resend comunicó a Notificas mediante webhooks Svix.",
+    "Los estados de entrega y las señales de open/click corresponden a eventos que Resend comunicó a Notificas mediante webhooks Svix.",
     true
   );
 

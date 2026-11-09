@@ -83,25 +83,25 @@ export function titleForResendKind(kind: ResendEventKind): string {
 export function claimForResendEvent(kind: ResendEventKind): string {
   switch (kind) {
     case "sent":
-      return "Resend aceptó el mensaje para generar y entregar. No afirma que llegó al buzón.";
+      return "Resend aceptó el mensaje para generar y entregar.";
     case "delivered":
-      return "Resend informó que el servidor de correo del destinatario aceptó el mensaje. No afirma que el correo esté en la bandeja de entrada ni que una persona lo haya leído.";
+      return "Resend informó que el servidor de correo del destinatario aceptó el mensaje.";
     case "delayed":
-      return "Resend informó una demora temporal de entrega. No afirma llegada al buzón.";
+      return "Resend informó una demora temporal de entrega.";
     case "bounced":
       return "Resend informó rebote: el mensaje no llegó al buzón.";
     case "failed":
       return "Resend informó fallo de envío. El mensaje no se entregó.";
     case "complained":
-      return "Resend informó una marca de spam. No identifica a una persona ni afirma lectura.";
+      return "Resend informó una marca de spam.";
     case "opened":
-      return "Señal técnica de apertura informada por Resend (pixel o proxy). No es lectura fehaciente ni identifica a una persona.";
+      return "Señal técnica de apertura informada por Resend (pixel o proxy).";
     case "clicked":
-      return "Señal técnica de clic informada por Resend. No es lectura fehaciente.";
+      return "Señal técnica de clic informada por Resend.";
     case "suppressed":
       return "Resend no envió: la dirección está en lista de supresión.";
     default:
-      return "Evento informado por Resend. No se interpreta como lectura fehaciente ni como bandeja de entrada.";
+      return "Evento informado por Resend.";
   }
 }
 
@@ -160,7 +160,7 @@ export function classifyResendHistoricalSignature(
       webhookAuthLabel: truncated
         ? "RAW truncado. El HMAC no se puede recomputar. La firma se validó al ingresar, si consta."
         : ingestedOk
-          ? "Firma Svix validada al ingresar. El cuerpo RAW no está conservado: no se recompute HMAC histórico. Eso no es por sí solo una notificación fehaciente."
+          ? "Firma Svix validada al ingresar. El cuerpo RAW no está conservado: el HMAC histórico no se recomputa."
           : "Evidencia histórica sin cuerpo RAW ni recomputación HMAC.",
       rawPreserved: false,
       rawTruncated: truncated,
@@ -196,7 +196,7 @@ export function classifyResendHistoricalSignature(
       status: "HISTORICAL_VERIFIED",
       signatureValidation: "correct",
       webhookAuthLabel:
-        "HMAC-SHA256 verificado contra Svix (id.timestamp.raw). Autentica el webhook recibido. No es por sí solo una notificación fehaciente.",
+        "HMAC-SHA256 verificado contra Svix (id.timestamp.raw). Autentica el webhook recibido.",
       rawPreserved: true,
       rawTruncated: false,
       payloadSha256,
@@ -247,4 +247,4 @@ export function historicalEventFromResend(
 }
 
 export const RESEND_VERIFICATION_DISCLAIMER =
-  "Esta constancia verifica evidencia técnica de Resend conservada por Notificas. delivered no equivale a bandeja de entrada. opened y clicked no equivalen a lectura fehaciente ni identifican a una persona. Un HMAC histórico válido autentica el webhook recibido; no es por sí solo una notificación fehaciente. Si la consulta en vivo a la API de Resend falla, la cronología histórica no se invalida.";
+  "Esta constancia verifica evidencia técnica de Resend conservada por Notificas. delivered indica que el servidor de correo del destinatario aceptó el mensaje; opened y clicked son señales técnicas. Un HMAC histórico válido autentica el webhook recibido. Si la consulta en vivo a la API de Resend falla, la cronología histórica no se invalida.";

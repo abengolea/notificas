@@ -97,13 +97,15 @@ test("caída de API en vivo no invalida el documento histórico", () => {
   assert.equal(resendLiveFailureDoesNotInvalidateHistory("HISTORICAL_VERIFIED"), false);
 });
 
-test("claims honestos: delivered ≠ bandeja; open ≠ lectura", () => {
-  assert.match(claimForResendEvent("delivered"), /no afirma/i);
-  assert.match(claimForResendEvent("delivered"), /bandeja de entrada/i);
-  assert.match(claimForResendEvent("opened"), /no es lectura fehaciente/i);
-  assert.match(claimForResendEvent("clicked"), /no es lectura fehaciente/i);
+test("claims exactos: delivered = servidor aceptó; open/click = señales técnicas", () => {
+  assert.match(claimForResendEvent("delivered"), /servidor de correo del destinatario aceptó el mensaje/i);
+  assert.doesNotMatch(claimForResendEvent("delivered"), /le[ií]d|bandeja/i);
+  assert.match(claimForResendEvent("opened"), /señal técnica de apertura/i);
+  assert.match(claimForResendEvent("clicked"), /señal técnica de clic/i);
+  assert.doesNotMatch(claimForResendEvent("opened"), /fehaciente|le[ií]d/i);
   assert.equal(mapResendEventKind("email.delivered"), "delivered");
-  assert.match(lastEventClaim("delivered"), /no afirma/i);
+  assert.match(lastEventClaim("delivered"), /aceptó el mensaje/i);
+  assert.doesNotMatch(lastEventClaim("delivered"), /le[ií]d|bandeja/i);
   assert.match(RESEND_VERIFICATION_DISCLAIMER, /hmac histórico/i);
   assert.match(RESEND_VERIFICATION_DISCLAIMER, /no se invalida/i);
 });
@@ -139,11 +141,12 @@ test("evento histórico opened no se vende como lectura", () => {
     null
   );
   assert.equal(ev.kind, "opened");
-  assert.match(ev.claim, /no es lectura fehaciente/i);
+  assert.match(ev.claim, /señal técnica de apertura/i);
+  assert.doesNotMatch(ev.claim, /fehaciente|le[ií]d/i);
   assert.equal(ev.status, "HISTORICAL_PRESERVED");
 });
 
-test("resumen ejecutivo no afirma bandeja ni lectura", () => {
+test("resumen ejecutivo informa estados y señales sin atribuir lectura", () => {
   const report: ResendCommunicationReport = {
     channel: "email",
     documentUnaffectedByLiveOutage: true,
@@ -185,7 +188,7 @@ test("resumen ejecutivo no afirma bandeja ni lectura", () => {
     disclaimer: RESEND_VERIFICATION_DISCLAIMER,
   };
   const lines = resendVerificationExecutiveLines(report);
-  assert.equal(lines.some((l) => /bandeja de entrada/i.test(l)), true);
+  assert.equal(lines.some((l) => /señales técnicas de apertura y clic/i.test(l)), true);
   assert.equal(lines.some((l) => /no invalida/i.test(l)), true);
-  assert.equal(lines.join(" ").toLowerCase().includes("lectura fehaciente"), true);
+  assert.equal(lines.join(" ").toLowerCase().includes("lectura fehaciente"), false);
 });

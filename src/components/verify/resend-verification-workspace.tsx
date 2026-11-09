@@ -46,16 +46,14 @@ export function ResendVerificationWorkspace({
           <h1 className="app-page-title">Verificación Resend</h1>
           <p className="mt-1.5 max-w-prose text-[13px] leading-5 text-muted-foreground">
             Comprobá el email_id contra la API de Resend y la evidencia histórica de webhooks
-            conservada por Notificas. delivered no afirma bandeja de entrada; open/click no es
-            lectura fehaciente.
+            conservada por Notificas.
           </p>
         </div>
       )}
       {!showHeading && (
         <p className="text-sm text-muted-foreground max-w-prose">
           Comprobá el email_id contra la API de Resend y la evidencia histórica de webhooks
-          conservada por Notificas. delivered no afirma bandeja de entrada; open/click no es
-          lectura fehaciente.
+          conservada por Notificas.
         </p>
       )}
 

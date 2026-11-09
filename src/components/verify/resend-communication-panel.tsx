@@ -237,7 +237,7 @@ export function ResendCommunicationPanel({
               <div>
                 <h3 className="font-semibold text-base">Consulta actual a Resend</h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Fuente: GET /emails/{"{id}"} — last_event no afirma bandeja de entrada ni lectura.
+                  Fuente: GET /emails/{"{id}"}.
                 </p>
               </div>
               <div className="text-sm space-y-1">

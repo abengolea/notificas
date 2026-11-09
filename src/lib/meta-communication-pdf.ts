@@ -160,7 +160,7 @@ export function metaVerificationExecutiveLines(report: MetaCommunicationReport):
     hechos = "Hechos: Meta informó read con HMAC-SHA256 verificado. La entrega no está autenticada o no consta.";
   } else if (rec.delivered || rec.read) {
     hechos =
-      "Hechos: constan estados históricos informados por Meta, pero esta emisión no afirma autenticación criptográfica HMAC.";
+      "Hechos: constan estados históricos informados por Meta, sin autenticación criptográfica HMAC en esta emisión.";
   }
 
   const tx = delivered?.polygon?.txHash || read?.polygon?.txHash || "";
@@ -172,13 +172,13 @@ export function metaVerificationExecutiveLines(report: MetaCommunicationReport):
   }
 
   return [
-    "Qué es: anexo técnico de la comunicación WhatsApp. No es el certificado de lectura.",
+    "Qué es: anexo técnico de la comunicación WhatsApp.",
     graphOk
       ? "Infraestructura ahora: WABA, número WhatsApp Business y template verificados hoy contra Meta Graph API."
       : "Infraestructura ahora: la consulta en vivo a Meta no está completa en esta emisión.",
     hechos,
     ancla,
-    "Qué no afirma: Meta no reconsulta hoy el WAMID. Este PDF no es la prueba inmutable; si hay anclaje, la da Polygon.",
+    "Respaldo: los estados son los que Meta informó en su momento; si hay anclaje, la inmutabilidad la aporta Polygon.",
   ];
 }
 
@@ -204,7 +204,7 @@ export async function buildMetaVerificationPdf(report: MetaCommunicationReport):
     documentTitle: "Constancia de verificación Meta",
     lines: [
       "Anexo técnico de la comunicación WhatsApp Business.",
-      "No es el certificado de lectura. No afirma que Meta confirme hoy entrega o lectura.",
+      "Estados de entrega y lectura informados por Meta en su momento.",
     ],
   });
 
@@ -265,7 +265,7 @@ export async function buildMetaVerificationPdf(report: MetaCommunicationReport):
   y = para(
     doc,
     y,
-    "Consulta actual al emisor (cuenta WhatsApp Business de Notificas). No identifica al destinatario.",
+    "Consulta actual a la cuenta WhatsApp Business emisora de Notificas.",
     true
   );
   if (report.liveUnavailable) {

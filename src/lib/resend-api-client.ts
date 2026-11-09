@@ -63,24 +63,24 @@ export function createResendEmailFetcher(opts: {
 export function lastEventClaim(lastEvent: string | null): string {
   switch (lastEvent) {
     case "delivered":
-      return "Resend informa last_event=delivered en la consulta actual: el servidor de correo del destinatario aceptó el mensaje. No afirma que esté en la bandeja de entrada ni que una persona lo haya leído.";
+      return "Resend informa last_event=delivered en la consulta actual: el servidor de correo del destinatario aceptó el mensaje.";
     case "sent":
-      return "Resend informa last_event=sent: aceptó el mensaje para entrega. No afirma llegada al buzón.";
+      return "Resend informa last_event=sent: aceptó el mensaje para entrega.";
     case "bounced":
     case "failed":
     case "suppressed":
       return `Resend informa last_event=${lastEvent}: el mensaje no llegó al buzón.`;
     case "complained":
-      return "Resend informa last_event=complained: marca de spam. No identifica al lector.";
+      return "Resend informa last_event=complained: marca de spam.";
     case "opened":
-      return "Resend informa last_event=opened: señal técnica de pixel o proxy. No es lectura fehaciente.";
+      return "Resend informa last_event=opened: señal técnica de pixel o proxy.";
     case "clicked":
-      return "Resend informa last_event=clicked: señal técnica de clic. No es lectura fehaciente.";
+      return "Resend informa last_event=clicked: señal técnica de clic.";
     case "delivery_delayed":
-      return "Resend informa last_event=delivery_delayed: demora temporal. No afirma entrega.";
+      return "Resend informa last_event=delivery_delayed: demora temporal.";
     default:
       return lastEvent
-        ? `Resend informa last_event=${lastEvent}. No se interpreta como lectura ni como bandeja de entrada.`
+        ? `Resend informa last_event=${lastEvent}.`
         : "Resend no informó last_event en esta consulta.";
   }
 }

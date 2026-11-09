@@ -1157,7 +1157,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     const LINK_COLOR: [number, number, number] = COLORS.primaryDark;
     const introText =
       'Las siguientes transacciones permiten verificar externamente determinados hechos de esta comunicación. ' +
-      'La blockchain no almacena el texto completo de la notificación, sino identificadores, hashes y referencias técnicas vinculadas a la evidencia.';
+      'La blockchain registra identificadores, hashes y referencias técnicas vinculadas a la evidencia; el texto completo se conserva en la copia guardada al enviar.';
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     const introLines = doc.splitTextToSize(introText, contentWidth);
