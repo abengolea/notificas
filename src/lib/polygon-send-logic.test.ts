@@ -6,6 +6,7 @@ import {
   applyHitoClaim,
   blockchainMovementStatusForHash,
   blockchainMovementStatusForReceipt,
+  buildSendOnChainPayload,
   classifyRetryCertifyAction,
   hashPolygonPayload,
   HITO_CLAIM_TTL_MS,
@@ -14,6 +15,7 @@ import {
   isReplacementUnderpriced,
   isTransientPolygonRpcError,
   isWalletLockBusy,
+  recipientCommitment,
   resolveNextNonce,
   resolvePolygonRpcUrls,
   sendCertificationId,
@@ -268,4 +270,33 @@ test('cron never reemits mined or pending; recovers reserved without hash', () =
   assert.equal(classifyRetryCertifyAction({ send: HASH, sendOperation: { status: 'broadcast', txHash: HASH } }), 'reconcile');
   assert.equal(classifyRetryCertifyAction({}), 'first_cert');
   assert.equal(classifyRetryCertifyAction({ send: HASH_B }), 'reconcile');
+});
+
+test('el payload SEND no publica el email del destinatario y conserva la posición del contentHash', () => {
+  const contentHash = 'ab'.repeat(32);
+  const payload = buildSendOnChainPayload({
+    messageId: 'mail_1',
+    fromUserId: 'uid_1',
+    toEmail: 'Persona@Example.com ',
+    contentHash,
+    smtpMessageId: '<id@x>',
+    timestamp: '2026-11-03T22:36:41.000Z',
+  });
+  assert.equal(payload.toLowerCase().includes('example.com'), false);
+  assert.equal(payload.includes('@example'), false);
+  const parts = payload.split('|');
+  assert.equal(parts[0], 'SEND');
+  assert.equal(parts[3], `rcpt:${recipientCommitment('mail_1', 'persona@example.com')}`);
+  // parsers existentes: contentHash por posición (índice 4) y "primer hash de 64 hex"
+  assert.equal(parts[4], contentHash);
+  assert.equal(parts.find((p) => /^[a-f0-9]{64}$/i.test(p)), contentHash);
+  assert.equal(parts[5], 'smtp:<id@x>');
+});
+
+test('el compromiso con el destinatario es reproducible, normaliza el email y depende del mensaje', () => {
+  const a = recipientCommitment('mail_1', 'persona@example.com');
+  assert.match(a, /^[a-f0-9]{64}$/);
+  assert.equal(recipientCommitment('mail_1', '  PERSONA@example.com'), a);
+  assert.notEqual(recipientCommitment('mail_2', 'persona@example.com'), a);
+  assert.notEqual(recipientCommitment('mail_1', 'otra@example.com'), a);
 });

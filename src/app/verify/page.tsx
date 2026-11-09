@@ -1007,8 +1007,12 @@ export default function VerifyPage() {
                   <p className="font-medium text-foreground mb-1">Formato del payload en blockchain</p>
                   <p className="text-muted-foreground mb-1">Cada transacción incluye datos codificados en UTF-8. Tipos de evento:</p>
                   <code className="block bg-muted px-3 py-2 rounded text-xs font-mono break-all">
-                    SEND|messageId|remitente|destinatario|contentHash|smtp:smtpMessageId|timestamp
+                    SEND|messageId|remitente|rcpt:compromisoDestinatario|contentHash|smtp:smtpMessageId|timestamp
                   </code>
+                  <p className="text-muted-foreground text-xs my-1">
+                    <code>compromisoDestinatario</code> = SHA-256(UTF-8(&quot;rcpt|&quot; + messageId + &quot;|&quot; + email del destinatario en minúsculas)).
+                    El email no se publica en la cadena; quien lo conoce puede recalcular el compromiso. Los envíos anteriores llevan el email en claro en ese campo.
+                  </p>
                   <code className="block bg-muted px-3 py-2 rounded text-xs font-mono break-all mt-1">
                     FIRST_READ|messageId|usuario|contentHash|ref:txHashEnvio|timestamp
                   </code>

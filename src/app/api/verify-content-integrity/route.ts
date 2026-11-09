@@ -5,7 +5,8 @@ import { getTransactionInfo } from '@/lib/blockchain';
 
 /**
  * Extrae el contentHash del payload de una tx SEND en Polygon.
- * Formato: SEND|messageId|fromUserId|toEmail|contentHash|timestamp
+ * Formato: SEND|messageId|fromUserId|rcpt:compromisoDestinatario|contentHash|[smtp:id|]timestamp
+ * (las TX anteriores llevan el email en claro en el 4.º campo; la posición del contentHash no cambia)
  */
 function extractContentHashFromSendPayload(payload: string): string | null {
   if (!payload || typeof payload !== 'string') return null;

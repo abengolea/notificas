@@ -46,6 +46,18 @@ export function hashPolygonPayload(payload: string): string {
   return createHash('sha256').update(payload, 'utf8').digest('hex');
 }
 
+/**
+ * Compromiso con el destinatario: SHA-256("rcpt|" + messageId + "|" + email en minúsculas, sin espacios).
+ * Es lo que viaja en la cadena en lugar del email: quien tiene el mensaje y su destinatario puede recalcularlo y
+ * comprobar a quién se dirigió el envío, pero el email no queda legible en una red pública e irreversible.
+ * Las TX anteriores a este cambio llevan el email en claro en ese mismo campo y no se pueden reescribir.
+ */
+export function recipientCommitment(messageId: string, toEmail: string): string {
+  return createHash('sha256')
+    .update(`rcpt|${messageId}|${String(toEmail || '').trim().toLowerCase()}`, 'utf8')
+    .digest('hex');
+}
+
 export function buildSendOnChainPayload(input: {
   messageId: string;
   fromUserId: string;
@@ -54,7 +66,14 @@ export function buildSendOnChainPayload(input: {
   smtpMessageId?: string;
   timestamp: string;
 }): string {
-  const parts = ['SEND', input.messageId, input.fromUserId, input.toEmail];
+  // El prefijo `rcpt:` mantiene la posición del campo (índice 3) y evita que un parser que busque "el primer
+  // hash de 64 hex" tome el compromiso por el contentHash.
+  const parts = [
+    'SEND',
+    input.messageId,
+    input.fromUserId,
+    `rcpt:${recipientCommitment(input.messageId, input.toEmail)}`,
+  ];
   if (input.contentHash) parts.push(input.contentHash);
   if (input.smtpMessageId) parts.push(`smtp:${input.smtpMessageId}`);
   parts.push(input.timestamp);
