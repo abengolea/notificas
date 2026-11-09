@@ -1,4 +1,5 @@
 import { sha256Hex } from "@/lib/merkle";
+import { wamidCommitment } from "@/lib/polygon-send-logic";
 import {
   usesNotificasDefaultTemplate,
   WA_DEFAULT_TEMPLATE_BODY,
@@ -82,22 +83,25 @@ export async function hashWhatsAppBody(snapshot: unknown): Promise<string> {
   return body ? sha256Hex(body) : "";
 }
 
+/**
+ * v2: WA|v2|mailId|wamidc:<compromiso>|waBodyHash|templateName|timestamp. No publica el teléfono ni el wamid
+ * (que lo lleva codificado). v1, de las TX anteriores: WA|v1|mailId|wamid|waBodyHash|templateName|teléfono|timestamp.
+ * El waBodyHash queda en el índice 4 en ambas.
+ */
 export function buildWhatsAppOnChainPayload(input: {
   mailId: string;
   wamid: string;
   waBodyHash: string;
   templateName: string;
-  to: string;
   timestamp: string;
 }): string {
   return [
     "WA",
-    "v1",
+    "v2",
     input.mailId,
-    input.wamid,
+    `wamidc:${wamidCommitment(input.mailId, input.wamid)}`,
     input.waBodyHash,
     input.templateName || "",
-    input.to.replace(/\D/g, ""),
     input.timestamp,
   ].join("|");
 }
@@ -105,7 +109,7 @@ export function buildWhatsAppOnChainPayload(input: {
 export function extractWhatsAppHashFromPayload(payload: string | null): string | null {
   if (!payload) return null;
   const parts = payload.split("|");
-  if (parts[0] !== "WA" || parts[1] !== "v1") return null;
+  if (parts[0] !== "WA" || (parts[1] !== "v1" && parts[1] !== "v2")) return null;
   const hash = parts[4];
   return hash && /^[a-f0-9]{64}$/i.test(hash) ? hash.toLowerCase() : null;
 }

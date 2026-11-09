@@ -58,6 +58,18 @@ export function recipientCommitment(messageId: string, toEmail: string): string 
     .digest('hex');
 }
 
+/**
+ * Compromiso con el wamid de Meta: SHA-256("wamid|" + mailId + "|" + wamid completo).
+ * El wamid lleva el teléfono del destinatario codificado en base64, así que publicarlo en la cadena equivale a
+ * publicar el número. El compromiso no se puede invertir (el wamid termina en una parte aleatoria que nadie
+ * adivina), pero quien tiene el certificado, que imprime el wamid, puede recalcularlo y compararlo con la TX.
+ */
+export function wamidCommitment(mailId: string, wamid: string): string {
+  return createHash('sha256')
+    .update(`wamid|${mailId}|${String(wamid || '').trim()}`, 'utf8')
+    .digest('hex');
+}
+
 export function buildSendOnChainPayload(input: {
   messageId: string;
   fromUserId: string;
@@ -353,7 +365,8 @@ export function buildHitoOnChainPayload(input: {
   if (input.contentHash) parts.push(input.contentHash);
   if (input.via) parts.push(`via:${input.via}`);
   if (input.snapshotHash) parts.push(`snap:${input.snapshotHash}`);
-  if (input.wamid) parts.push(`wamid:${input.wamid}`);
+  // wamidc: compromiso con el wamid (ver wamidCommitment). Las TX anteriores llevan `wamid:` en claro.
+  if (input.wamid) parts.push(`wamidc:${wamidCommitment(input.messageId, input.wamid)}`);
   if (input.sendTxHash) parts.push(`ref:${input.sendTxHash}`);
   parts.push(input.timestamp);
   return parts.join('|');

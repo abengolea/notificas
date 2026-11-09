@@ -6,6 +6,7 @@ import {
   applyHitoClaim,
   blockchainMovementStatusForHash,
   blockchainMovementStatusForReceipt,
+  buildHitoOnChainPayload,
   buildSendOnChainPayload,
   classifyRetryCertifyAction,
   hashPolygonPayload,
@@ -21,7 +22,9 @@ import {
   sendCertificationId,
   SEND_CLAIM_TTL_MS,
   shouldReleaseHitoPending,
+  wamidCommitment,
 } from './polygon-send-logic';
+import { buildWhatsAppOnChainPayload, extractWhatsAppHashFromPayload } from './whatsapp-evidence';
 
 const HASH = `0x${'ab'.repeat(32)}`;
 const HASH_B = `0x${'cd'.repeat(32)}`;
@@ -299,4 +302,57 @@ test('el compromiso con el destinatario es reproducible, normaliza el email y de
   assert.equal(recipientCommitment('mail_1', '  PERSONA@example.com'), a);
   assert.notEqual(recipientCommitment('mail_2', 'persona@example.com'), a);
   assert.notEqual(recipientCommitment('mail_1', 'otra@example.com'), a);
+});
+
+const WAMID = 'wamid.HBgNNTQ5MzM2NDY0NTM1NxUCABEYEjE1M0NGOTlBODk3QjIyM0VFMAA=';
+const PHONE = '5493364645357';
+
+test('el payload WA v2 no publica el teléfono ni el wamid y conserva el waBodyHash en el índice 4', () => {
+  const waBodyHash = 'cd'.repeat(32);
+  const payload = buildWhatsAppOnChainPayload({
+    mailId: 'mail_1',
+    wamid: WAMID,
+    waBodyHash,
+    templateName: 'notificacion_deuda_180_dias',
+    timestamp: '2026-11-03T22:36:41.000Z',
+  });
+  const parts = payload.split('|');
+  assert.deepEqual(parts.slice(0, 3), ['WA', 'v2', 'mail_1']);
+  assert.equal(parts[3], `wamidc:${wamidCommitment('mail_1', WAMID)}`);
+  assert.equal(parts[4], waBodyHash);
+  assert.equal(parts.length, 7);
+  assert.equal(payload.includes(PHONE), false);
+  assert.equal(payload.includes('HBgNNTQ5'), false, 'el wamid, que lleva el teléfono en base64, no puede viajar');
+  assert.equal(extractWhatsAppHashFromPayload(payload), waBodyHash);
+});
+
+test('el parser sigue leyendo los payloads WA v1 ya emitidos', () => {
+  const waBodyHash = 'ef'.repeat(32);
+  const v1 = ['WA', 'v1', 'mail_1', WAMID, waBodyHash, 'plantilla', PHONE, '2026-11-03T22:36:41.000Z'].join('|');
+  assert.equal(extractWhatsAppHashFromPayload(v1), waBodyHash);
+  assert.equal(extractWhatsAppHashFromPayload('WA|v3|mail_1|x|' + waBodyHash), null);
+});
+
+test('los hitos de WhatsApp publican el compromiso del wamid, no el wamid', () => {
+  const payload = buildHitoOnChainPayload({
+    prefix: 'WA_DELIVERED',
+    messageId: 'mail_1',
+    userId: 'uid_1',
+    contentHash: 'ab'.repeat(32),
+    wamid: WAMID,
+    sendTxHash: '0x' + '12'.repeat(32),
+    timestamp: '2026-11-03T22:36:41.000Z',
+  });
+  assert.equal(payload.includes('HBgNNTQ5'), false);
+  assert.equal(payload.includes(PHONE), false);
+  assert.ok(payload.split('|').includes(`wamidc:${wamidCommitment('mail_1', WAMID)}`));
+  assert.ok(payload.split('|').includes(`ref:0x${'12'.repeat(32)}`));
+});
+
+test('el compromiso del wamid es reproducible, depende del mensaje y no se parece a un hash de contenido', () => {
+  const a = wamidCommitment('mail_1', WAMID);
+  assert.match(a, /^[a-f0-9]{64}$/);
+  assert.equal(wamidCommitment('mail_1', `  ${WAMID} `), a);
+  assert.notEqual(wamidCommitment('mail_2', WAMID), a);
+  assert.notEqual(wamidCommitment('mail_1', WAMID.slice(0, -2)), a);
 });

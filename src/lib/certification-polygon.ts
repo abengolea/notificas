@@ -685,7 +685,6 @@ export async function certificarWhatsApp(opts: {
       wamid: opts.wamid,
       waBodyHash: opts.waBodyHash,
       templateName: opts.templateName,
-      to: opts.to,
       timestamp,
     });
 
@@ -790,7 +789,6 @@ export async function certifyWhatsAppPayloadIfNeeded(mailId: string): Promise<st
         wamid,
         waBodyHash,
         templateName,
-        to,
         timestamp: new Date().toISOString(),
       });
 

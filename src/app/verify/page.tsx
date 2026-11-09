@@ -1009,6 +1009,15 @@ export default function VerifyPage() {
                   <code className="block bg-muted px-3 py-2 rounded text-xs font-mono break-all">
                     SEND|messageId|remitente|rcpt:compromisoDestinatario|contentHash|smtp:smtpMessageId|timestamp
                   </code>
+                  <code className="block bg-muted px-3 py-2 rounded text-xs font-mono break-all mt-1">
+                    WA|v2|messageId|wamidc:compromisoWamid|hashPedidoMeta|plantilla|timestamp
+                  </code>
+                  <code className="block bg-muted px-3 py-2 rounded text-xs font-mono break-all mt-1">
+                    WA_DELIVERED|messageId|usuario|…|wamidc:compromisoWamid|ref:txHashEnvio|timestamp (igual WA_READ)
+                  </code>
+                  <p className="text-muted-foreground text-xs my-1">
+                    <code>compromisoWamid</code> = SHA-256(UTF-8(&quot;wamid|&quot; + messageId + &quot;|&quot; + wamid completo)). El wamid de Meta lleva el teléfono del destinatario codificado, por eso no se publica; el certificado imprime el wamid y permite recalcular el compromiso. Los envíos anteriores llevan el teléfono y el wamid en claro (formato <code>WA|v1</code> y <code>wamid:</code>).
+                  </p>
                   <p className="text-muted-foreground text-xs my-1">
                     <code>compromisoDestinatario</code> = SHA-256(UTF-8(&quot;rcpt|&quot; + messageId + &quot;|&quot; + email del destinatario en minúsculas)).
                     El email no se publica en la cadena; quien lo conoce puede recalcular el compromiso. Los envíos anteriores llevan el email en claro en ese campo.
