@@ -226,3 +226,28 @@ test('el anexo imprime cada TX completa con bloque, fecha, emisor, payload y las
   assert.match(raw, /486f6c6120416e612e0a0a/);
   assert.match(raw, /xxd -r -p/);
 });
+
+test('el certificado separa la copia al enviar de la publicación en Polygon y no se autodescalifica', async () => {
+  const blob = await generateCertificatePDF({
+    messageId: 'testWording',
+    issuedAt: new Date('2026-11-04T19:19:49Z'),
+    evidenceSealed: true,
+    mailData: {
+      from: 'a@b.c',
+      recipientEmail: 'ana@example.com',
+      message: { subject: 'Asunto', content: 'Hola Ana.', contentText: 'Hola Ana.' },
+      evidenceSnapshotHash: 'ab'.repeat(32),
+      polygonCertifications: { send: '0x' + 'ab'.repeat(32) },
+    },
+    movements: [],
+    attachments: [],
+  });
+  const raw = pdfText(await blob.arrayBuffer());
+  assert.match(raw, /Copia guardada al enviar/);
+  assert.match(raw, /Publicación de la huella/);
+  assert.match(raw, /la fecha cierta que aporta la cadena es la del bloque/);
+  assert.match(raw, /corresponde al juez/);
+  assert.equal(/inalterable|snapshot inmutable/i.test(raw), false);
+  assert.equal(/identidad civil|No califica valor legal/i.test(raw), false);
+  assert.equal(/no significa que haya llegado/i.test(raw), false);
+});

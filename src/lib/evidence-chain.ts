@@ -84,7 +84,7 @@ export function buildEvidenceChainVisual(input: {
   steps.push({ kind: 'line', text: `SHA-256: ${shortenHash(input.contentHash)}` });
   if (input.snapshotHash) {
     steps.push({ kind: 'arrow' });
-    steps.push({ kind: 'line', text: `Snapshot inmutable: ${shortenHash(input.snapshotHash)}` });
+    steps.push({ kind: 'line', text: `Copia guardada al enviar (snapshot): ${shortenHash(input.snapshotHash)}` });
   }
   if (input.hasPolygon) {
     steps.push({ kind: 'arrow' });
@@ -151,7 +151,7 @@ export function whatsAppReaderLinkExplanation(
 
 export function certifiedContentLegend(messageId: string, _contentHash?: string): string {
   return (
-    `Este es el contenido certificado asociado al identificador de mensaje ${messageId}, preservado en el snapshot inmutable al momento del envío. ` +
+    `Este es el contenido certificado asociado al identificador de mensaje ${messageId}, guardado en una copia de escritura única (snapshot) al momento del envío. ` +
     `Su integridad se verifica mediante el hash SHA-256 indicado en la cadena de evidencia y reproducido íntegro en el anexo técnico.`
   );
 }

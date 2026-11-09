@@ -191,7 +191,7 @@ const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   attachment_downloaded: 'Descarga de adjunto',
   document_viewed: 'Documento visualizado',
   fallback_access: 'Ingreso por enlace alternativo',
-  certificate_downloaded: 'Certificado PDF descargado y anclado en Polygon',
+  certificate_downloaded: 'Certificado PDF descargado',
 };
 
 const COLORS = PDF_BRAND;
@@ -691,7 +691,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       setTextColor(COLORS.textMuted);
       const freezeNotice = doc.splitTextToSize(
         headerPart === 'anexo'
-          ? 'Parte II — Comprobaciones criptográficas, snapshot inalterable y transacciones en Polygon. La inmutabilidad la aportan esas huellas y TX, no este PDF.'
+          ? 'Parte II — Comprobaciones criptográficas, copia guardada al enviar y transacciones en Polygon. La inmutabilidad la aportan esas huellas y TX, no este PDF.'
           : 'Parte I — Relato para jueces, abogados y funcionarios. Anexo técnico al final. Se emite una sola vez.',
         contentWidth
       );
@@ -796,8 +796,14 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     {
       label: 'Origen del texto y de las partes',
       value: sealed
-        ? 'Copia inalterable tomada al enviar (snapshot)'
+        ? 'Copia guardada al enviar (snapshot, registro de escritura única)'
         : 'Registros del mensaje (sin snapshot sellado)',
+    },
+    {
+      label: 'Publicación de la huella',
+      value: (mailData.polygonCertifications as { send?: string } | undefined)?.send?.startsWith('0x')
+        ? 'Después, en Polygon; bloque y TX en el anexo técnico'
+        : 'Todavía no publicada en Polygon',
     },
   ];
 
@@ -1026,7 +1032,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
 
   writeTextBlock(
     sealed
-      ? 'Notificas.com certifica una comunicación digital con copia inalterable al enviar. Este PDF se emite una sola vez: hechos posteriores no entran en esta copia.'
+      ? 'Notificas.com certifica una comunicación digital con una copia guardada al enviar en un registro de escritura única. Su huella se publica después en Polygon: la fecha cierta que aporta la cadena es la del bloque, no la del envío ni la de cada hecho. Este PDF se emite una sola vez: hechos posteriores no entran en esta copia.'
       : `Notificas.com certifica el mensaje "${messageId}" según sus registros. No hay snapshot sellado; el anexo técnico permite confrontar huellas y transacciones.`,
     9,
     12,
@@ -1076,7 +1082,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     });
   }
   if (mailData.evidenceSnapshotHash) {
-    techData.push({ label: 'Hash del snapshot inmutable', value: mailData.evidenceSnapshotHash, monospace: true });
+    techData.push({ label: 'Hash de la copia guardada al enviar (snapshot)', value: mailData.evidenceSnapshotHash, monospace: true });
   }
   techData.push({
     label: 'Verificación pública',
@@ -1554,9 +1560,9 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   // ========================================
   drawSectionTitle('Alcance de este documento');
   const statements = [
-    'Esta Parte I relata qué se pidió enviar, a qué destino técnico y qué informaron después los proveedores. No califica valor legal ni prueba por sí sola la identidad civil de quien operó el dispositivo.',
+    'Esta Parte I relata qué se pidió enviar, a qué destino técnico y qué informaron después los proveedores. La valoración jurídica de estos hechos corresponde al juez.',
     'Los eventos listados son los congelados al emitir este certificado. Hechos posteriores no aparecen en esta copia.',
-    'Que el servidor de correo haya aceptado el mensaje no significa que haya llegado a la casilla. “Entregado” o “leído” de WhatsApp se consignan solo si Meta los informó.',
+    'La aceptación del correo por el servidor y los estados «entregado» y «leído» de WhatsApp se consignan tal como los informaron esos terceros.',
     'El contenido certificado (texto intimado mostrado en el lector) se identifica con hash SHA-256. Los adjuntos, si existen, también. Cualquier alteración produce un hash distinto.',
     `Emisión: ${utcStamp(emissionDate)}. Las descargas posteriores entregan el mismo PDF.`,
   ];
@@ -1584,7 +1590,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   drawSectionTitle('Snapshot y recálculo');
   writeTextBlock(
     sealed
-      ? 'El evidence_snapshot es un registro de escritura única: se sella al enviar y no se modifica. Conserva identidad de las partes, contenido certificado o pedido a Meta, hashes de adjuntos, WAMID y Message-ID SMTP si existen. Este certificado transcribe esa copia. El recálculo del perito (SHA-256 del contenido certificado de la Parte I) debe coincidir con el contentHash. El recálculo no sustituye al snapshot: lo confronta.'
+      ? 'El evidence_snapshot es un registro de escritura única: se sella al enviar y no se modifica. Conserva identidad de las partes, contenido certificado o pedido a Meta, hashes de adjuntos, WAMID y Message-ID SMTP si existen. Este certificado transcribe esa copia. El recálculo del perito (SHA-256 del contenido certificado de la Parte I) debe coincidir con el contentHash. El recálculo no sustituye al snapshot: lo confronta. La publicación en Polygon de su huella es posterior al envío: la fecha cierta de la cadena es la de su bloque, no la del envío ni la de cada hecho.'
       : 'No hay snapshot sellado de este envío. Las huellas y transacciones del anexo, si existen, se confrontan con el texto transcrito de los registros del mensaje.',
     9,
     13
