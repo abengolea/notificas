@@ -53,6 +53,20 @@ interface MailData {
   createdAt?: any;
 }
 
+/**
+ * Sesión Firebase del que mira, si la hay. El servidor la usa solo para reconocer al REMITENTE
+ * (sus accesos no se registran como accesos del destinatario). Espera a que Firebase termine de
+ * restaurar la sesión, con tope, para no demorar al destinatario que no tiene cuenta.
+ */
+async function getOptionalIdToken(): Promise<string | null> {
+  try {
+    await Promise.race([auth.authStateReady(), new Promise<void>((resolve) => setTimeout(resolve, 2000))]);
+    return (await auth.currentUser?.getIdToken()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default function ReaderPage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -64,6 +78,8 @@ export default function ReaderPage() {
   const [accessDenied, setAccessDenied] = useState(false);
   /** Evita POST duplicados a track-reader-open (Strict Mode, re-renders al actualizar mail). */
   const readerOpenTrackedRef = useRef(false);
+  /** El servidor reconoció que quien mira es el remitente: no se registra nada ni se pide confirmar lectura. */
+  const [viewerIsSender, setViewerIsSender] = useState(false);
 
   const handleAttachmentClick = async (attachment: any) => {
     if (!mail || !params.id) return;
@@ -71,9 +87,13 @@ export default function ReaderPage() {
     // bloquean window.open por perder el "user gesture".
     const tab = window.open("about:blank", "_blank");
     try {
+      const idToken = await getOptionalIdToken();
       const res = await fetch("/api/track-attachment", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
         body: JSON.stringify({
           messageId: params.id,
           attachmentId:
@@ -198,18 +218,28 @@ export default function ReaderPage() {
     if (!params.id || !trackingToken || readerOpenTrackedRef.current) return;
     readerOpenTrackedRef.current = true;
     const messageId = params.id as string;
-    const controller = new AbortController();
-    fetch('/api/track-reader-open', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messageId,
-        k: trackingToken,
-        ...(clickFrom === 'whatsapp' || clickFrom === 'email' ? { from: clickFrom } : {}),
-      }),
-      signal: controller.signal,
-    }).catch(() => {});
-    return () => controller.abort();
+    // Sin AbortController: la ref evita duplicados y no queremos cancelar el registro al re-montar.
+    void (async () => {
+      try {
+        const idToken = await getOptionalIdToken();
+        const res = await fetch('/api/track-reader-open', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+          },
+          body: JSON.stringify({
+            messageId,
+            k: trackingToken,
+            ...(clickFrom === 'whatsapp' || clickFrom === 'email' ? { from: clickFrom } : {}),
+          }),
+        });
+        const payload = await res.json().catch(() => null);
+        if (payload?.viewerIsSender === true) setViewerIsSender(true);
+      } catch {
+        /* ignore */
+      }
+    })();
   }, [params.id, trackingToken, clickFrom]);
 
   useEffect(() => {
@@ -321,7 +351,7 @@ export default function ReaderPage() {
             </div>
           )}
           <div className="mt-8 pt-6 border-t flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            {trackingToken && !mail?.tracking?.readConfirmed ? (
+            {trackingToken && !mail?.tracking?.readConfirmed && !viewerIsSender ? (
               <a
                 href={`${CONFIRM_READ_URL}?msg=${encodeURIComponent(params.id as string)}&k=${encodeURIComponent(trackingToken)}`}
                 target="_blank"
@@ -333,7 +363,11 @@ export default function ReaderPage() {
               </a>
             ) : null}
             <p className="text-sm text-muted-foreground">
-              {mail.tracking?.readConfirmed ? "Lectura confirmada." : "Acceso registrado y certificado."}
+              {viewerIsSender
+                ? "Vista del remitente: no se registra como lectura del destinatario."
+                : mail.tracking?.readConfirmed
+                  ? "Lectura confirmada."
+                  : "Acceso registrado y certificado."}
             </p>
           </div>
         </Card>

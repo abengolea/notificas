@@ -12,6 +12,8 @@ import {
   type ClickSource,
 } from '@/lib/movement-display';
 import { buildAccessEvidenceFields } from '@/lib/evidence-chain';
+import { isMailSender } from '@/lib/mail-sender';
+import { getOptionalViewer } from '@/lib/optional-viewer';
 
 function extractBrowserInfo(userAgent: string) {
   const match = userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)\/(\d+)/);
@@ -101,6 +103,8 @@ export async function POST(request: NextRequest) {
     }
 
     const messageRef = adminDb.collection('mail').doc(messageId);
+    // Si el lector mandó sesión Firebase, sirve para reconocer al remitente (no cuenta como lectura).
+    const viewer = await getOptionalViewer(request);
 
     const userAgent = request.headers.get('User-Agent') || 'Unknown';
     const clientIP =
@@ -134,6 +138,12 @@ export async function POST(request: NextRequest) {
             : undefined;
       if (!stored || stored !== k) {
         throw Object.assign(new Error('INVALID_TOKEN'), { code: 'INVALID_TOKEN' });
+      }
+
+      // Antes de cualquier otra cosa: el remitente mirando su propio mensaje no es una apertura
+      // del destinatario (ni siquiera si se lo mandó a sí mismo para probar).
+      if (isMailSender(viewer, messageData)) {
+        return { skipped: true, reason: 'sender' };
       }
 
       const existingMovements: { type?: string }[] = messageData.tracking?.movements || [];
@@ -197,6 +207,13 @@ export async function POST(request: NextRequest) {
         clickSource,
       };
     });
+
+    if (txResult.skipped && txResult.reason === 'sender') {
+      return NextResponse.json(
+        { success: true, skipped: true, reason: 'sender', viewerIsSender: true },
+        { status: 200 },
+      );
+    }
 
     if (txResult.skipped) {
       // Campañas solo-WA: el link del mensaje apunta directo al reader.

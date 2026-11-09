@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
-import { adminDb, adminAuth } from '@/lib/firebase-admin';
+import { adminDb } from '@/lib/firebase-admin';
 import { certifyMailHitoIfNeeded } from '@/lib/certification-polygon';
+import { isMailSender } from '@/lib/mail-sender';
+import { getOptionalViewer } from '@/lib/optional-viewer';
 
 function extractBrowserInfo(userAgent: string) {
   const match = userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)\/(\d+)/);
@@ -60,37 +62,44 @@ export async function POST(request: NextRequest) {
 
     const authHeader = request.headers.get('Authorization');
     const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    const hasValidKey = (() => {
+      if (!k || typeof k !== 'string') return false;
+      const storedKey =
+        typeof messageData.tracking?.token === 'string'
+          ? messageData.tracking.token
+          : typeof messageData.trackingToken === 'string'
+            ? messageData.trackingToken
+            : undefined;
+      return Boolean(storedKey && storedKey === k);
+    })();
 
-    if (bearerToken) {
-      try {
-        const decoded = await adminAuth.verifyIdToken(bearerToken);
-        const userEmail = normalizeEmail(decoded.email);
-        const recipients = getRecipientEmails(messageData);
-        const isRecipient = Boolean(userEmail && recipients.includes(userEmail));
-        const isSender =
-          messageData.createdBy === decoded.uid ||
-          normalizeEmail(messageData.senderName) === userEmail ||
-          normalizeEmail(messageData.replyTo) === userEmail;
+    // El remitente nunca cuenta como "el destinatario abrió el adjunto", venga con clave o sin ella.
+    // Con clave (lector), la sesión Firebase es solo una pista: si es inválida se ignora.
+    const viewer = bearerToken ? await getOptionalViewer(request) : null;
+    if (viewer && isMailSender(viewer, messageData)) {
+      // Incluye la prueba típica: el remitente se lo mandó a sí mismo.
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        message: 'Apertura de adjunto del remitente ignorada.',
+      });
+    }
 
-        if (!isRecipient) {
-          if (isSender) {
-            return NextResponse.json({
-              success: true,
-              skipped: true,
-              message: 'Apertura de adjunto del remitente ignorada.',
-            });
-          }
-          return NextResponse.json(
-            { error: 'No autorizado para trackear este adjunto.' },
-            { status: 403 },
-          );
-        }
-
-        recipientEmail = userEmail || null;
-        openedByEmail = userEmail || null;
-      } catch {
+    if (bearerToken && !hasValidKey) {
+      // Panel / app: destinatario logueado, sin clave.
+      if (!viewer) {
         return NextResponse.json({ error: 'Token inválido o expirado.' }, { status: 401 });
       }
+      const userEmail = normalizeEmail(viewer.email);
+      const recipients = getRecipientEmails(messageData);
+      if (!userEmail || !recipients.includes(userEmail)) {
+        return NextResponse.json(
+          { error: 'No autorizado para trackear este adjunto.' },
+          { status: 403 },
+        );
+      }
+      recipientEmail = userEmail;
+      openedByEmail = userEmail;
     } else if (k && typeof k === 'string') {
       const stored =
         typeof messageData.tracking?.token === 'string'
