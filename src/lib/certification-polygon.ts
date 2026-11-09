@@ -9,6 +9,12 @@ import {
 import { getAdminDb } from './firebase-admin';
 import { buildWhatsAppOnChainPayload, hashWhatsAppBody } from './whatsapp-evidence';
 import {
+  contentAccessChannel,
+  contentAccessField,
+  contentAccessPayloadVia,
+  existingContentAccessTx,
+} from './polygon-content-access';
+import {
   applyHitoClaim,
   applySendClaim,
   blockchainMovementStatusForHash,
@@ -168,9 +174,14 @@ export async function certifyMailHitoIfNeeded(opts: {
   docId: string;
   hito: PolygonHitoType;
   via?: string;
+  /** Solo `content_access`: canal por el que entró el destinatario. Cada canal ancla su propio acceso. */
+  channel?: string | null;
 }): Promise<string | null> {
   const { docId, hito, via } = opts;
-  const field = POLYGON_HITO_FIELDS[hito];
+  const accessChannel =
+    hito === 'content_access' ? contentAccessChannel(opts.channel) ?? contentAccessChannel(via) : null;
+  const field = hito === 'content_access' ? contentAccessField(accessChannel) : POLYGON_HITO_FIELDS[hito];
+  const payloadVia = hito === 'content_access' ? contentAccessPayloadVia(via, accessChannel) : via;
   const pendingField = `${field}Pending`;
   const payloadField = `${field}Payload`;
   const expiresField = `${field}ClaimExpiresAt`;
@@ -183,6 +194,10 @@ export async function certifyMailHitoIfNeeded(opts: {
     if (!data || data.campaignId) return { action: 'skip' as const, txHash: null as string | null, payload: null as string | null };
 
     const existing = (data.polygonCertifications || {}) as Record<string, unknown>;
+    if (hito === 'content_access') {
+      const covered = existingContentAccessTx(existing, accessChannel);
+      if (covered) return { action: 'exists' as const, txHash: covered, payload: null as string | null };
+    }
     const decided = applyHitoClaim({
       existingTxHash: existing[field],
       pending: existing[pendingField],
@@ -210,7 +225,7 @@ export async function certifyMailHitoIfNeeded(opts: {
         messageId: docId,
         userId: String(recipientId),
         contentHash: typeof existing.contentHash === 'string' ? existing.contentHash : undefined,
-        via,
+        via: payloadVia,
         snapshotHash:
           typeof data.evidenceSnapshotHash === 'string' ? data.evidenceSnapshotHash : undefined,
         wamid:
@@ -270,7 +285,7 @@ export async function certifyMailHitoIfNeeded(opts: {
       contentHash: claim.contentHash,
       snapshotHash: claim.snapshotHash,
       wamid: claim.wamid,
-      via,
+      via: payloadVia,
       payload: claim.payload || undefined,
     });
 
@@ -279,7 +294,8 @@ export async function certifyMailHitoIfNeeded(opts: {
       [`polygonCertifications.${pendingField}`]: FieldValue.delete(),
       'polygonCertifications.updatedAt': new Date(),
     };
-    if (hito === 'content_access' && via) {
+    // La vía solo se guarda en el campo histórico: los campos por canal ya dicen por cuál entró.
+    if (hito === 'content_access' && via && !accessChannel) {
       update['polygonCertifications.contentAccessVia'] = via;
     }
     await mailRef.update(update);

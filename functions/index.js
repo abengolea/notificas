@@ -28,6 +28,7 @@ const {
 } = require('./email-bounce');
 const { isLinkPreviewCrawler, readerRedirectOrigin, PUBLIC_READER_ORIGIN, whatsappPublicReadUrl, emailPublicReadUrl } = require('./link-redirect-origin');
 const { allocateReadCode } = require('./read-code');
+const { contentAccessChannel, contentAccessAlreadyCertified } = require('./polygon-content-access');
 
 initializeApp();
 
@@ -419,9 +420,29 @@ function getCertifyRecipientId(data) {
   );
 }
 
-function certifyPolygonEventOnce(docId, data, type, context, via) {
+function certifyPolygonEventOnce(docId, data, type, context, via, channel) {
   if (data?.campaignId) return;
   if (!docId) return;
+
+  // El acceso al contenido se ancla una vez por canal: el de WhatsApp no tapa el del correo.
+  if (type === 'content_access') {
+    const accessChannel = contentAccessChannel(channel) ?? contentAccessChannel(via);
+    if (contentAccessAlreadyCertified(data?.polygonCertifications, accessChannel)) {
+      console.log(`🔗 Polygon ${type} ya certificado (${context})`);
+      return;
+    }
+    const body = { docId: String(docId), type, userId: getCertifyRecipientId(data) };
+    if (via) body.via = via;
+    if (accessChannel) body.channel = accessChannel;
+    void fetch(`${APP_HOSTING_URL}/api/polygon/certify-event`, certifyEventFetchInit(body))
+      .then(async (certifyRes) => {
+        if (!certifyRes.ok) {
+          console.warn(`⚠️ Polygon certify ${type} (${context}):`, await certifyRes.text());
+        }
+      })
+      .catch((e) => console.warn(`⚠️ Polygon certify ${type} failed (${context}):`, e?.message));
+    return;
+  }
 
   const fieldByType = {
     receive: 'receive',
@@ -1665,7 +1686,7 @@ async function handleAttachmentTrackingRedirect(req, res, opts) {
   try {
     await docRef.update(attachmentUpdate);
     console.log('✅ Adjunto desde correo — attachment_opened registrado');
-    certifyPolygonEventOnce(docRef.id, data, 'content_access', 'attachment_opened', 'attachment');
+    certifyPolygonEventOnce(docRef.id, data, 'content_access', 'attachment_opened', 'attachment', src === 'whatsapp' ? 'whatsapp' : 'email');
   } catch (updateErr) {
     // La apertura del archivo no debe romperse por un fallo de tracking.
     console.error('⚠️ No se pudo registrar attachment_opened; redirigiendo igual:', updateErr?.message);
@@ -2015,6 +2036,48 @@ async function linkRedirectHandler(req, res) {
 
 exports.linkRedirect = onRequest(linkRedirectOptions, linkRedirectHandler);
 
+// Página que ve el destinatario al confirmar la lectura (responsive, claro/oscuro).
+function renderReadConfirmedPage() {
+  return `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Lectura confirmada · Notificas</title>
+<style>
+  :root{--bg:#f1f5f9;--card:#fff;--text:#0f172a;--muted:#475569;--border:#e2e8f0;--ok:#16a34a;--ok-soft:#dcfce7;--shadow:0 10px 40px rgba(15,23,42,.08)}
+  @media (prefers-color-scheme:dark){:root{--bg:#0b1220;--card:#111a2e;--text:#f1f5f9;--muted:#94a3b8;--border:#1e293b;--ok:#4ade80;--ok-soft:rgba(74,222,128,.14);--shadow:0 10px 40px rgba(0,0,0,.4)}}
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{display:flex;align-items:center;justify-content:center;padding:20px;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  .card{width:100%;max-width:560px;background:var(--card);border:1px solid var(--border);border-radius:24px;box-shadow:var(--shadow);padding:clamp(32px,6vw,56px) clamp(24px,5vw,48px);text-align:center;animation:rise .45s ease-out both}
+  .icon{width:clamp(88px,18vw,112px);height:clamp(88px,18vw,112px);margin:0 auto clamp(20px,4vw,28px);border-radius:50%;background:var(--ok-soft);display:flex;align-items:center;justify-content:center}
+  .icon svg{width:52%;height:52%}
+  .icon path{fill:none;stroke:var(--ok);stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:30;stroke-dashoffset:30;animation:draw .5s .25s ease-out forwards}
+  h1{margin:0 0 12px;font-size:clamp(26px,5.5vw,36px);line-height:1.15;letter-spacing:-.02em;font-weight:800}
+  p{margin:0 auto;max-width:42ch;font-size:clamp(16px,2.6vw,18px);line-height:1.55;color:var(--muted)}
+  .note{margin-top:28px;padding-top:20px;border-top:1px solid var(--border);font-size:14px}
+  .brand{margin-top:24px;font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--muted);opacity:.8}
+  @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+  @keyframes draw{to{stroke-dashoffset:0}}
+  @media (prefers-reduced-motion:reduce){.card,.icon path{animation:none}.icon path{stroke-dashoffset:0}}
+</style>
+</head>
+<body>
+  <main class="card" role="status" aria-live="polite">
+    <div class="icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+    </div>
+    <h1>Lectura confirmada</h1>
+    <p>Registramos tu confirmación de lectura del mensaje. Ya podés cerrar esta ventana.</p>
+    <p class="note">Esta confirmación queda registrada como constancia para el expediente.</p>
+    <div class="brand">NOTIFICAS</div>
+  </main>
+</body>
+</html>`;
+}
+
 exports.confirmRead = onRequest({ region: REGION, secrets: [polygonCertifySecret] }, async (req, res) => {
   try {
     console.log('🔍 confirmRead called with params:', req.query);
@@ -2078,9 +2141,8 @@ exports.confirmRead = onRequest({ region: REGION, secrets: [polygonCertifySecret
     }
 
     res.set('Content-Type', 'text/html; charset=utf-8');
-    return res
-      .status(200)
-      .send('<!doctype html><html><body><h3>Lectura confirmada ✅</h3><p>Gracias.</p></body></html>');
+    res.set('Cache-Control', 'no-store');
+    return res.status(200).send(renderReadConfirmedPage());
   } catch (e) {
     console.error(e);
     return res.status(200).send('OK');

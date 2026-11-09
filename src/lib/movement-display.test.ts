@@ -9,6 +9,7 @@ import {
   publicLinkClickDescription,
   publicMovementBrowserLabel,
   publicMovementDescription,
+  readerOpenAlreadyLogged,
   readerOpenDescription,
   readerOpenLabel,
 } from "./movement-display";
@@ -75,4 +76,19 @@ test("el clic del enlace dice si vino del WhatsApp o del correo", () => {
     publicLinkClickDescription("link_clicked", "Pulsaron el botón del correo para abrir la notificación"),
     /correo electrónico/,
   );
+});
+
+test('readerOpenAlreadyLogged: recargar por el mismo canal no suma; entrar por el otro canal sí', () => {
+  const porWhatsapp = [{ type: 'reader_magic_open', clickSource: 'whatsapp', source: 'reader_whatsapp' }];
+  assert.equal(readerOpenAlreadyLogged([], 'whatsapp'), false);
+  assert.equal(readerOpenAlreadyLogged(porWhatsapp, 'whatsapp'), true);
+  assert.equal(readerOpenAlreadyLogged(porWhatsapp, 'correo'), false);
+  assert.equal(readerOpenAlreadyLogged([{ type: 'reader_magic_open', clickSource: 'correo', source: 'reader_email' }], 'whatsapp'), false);
+});
+
+test('readerOpenAlreadyLogged: sin canal conocido se mantiene una sola apertura', () => {
+  const porWhatsapp = [{ type: 'reader_magic_open', clickSource: 'whatsapp', source: 'reader_whatsapp' }];
+  assert.equal(readerOpenAlreadyLogged(porWhatsapp, 'unknown'), true);
+  assert.equal(readerOpenAlreadyLogged([{ type: 'reader_magic_open' }], 'correo'), true);
+  assert.equal(readerOpenAlreadyLogged([{ type: 'link_clicked' }, { type: 'app_opened' }], 'correo'), false);
 });

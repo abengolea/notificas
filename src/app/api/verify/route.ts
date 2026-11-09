@@ -311,6 +311,8 @@ function buildResponsePayload(
     isPolygonTxHash(data.polygonCertifications?.waDelivered) ||
     isPolygonTxHash(data.polygonCertifications?.waRead) ||
     isPolygonTxHash(data.polygonCertifications?.contentAccess) ||
+    isPolygonTxHash(data.polygonCertifications?.contentAccessWhatsapp) ||
+    isPolygonTxHash(data.polygonCertifications?.contentAccessEmail) ||
     isPolygonTxHash(data.polygonCertifications?.readConfirmed) ||
     isPolygonTxHash(data.polygonCertifications?.receive) ||
     isPolygonTxHash(data.polygonCertifications?.read) ||

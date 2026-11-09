@@ -7,10 +7,16 @@ import { syncCampaignMessageLinkClick } from '@/lib/campaign-click-sync';
 import {
   inferClickSourceFromMovements,
   normalizeClickSourceInput,
+  readerOpenAlreadyLogged,
   readerOpenStoredDescription,
   readerOpenStoredSource,
   type ClickSource,
 } from '@/lib/movement-display';
+import {
+  contentAccessChannel,
+  existingContentAccessTx,
+  type ContentAccessChannel,
+} from '@/lib/polygon-content-access';
 import { buildAccessEvidenceFields } from '@/lib/evidence-chain';
 import { isMailSender } from '@/lib/mail-sender';
 import { getOptionalViewer } from '@/lib/optional-viewer';
@@ -30,9 +36,12 @@ function generateUUID() {
 /**
  * Certifica el acceso al contenido (reader) en Polygon. No pisa WhatsApp entregado/leído.
  */
-async function certifyContentAccessInBackground(docId: string): Promise<void> {
+async function certifyContentAccessInBackground(
+  docId: string,
+  channel: ContentAccessChannel | null,
+): Promise<void> {
   try {
-    const txHash = await certifyMailHitoIfNeeded({ docId, hito: 'content_access', via: 'reader' });
+    const txHash = await certifyMailHitoIfNeeded({ docId, hito: 'content_access', via: 'reader', channel });
     if (!txHash) return;
     const msgSnap = await adminDb.collection('campaign_messages').where('mailId', '==', docId).limit(1).get();
     if (!msgSnap.empty) {
@@ -147,16 +156,6 @@ export async function POST(request: NextRequest) {
       }
 
       const existingMovements: { type?: string }[] = messageData.tracking?.movements || [];
-      const alreadyLoggedReaderOpen = existingMovements.some(
-        (m) => m.type === 'reader_magic_open',
-      );
-      // Solo omitir si ya hay apertura del reader. `tracking.opened` puede venir
-      // de una visita al panel (app_opened) y no debe tapar la lectura real del correo.
-      if (alreadyLoggedReaderOpen) {
-        return { skipped: true, reason: 'already_logged' };
-      }
-
-      const wasFirstOpen = !messageData.tracking?.opened;
       const openTimestamp = new Date().toISOString();
       const clickSource: ClickSource =
         fromQuery !== 'unknown'
@@ -165,6 +164,14 @@ export async function POST(request: NextRequest) {
               { type: 'reader_magic_open', timestamp: openTimestamp },
               existingMovements,
             );
+      // Solo omitir si ya hay apertura del reader por ese mismo canal. `tracking.opened` puede venir
+      // de una visita al panel (app_opened) y no debe tapar la lectura real del correo.
+      // Entrar por el otro canal (WhatsApp y después correo, o al revés) es un acceso nuevo.
+      if (readerOpenAlreadyLogged(existingMovements, clickSource)) {
+        return { skipped: true, reason: 'already_logged' };
+      }
+
+      const wasFirstOpen = !messageData.tracking?.opened;
       const movementId = generateUUID();
       const evidence = buildAccessEvidenceFields(
         messageData as Record<string, unknown>,
@@ -197,7 +204,8 @@ export async function POST(request: NextRequest) {
 
       const isCampaign = Boolean(messageData.campaignId);
       const certify =
-        !isCampaign && !messageData.polygonCertifications?.contentAccess;
+        !isCampaign &&
+        !existingContentAccessTx(messageData.polygonCertifications, contentAccessChannel(clickSource));
       return {
         skipped: false,
         movementId: movement.id,
@@ -225,7 +233,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (txResult.certify) {
-      void certifyContentAccessInBackground(messageId);
+      void certifyContentAccessInBackground(messageId, contentAccessChannel(txResult.clickSource));
     }
 
     if (txResult.wasFirstOpen) {

@@ -139,6 +139,8 @@ function formatPolygonTxLabel(key: string): string {
     waDelivered: "Entrega WhatsApp",
     waRead: "Lectura WhatsApp",
     contentAccess: "Acceso al contenido",
+    contentAccessWhatsapp: "Acceso al contenido · WhatsApp",
+    contentAccessEmail: "Acceso al contenido · correo",
     readConfirmed: "Lectura confirmada",
   };
   return labels[key] || key;

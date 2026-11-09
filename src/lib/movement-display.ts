@@ -34,6 +34,25 @@ export function resolveClickSource(movement: MovementLike): ClickSource {
   return "unknown";
 }
 
+/**
+ * ¿Esta apertura del lector ya quedó registrada? Una recarga del mismo canal no suma. Entrar por el otro canal
+ * (primero WhatsApp, después el correo, o al revés) sí es un acceso nuevo y se registra.
+ * Si el canal de la apertura nueva o de alguna anterior no se conoce, se mantiene el criterio de siempre
+ * (una sola apertura): sin canal no hay forma de saber que es otro acceso.
+ */
+export function readerOpenAlreadyLogged(
+  existingMovements: MovementLike[],
+  incoming: ClickSource,
+): boolean {
+  const opens = existingMovements.filter((m) => m.type === "reader_magic_open");
+  if (opens.length === 0) return false;
+  if (incoming === "unknown") return true;
+  return opens.some((m) => {
+    const source = resolveClickSource(m);
+    return source === "unknown" || source === incoming;
+  });
+}
+
 /** Infiere el canal del click a partir de movimientos cercanos (p. ej. link_clicked justo antes). */
 export function inferClickSourceFromMovements(
   target: MovementLike,

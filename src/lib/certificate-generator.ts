@@ -130,6 +130,8 @@ interface MailData {
     waDelivered?: string;
     waRead?: string;
     contentAccess?: string;
+    contentAccessWhatsapp?: string;
+    contentAccessEmail?: string;
     contentAccessVia?: string;
     readConfirmed?: string;
     receive?: string;

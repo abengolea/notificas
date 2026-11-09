@@ -34,11 +34,12 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { docId, type, pdfHash, via } = body as {
+    const { docId, type, pdfHash, via, channel } = body as {
       docId?: unknown;
       type?: unknown;
       pdfHash?: unknown;
       via?: unknown;
+      channel?: unknown;
     };
 
     if (!docId || typeof docId !== 'string' || !type || typeof type !== 'string') {
@@ -78,7 +79,12 @@ export async function POST(request: NextRequest) {
             ? 'read_confirmed'
             : (type as PolygonHitoType);
       const viaStr = typeof via === 'string' && via.trim() ? via.trim() : undefined;
-      const result = await certifyMailHitoIfNeeded({ docId, hito, via: viaStr });
+      const result = await certifyMailHitoIfNeeded({
+        docId,
+        hito,
+        via: viaStr,
+        channel: typeof channel === 'string' ? channel : null,
+      });
       if (!result) {
         return NextResponse.json({ success: true, skipped: 'campaña o en curso' });
       }

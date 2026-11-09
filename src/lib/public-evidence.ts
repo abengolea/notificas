@@ -115,6 +115,8 @@ export async function buildPublicEvidence(mailId: string) {
     waDelivered: polyCerts.waDelivered || null,
     waRead: polyCerts.waRead || null,
     contentAccess: polyCerts.contentAccess || null,
+    contentAccessWhatsapp: polyCerts.contentAccessWhatsapp || null,
+    contentAccessEmail: polyCerts.contentAccessEmail || null,
     readConfirmed: polyCerts.readConfirmed || null,
     contentAccessVia: polyCerts.contentAccessVia || null,
   };
