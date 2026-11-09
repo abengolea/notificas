@@ -28,6 +28,8 @@ import { publicCertificateVerifyUrl } from './public-verify-url';
 import { campaignVerifyRef, formatVerifyRefLine } from './verify-hints';
 import { stripRichTextToPlainText } from './rich-text';
 import type { WhatsAppSentContent } from './whatsapp-evidence';
+import { tokenReference } from './evidence-chain';
+import { maskAccessKeys, redactWhatsAppSentForPrint } from './redact-access-key';
 import { buildSortedChronologyRows } from './certificate-chronology';
 import {
   verifyEvidenceConsistency,
@@ -245,7 +247,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     movements = [],
     attachments = [],
     evidenceSealed,
-    whatsappSent,
+    whatsappSent: whatsappSentRaw,
     waDeliveredWebhookPreserved,
     waReadWebhookPreserved,
     chainTransactions = [],
@@ -254,7 +256,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
   const consistency = await verifyEvidenceConsistency({
     messageId,
     mailData: mailData as Parameters<typeof verifyEvidenceConsistency>[0]['mailData'],
-    whatsappSent: whatsappSent || undefined,
+    whatsappSent: whatsappSentRaw || undefined,
     snapshotContentHash: mailData.polygonCertifications?.contentHash,
     snapshotHash: mailData.evidenceSnapshotHash,
     evidenceSealed: evidenceSealed === true || Boolean(mailData.evidenceSnapshotHash),
@@ -265,6 +267,11 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
       consistency.critical
     );
   }
+
+  // Desde acá todo es para IMPRIMIR: la clave `k` del enlace es una llave de acceso al lector
+  // y no debe quedar en un PDF que baja el remitente o que circula en un expediente.
+  const accessKey = typeof mailData.tracking?.token === 'string' ? mailData.tracking.token : null;
+  const whatsappSent = whatsappSentRaw ? redactWhatsAppSentForPrint(whatsappSentRaw, accessKey) : whatsappSentRaw;
 
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -1054,7 +1061,11 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
 
   const techData: Array<{ label: string; value: string; monospace?: boolean }> = [];
   if (mailData.tracking?.token) {
-    techData.push({ label: 'Token de verificación', value: mailData.tracking.token, monospace: true });
+    // Nunca el token completo: es la llave del enlace. Referencia no reversible (SHA-256, 16 caracteres).
+    const tokenRef = tokenReference(mailData.tracking.token);
+    if (tokenRef) {
+      techData.push({ label: 'Referencia del token de acceso (SHA-256, 16 caracteres)', value: tokenRef, monospace: true });
+    }
   }
   if (mailData.delivery?.info) {
     techData.push({ label: 'Identificador SMTP (aceptación)', value: mailData.delivery.info, monospace: true });
@@ -1095,7 +1106,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     monospace: true,
   });
   if (mailData.readerUrl) {
-    techData.push({ label: 'URL de acceso al lector certificado', value: mailData.readerUrl, monospace: true });
+    techData.push({ label: 'URL de acceso al lector certificado', value: maskAccessKeys(mailData.readerUrl, accessKey), monospace: true });
   }
   if (contentHash) {
     techData.push({
