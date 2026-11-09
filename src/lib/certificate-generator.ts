@@ -72,6 +72,8 @@ interface MailMessageContent {
 
 interface MailTracking {
   token?: string;
+  /** Código corto de `/n/CODE`: también abre el lector. Nunca se imprime. */
+  shortCode?: string;
   sentAt?: any;
   opened?: boolean;
   openedAt?: any;
@@ -270,8 +272,8 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
 
   // Desde acá todo es para IMPRIMIR: la clave `k` del enlace es una llave de acceso al lector
   // y no debe quedar en un PDF que baja el remitente o que circula en un expediente.
-  const accessKey = typeof mailData.tracking?.token === 'string' ? mailData.tracking.token : null;
-  const whatsappSent = whatsappSentRaw ? redactWhatsAppSentForPrint(whatsappSentRaw, accessKey) : whatsappSentRaw;
+  const accessSecrets = [mailData.tracking?.token, mailData.tracking?.shortCode];
+  const whatsappSent = whatsappSentRaw ? redactWhatsAppSentForPrint(whatsappSentRaw, accessSecrets) : whatsappSentRaw;
 
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -1106,7 +1108,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
     monospace: true,
   });
   if (mailData.readerUrl) {
-    techData.push({ label: 'URL de acceso al lector certificado', value: maskAccessKeys(mailData.readerUrl, accessKey), monospace: true });
+    techData.push({ label: 'URL de acceso al lector certificado', value: maskAccessKeys(mailData.readerUrl, accessSecrets), monospace: true });
   }
   if (contentHash) {
     techData.push({
