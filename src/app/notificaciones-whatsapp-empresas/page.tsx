@@ -40,7 +40,7 @@ export default function WhatsAppEmpresasPage() {
       <h2 className="pt-2 text-xl font-semibold text-foreground">Correo en paralelo</h2>
       <p>
         En el mail anotamos si nuestro servidor lo aceptó, si nos llega un rebote, y si la persona
-        abrió el enlace de lectura. SMTP aceptado no significa “llegó a la bandeja”. Podés combinar
+        abrió el enlace de lectura. Podés combinar
         ambos canales en la misma campaña; cada uno deja su propio rastro.
       </p>
 

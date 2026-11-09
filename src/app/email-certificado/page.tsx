@@ -26,9 +26,9 @@ const faqs = [
       "No en el sentido en que a veces se usa esa expresión. “Certificado” aquí no debe leerse como un sello estatal ni como equivalencia a una carta documento. Describe constancias técnicas sobre el envío y sus eventos.",
   },
   {
-    question: "¿El servidor aceptó el correo equivale a que llegó a la bandeja?",
+    question: "¿Qué indica que el servidor aceptó el correo?",
     answer:
-      "No. La aceptación SMTP indica que el servidor de origen (o el de retransmisión) tomó el mensaje para enviarlo. No prueba por sí sola la entrega en Gmail, Outlook u otro buzón, ni la lectura.",
+      "La aceptación SMTP indica que el servidor de origen (o el de retransmisión) tomó el mensaje para enviarlo. Los rebotes y la apertura del enlace de lectura, cuando ocurren, se anotan como hechos aparte.",
   },
   {
     question: "¿Qué evidencia conserva Notificas del email?",
@@ -38,7 +38,7 @@ const faqs = [
   {
     question: "¿Puede verificarse posteriormente una constancia?",
     answer:
-      "Sí. En notificas.com.ar/verify se puede subir el PDF o ingresar el identificador para contrastar la huella con el registro. Un resultado válido habla de integridad del archivo, no del valor legal del acto.",
+      "Sí. En notificas.com.ar/verify se puede subir el PDF o ingresar el identificador para contrastar la huella con el registro. Un resultado válido confirma que el archivo coincide con lo que Notificas emitió y que no fue alterado.",
   },
 ];
 

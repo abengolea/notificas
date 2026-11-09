@@ -105,7 +105,7 @@ const certifiedChannels: {
       {
         title: 'Envío',
         description:
-          'Qué texto salió, a quién y cuándo. Si el servidor de correo lo tomó para enviar, queda anotado. Eso no significa que haya llegado a la bandeja.',
+          'Qué texto salió, a quién y cuándo. Si el servidor de correo lo tomó para enviar, queda anotado.',
       },
       {
         title: 'Acceso al enlace',

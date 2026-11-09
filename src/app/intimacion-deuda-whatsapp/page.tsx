@@ -107,9 +107,9 @@ export default function IntimacionDeudaWhatsAppPage() {
       <h2 className="pt-2 text-xl font-semibold text-foreground">Qué evidencia es relevante aquí</h2>
       <p>
         En una intimación interesa poder mostrar, más adelante, qué se dijo, a quién, cuándo, y si
-        el proveedor del canal informó entrega. Interesa no sobredimensionar la lectura: muchas
-        personas no abren el aviso y aun así el envío ocurrió. Interesa no afirmar que el número
-        “es” el deudor si esa vinculación no está documentada en la relación comercial.
+        el proveedor del canal informó entrega. Interesa mostrar el envío y la entrega con su fecha, y la lectura
+        cuando el proveedor la informa. La vinculación del número con el deudor surge de la
+        relación comercial, que conviene tener documentada.
       </p>
       <p>
         Sobre los elementos (contenido, identificadores, integridad) ver{" "}

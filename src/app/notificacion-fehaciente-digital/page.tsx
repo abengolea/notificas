@@ -25,13 +25,12 @@ export default function NotificacionFehacientePage() {
       <p>
         En la práctica, “fehaciente” significa que podés mostrar qué se envió, a quién y cuándo, con un
         rastro que no depende de un pantallazo. Notificas deja esa constancia técnica: el texto, los
-        destinos y una huella en Polygon. No decide qué valor le da un juez.
+        destinos y una huella en Polygon. La valoración jurídica corresponde al juez.
       </p>
 
       <h2 className="pt-2 text-xl font-semibold text-foreground">Qué queda registrado</h2>
       <p>
-        Del correo anotamos si nuestro servidor lo aceptó para enviar. Eso no prueba que haya llegado a
-        la bandeja ni que lo hayan leído. Si el buzón rebota y nos llega el aviso, lo anotamos. Del
+        Del correo anotamos si nuestro servidor lo aceptó para enviar. Si el buzón rebota y nos llega el aviso, lo anotamos. Del
         enlace de lectura, si hay un click, queda el primero. El certificado de lectura lo emitís vos,
         una sola vez, como una foto de ese momento.
       </p>
@@ -41,11 +40,12 @@ export default function NotificacionFehacientePage() {
         llegó al teléfono o si lo leyeron; eso es lo que registramos.
       </p>
 
-      <h2 className="pt-2 text-xl font-semibold text-foreground">Qué no prueba</h2>
+      <h2 className="pt-2 text-xl font-semibold text-foreground">Qué aporta</h2>
       <ul className="list-disc space-y-1 pl-5">
-        <li>Que el mail “entró a Gmail o Outlook” solo porque SMTP lo aceptó.</li>
-        <li>Que el destinatario leyó el cuerpo entero del WhatsApp, si viajó una plantilla corta.</li>
-        <li>Que reemplaza carta documento, cédula u otra forma que una norma exija.</li>
+        <li>Qué texto se envió, a quién y en qué fecha y hora.</li>
+        <li>Si el servidor de correo lo aceptó para enviar y los rebotes cuando nos llegan.</li>
+        <li>Lo que Meta informó del aviso de WhatsApp: entrega y lectura.</li>
+        <li>Una huella anclada en Polygon, que se puede verificar sin depender de Notificas.</li>
       </ul>
 
       <h2 className="pt-2 text-xl font-semibold text-foreground">Cómo se usa</h2>

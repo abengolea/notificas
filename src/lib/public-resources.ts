@@ -21,15 +21,15 @@ export const SEO_GUIDE_PAGES = [
     path: "/notificacion-fehaciente-digital",
     title: "Qué es una notificación fehaciente digital",
     description:
-      "Qué deja constancia Notificas, qué no prueba un correo aceptado y cómo se usa un certificado de lectura en Argentina.",
-    blurb: "Qué se registra, qué no, y cómo usarlo.",
+      "Qué deja constancia Notificas, qué registra un correo aceptado y cómo se usa un certificado de lectura en Argentina.",
+    blurb: "Qué se registra y cómo usarlo.",
   },
   {
     path: "/carta-documento-digital",
-    title: "Carta documento digital: qué cubre Notificas y qué no",
+    title: "Carta documento digital: qué cubre Notificas",
     description:
-      "Notificas no reemplaza una carta documento si la ley pide esa forma. Compará costos, plazos y valor de la constancia técnica.",
-    blurb: "No reemplaza la carta documento. Sí deja rastro comprobable.",
+      "Compará costos, plazos y valor de la constancia técnica de Notificas con una carta documento: qué deja registrado cada una y cuándo conviene usar cada medio.",
+    blurb: "Más rápido y económico, y deja rastro comprobable.",
   },
   {
     path: "/notificaciones-whatsapp-empresas",
@@ -79,7 +79,7 @@ export const GEO_LANDING_PAGES = [
     path: "/intimacion-deuda-whatsapp",
     title: "Intimaciones de deuda por WhatsApp: evidencia y trazabilidad",
     description:
-      "Intimaciones de deuda por WhatsApp: cómo dejar rastro técnico del envío y la entrega, y por qué eso no equivale automáticamente a un requisito legal.",
+      "Intimaciones de deuda por WhatsApp: cómo dejar rastro técnico del envío y la entrega, y cómo acreditar qué se comunicó y cuándo.",
     blurb: "Cobranza empresarial: comunicar, acreditar el envío y cumplir formas.",
     keywords: [
       "intimación de deuda WhatsApp",
@@ -105,7 +105,7 @@ export const GEO_LANDING_PAGES = [
     path: "/email-certificado",
     title: "Email verificable: cómo conservar evidencia de una comunicación",
     description:
-      "Email verificable: cómo conservar evidencia de envío, destinatario, contenido y estado. No equivale por sí solo a una forma legal determinada.",
+      "Email verificable: cómo conservar evidencia de envío, destinatario, contenido y estado de una comunicación, con huella verificable en Polygon.",
     blurb: "Evidencia de correo: envío, estado, trazabilidad y conservación.",
     keywords: [
       "email certificado",

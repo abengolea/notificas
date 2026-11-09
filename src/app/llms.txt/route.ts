@@ -14,7 +14,7 @@ function llmsTxt(): string {
 
 ## Qué es
 
-${SITE_NAME} (${SITE_URL}) es una plataforma argentina para realizar comunicaciones digitales verificables por WhatsApp y email. Conserva evidencia técnica y trazabilidad de los eventos de la comunicación. El valor jurídico de cada medio depende del caso, el contenido, la normativa aplicable, las formas legalmente exigidas y la valoración que corresponda. No sustituye automáticamente una carta documento ni otra forma que la ley o un contrato exijan.
+${SITE_NAME} (${SITE_URL}) es una plataforma argentina para realizar comunicaciones digitales verificables por WhatsApp y email. Conserva evidencia técnica y trazabilidad de los eventos de la comunicación. La valoración jurídica de cada comunicación corresponde al juez o al organismo, según el caso.
 
 ## URLs principales
 

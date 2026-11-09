@@ -58,7 +58,7 @@ const faqItems: FaqItem[] = [
   {
     question: "¿Qué pasa si el destinatario no abre el correo?",
     answer:
-      "Queda que nuestro servidor aceptó enviarlo. Eso no prueba que haya llegado a la bandeja ni que lo hayan leído. Si rebotó, lo anotamos. Si también mandás WhatsApp, se suma lo que Meta reporte.",
+      "Queda que nuestro servidor aceptó enviarlo. Si rebotó, lo anotamos. Si también mandás WhatsApp, se suma lo que Meta reporte.",
     more: {
       href: "/email-certificado",
       label: "Evidencia de un correo",

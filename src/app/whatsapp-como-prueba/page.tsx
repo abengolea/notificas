@@ -36,9 +36,9 @@ const faqs = [
       "Si la única copia estaba en el teléfono, puede perderse. Por eso importa conservar el contenido y los eventos fuera del dispositivo, con una huella que permita detectar alteraciones posteriores.",
   },
   {
-    question: "¿Notificas transforma un WhatsApp en prueba plena?",
+    question: "¿Qué valor tiene un WhatsApp como prueba?",
     answer:
-      "No. Notificas preserva evidencia técnica y trazabilidad de eventos. No califica el valor legal de esa evidencia ni reemplaza pericias, oficios u otros medios que un proceso pueda requerir.",
+      "Notificas preserva evidencia técnica y trazabilidad de eventos. La valoración de esa evidencia corresponde al juez, que puede complementarla con pericias, oficios u otros medios.",
   },
 ];
 
@@ -126,12 +126,11 @@ export default function WhatsAppComoPruebaPage() {
 
       <h2 className="pt-2 text-xl font-semibold text-foreground">Límites</h2>
       <p>
-        Conservar evidencia no decide el conflicto. Un juez, un mediador o un organismo pueden
-        pedir otros recaudos, restar valor a un medio o exigir una forma distinta. WhatsApp, además,
-        no identifica por sí mismo al titular de la línea con certeza absoluta.
+        La evidencia conservada queda a disposición del juez, del mediador o del organismo, que
+        valoran qué peso darle. La titularidad de la línea surge de la relación entre las partes.
       </p>
       <p>
-        Si el acto requiere una forma legal determinada, la evidencia digital no la reemplaza. Ver{" "}
+        Si el acto prevé una forma legal determinada, la evidencia digital puede usarse junto con ella. Ver{" "}
         <Link
           href="/notificacion-digital-vs-carta-documento"
           className="text-primary underline-offset-4 hover:underline"

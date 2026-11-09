@@ -99,8 +99,7 @@ export default function NotificacionesMasivasPage() {
       <p>
         WhatsApp usa plantillas de Meta, envío progresivo según capacidad, y registro de lo que el
         proveedor informe sobre entrega o lectura. El correo anota si el servidor aceptó el envío,
-        si llegó un rebote y si la persona abrió el enlace de lectura cuando ese evento ocurre. SMTP
-        aceptado no significa que el mail haya ingresado a la bandeja. Más detalle en{" "}
+        si llegó un rebote y si la persona abrió el enlace de lectura cuando ese evento ocurre. Más detalle en{" "}
         <Link href="/notificacion-whatsapp" className="text-primary underline-offset-4 hover:underline">
           notificaciones por WhatsApp
         </Link>{" "}
@@ -125,9 +124,8 @@ export default function NotificacionesMasivasPage() {
       <h2 className="pt-2 text-xl font-semibold text-foreground">Límites</h2>
       <p>
         Meta puede limitar plantillas, números o velocidad. Una base con teléfonos inválidos produce
-        fallas de entrega, no “notificaciones jurídicas”. El envío masivo no sustituye formas
-        legales puntuales ni dispensa de políticas de privacidad y de consentimiento que correspondan
-        a cada organización.
+        fallas de entrega. Cada organización aplica sus propias políticas de privacidad y de
+        consentimiento.
       </p>
       <p>
         Para el marco del producto frente a la carta documento, ver{" "}

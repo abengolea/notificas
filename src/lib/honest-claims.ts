@@ -17,14 +17,14 @@ export const FAQ_CLAIMS: ReadonlyArray<{ question: string; answer: string }> = [
       "Por WhatsApp no viaja la carta completa, salvo que tu plantilla sea exactamente ese texto. Viaja la plantilla que Meta ya aprobó, con el nombre y los datos de esa persona. Meta nos dice si el aviso llegó al celular o si lo abrieron. Eso es lo que registramos.",
   },
   {
-    question: "¿Equivale a una carta documento?",
+    question: "¿Cómo se compara con una carta documento?",
     answer:
-      "No. Es más rápido y más barato, y deja un rastro comprobable. Si una norma pide carta documento u otra forma puntual, hay que usar esa forma. Un juez o un organismo decide qué valor le da a esta constancia; Notificas no lo decide.",
+      "Es más rápido y más barato, y deja un rastro comprobable. Puede usarse junto con otras formas de notificación. Un juez o un organismo decide qué valor le da a esta constancia.",
   },
   {
     question: "¿Qué pasa si el destinatario no abre el correo?",
     answer:
-      "Queda que nuestro servidor de correo aceptó enviarlo. Eso no prueba que haya llegado a la bandeja ni que lo hayan leído. Si el buzón lo rechaza y nos llega el aviso de rebote, lo anotamos. Si también mandás WhatsApp, se suma lo que Meta reporte de esa plantilla. El PDF de lectura se arma una sola vez: si todavía esperás una lectura, no lo emitas todavía.",
+      "Queda que nuestro servidor de correo aceptó enviarlo. Si el buzón lo rechaza y nos llega el aviso de rebote, lo anotamos. Si también mandás WhatsApp, se suma lo que Meta reporte de esa plantilla. El PDF de lectura se arma una sola vez: si todavía esperás una lectura, no lo emitas todavía.",
   },
   {
     question: "¿Por cuánto tiempo se conserva la documentación?",

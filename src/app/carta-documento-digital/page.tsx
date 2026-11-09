@@ -22,9 +22,9 @@ export default function CartaDocumentoDigitalPage() {
   return (
     <PublicArticle title={page.title} description={page.description} path={page.path}>
       <p>
-        No. Si una norma pide carta documento u otra forma puntual, hay que usar esa forma. Notificas
-        es más rápido y suele ser más económico, y deja un rastro comprobable. Un juez o un organismo
-        decide qué valor le da a esa constancia; Notificas no lo decide.
+        Notificas es más rápido y suele ser más económico, y deja un rastro comprobable. Puede usarse
+        junto con otras formas de notificación. Un juez o un organismo decide qué valor le da a esa
+        constancia.
       </p>
 
       <h2 className="pt-2 text-xl font-semibold text-foreground">Para qué sirve entonces</h2>

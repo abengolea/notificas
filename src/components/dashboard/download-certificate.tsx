@@ -127,8 +127,7 @@ export function DownloadCertificate({
               
               <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
                 <p className="text-sm text-foreground">
-                Constancia técnica verificable. No reemplaza una carta documento ni otra forma que la ley pida.
-                Un juez decide qué valor le da.
+                Constancia técnica verificable. La valoración jurídica corresponde al juez.
                 </p>
               </div>
             </div>

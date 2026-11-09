@@ -48,7 +48,7 @@ export function MetaVerificationWorkspace({
       {!showHeading && (
         <p className="text-sm text-muted-foreground max-w-prose">
           Comprobá identificadores de WhatsApp Business contra Meta Graph API y la evidencia histórica
-          de webhooks conservada por Notificas. No afirma una certificación actual de lectura o entrega.
+          de webhooks conservada por Notificas.
         </p>
       )}
 

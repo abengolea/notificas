@@ -34,8 +34,8 @@ export default function ComoVerificarCertificadoPage() {
       <h2 className="pt-2 text-xl font-semibold text-foreground">Qué significa un resultado válido</h2>
       <p>
         Que ese archivo coincide con un registro emitido por Notificas y que la huella no fue
-        alterada. No califica el valor legal del documento. El certificado de lectura se emite una
-        sola vez: si después hubo otra lectura o un rebote, no están en esa copia.
+        alterada. El certificado de lectura se emite una sola vez: las lecturas o rebotes
+        posteriores se registran aparte, no en esa copia.
       </p>
 
       <h2 className="pt-2 text-xl font-semibold text-foreground">Si no valida</h2>

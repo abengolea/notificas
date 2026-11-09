@@ -946,10 +946,10 @@ export default function VerifyPage() {
             <div>
               <h4 className="font-semibold text-foreground mb-2">2. ¿Qué se certifica?</h4>
               <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-                <li><strong>Envío:</strong> qué texto salió y si el servidor de correo lo tomó para enviar (no prueba que haya llegado a la bandeja)</li>
+                <li><strong>Envío:</strong> qué texto salió y si el servidor de correo lo tomó para enviar</li>
                 <li><strong>Contenido:</strong> huella del texto que ve el destinatario en el correo o en el lector</li>
                 <li><strong>Aviso WhatsApp:</strong> la plantilla de Meta con los datos de esa persona, no la carta completa salvo que coincidan</li>
-                <li><strong>Recepción:</strong> primer click al enlace de lectura, si ocurre — no es haber abierto Gmail u Outlook</li>
+                <li><strong>Recepción:</strong> primer click al enlace de lectura, si ocurre</li>
                 <li><strong>Lectura:</strong> confirmación en nuestra pantalla, o WhatsApp marca el aviso como leído</li>
                 <li><strong>Certificado PDF:</strong> se emite una sola vez, como una foto de ese momento. No se le agregan hechos posteriores</li>
               </ul>

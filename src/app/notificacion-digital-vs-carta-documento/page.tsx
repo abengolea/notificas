@@ -18,7 +18,7 @@ const faqs = [
   {
     question: "¿Una comunicación por WhatsApp o email reemplaza una carta documento?",
     answer:
-      "No necesariamente. Son medios distintos, con distinta forma, operador y efectos. Si una norma o un contrato exigen carta documento u otra forma puntual, hay que usar esa forma. La comunicación digital puede aportar evidencia técnica; no se convierte sola en el acto postal o procesal.",
+      "Son medios distintos, con distinta forma, operador y efectos. La comunicación digital aporta evidencia técnica y puede usarse junto con la carta documento u otras formas de notificación.",
   },
   {
     question: "¿Cuándo suele usarse cada una?",
@@ -36,9 +36,9 @@ const faqs = [
       "En la operación cotidiana suele ser más rápida y de menor costo unitario, sobre todo a escala. Eso es una comparación operativa, no un argumento de equivalencia jurídica.",
   },
   {
-    question: "¿El blockchain hace válida una notificación?",
+    question: "¿Qué aporta el blockchain a una notificación?",
     answer:
-      "No. Una huella en una red pública puede ayudar a detectar alteraciones posteriores. No otorga por sí sola validez jurídica al acto ni reemplaza la forma que la ley exija.",
+      "Una huella en una red pública permite detectar cualquier alteración posterior y da fecha cierta a lo registrado. La valoración jurídica corresponde al juez.",
   },
 ];
 
@@ -48,7 +48,7 @@ export default function NotificacionVsCartaDocumentoPage() {
       title={page.title}
       description={page.description}
       path={page.path}
-      lead="La notificación digital y la carta documento no son necesariamente equivalentes. Difieren en forma, operador, costos operativos, velocidad, escala y tipo de evidencia. Hay casos en los que una comunicación digital es suficiente para el objetivo práctico, y casos en los que la ley o el contrato exigen otra forma. Notificas no pretende sustituir automáticamente esos requisitos."
+      lead="La notificación digital y la carta documento difieren en forma, operador, costos operativos, velocidad, escala y tipo de evidencia. Hay casos en los que una comunicación digital es suficiente para el objetivo práctico, y casos en los que conviene combinarla con otras formas de notificación."
       faqs={faqs}
     >
       <h2 className="pt-2 text-xl font-semibold text-foreground">No son el mismo acto</h2>
@@ -59,9 +59,7 @@ export default function NotificacionVsCartaDocumentoPage() {
         proveedores privados, de la que puede conservarse evidencia técnica.
       </p>
       <p>
-        Confundirlas genera expectativas que el producto no puede sostener: ni “reemplaza la carta
-        documento”, ni “tiene el mismo valor”, ni “garantiza validez judicial”. Un tribunal u
-        organismo valorará cada medio según el caso. El{" "}
+        Un tribunal u organismo valorará cada medio según el caso. El{" "}
         <a
           href="http://servicios.infoleg.gob.ar/infolegInternet/anexos/235000-239999/235975/texact.htm"
           className="text-primary underline-offset-4 hover:underline"
@@ -78,7 +76,7 @@ export default function NotificacionVsCartaDocumentoPage() {
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-left text-sm">
           <caption className="mb-2 text-left text-sm text-muted-foreground">
-            Comparación orientativa. No es un cuadro de equivalencia jurídica.
+            Comparación orientativa.
           </caption>
           <thead>
             <tr className="border-b">
@@ -158,11 +156,11 @@ export default function NotificacionVsCartaDocumentoPage() {
         .
       </p>
 
-      <h2 className="pt-2 text-xl font-semibold text-foreground">Límites que no negociamos en el texto</h2>
+      <h2 className="pt-2 text-xl font-semibold text-foreground">Alcance</h2>
       <p>
-        Blockchain no hace válida una notificación. Un PDF de Notificas no es una sentencia. Un
-        WhatsApp entregado no es, por ese solo hecho, el equivalente funcional de una carta
-        documento. Quien deba decidir un conflicto puede apartarse de cualquiera de estos medios.
+        La blockchain da fecha cierta e integridad a lo registrado, y la constancia de Notificas
+        documenta qué se comunicó, a quién y cuándo. La valoración jurídica de cada medio
+        corresponde a quien deba decidir el conflicto.
       </p>
       <p>
         Normas de consumo, laborales o procesales pueden imponer recaudos adicionales. A modo de

@@ -18,7 +18,7 @@ const faqs = [
   {
     question: "¿Se puede notificar por WhatsApp?",
     answer:
-      "Sí se puede enviar una comunicación por WhatsApp y conservar evidencia técnica de ese envío. Eso no significa, por sí solo, que el medio cubra cualquier requisito formal que una ley, un reglamento o un contrato impongan para ese acto.",
+      "Sí se puede enviar una comunicación por WhatsApp y conservar evidencia técnica de ese envío. El valor jurídico de cada comunicación lo determina el juez o el organismo, según el caso.",
   },
   {
     question: "¿Cómo se acredita qué mensaje fue enviado?",
@@ -28,7 +28,7 @@ const faqs = [
   {
     question: "¿Qué diferencia existe entre envío y entrega?",
     answer:
-      "El envío es el acto de despachar el mensaje hacia el canal. La entrega, cuando el proveedor la informa, indica que el aviso llegó al dispositivo o a la cuenta. Son hechos distintos: un envío puede no entregarse, y una entrega no implica que el destinatario haya leído el contenido.",
+      "El envío es el acto de despachar el mensaje hacia el canal. La entrega, cuando el proveedor la informa, indica que el aviso llegó al dispositivo o a la cuenta. Son hechos distintos y se registran por separado: el envío, la entrega y la lectura, cada uno cuando el proveedor lo informa.",
   },
   {
     question: "¿Qué ocurre si el destinatario no lee el mensaje?",
@@ -130,14 +130,12 @@ export default function NotificacionWhatsAppPage() {
 
       <h2 className="pt-2 text-xl font-semibold text-foreground">Límites</h2>
       <p>
-        WhatsApp no es un organismo público ni un medio procesal. La lectura, cuando se informa, no
-        prueba que la persona haya comprendido el texto ni que haya aceptado su contenido. La
-        entrega no prueba que el número pertenezca a quien se pretendía notificar si esa
-        identificación no está acreditada por otros medios.
+        Lo que se registra es lo que Meta informa: el envío, la entrega y, cuando ocurre, la
+        lectura. La vinculación del número con la persona destinataria surge de la relación entre
+        las partes.
       </p>
       <p>
-        Si la ley o el contrato exigen carta documento, cédula, notificación judicial u otra forma,
-        ese requisito no se cumple por el solo hecho de haber enviado un WhatsApp. La comparación
+        Si la ley o el contrato prevén otras formas de notificación, el WhatsApp puede usarse junto con ellas. La comparación
         está desarrollada en{" "}
         <Link
           href="/notificacion-digital-vs-carta-documento"
