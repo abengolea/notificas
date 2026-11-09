@@ -26,7 +26,7 @@ const {
   applyEmailBounce,
   applyEmailBounceFromPayload,
 } = require('./email-bounce');
-const { isLinkPreviewCrawler, readerRedirectOrigin, PUBLIC_READER_ORIGIN, whatsappPublicReadUrl } = require('./link-redirect-origin');
+const { isLinkPreviewCrawler, readerRedirectOrigin, PUBLIC_READER_ORIGIN, whatsappPublicReadUrl, emailPublicReadUrl } = require('./link-redirect-origin');
 const { allocateReadCode } = require('./read-code');
 
 initializeApp();
@@ -564,13 +564,12 @@ function generateToken() {
 async function publicReadUrlForSend(db, docId, trackingToken, existingShortCode) {
   try {
     const code = await allocateReadCode(db, docId, trackingToken, existingShortCode, FieldValue);
-    return { readCode: code, url: whatsappPublicReadUrl(code) };
+    // `url` = WhatsApp (sin marca); `emailUrl` = el mismo código marcado como de correo.
+    return { readCode: code, url: whatsappPublicReadUrl(code), emailUrl: emailPublicReadUrl(code) };
   } catch (err) {
     console.error('❌ allocateReadCode:', err && err.message);
-    return {
-      readCode: null,
-      url: `${PUBLIC_READER_ORIGIN}/reader/${encodeURIComponent(docId)}?k=${encodeURIComponent(trackingToken)}`,
-    };
+    const direct = `${PUBLIC_READER_ORIGIN}/reader/${encodeURIComponent(docId)}?k=${encodeURIComponent(trackingToken)}`;
+    return { readCode: null, url: direct, emailUrl: direct };
   }
 }
 
@@ -878,8 +877,8 @@ exports.sendEmail = onRequest(
     const htmlOriginal = emailData.message?.html || '';
     const textOriginal = emailData.message?.text || htmlOriginal.replace(/<[^>]*>/g, '');
 
-    // Destinatario: notificas.com.ar/n/código. Nunca *.hosted.app.
-    const readerUrl = publicRead.url;
+    // Destinatario: notificas.com.ar/n/código?src=email. Nunca *.hosted.app.
+    const readerUrl = publicRead.emailUrl;
 
     // Build email with new template and inject tracking
     // Si hay HTML original con archivos adjuntos, usarlo; si no, usar template genérico
@@ -2212,8 +2211,8 @@ exports.processIncomingEmail = onRequest({ region: REGION, secrets: [smtpPass, p
     const htmlContent = html || text.replace(/\n/g, '<br>');
     
     const publicRead = await publicReadUrlForSend(db, docId, trackingToken, null);
-    const readerUrl = publicRead.url;
-    
+    const readerUrl = publicRead.emailUrl;
+
     // Build email with template
     const htmlWithTracking = generateEmailWithTracking({
       senderName: user.email,

@@ -3,6 +3,11 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { isLinkPreviewCrawler } from "@/lib/link-redirect-public";
 import { READ_CODES_COLLECTION, parseReadCodeDoc } from "@/lib/read-code";
+import {
+  resolveShortReadSource,
+  SHORT_READ_SOURCE_FIELDS,
+  type ShortReadSource,
+} from "@/lib/short-read-source";
 import { whatsappClickTrackUrl, whatsappCtaPageResponse } from "@/lib/whatsapp-read-http";
 
 export const dynamic = "force-dynamic";
@@ -55,13 +60,35 @@ export async function GET(request: NextRequest, context: Ctx) {
     return new NextResponse("Enlace incompleto", { status: 400 });
   }
 
+  const source = await resolveSource(request.nextUrl.searchParams.get("src"), mailId);
+
   if (!isLinkPreviewCrawler(request.headers.get("user-agent"))) {
-    const url = whatsappClickTrackUrl(mailId, token);
+    const url = whatsappClickTrackUrl(mailId, token, source);
     after(() => {
       void fetch(url, { method: "GET", redirect: "manual", cache: "no-store", headers: trackHeaders(request) }).catch(
         () => {},
       );
     });
   }
-  return whatsappCtaPageResponse(request, mailId, token);
+  return whatsappCtaPageResponse(request, mailId, token, source);
+}
+
+/**
+ * ¿Clic desde el correo o desde WhatsApp? Con `?src=` explícito no hace falta mirar el mensaje.
+ * Sin marca, se mira si el mensaje salió alguna vez por WhatsApp; si no, solo pudo ser el correo.
+ * Si la lectura falla, se mantiene el comportamiento histórico (WhatsApp).
+ */
+async function resolveSource(srcParam: string | null, mailId: string): Promise<ShortReadSource> {
+  const explicit = String(srcParam || "").trim().toLowerCase();
+  if (explicit === "email" || explicit === "whatsapp") return explicit;
+  try {
+    const db = getAdminDb();
+    const [snap] = await db.getAll(db.collection("mail").doc(mailId), {
+      fieldMask: [...SHORT_READ_SOURCE_FIELDS],
+    });
+    if (!snap.exists) return "whatsapp";
+    return resolveShortReadSource(null, snap.data() as Record<string, unknown>, true);
+  } catch {
+    return "whatsapp";
+  }
 }

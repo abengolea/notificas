@@ -28,6 +28,14 @@ function whatsappPublicReadUrl(shortCode) {
   return `${PUBLIC_READER_ORIGIN}/n/${encodeURIComponent(String(shortCode))}`;
 }
 
+/**
+ * Mismo código corto que el de WhatsApp, pero marcado como de correo. Sin la marca, `/n/CODE`
+ * registra el clic como de WhatsApp aunque el mensaje se haya enviado solo por correo.
+ */
+function emailPublicReadUrl(shortCode) {
+  return `${whatsappPublicReadUrl(shortCode)}?src=email`;
+}
+
 function readerRedirectOrigin(req, fallbackOrigin) {
   const forwarded = String(req?.get?.('X-Forwarded-Host') || req?.get?.('x-forwarded-host') || '')
     .split(',')[0]
@@ -54,4 +62,5 @@ module.exports = {
   isLinkPreviewCrawler,
   readerRedirectOrigin,
   whatsappPublicReadUrl,
+  emailPublicReadUrl,
 };

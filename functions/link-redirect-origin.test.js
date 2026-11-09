@@ -4,6 +4,7 @@ const {
   isLinkPreviewCrawler,
   readerRedirectOrigin,
   whatsappPublicReadUrl,
+  emailPublicReadUrl,
 } = require('./link-redirect-origin');
 
 function req(headers) {
@@ -31,6 +32,11 @@ test('sin host público, el reader tampoco cae en hosted.app', () => {
 });
 
 test('el link público de WhatsApp es un código corto, sin token', () => {
+  assert.equal(whatsappPublicReadUrl('x7Km9pQ2'), 'https://notificas.com.ar/n/x7Km9pQ2');
+});
+
+test('el link del correo es el mismo código corto, marcado como de correo', () => {
+  assert.equal(emailPublicReadUrl('x7Km9pQ2'), 'https://notificas.com.ar/n/x7Km9pQ2?src=email');
   assert.equal(whatsappPublicReadUrl('x7Km9pQ2'), 'https://notificas.com.ar/n/x7Km9pQ2');
 });
 
