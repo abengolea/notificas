@@ -81,37 +81,53 @@ export default function ReaderPage() {
   /** El servidor reconoció que quien mira es el remitente: no se registra nada ni se pide confirmar lectura. */
   const [viewerIsSender, setViewerIsSender] = useState(false);
 
-  const handleAttachmentClick = async (attachment: any) => {
-    if (!mail || !params.id) return;
-    // Abrir pestaña en el mismo tick del clic: si await fetch va antes, muchos navegadores
-    // bloquean window.open por perder el "user gesture".
-    const tab = window.open("about:blank", "_blank");
-    try {
-      const idToken = await getOptionalIdToken();
-      const res = await fetch("/api/track-attachment", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
-        },
-        body: JSON.stringify({
-          messageId: params.id,
-          attachmentId:
-            attachment.id ||
-            (attachment.hash ? `hash:${attachment.hash}` : attachment.fileName),
-          fileName: attachment.fileName,
-          action: "opened",
-          k: trackingToken,
-        }),
+  /**
+   * Sesión Firebase del visitante (si la hay), resuelta de antemano. Sirve para reconocer al remitente sin tener
+   * que esperarla en el clic: en el celular, cualquier espera entre el toque y la apertura del archivo hace que
+   * el navegador (sobre todo los embebidos de Gmail/WhatsApp) bloquee la ventana o la deje en blanco.
+   */
+  const idTokenRef = useRef<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => {
+      void getOptionalIdToken().then((t) => {
+        if (alive) idTokenRef.current = t;
       });
-      if (!res.ok && process.env.NODE_ENV === "development") {
-        console.warn("track-attachment:", res.status, await res.text());
-      }
-    } catch {
-      /* ignore */
-    }
-    if (tab) tab.location.href = attachment.fileUrl;
-    else window.open(attachment.fileUrl, "_blank");
+    };
+    refresh();
+    const timer = setInterval(refresh, 20 * 60 * 1000); // el token dura 1 hora
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  const handleAttachmentClick = (attachment: any) => {
+    if (!mail || !params.id) return;
+    const idToken = idTokenRef.current;
+    // 1) El registro sale en el mismo tick del clic (keepalive: sigue aunque la pestaña pase a segundo plano).
+    void fetch("/api/track-attachment", {
+      method: "POST",
+      keepalive: true,
+      headers: {
+        "Content-Type": "application/json",
+        ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+      },
+      body: JSON.stringify({
+        messageId: params.id,
+        attachmentId:
+          attachment.id ||
+          (attachment.hash ? `hash:${attachment.hash}` : attachment.fileName),
+        fileName: attachment.fileName,
+        action: "opened",
+        k: trackingToken,
+      }),
+    }).catch(() => undefined);
+    // 2) El archivo se abre también en ese tick, sin esperar nada: los navegadores del celular solo permiten
+    // abrir una ventana nueva dentro del gesto del usuario. Si la bloquean, se abre en esta misma pestaña.
+    const win = window.open(attachment.fileUrl, "_blank");
+    if (win) win.opener = null;
+    else window.location.href = attachment.fileUrl;
   };
 
   useEffect(() => {

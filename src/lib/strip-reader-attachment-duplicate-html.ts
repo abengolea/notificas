@@ -1,5 +1,6 @@
 /**
- * En el correo, `sendEmail` quita `[data-email-hide]` y reinyecta adjuntos con `linkRedirect`.
+ * En el correo, `sendEmail` quita `[data-email-hide]` y no reinyecta los adjuntos: se abren desde el reader.
+ * (Los correos enviados antes de ese cambio todavía llevan el bloque con enlaces `linkRedirect`.)
  * En Firestore sigue guardándose el HTML de compose con una sección de adjuntos
  * (`data-email-hide` sin `message-content`) y enlaces directos a Storage.
  * Si el reader pinta ese HTML tal cual, el destinatario pulsa «Ver Documento» del HTML

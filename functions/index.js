@@ -917,7 +917,16 @@ exports.sendEmail = onRequest(
       $('a[href="#"]').each((_, el) => {
         const $el = $(el);
         const text = $el.text().trim();
-        
+
+        // Enlace de respaldo de la plantilla: "[El enlace se agregará al enviar el mensaje]" es un relleno que
+        // el destinatario nunca debe ver; se cambia por el enlace real, con una frase que lo explique.
+        if (/^\[\s*El enlace se agregar/i.test(text)) {
+          $el.attr('href', readerUrl);
+          $el.text(readerUrl);
+          $el.before('Si el botón no funciona, copie y pegue este enlace en su navegador:<br>');
+          return;
+        }
+
         // Botón "Acceder a la notificación" o "Leer Notificacion" (retrocompat)
         if (text.toLowerCase().includes('notificacion')) {
           $el.attr('href', readerUrl);
@@ -1007,57 +1016,8 @@ exports.sendEmail = onRequest(
       
       console.log(`✅ HTML procesado: ${finalHashLinks} enlaces con #, ${localhostLinks} enlaces con localhost`);
 
-      // `data-email-hide` borra cuerpo + adjuntos del HTML guardado; el destinatario no llegaba a tener
-      // enlaces «Ver documento» trackeables. Reinsertamos solo una lista visible de adjuntos (mismos fileUrl)
-      // para que `injectTrackingIntoHtml` los envuelva con linkRedirect.
-      if (Array.isArray(emailData.attachments) && emailData.attachments.length > 0) {
-        const valid = emailData.attachments.filter(
-          (att) => att && typeof att.fileUrl === 'string' && /^https?:\/\//i.test(att.fileUrl.trim()),
-        );
-        if (valid.length > 0) {
-          const blocks = valid
-            .map((att) => {
-              const name = escapeHtmlTextEmail(att.fileName || 'Documento');
-              /** `att` evita depender del match URL tras Safe Links / Gmail; `injectTrackingIntoHtml` no lo reemplaza. */
-              const redirectAtt = `${LINK_REDIRECT_URL}?msg=${encodeURIComponent(docId)}&k=${encodeURIComponent(trackingToken)}&att=${encodeURIComponent(String(att.id))}`;
-              const hrefEsc = escapeHrefAmpersands(redirectAtt);
-              const ext = escapeHtmlTextEmail(String(att.fileName || '').split('.').pop() || 'DOC').toUpperCase();
-              // Tabla en vez de flex: el nombre (largo, a veces sin espacios) se parte en su celda
-              // y nunca pisa el botón, también en Gmail móvil y Outlook.
-              return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;margin:0 0 10px 0;background:#ffffff;border:1px solid #e2e8f0;border-radius:6px;">
-                <tr>
-                  <td width="44" valign="middle" style="width:44px;padding:12px 0 12px 12px;">
-                    <div style="width:40px;height:40px;line-height:40px;background:#dc2626;border-radius:6px;text-align:center;color:#ffffff;font-weight:bold;font-size:11px;">${ext}</div>
-                  </td>
-                  <td valign="middle" style="padding:12px;color:#1e293b;font-size:14px;font-weight:600;line-height:1.4;word-break:break-word;overflow-wrap:anywhere;">${name}</td>
-                  <td valign="middle" align="right" width="1" style="width:1px;padding:12px 12px 12px 0;white-space:nowrap;">
-                    <a href="${hrefEsc}" style="background:#0D9488;color:#ffffff;padding:8px 14px;border-radius:6px;text-decoration:none;font-size:12px;font-weight:600;display:inline-block;white-space:nowrap;">Ver documento</a>
-                  </td>
-                </tr>
-              </table>`;
-            })
-            .join('');
-          // Va dentro de la tarjeta (antes del botón «Acceder a la notificación»), no pegado
-          // al final del <body> fuera del contenedor.
-          const outer = `<div style="margin:20px 0;padding:16px;background:#f8fafc;border-radius:6px;border-left:4px solid #0D9488;">
-            <p style="margin:0 0 4px 0;color:#1e293b;font-size:16px;font-weight:600;">📎 Documentos adjuntos (${valid.length})</p>
-            <p style="margin:0 0 12px 0;color:#64748b;font-size:13px;line-height:1.5;">Descargue o visualice cada archivo desde este correo. El acceso queda registrado como constancia en la notificación.</p>
-            ${blocks}
-          </div>`;
-          const $inj = cheerio.load(htmlToProcess, { decodeEntities: false });
-          const $btnP = $inj('a.btn').first().closest('p');
-          if ($btnP.length) {
-            $btnP.before(outer);
-          } else if ($inj('td.content').length) {
-            $inj('td.content').first().append(outer);
-          } else if ($inj('body').length) {
-            $inj('body').append(outer);
-          } else {
-            $inj.root().append(outer);
-          }
-          htmlToProcess = $inj.html();
-        }
-      }
+      // Los adjuntos NO viajan en el correo: el destinatario los abre desde el lector (ahí cada apertura queda
+      // registrada con la clave de acceso, y el nombre del archivo no se ve en la bandeja de entrada).
 
       htmlWithTracking = injectTrackingIntoHtml(htmlToProcess, docId, trackingToken, readerUrl);
       console.log('📎 Usando HTML original con archivos adjuntos');
@@ -1512,19 +1472,6 @@ const LINK_REDIRECT_READ_MASK = [
 function linkRedirectDedupeTag(hasU, src, decodedUrl) {
   if (!hasU) return src === 'whatsapp' ? 'cta-wa' : 'cta-mail';
   return crypto.createHash('sha256').update(String(decodedUrl)).digest('hex').slice(0, 24);
-}
-
-function escapeHtmlTextEmail(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-/** Escapa `&` para usar una URL absoluta dentro de un atributo HTML href. */
-function escapeHrefAmpersands(url) {
-  return String(url).replace(/&/g, '&amp;');
 }
 
 function urlsMatchAttachmentUrl(stored, clicked) {
