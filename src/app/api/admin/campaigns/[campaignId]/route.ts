@@ -7,9 +7,26 @@ import { ensureOrgCredits } from '@/lib/org-credits';
 import { canEditWhatsAppTemplate, isUnsentCampaign, UNSENT_EDIT_ERROR, WA_TEMPLATE_EDIT_ERROR } from '@/lib/campaign-edit';
 import { whatsappTemplateCampaignPatch } from '@/lib/campaign-wa-template-patch';
 import { isMixedDeliveryMode, MIXED_DELIVERY_MODES } from '@/lib/campaign-mixed-message';
+import { WIZARD_INLINE_LIST_MAX } from '@/lib/campaign-recipients';
 import type { CanalCampaign } from '@/lib/types';
 
+const attachmentSchema = z.object({
+  nombre: z.string().min(1).max(300),
+  url: z.string().url().max(2000),
+  hash: z.string().max(128),
+  size: z.number().int().min(0),
+});
+
 const patchSchema = z.object({
+  adjuntos: z.array(attachmentSchema).max(350).optional(),
+  /** `null` borra el emparejamiento por destinatario. */
+  adjuntosPorDestinatario: z
+    .record(z.string().max(320), z.array(attachmentSchema).max(10))
+    .nullable()
+    .optional()
+    .refine((v) => v == null || Object.keys(v).length <= WIZARD_INLINE_LIST_MAX, {
+      message: `El adjunto por destinatario admite hasta ${WIZARD_INLINE_LIST_MAX} destinatarios`,
+    }),
   nombre: z.string().min(2).max(200).optional(),
   asunto: z.string().min(1).max(300).optional(),
   cuerpo: z.string().min(1).max(20000).optional(),
@@ -48,6 +65,11 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     waUrlButton: data.waUrlButton === true,
     mixedMode: isMixedDeliveryMode(data.mixedMode) ? data.mixedMode : '',
     waTemplateBody: String(data.waTemplateBody || ''),
+    adjuntos: Array.isArray(data.adjuntos) ? data.adjuntos : [],
+    adjuntosPorDestinatario:
+      data.adjuntosPorDestinatario && typeof data.adjuntosPorDestinatario === 'object' && !Array.isArray(data.adjuntosPorDestinatario)
+        ? data.adjuntosPorDestinatario
+        : null,
     managedByAdmin: data.managedByAdmin === true,
     simulated: data.simulated === true,
     notificationType: data.notificationType === 'SRT_ART' ? 'SRT_ART' : data.notificationType === 'ORDINARY' ? 'ORDINARY' : '',
@@ -141,7 +163,12 @@ export async function PATCH(
     const unsent = isUnsentCampaign(current);
     const d = parsed.data;
     const fullContentTouched =
-      d.nombre != null || d.asunto != null || d.cuerpo != null || d.canal != null;
+      d.nombre != null ||
+      d.asunto != null ||
+      d.cuerpo != null ||
+      d.canal != null ||
+      d.adjuntos != null ||
+      d.adjuntosPorDestinatario !== undefined;
     const templateTouched =
       d.waTemplateName != null ||
       d.waTemplateLang != null ||
@@ -162,6 +189,9 @@ export async function PATCH(
     if (d.asunto != null) patch.asunto = d.asunto.trim();
     if (d.cuerpo != null) patch.cuerpo = d.cuerpo.trim();
     if (d.canal != null) patch.canal = d.canal as CanalCampaign;
+    if (d.adjuntos != null) patch.adjuntos = d.adjuntos;
+    if (d.adjuntosPorDestinatario === null) patch.adjuntosPorDestinatario = FieldValue.delete();
+    else if (d.adjuntosPorDestinatario) patch.adjuntosPorDestinatario = d.adjuntosPorDestinatario;
     const resultingCanal = String(d.canal ?? current.canal ?? 'email');
     if (templateTouched) {
       Object.assign(

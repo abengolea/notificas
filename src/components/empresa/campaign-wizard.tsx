@@ -56,6 +56,7 @@ import {
 } from "@/components/ui/popover";
 import { maxRecipientsForPlan } from "@/lib/org-limits-client";
 import { assignFilesToRecipientsGreedy, scoreFileForRecipient } from "@/lib/campaign-attachment-match";
+import { buildCampaignAttachmentFields, CAMPAIGN_ATTACHMENT_MAX_MB } from "@/lib/campaign-attachment-payload";
 import { uploadCampaignCsvInChunks, uploadCampaignRecipients } from "@/lib/upload-campaign-recipients";
 import { csvCamposRequeridos, csvContactColumns, csvPlaceholder, inspectCampaignCsv, parseCsvQuickResult, phoneDigits, presentRecipientValue, recipientValueText } from "@/lib/parse-campaign-csv";
 import { WIZARD_INLINE_LIST_MAX } from "@/lib/campaign-recipients";
@@ -95,20 +96,23 @@ import { MixedChannelOptions } from "@/components/empresa/mixed-channel-options"
 import { CampaignPadronPicker, padronRowToRecipient, type PadronRow } from "@/components/empresa/campaign-padron-picker";
 import { SrtAdhesionWarning } from "@/components/art/srt-adhesion-warning";
 
-type WizardStepId = "canal" | "destinatarios" | "mensaje" | "whatsapp" | "confirmacion";
+type WizardStepId = "canal" | "destinatarios" | "mensaje" | "whatsapp" | "adjuntos" | "confirmacion";
 
 const WIZARD_STEP_LABELS: Record<WizardStepId, string> = {
   canal: "Canal",
   destinatarios: "Destinatarios",
   mensaje: "Mensaje",
   whatsapp: "WhatsApp",
+  adjuntos: "Adjuntos",
   confirmacion: "Confirmación",
 };
 
-function wizardStepIds(canal: CanalCampaign, simulated: boolean): WizardStepId[] {
+/** `withAdjuntosStep`: el panel admin sube los adjuntos en un paso propio; empresa los sube dentro de Mensaje / WhatsApp. */
+function wizardStepIds(canal: CanalCampaign, simulated: boolean, withAdjuntosStep = false): WizardStepId[] {
   const ids: WizardStepId[] = ["canal"];
   if ((canal === "whatsapp" || canal === "ambos") && !simulated) ids.push("whatsapp");
   if (canal === "email" || canal === "ambos") ids.push("mensaje");
+  if (withAdjuntosStep) ids.push("adjuntos");
   ids.push("destinatarios");
   ids.push("confirmacion");
   return ids;
@@ -304,7 +308,10 @@ export function CampaignWizard({
   const csvExample = csvPlaceholder(canal, waCsvExtraColumns);
   const csvRequiredLabel = csvCamposRequeridos(canal, waCsvExtraColumns);
   const csvContactLabel = csvContactColumns(canal).join(", ");
-  const stepIds = useMemo(() => wizardStepIds(canal, simulated), [canal, simulated]);
+  const stepIds = useMemo(
+    () => wizardStepIds(canal, simulated, isAdmin && !simulated),
+    [canal, simulated, isAdmin]
+  );
   const STEPS = stepIds.map((id) => WIZARD_STEP_LABELS[id]);
   const currentStepId = stepIds[Math.max(0, Math.min(step, stepIds.length) - 1)] ?? "canal";
 
@@ -474,6 +481,8 @@ export function CampaignWizard({
             mixedMode?: string;
             waTemplateBody?: string;
             notificationType?: string;
+            adjuntos?: CampaignAttachment[];
+            adjuntosPorDestinatario?: Record<string, CampaignAttachment[]> | null;
           };
           if (!isUnsentCampaign(c)) throw new Error(UNSENT_EDIT_ERROR);
           if (cancelled) return;
@@ -498,6 +507,11 @@ export function CampaignWizard({
           setWaTemplateBody(String(c.waTemplateBody || c.cuerpo || ""));
           if (c.notificationType === "SRT_ART" || c.notificationType === "ORDINARY") {
             setNotificationType(c.notificationType);
+          }
+          setExistingAttachments(Array.isArray(c.adjuntos) ? c.adjuntos : []);
+          if (c.adjuntosPorDestinatario && typeof c.adjuntosPorDestinatario === "object") {
+            setExistingPaired(c.adjuntosPorDestinatario);
+            setPairByRecipient(true);
           }
         } else {
           const snap = await getDoc(doc(db, "campaigns", editCampaignId));
@@ -703,7 +717,7 @@ export function CampaignWizard({
       setCsvFileName(file.name);
       csvFileRef.current = file;
       setCsvInspect(inspected);
-          if (isAdmin || inspected.count > WIZARD_INLINE_LIST_MAX) {
+          if (inspected.count > WIZARD_INLINE_LIST_MAX) {
         setRecipients((cur) => cur.filter((r) => r.artRecipientId));
         if (pairByRecipient) setPairByRecipient(false);
       } else {
@@ -844,6 +858,31 @@ export function CampaignWizard({
       return;
     }
 
+    const pairingActive = pairByRecipient && files.length > 0;
+    if (pairingActive && recipients.length === 0) {
+      toast({
+        title: "No se pueden asignar adjuntos",
+        description: "Para un adjunto distinto por destinatario, cargá la lista en Destinatarios (hasta 500 filas).",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (pairingActive && sendNow) {
+      const incomplete = recipients.some((r) => {
+        const idx = pairingSelections[r.email.trim().toLowerCase()];
+        return idx === undefined || idx === null;
+      });
+      if (incomplete) {
+        toast({
+          title: "Falta asignar adjuntos",
+          description:
+            "En Confirmación, elegí un archivo por destinatario o desactivá el modo «distinto por destinatario».",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     setSubmitting(true);
     setUploadProgress(null);
     try {
@@ -895,6 +934,46 @@ export function CampaignWizard({
         const created = await createRes.json();
         if (!createRes.ok) throw new Error(created.error || "No se pudo crear la campaña");
         campaignId = String(created.id);
+      }
+
+      // Adjuntos: el panel admin no tiene sesión de Firebase en el navegador, por eso se suben por el servidor.
+      const uploadedNew: CampaignAttachment[] = [];
+      for (const f of files) {
+        const form = new FormData();
+        form.append("campaignId", campaignId);
+        form.append("file", f.file);
+        const upRes = await fetch("/api/admin/campaigns/upload-attachment", {
+          method: "POST",
+          credentials: "include",
+          body: form,
+        });
+        const upJson = await upRes.json().catch(() => ({}));
+        if (!upRes.ok || !upJson.attachment) {
+          throw new Error(upJson.error || `No se pudo subir ${f.name}`);
+        }
+        uploadedNew.push(upJson.attachment as CampaignAttachment);
+      }
+      const attachmentFields = buildCampaignAttachmentFields({
+        existingAttachments,
+        uploadedNew,
+        existingPaired,
+        pairByRecipient,
+        recipients,
+        pairingSelections,
+      });
+      // Al crear sin adjuntos no hay nada que guardar; al editar se manda siempre para reflejar lo que se quitó.
+      if (isEdit || uploadedNew.length > 0 || existingAttachments.length > 0) {
+        const adjRes = await fetch(`/api/admin/campaigns/${campaignId}`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            adjuntos: attachmentFields.adjuntosGlobales,
+            adjuntosPorDestinatario: attachmentFields.adjuntosPorDestinatario ?? null,
+          }),
+        });
+        const adjJson = await adjRes.json().catch(() => ({}));
+        if (!adjRes.ok) throw new Error(adjJson.error || "No se pudieron guardar los adjuntos");
       }
 
       const shouldUploadFile = Boolean(file) && padronSelected.size === 0;
@@ -1041,7 +1120,7 @@ export function CampaignWizard({
         toast({
           title: "Falta asignar adjuntos",
           description:
-            "En Revisión, elegí un archivo por destinatario o desactivá el modo «distinto por destinatario».",
+            "En Confirmación, elegí un archivo por destinatario o desactivá el modo «distinto por destinatario».",
           variant: "destructive",
         });
         return;
@@ -1063,25 +1142,14 @@ export function CampaignWizard({
           size: up.size,
         });
       }
-      const uploaded = [...existingAttachments, ...uploadedNew];
-
-      const pairingActiveSubmit = pairByRecipient && uploadedNew.length > 0;
-      const keepExistingPairing = Boolean(existingPaired) && files.length === 0 && pairByRecipient;
-      const adjuntosGlobales = pairingActiveSubmit || keepExistingPairing ? [] : uploaded;
-      let adjuntosPorDestinatario: Record<string, CampaignAttachment[]> | undefined;
-      if (pairingActiveSubmit) {
-        adjuntosPorDestinatario = {};
-        recipients.forEach((r) => {
-          const k = r.email.trim().toLowerCase();
-          const idx = pairingSelections[k];
-          const one = typeof idx === "number" ? uploadedNew[idx] : undefined;
-          adjuntosPorDestinatario![k] = one
-            ? [{ nombre: one.nombre, url: one.url, hash: one.hash || "", size: one.size }]
-            : [];
-        });
-      } else if (keepExistingPairing && existingPaired) {
-        adjuntosPorDestinatario = existingPaired;
-      }
+      const { adjuntosGlobales, adjuntosPorDestinatario } = buildCampaignAttachmentFields({
+        existingAttachments,
+        uploadedNew,
+        existingPaired,
+        pairByRecipient,
+        recipients,
+        pairingSelections,
+      });
 
       const scheduleFuture = Boolean(scheduleIso && new Date(scheduleIso) > new Date());
 
@@ -1276,6 +1344,62 @@ export function CampaignWizard({
     setWaTemplateVariables(next.variables);
     setWaUrlButton(next.urlButton);
     setWaTemplateBody(next.templateBody);
+  }
+
+  /** Casilla «distinto por destinatario», adjuntos ya guardados y zona de subida. Se usa en Mensaje, WhatsApp y Adjuntos (admin). */
+  function renderAttachmentsFields(idSuffix = "") {
+    const checkboxId = `adj-por-destinatario${idSuffix}`;
+    return (
+      <>
+        <div className="rounded-md border p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id={checkboxId}
+              checked={pairByRecipient}
+              disabled={!csvListInline}
+              onCheckedChange={(v) => setPairByRecipient(v === true)}
+              className="mt-1"
+            />
+            <div className="space-y-1">
+              <label htmlFor={checkboxId} className="text-sm font-medium cursor-pointer leading-none">
+                Adjunto distinto por destinatario
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Subí un archivo por persona. El nombre del archivo debe contener su nombre o correo (como en el
+                CSV). En el paso «Confirmación» podés corregir el emparejamiento.
+                {!csvListInline ? " No aplica con CSV de más de 500 filas." : ""}
+              </p>
+            </div>
+          </div>
+        </div>
+        {existingAttachments.length > 0 && (
+          <div className="space-y-2">
+            <Label>Adjuntos ya guardados</Label>
+            <ul className="space-y-1.5">
+              {existingAttachments.map((a) => (
+                <li key={a.url} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+                  <span className="truncate">{a.nombre}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive h-8 px-2 shrink-0"
+                    onClick={() => setExistingAttachments((prev) => prev.filter((x) => x.url !== a.url))}
+                  >
+                    Quitar
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <PDFUpload
+          onFileSelect={(fs) => setFiles(fs)}
+          maxFiles={pairByRecipient ? pairingUploadCap : 12}
+          maxSizeMB={CAMPAIGN_ATTACHMENT_MAX_MB}
+        />
+      </>
+    );
   }
 
   if (loadingCampaign) {
@@ -1951,60 +2075,7 @@ export function CampaignWizard({
                 Los adjuntos no viajan en el correo: solo se abren desde el lector, al que se llega por WhatsApp.
               </p>
             )}
-            {!isAdmin && !mixedSameText && (
-              <>
-            <div className="rounded-md border p-4 space-y-3">
-              <div className="flex items-start gap-3">
-                <Checkbox
-                  id="adj-por-destinatario"
-                  checked={pairByRecipient}
-                  disabled={!csvListInline}
-                  onCheckedChange={(v) => setPairByRecipient(v === true)}
-                  className="mt-1"
-                />
-                <div className="space-y-1">
-                  <label
-                    htmlFor="adj-por-destinatario"
-                    className="text-sm font-medium cursor-pointer leading-none"
-                  >
-                    Adjunto distinto por destinatario
-                  </label>
-                  <p className="text-xs text-muted-foreground">
-                    Subí un archivo por persona. El nombre del archivo debe contener su nombre o correo (como en el
-                    CSV). En el paso «Revisión» podés corregir el emparejamiento.
-                    {!csvListInline ? " No aplica con CSV de más de 500 filas." : ""}
-                  </p>
-                </div>
-              </div>
-            </div>
-            {existingAttachments.length > 0 && (
-              <div className="space-y-2">
-                <Label>Adjuntos ya guardados</Label>
-                <ul className="space-y-1.5">
-                  {existingAttachments.map((a) => (
-                    <li key={a.url} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
-                      <span className="truncate">{a.nombre}</span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive h-8 px-2 shrink-0"
-                        onClick={() => setExistingAttachments((prev) => prev.filter((x) => x.url !== a.url))}
-                      >
-                        Quitar
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <PDFUpload
-              onFileSelect={(fs) => setFiles(fs)}
-              maxFiles={pairByRecipient ? pairingUploadCap : 12}
-              maxSizeMB={10}
-            />
-              </>
-            )}
+            {!isAdmin && !mixedSameText && renderAttachmentsFields()}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
               <Button
@@ -2013,6 +2084,39 @@ export function CampaignWizard({
               >
                 Siguiente
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* PASO Adjuntos (solo panel admin) */}
+      {currentStepId === "adjuntos" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Adjuntos</CardTitle>
+            <CardDescription>
+              Opcional. Subí uno o más archivos para todos los destinatarios, o uno distinto por persona.
+              Cada archivo pesa hasta {CAMPAIGN_ATTACHMENT_MAX_MB} MB y se guarda con su huella SHA-256.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {mixedSameText ? (
+              <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                Sin lector no hay dónde abrir adjuntos: este modo de envío no admite archivos adjuntos.
+              </p>
+            ) : (
+              <>
+                {mixedEmailDirect && (
+                  <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                    Los adjuntos no viajan en el correo: solo se abren desde el lector, al que se llega por WhatsApp.
+                  </p>
+                )}
+                {renderAttachmentsFields("-admin")}
+              </>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
+              <Button onClick={() => setStep((s) => s + 1)}>Siguiente</Button>
             </div>
           </CardContent>
         </Card>
@@ -2116,60 +2220,7 @@ export function CampaignWizard({
                   : "Falta el texto aprobado en Meta de esta plantilla. Pedile al administrador que lo complete antes de enviar."}
               </p>
             )}
-            {canal === "whatsapp" && !isAdmin && (
-              <>
-                <div className="rounded-md border p-4 space-y-3">
-                  <div className="flex items-start gap-3">
-                    <Checkbox
-                      id="adj-por-destinatario-wa"
-                      checked={pairByRecipient}
-                      disabled={!csvListInline}
-                      onCheckedChange={(v) => setPairByRecipient(v === true)}
-                      className="mt-1"
-                    />
-                    <div className="space-y-1">
-                      <label
-                        htmlFor="adj-por-destinatario-wa"
-                        className="text-sm font-medium cursor-pointer leading-none"
-                      >
-                        Adjunto distinto por destinatario
-                      </label>
-                      <p className="text-xs text-muted-foreground">
-                        Subí un archivo por persona. El nombre del archivo debe contener su nombre o correo (como en el
-                        CSV). En el paso «Revisión» podés corregir el emparejamiento.
-                        {!csvListInline ? " No aplica con CSV de más de 500 filas." : ""}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                {existingAttachments.length > 0 && (
-                  <div className="space-y-2">
-                    <Label>Adjuntos ya guardados</Label>
-                    <ul className="space-y-1.5">
-                      {existingAttachments.map((a) => (
-                        <li key={a.url} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
-                          <span className="truncate">{a.nombre}</span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive h-8 px-2 shrink-0"
-                            onClick={() => setExistingAttachments((prev) => prev.filter((x) => x.url !== a.url))}
-                          >
-                            Quitar
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                <PDFUpload
-                  onFileSelect={(fs) => setFiles(fs)}
-                  maxFiles={pairByRecipient ? pairingUploadCap : 12}
-                  maxSizeMB={10}
-                />
-              </>
-            )}
+            {canal === "whatsapp" && !isAdmin && renderAttachmentsFields("-wa")}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep((s) => s - 1)}>
                 Atrás
@@ -2272,7 +2323,7 @@ export function CampaignWizard({
             </div>
 
             {/* Emparejamiento de adjuntos */}
-            {pairByRecipient && files.length > 0 && !isAdmin && csvListInline && (
+            {pairByRecipient && files.length > 0 && csvListInline && (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm font-medium">Emparejamiento de adjuntos</p>
