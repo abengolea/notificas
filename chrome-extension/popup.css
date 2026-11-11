@@ -199,3 +199,15 @@ button.secondary {
   border: 1px solid var(--border);
   color: var(--text);
 }
+
+#batch-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#batch-progress {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}

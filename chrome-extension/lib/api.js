@@ -50,13 +50,34 @@ export async function fetchSession() {
   return apiFetch("/api/linkedin-assistant/auth/session");
 }
 
+function appendExcludeIds(qs, params) {
+  const ids = [
+    params.excludeMemberId,
+    ...(Array.isArray(params.excludeMemberIds) ? params.excludeMemberIds : []),
+  ].filter(Boolean);
+  for (const id of new Set(ids)) {
+    qs.append("excludeMemberId", id);
+  }
+}
+
 export async function fetchNext(params = {}) {
   const qs = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (v) qs.set(k, v);
-  }
+  if (params.campaignId) qs.set("campaignId", params.campaignId);
+  if (params.countryCode) qs.set("countryCode", params.countryCode);
+  if (params.status) qs.set("status", params.status);
+  appendExcludeIds(qs, params);
   const q = qs.toString();
   return apiFetch(`/api/linkedin-assistant/next${q ? `?${q}` : ""}`);
+}
+
+export async function fetchActions(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.campaignId) qs.set("campaignId", params.campaignId);
+  if (params.countryCode) qs.set("countryCode", params.countryCode);
+  if (params.status) qs.set("status", params.status);
+  qs.set("limit", String(params.limit || 200));
+  const q = qs.toString();
+  return apiFetch(`/api/linkedin-assistant/actions${q ? `?${q}` : ""}`);
 }
 
 export async function fetchCampaigns() {

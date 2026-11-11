@@ -51,6 +51,7 @@
         <div class="row"><span class="label">Campaña</span><span id="detected-campaign">—</span></div>
         <div class="row"><span class="label">Estado campaña</span><span id="detected-campaign-status">—</span></div>
         <div class="row"><span class="label">Estado contacto</span><span id="detected-member-status">—</span></div>
+        <button type="button" id="btn-use-detected" class="secondary compact hidden">USAR ESTE CONTACTO</button>
       </div>
     </section>
 
@@ -59,6 +60,17 @@
       <select id="campaign-select">
         <option value="">Todas las campañas</option>
       </select>
+    </section>
+
+    <section id="batch-card" class="card hidden">
+      <p class="session-title">LOTE DE 20 MENSAJES</p>
+      <p id="batch-status" class="hint">Abre 20 perfiles. El mensaje se copia desde el CRM: pegalo vos en LinkedIn.</p>
+      <p id="batch-progress">0 / 20 listos</p>
+      <p id="batch-current" class="hint hidden"></p>
+      <button type="button" id="btn-batch-start" class="primary">ABRIR 20 PERFILES</button>
+      <button type="button" id="btn-batch-more" class="primary hidden">ACTIVAR OTROS 20</button>
+      <button type="button" id="btn-batch-stop" class="secondary hidden">PAUSAR LOTE</button>
+      <button type="button" id="btn-scan-sent" class="secondary">REVISAR ENVIADOS EN LINKEDIN</button>
     </section>
 
     <section id="prospect" class="card hidden">
@@ -73,11 +85,12 @@
     </section>
 
     <section id="empty" class="empty hidden">
-      <p>No hay acciones pendientes para esta campaña.</p>
+      <p id="empty-text">No hay acciones pendientes para esta campaña.</p>
+      <button type="button" id="btn-reset-queue" class="secondary">VOLVER AL PRIMERO</button>
     </section>
 
     <footer id="actions" class="actions">
-      <button type="button" id="btn-prepare" class="primary" disabled>ABRIR PERFIL Y PREPARAR</button>
+      <button type="button" id="btn-prepare" class="primary" disabled>ABRIR Y PREPARAR MENSAJE DIRECTO</button>
       <button type="button" id="btn-confirm" class="success" disabled>CONFIRMAR QUE LO ENVIÉ</button>
       <div class="row-actions outcomes">
         <button type="button" id="btn-connected" class="secondary" disabled>CONECTADO</button>
