@@ -1165,6 +1165,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Blo
           txHash: (polygonCerts as Record<string, string | undefined>)[key],
         }))
         .filter((e) => e.txHash && typeof e.txHash === 'string' && e.txHash.startsWith('0x'))
+        .filter((e, _i, arr) => arr.findIndex((x) => x.txHash === e.txHash) === _i)
     : [];
 
   const drawPolygonSection = () => {
