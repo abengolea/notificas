@@ -9,6 +9,9 @@ import {
   publicLinkClickDescription,
   publicMovementBrowserLabel,
   publicMovementDescription,
+  attachmentOpenDescription,
+  attachmentOpenLabel,
+  attachmentOpenStoredSource,
   readerOpenAlreadyLogged,
   readerOpenDescription,
   readerOpenLabel,
@@ -91,4 +94,22 @@ test('readerOpenAlreadyLogged: sin canal conocido se mantiene una sola apertura'
   assert.equal(readerOpenAlreadyLogged(porWhatsapp, 'unknown'), true);
   assert.equal(readerOpenAlreadyLogged([{ type: 'reader_magic_open' }], 'correo'), true);
   assert.equal(readerOpenAlreadyLogged([{ type: 'link_clicked' }, { type: 'app_opened' }], 'correo'), false);
+});
+
+test('adjunto abierto desde el lector: el movimiento guarda y muestra por qué canal entró', () => {
+  assert.equal(attachmentOpenStoredSource('correo'), 'reader_email');
+  assert.equal(attachmentOpenStoredSource('whatsapp'), 'reader_whatsapp');
+  assert.equal(attachmentOpenStoredSource('unknown'), undefined);
+
+  assert.match(attachmentOpenDescription('a.pdf', 'correo'), /^Apertura de archivo adjunto: a\.pdf\. .*correo electrónico\.$/);
+  assert.match(attachmentOpenDescription('a.pdf', 'whatsapp'), /WhatsApp\.$/);
+  assert.equal(attachmentOpenDescription('a.pdf', 'unknown'), 'Apertura de archivo adjunto: a.pdf');
+
+  assert.equal(attachmentOpenLabel({ source: 'reader_email' }), 'ARCHIVO ABIERTO (LECTOR · CORREO)');
+  assert.equal(attachmentOpenLabel({ source: 'reader_whatsapp' }), 'ARCHIVO ABIERTO (LECTOR · WHATSAPP)');
+  // Adjuntos abiertos desde el enlace directo del correo viejo (linkRedirect).
+  assert.equal(attachmentOpenLabel({ source: 'email' }), 'ARCHIVO ABIERTO DESDE EL CORREO');
+  assert.equal(attachmentOpenLabel({ source: 'whatsapp' }), 'ARCHIVO ABIERTO DESDE WHATSAPP');
+  // Movimientos viejos, sin canal: el título de siempre.
+  assert.equal(attachmentOpenLabel({}), 'ARCHIVO ABIERTO (PÁGINA WEB)');
 });

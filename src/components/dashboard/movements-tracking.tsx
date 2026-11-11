@@ -21,6 +21,7 @@ import { filterRecipientVisibleMovements } from '@/lib/tracking-movements';
 import {
   MOVEMENT_TYPE_LABELS,
   clickSourceOriginLabel,
+  attachmentOpenLabel,
   inferClickSourceFromMovements,
   linkClickOriginLabel,
   movementChannel,
@@ -30,6 +31,7 @@ import {
   publicMovementDescription,
   readerOpenDescription,
   readerOpenLabel,
+  resolveClickSource,
   type ClickSource,
   type MovementChannel,
 } from '@/lib/movement-display';
@@ -185,6 +187,12 @@ function getMovementChannelChip(movement: Movement, allMovements: Movement[]): M
     if (clickSource === 'correo') return 'correo';
     if (clickSource === 'whatsapp') return 'whatsapp';
   }
+  if (movement.type === 'attachment_opened') {
+    // Solo si el movimiento guardó el canal (no se deduce de otros movimientos).
+    const stored = resolveClickSource(movement);
+    if (stored === 'correo') return 'correo';
+    if (stored === 'whatsapp') return 'whatsapp';
+  }
   return movementChannel(movement.type);
 }
 
@@ -215,6 +223,9 @@ function getMovementLabel(movement: Movement, allMovements: Movement[]): string 
   }
   if (movement.type === 'reader_magic_open') {
     return readerOpenLabel(resolveMovementClickSource(movement, allMovements));
+  }
+  if (movement.type === 'attachment_opened') {
+    return attachmentOpenLabel(movement);
   }
   return MOVEMENT_TYPE_LABELS[movement.type] || movement.type.replace(/_/g, ' ').toUpperCase();
 }

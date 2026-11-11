@@ -143,6 +143,31 @@ export function readerOpenStoredSource(clickSource: ClickSource): string | undef
   return undefined;
 }
 
+/**
+ * Adjunto abierto desde el lector: el canal es por dónde entró el destinatario al lector (`from=` del enlace).
+ * Solo se guarda cuando el lector lo informó; nunca se deduce de otros movimientos.
+ */
+export function attachmentOpenStoredSource(clickSource: ClickSource): string | undefined {
+  return readerOpenStoredSource(clickSource);
+}
+
+export function attachmentOpenDescription(fileName: string, clickSource: ClickSource): string {
+  const base = `Apertura de archivo adjunto: ${fileName}`;
+  if (clickSource === "correo") return `${base}. Abierto desde el lector, al que entró por el enlace del correo electrónico.`;
+  if (clickSource === "whatsapp") return `${base}. Abierto desde el lector, al que entró por el enlace del mensaje de WhatsApp.`;
+  return base;
+}
+
+/** Título del movimiento `attachment_opened` según cómo se abrió el archivo. */
+export function attachmentOpenLabel(movement: MovementLike): string {
+  const raw = movement.clickSource || movement.source;
+  if (raw === "reader_email") return "ARCHIVO ABIERTO (LECTOR · CORREO)";
+  if (raw === "reader_whatsapp") return "ARCHIVO ABIERTO (LECTOR · WHATSAPP)";
+  if (raw === "email" || raw === "correo") return "ARCHIVO ABIERTO DESDE EL CORREO";
+  if (raw === "whatsapp") return "ARCHIVO ABIERTO DESDE WHATSAPP";
+  return MOVEMENT_TYPE_LABELS.attachment_opened;
+}
+
 export function movementChannel(type: string): MovementChannel {
   if (type.startsWith("whatsapp_")) return "whatsapp";
   if (

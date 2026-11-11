@@ -4,6 +4,12 @@ import { adminDb } from '@/lib/firebase-admin';
 import { certifyMailHitoIfNeeded } from '@/lib/certification-polygon';
 import { isMailSender } from '@/lib/mail-sender';
 import { getOptionalViewer } from '@/lib/optional-viewer';
+import {
+  attachmentOpenDescription,
+  attachmentOpenStoredSource,
+  normalizeClickSourceInput,
+} from '@/lib/movement-display';
+import { contentAccessChannel } from '@/lib/polygon-content-access';
 
 function extractBrowserInfo(userAgent: string) {
   const match = userAgent.match(/(Chrome|Firefox|Safari|Edge|Opera)\/(\d+)/);
@@ -37,7 +43,10 @@ function getPrimaryRecipientEmail(messageData: Record<string, any>): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { messageId, attachmentId, fileName, action, k } = await request.json();
+    const { messageId, attachmentId, fileName, action, k, from } = await request.json();
+    // Canal por el que el destinatario entró al lector (`from=` del enlace). Solo si el lector lo informó.
+    const clickSource = normalizeClickSourceInput(from);
+    const clickSourceStored = attachmentOpenStoredSource(clickSource);
 
     if (!messageId || !attachmentId) {
       return NextResponse.json({ error: 'messageId y attachmentId son requeridos' }, { status: 400 });
@@ -125,7 +134,8 @@ export async function POST(request: NextRequest) {
     const attachmentMovement = {
       id: generateUUID(),
       type: 'attachment_opened',
-      description: `Apertura de archivo adjunto: ${fileName || attachmentId}`,
+      description: attachmentOpenDescription(String(fileName || attachmentId), clickSource),
+      ...(clickSourceStored ? { source: clickSourceStored, clickSource: clickSourceStored } : {}),
       timestamp: new Date().toISOString(),
       userAgent,
       clientIP,
@@ -152,6 +162,8 @@ export async function POST(request: NextRequest) {
         docId: messageId,
         hito: 'content_access',
         via: 'attachment',
+        // Cada canal ancla su propio acceso; sin canal informado, no se suma otra transacción.
+        channel: contentAccessChannel(clickSource),
       }).catch((certifyError: unknown) => {
         console.warn(
           '⚠️ Polygon certify content_access (attachment):',

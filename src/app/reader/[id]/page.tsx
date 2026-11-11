@@ -121,6 +121,8 @@ export default function ReaderPage() {
         fileName: attachment.fileName,
         action: "opened",
         k: trackingToken,
+        // Por qué enlace entró al lector: deja constancia de si el adjunto se abrió desde el correo o WhatsApp.
+        ...(clickFrom === "whatsapp" || clickFrom === "email" ? { from: clickFrom } : {}),
       }),
     }).catch(() => undefined);
     // 2) El archivo se abre también en ese tick, sin esperar nada: los navegadores del celular solo permiten
