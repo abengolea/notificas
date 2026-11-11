@@ -21,10 +21,17 @@ export function mixedWhatsAppUsesReaderLink(urlButton: boolean | undefined | nul
 /**
  * Cómo viaja una campaña mixta (correo + WhatsApp):
  * - reader_both: el correo es un aviso con botón al lector y WhatsApp lleva el enlace al mismo lector.
+ * - email_reader_wa_template: el correo es un aviso con botón al lector; WhatsApp lleva la plantilla de Meta tal
+ *   cual está aprobada, con su propio enlace (no abre el lector).
  * - same_text: el correo trae el texto de la plantilla de Meta, igual al de WhatsApp. Ningún canal abre el lector.
  * - email_text_wa_reader: el correo trae el texto completo, sin lector; WhatsApp lleva el enlace al lector.
  */
-export const MIXED_DELIVERY_MODES = ['reader_both', 'same_text', 'email_text_wa_reader'] as const;
+export const MIXED_DELIVERY_MODES = [
+  'reader_both',
+  'email_reader_wa_template',
+  'same_text',
+  'email_text_wa_reader',
+] as const;
 export type MixedDeliveryMode = (typeof MIXED_DELIVERY_MODES)[number];
 export const DEFAULT_MIXED_DELIVERY_MODE: MixedDeliveryMode = 'reader_both';
 
@@ -44,19 +51,24 @@ export function mixedModeEmailIsDirect(mode: unknown): boolean {
 
 /** WhatsApp lleva el enlace al lector (botón URL de la plantilla de Meta). */
 export function mixedModeWhatsAppUsesReader(mode: unknown): boolean {
-  return normalizeMixedDeliveryMode(mode) !== 'same_text';
+  const m = normalizeMixedDeliveryMode(mode);
+  return m !== 'same_text' && m !== 'email_reader_wa_template';
 }
 
 /**
- * Con el sobre de Notificas WhatsApp siempre lleva el lector; "mismo texto sin lector" necesita una plantilla
- * propia con su enlace. Si llega esa combinación se pasa a la opción más cercana (correo con texto, WhatsApp con lector).
+ * Con el sobre de Notificas WhatsApp siempre lleva el lector; las opciones donde WhatsApp va con el enlace propio
+ * de la plantilla necesitan una plantilla propia. Si llegan con el sobre se pasa a la opción más cercana
+ * (mismo correo, WhatsApp con lector).
  */
 export function effectiveMixedDeliveryMode(
   mode: unknown,
   usesDefaultTemplate: boolean
 ): MixedDeliveryMode {
   const m = normalizeMixedDeliveryMode(mode);
-  return usesDefaultTemplate && m === 'same_text' ? 'email_text_wa_reader' : m;
+  if (!usesDefaultTemplate) return m;
+  if (m === 'same_text') return 'email_text_wa_reader';
+  if (m === 'email_reader_wa_template') return 'reader_both';
+  return m;
 }
 
 export function fillNumericPlaceholders(template: string, values: string[]): string {

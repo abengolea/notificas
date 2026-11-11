@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { denyOrgMemberWriteOnAdminCampaign, resolveCampaignOrgAccess } from '@/lib/campaign-access';
 import { getAdminDb, getAdminBucket } from '@/lib/firebase-admin';
+import { isMixedDeliveryMode } from '@/lib/campaign-mixed-message';
 import type { RecipientEntry } from '@/lib/types';
 
 const CHUNK_SIZE = 500;
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
       ...(c.waTemplateLang       ? { waTemplateLang:       c.waTemplateLang }       : {}),
       ...(c.waTemplateVariables  ? { waTemplateVariables:  c.waTemplateVariables }  : {}),
       ...(c.waUrlButton === true ? { waUrlButton: true } : {}),
-      ...(c.mixedMode === 'reader_both' || c.mixedMode === 'same_text' || c.mixedMode === 'email_text_wa_reader'
+      ...(isMixedDeliveryMode(c.mixedMode)
         ? { mixedMode: c.mixedMode }
         : {}),
       ...(c.waTemplateBody ? { waTemplateBody: c.waTemplateBody } : {}),

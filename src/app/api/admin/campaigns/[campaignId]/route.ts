@@ -6,7 +6,7 @@ import { getAdminDb } from '@/lib/firebase-admin';
 import { ensureOrgCredits } from '@/lib/org-credits';
 import { canEditWhatsAppTemplate, isUnsentCampaign, UNSENT_EDIT_ERROR, WA_TEMPLATE_EDIT_ERROR } from '@/lib/campaign-edit';
 import { whatsappTemplateCampaignPatch } from '@/lib/campaign-wa-template-patch';
-import { isMixedDeliveryMode } from '@/lib/campaign-mixed-message';
+import { isMixedDeliveryMode, MIXED_DELIVERY_MODES } from '@/lib/campaign-mixed-message';
 import type { CanalCampaign } from '@/lib/types';
 
 const patchSchema = z.object({
@@ -18,7 +18,7 @@ const patchSchema = z.object({
   waTemplateLang: z.string().max(16).optional(),
   waTemplateVariables: z.array(z.string().max(200)).max(10).optional(),
   waUrlButton: z.boolean().optional(),
-  mixedMode: z.enum(['reader_both', 'same_text', 'email_text_wa_reader']).optional(),
+  mixedMode: z.enum(MIXED_DELIVERY_MODES).optional(),
   waTemplateBody: z.string().max(20000).optional(),
   tandaSize: z.number().int().min(0).optional(),
   notificationType: z.enum(['ORDINARY', 'SRT_ART']).optional(),

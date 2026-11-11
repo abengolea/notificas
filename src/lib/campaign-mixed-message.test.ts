@@ -178,6 +178,11 @@ test("los tres modos de campaña mixta definen qué canal lleva el lector", () =
   assert.equal(mixedModeWhatsAppUsesReader("reader_both"), true);
   assert.equal(mixedModeWhatsAppUsesReader("same_text"), false);
   assert.equal(mixedModeWhatsAppUsesReader("email_text_wa_reader"), true);
+  // Correo con lector + WhatsApp con la plantilla tal cual: el correo sigue siendo aviso y WhatsApp no abre el lector.
+  assert.equal(mixedModeEmailIsDirect("email_reader_wa_template"), false);
+  assert.equal(mixedModeWhatsAppUsesReader("email_reader_wa_template"), false);
+  assert.equal(effectiveMixedDeliveryMode("email_reader_wa_template", false), "email_reader_wa_template");
+  assert.equal(effectiveMixedDeliveryMode("email_reader_wa_template", true), "reader_both");
   // Con el sobre de Notificas WhatsApp siempre lleva el lector: "sin lector" pasa a la opción más cercana.
   assert.equal(effectiveMixedDeliveryMode("same_text", true), "email_text_wa_reader");
   assert.equal(effectiveMixedDeliveryMode("same_text", false), "same_text");

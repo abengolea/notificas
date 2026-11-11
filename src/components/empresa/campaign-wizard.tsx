@@ -1869,7 +1869,7 @@ export function CampaignWizard({
                 </p>
                 <p>
                   <strong className="text-foreground">WhatsApp:</strong>{" "}
-                  {mixedSameText
+                  {!mixedModeWhatsAppUsesReader(mixedModeEff)
                     ? "la plantilla de Meta tal cual está aprobada (su propio enlace, si tiene)."
                     : "la plantilla de Meta y el mismo enlace al lector."}
                 </p>
@@ -2262,7 +2262,9 @@ export function CampaignWizard({
                 <p className="text-muted-foreground">
                   {mixedModeEff === "same_text"
                     ? "Sin lector: el correo trae el mismo texto que la plantilla de WhatsApp y ninguno de los dos abre el lector. WhatsApp usa el enlace propio de la plantilla."
-                    : mixedModeEff === "email_text_wa_reader"
+                    : mixedModeEff === "email_reader_wa_template"
+                      ? "El correo es un aviso con enlace al lector (esta carta). WhatsApp lleva la plantilla de Meta tal cual está aprobada, con su propio enlace: no abre el lector."
+                      : mixedModeEff === "email_text_wa_reader"
                       ? "El correo trae el texto completo, sin enlace al lector. WhatsApp lleva la plantilla de Meta con el enlace al lector, que muestra este mismo texto."
                       : "El correo es un aviso con enlace al lector. WhatsApp lleva la plantilla de Meta y el mismo acceso. El lector muestra esta carta."}
                 </p>

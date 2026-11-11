@@ -9,6 +9,7 @@ import { usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
 import {
   effectiveMixedDeliveryMode,
   isMixedDeliveryMode,
+  MIXED_DELIVERY_MODES,
   mixedModeWhatsAppUsesReader,
 } from '@/lib/campaign-mixed-message';
 
@@ -22,7 +23,7 @@ const createSchema = z.object({
   waTemplateLang: z.string().max(16).optional(),
   waTemplateVariables: z.array(z.string().max(200)).max(10).optional(),
   waUrlButton: z.boolean().optional(),
-  mixedMode: z.enum(['reader_both', 'same_text', 'email_text_wa_reader']).optional(),
+  mixedMode: z.enum(MIXED_DELIVERY_MODES).optional(),
   waTemplateBody: z.string().max(20000).optional(),
   tandaSize: z.number().int().min(0).optional(),
   simulated: z.boolean().optional(),

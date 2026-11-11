@@ -1409,6 +1409,8 @@ export const CampaignDashboard = forwardRef<
               <p className="text-xs text-muted-foreground">
                 {campaign.canal === "ambos" && campaign.mixedMode === "same_text"
                   ? "Sin lector: el correo trae el mismo texto que la plantilla de Meta y WhatsApp usa el enlace propio de la plantilla. Ningún canal abre el lector."
+                  : campaign.canal === "ambos" && campaign.mixedMode === "email_reader_wa_template"
+                    ? "El correo es un aviso con enlace al lector, donde está la carta certificada. WhatsApp lleva la plantilla de Meta tal cual, con su propio enlace: no abre el lector."
                   : campaign.canal === "ambos" && campaign.mixedMode === "email_text_wa_reader"
                     ? "El correo trae el texto completo, sin enlace al lector. WhatsApp lleva la plantilla de Meta con el enlace al lector, que muestra ese mismo texto."
                     : usesMetaTemplateAsEmailBody(campaign.canal, campaign.waTemplateName)

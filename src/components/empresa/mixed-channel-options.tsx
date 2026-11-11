@@ -17,7 +17,7 @@ type OptionCopy = {
   note: string;
 };
 
-/** Textos de las tres opciones. Una sola fuente: el selector y los resúmenes dicen lo mismo. */
+/** Textos de las cuatro opciones (correo con lector o con texto × WhatsApp con lector o con la plantilla tal cual). Una sola fuente: el selector y los resúmenes dicen lo mismo. */
 export const MIXED_MODE_OPTIONS: OptionCopy[] = [
   {
     value: "reader_both",
@@ -26,6 +26,13 @@ export const MIXED_MODE_OPTIONS: OptionCopy[] = [
     email: "Aviso con botón que abre el lector, donde está la carta certificada.",
     whatsapp: "La plantilla de Meta con el enlace al mismo lector.",
     note: "Queda registrado quién abrió y leyó, entre el correo y WhatsApp.",
+  },
+  {
+    value: "email_reader_wa_template",
+    title: "Correo con el lector, WhatsApp con la plantilla tal cual",
+    email: "Aviso con botón que abre el lector, donde está la carta certificada.",
+    whatsapp: "La plantilla aprobada por Meta con su propio enlace (pago, portal o web de la empresa). No abre el lector.",
+    note: "La lectura certificada es la del correo. De WhatsApp solo informa Meta si llegó y se leyó el mensaje.",
   },
   {
     value: "same_text",
@@ -73,7 +80,9 @@ export function MixedChannelOptions({
         className="grid gap-3"
       >
         {MIXED_MODE_OPTIONS.map((opt) => {
-          const disabled = usingDefault && opt.value === "same_text";
+          // Con el sobre de Notificas WhatsApp siempre lleva el lector: sin plantilla propia no hay "enlace propio".
+          const disabled =
+            usingDefault && (opt.value === "same_text" || opt.value === "email_reader_wa_template");
           const checked = selected === opt.value;
           return (
             <label
@@ -114,7 +123,8 @@ export function MixedChannelOptions({
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Si el botón de la plantilla de Meta apunta a otra web y no a Notificas, elegí la segunda opción.
+          Si el botón de la plantilla de Meta apunta a otra web y no a Notificas, elegí una opción donde WhatsApp
+          lleva la plantilla tal cual.
         </p>
       )}
     </div>

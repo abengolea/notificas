@@ -4,6 +4,7 @@ import { denyOrgMemberWriteOnAdminCampaign, resolveCampaignOrgAccess } from '@/l
 import { getAdminDb } from '@/lib/firebase-admin';
 import { canEditWhatsAppTemplate, WA_TEMPLATE_EDIT_ERROR } from '@/lib/campaign-edit';
 import { whatsappTemplateCampaignPatch } from '@/lib/campaign-wa-template-patch';
+import { MIXED_DELIVERY_MODES } from '@/lib/campaign-mixed-message';
 
 const bodySchema = z.object({
   campaignId: z.string().min(1),
@@ -12,7 +13,7 @@ const bodySchema = z.object({
   waTemplateLang: z.string().max(16),
   waTemplateVariables: z.array(z.string().max(200)).max(10),
   waUrlButton: z.boolean(),
-  mixedMode: z.enum(['reader_both', 'same_text', 'email_text_wa_reader']).optional(),
+  mixedMode: z.enum(MIXED_DELIVERY_MODES).optional(),
   waTemplateBody: z.string().max(20000).optional(),
 });
 
