@@ -114,6 +114,30 @@ export default function LeafSpecV2Page() {
               Los hechos que no traen <code>rawPayloadHash</code> (por ejemplo la apertura del correo)
               usan esta forma de siete campos dentro de un lote cuyo payload on-chain sigue siendo v2.
             </p>
+            <p className="font-medium mt-4">rawPayloadHash</p>
+            <p className="mt-1">
+              Para los eventos de WhatsApp (<code>wa_delivered</code>, <code>wa_read</code>),{' '}
+              <code>rawPayloadHash</code> es:
+            </p>
+            <p className={`${CODE} mt-2 rounded-md bg-muted px-3 py-2`}>
+              SHA-256(UTF-8(cuerpo HTTP tal como llegó de Meta))
+            </p>
+            <p className="mt-2">
+              El hash se calcula sobre el body crudo —el string recibido en el POST— antes de parsear el
+              JSON. Esto permite a un perito verificar que el payload conservado por Notificas en{' '}
+              <code>provider_events</code> es byte a byte idéntico al que firmó Meta con HMAC-SHA256. El
+              mismo body que pasa la verificación del encabezado{' '}
+              <code>X-Hub-Signature-256</code> es el que se hashea. Para reproducirlo:{' '}
+              <code>printf &#39;%s&#39; &quot;$raw_body&quot; | sha256sum</code> o equivalente en cualquier
+              entorno que lea el payload como UTF-8 sin normalización.
+            </p>
+            <p className="mt-2">
+              El <code>rawPayloadHash</code> en la hoja Merkle ancla criptográficamente la existencia de
+              ese cuerpo en el momento del bloque. Para confrontar el payload conservado con el hash
+              anclado basta calcular SHA-256 del body guardado en <code>provider_events</code> y
+              compararlo con el campo 11 de la hoja; cualquier alteración posterior produce un hash
+              distinto.
+            </p>
             <p className="font-medium mt-4">Cómo se serializa cada campo</p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
               <li>
@@ -235,6 +259,13 @@ export default function LeafSpecV2Page() {
               revisión que leyó (por ejemplo, con una copia archivada de la página ese día).
             </p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
+              <li>
+                <strong>v2, rev. 2026-11-11</strong>: se documenta <code>rawPayloadHash</code>: SHA-256
+                del cuerpo HTTP crudo del webhook de Meta (antes del parse JSON), campo 11 de la hoja de
+                evento v2, que permite a un perito verificar la integridad del payload conservado en{' '}
+                <code>provider_events</code> contra el hash anclado en Polygon. Sin cambios de formato ni
+                de cálculo.
+              </li>
               <li>
                 <strong>v2, rev. 2026-11-05</strong>: se aclara que el timestamp del bloque data la
                 publicación de las huellas y no el envío ni cada hecho, y que el orden de minado de las
