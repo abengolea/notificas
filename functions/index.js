@@ -1050,7 +1050,8 @@ exports.sendEmail = onRequest(
       const textVersion = isCampaignMail
         ? buildCampaignPlainText({
             html: htmlWithTracking,
-            readerUrl,
+            // Correo directo (campaña mixta sin lector en el correo): el texto plano tampoco lleva el enlace.
+            readerUrl: emailData.emailDirect === true ? '' : readerUrl,
             recipientEmail: emailData.recipientEmail || to,
             year: new Date().getFullYear(),
           })

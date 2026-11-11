@@ -18,6 +18,47 @@ export function mixedWhatsAppUsesReaderLink(urlButton: boolean | undefined | nul
   return urlButton === true;
 }
 
+/**
+ * Cómo viaja una campaña mixta (correo + WhatsApp):
+ * - reader_both: el correo es un aviso con botón al lector y WhatsApp lleva el enlace al mismo lector.
+ * - same_text: el correo trae el texto de la plantilla de Meta, igual al de WhatsApp. Ningún canal abre el lector.
+ * - email_text_wa_reader: el correo trae el texto completo, sin lector; WhatsApp lleva el enlace al lector.
+ */
+export const MIXED_DELIVERY_MODES = ['reader_both', 'same_text', 'email_text_wa_reader'] as const;
+export type MixedDeliveryMode = (typeof MIXED_DELIVERY_MODES)[number];
+export const DEFAULT_MIXED_DELIVERY_MODE: MixedDeliveryMode = 'reader_both';
+
+export function isMixedDeliveryMode(v: unknown): v is MixedDeliveryMode {
+  return typeof v === 'string' && (MIXED_DELIVERY_MODES as readonly string[]).includes(v);
+}
+
+/** Valor ausente o desconocido (campañas anteriores) = opción por defecto. */
+export function normalizeMixedDeliveryMode(v: unknown): MixedDeliveryMode {
+  return isMixedDeliveryMode(v) ? v : DEFAULT_MIXED_DELIVERY_MODE;
+}
+
+/** El correo trae el texto completo y no tiene enlace al lector. */
+export function mixedModeEmailIsDirect(mode: unknown): boolean {
+  return mode === 'same_text' || mode === 'email_text_wa_reader';
+}
+
+/** WhatsApp lleva el enlace al lector (botón URL de la plantilla de Meta). */
+export function mixedModeWhatsAppUsesReader(mode: unknown): boolean {
+  return normalizeMixedDeliveryMode(mode) !== 'same_text';
+}
+
+/**
+ * Con el sobre de Notificas WhatsApp siempre lleva el lector; "mismo texto sin lector" necesita una plantilla
+ * propia con su enlace. Si llega esa combinación se pasa a la opción más cercana (correo con texto, WhatsApp con lector).
+ */
+export function effectiveMixedDeliveryMode(
+  mode: unknown,
+  usesDefaultTemplate: boolean
+): MixedDeliveryMode {
+  const m = normalizeMixedDeliveryMode(mode);
+  return usesDefaultTemplate && m === 'same_text' ? 'email_text_wa_reader' : m;
+}
+
 export function fillNumericPlaceholders(template: string, values: string[]): string {
   return String(template || "").replace(/\{\{(\d+)\}\}/g, (_, raw: string) => {
     const i = Number(raw) - 1;
@@ -163,14 +204,22 @@ export function renderCampaignMessageBody(input: {
   waTemplateBody?: string | null;
   waTemplateVariables?: string[] | null;
   waUrlButton?: boolean;
+  /** same_text: el correo lleva exactamente el texto de la plantilla de Meta (ignora la carta). */
+  mixedMode?: MixedDeliveryMode | string | null;
   cuerpo?: string | null;
   row: MixedMessageRow;
   senderName?: string;
 }): string {
   const cuerpo = String(input.cuerpo || "");
-  const letter = personalizeCampaignText(cuerpo, input.row).trim();
-  if (letter) return letter;
   const metaBody = String(input.waTemplateBody || "").trim();
+  const sameText =
+    input.mixedMode === "same_text" &&
+    usesMetaTemplateAsEmailBody(input.canal, input.waTemplateName) &&
+    metaBody;
+  if (!sameText) {
+    const letter = personalizeCampaignText(cuerpo, input.row).trim();
+    if (letter) return letter;
+  }
   if (usesMetaTemplateAsEmailBody(input.canal, input.waTemplateName) && metaBody) {
     return renderMetaTemplateBody({
       templateBody: metaBody,

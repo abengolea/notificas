@@ -48,6 +48,9 @@ export async function POST(request: NextRequest) {
       ...(c.waTemplateLang       ? { waTemplateLang:       c.waTemplateLang }       : {}),
       ...(c.waTemplateVariables  ? { waTemplateVariables:  c.waTemplateVariables }  : {}),
       ...(c.waUrlButton === true ? { waUrlButton: true } : {}),
+      ...(c.mixedMode === 'reader_both' || c.mixedMode === 'same_text' || c.mixedMode === 'email_text_wa_reader'
+        ? { mixedMode: c.mixedMode }
+        : {}),
       ...(c.waTemplateBody ? { waTemplateBody: c.waTemplateBody } : {}),
       recipientCount: c.recipientCount ?? 0,
       stats: {

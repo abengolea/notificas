@@ -6,6 +6,7 @@ import { getAdminDb } from '@/lib/firebase-admin';
 import { ensureOrgCredits } from '@/lib/org-credits';
 import { canEditWhatsAppTemplate, isUnsentCampaign, UNSENT_EDIT_ERROR, WA_TEMPLATE_EDIT_ERROR } from '@/lib/campaign-edit';
 import { whatsappTemplateCampaignPatch } from '@/lib/campaign-wa-template-patch';
+import { isMixedDeliveryMode } from '@/lib/campaign-mixed-message';
 import type { CanalCampaign } from '@/lib/types';
 
 const patchSchema = z.object({
@@ -17,6 +18,7 @@ const patchSchema = z.object({
   waTemplateLang: z.string().max(16).optional(),
   waTemplateVariables: z.array(z.string().max(200)).max(10).optional(),
   waUrlButton: z.boolean().optional(),
+  mixedMode: z.enum(['reader_both', 'same_text', 'email_text_wa_reader']).optional(),
   waTemplateBody: z.string().max(20000).optional(),
   tandaSize: z.number().int().min(0).optional(),
   notificationType: z.enum(['ORDINARY', 'SRT_ART']).optional(),
@@ -44,6 +46,7 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     waTemplateLang: String(data.waTemplateLang || 'es_AR'),
     waTemplateVariables: Array.isArray(data.waTemplateVariables) ? data.waTemplateVariables : [],
     waUrlButton: data.waUrlButton === true,
+    mixedMode: isMixedDeliveryMode(data.mixedMode) ? data.mixedMode : '',
     waTemplateBody: String(data.waTemplateBody || ''),
     managedByAdmin: data.managedByAdmin === true,
     simulated: data.simulated === true,
@@ -144,6 +147,7 @@ export async function PATCH(
       d.waTemplateLang != null ||
       d.waTemplateVariables != null ||
       d.waUrlButton != null ||
+      d.mixedMode != null ||
       d.waTemplateBody != null;
     if (fullContentTouched && !unsent) {
       return NextResponse.json({ error: UNSENT_EDIT_ERROR }, { status: 409 });
@@ -158,10 +162,12 @@ export async function PATCH(
     if (d.asunto != null) patch.asunto = d.asunto.trim();
     if (d.cuerpo != null) patch.cuerpo = d.cuerpo.trim();
     if (d.canal != null) patch.canal = d.canal as CanalCampaign;
+    const resultingCanal = String(d.canal ?? current.canal ?? 'email');
     if (templateTouched) {
       Object.assign(
         patch,
         whatsappTemplateCampaignPatch({
+          mixedMode: resultingCanal === 'ambos' ? (d.mixedMode ?? current.mixedMode) : undefined,
           waTemplateName: d.waTemplateName ?? String(current.waTemplateName || ''),
           waTemplateLang: d.waTemplateLang ?? String(current.waTemplateLang || 'es_AR'),
           waTemplateVariables: d.waTemplateVariables ?? (Array.isArray(current.waTemplateVariables) ? current.waTemplateVariables : []),
@@ -170,6 +176,7 @@ export async function PATCH(
         })
       );
     }
+    if (resultingCanal !== 'ambos' && current.mixedMode != null) patch.mixedMode = FieldValue.delete();
     if (d.tandaSize != null) patch.tandaSize = d.tandaSize;
     if (d.notificationType != null) patch.notificationType = d.notificationType;
     if (d.archived === true) {

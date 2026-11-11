@@ -8,6 +8,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { listenWhenSignedIn } from '@/lib/listen-when-signed-in';
+import { isMixedDeliveryMode } from '@/lib/campaign-mixed-message';
 import type { Campaign, CampaignMessage, CanalCampaign } from '@/lib/types';
 
 export function mapCampaign(id: string, data: DocumentData): Campaign {
@@ -22,6 +23,7 @@ export function mapCampaign(id: string, data: DocumentData): Campaign {
     waTemplateLang: data.waTemplateLang,
     waTemplateVariables: Array.isArray(data.waTemplateVariables) ? data.waTemplateVariables : undefined,
     waUrlButton: data.waUrlButton === true,
+    ...(isMixedDeliveryMode(data.mixedMode) ? { mixedMode: data.mixedMode } : {}),
     adjuntos: Array.isArray(data.adjuntos) ? data.adjuntos : [],
     recipientListId: data.recipientListId,
     recipientEmails: Array.isArray(data.recipientEmails) ? data.recipientEmails : [],

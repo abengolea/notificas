@@ -8,7 +8,13 @@ import {
   campaignBodyToHtmlFragment,
   personalizeCampaignText,
 } from '@/lib/campaign-email-html';
-import { renderCampaignMessageBody } from '@/lib/campaign-mixed-message';
+import {
+  effectiveMixedDeliveryMode,
+  isMixedDeliveryMode,
+  mixedModeEmailIsDirect,
+  mixedModeWhatsAppUsesReader,
+  renderCampaignMessageBody,
+} from '@/lib/campaign-mixed-message';
 import { resolveCampaignSenderDisplay, resolveCampaignSenderEmail } from '@/lib/campaign-sender';
 import { consumeOrgCreditsInTx } from '@/lib/org-credits';
 import { invokeSendEmail } from '@/lib/send-mail-via-cf';
@@ -234,6 +240,15 @@ async function processMessage(
       };
     }
   }
+  // Campaña mixta: el modo elegido manda sobre `waUrlButton` (que queda como dato derivado, por si quedó viejo).
+  const mixedMode =
+    canal === 'ambos' && isMixedDeliveryMode(campaign.mixedMode)
+      ? effectiveMixedDeliveryMode(campaign.mixedMode, usesNotificasDefaultTemplate(campaign.waTemplateName))
+      : undefined;
+  const emailDirect = mixedModeEmailIsDirect(mixedMode);
+  if (mixedMode && !usesNotificasDefaultTemplate(campaign.waTemplateName)) {
+    campaign = { ...campaign, waUrlButton: mixedModeWhatsAppUsesReader(mixedMode) };
+  }
   const emailRaw = String(msg.recipientEmail || '').toLowerCase();
   // Tratar emails sintéticos (generados por CSV parser cuando no hay email real) como "sin email".
   const isSyntheticEmail = emailRaw.endsWith('@notificas.internal') || emailRaw.endsWith('@wa.internal');
@@ -280,6 +295,7 @@ async function processMessage(
     waTemplateBody: campaign.waTemplateBody,
     waTemplateVariables: Array.isArray(campaign.waTemplateVariables) ? campaign.waTemplateVariables : undefined,
     waUrlButton: campaign.waUrlButton === true,
+    mixedMode,
     cuerpo: campaign.cuerpo,
     row,
     senderName: senderDisplay,
@@ -293,7 +309,7 @@ async function processMessage(
     sender: senderDisplay,
     bodyHtml,
     attachments: attachmentsFor(campaign, email),
-    mode: CAMPAIGN_MAILBOX_MODE,
+    mode: emailDirect ? 'direct' : CAMPAIGN_MAILBOX_MODE,
   });
   const adjuntos = attachmentsFor(campaign, email);
 
@@ -348,6 +364,7 @@ async function processMessage(
               : {}),
           } : {}),
           ...(waOnly ? { waOnly: true } : {}),
+          ...(emailDirect ? { emailDirect: true } : {}),
           ...(isCampaignSimulated(campaign) ? { simulated: true } : {}),
           notificationType: String(campaign.notificationType || '') === 'SRT_ART' ? 'SRT_ART' : 'ORDINARY',
           ...(typeof campaign.publicApiBatchId === 'string' && campaign.publicApiBatchId

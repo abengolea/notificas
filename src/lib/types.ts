@@ -254,6 +254,11 @@ export interface Campaign {
   waTemplateVariables?: string[];
   /** El template de Meta tiene un botón URL; Notificas manda el link del lector ahí. */
   waUrlButton?: boolean;
+  /**
+   * Campaña mixta: reader_both (por defecto) | same_text | email_text_wa_reader.
+   * Define si el correo y WhatsApp llevan el enlace al lector. `waUrlButton` queda derivado de este valor.
+   */
+  mixedMode?: 'reader_both' | 'same_text' | 'email_text_wa_reader';
   /** BODY aprobado en Meta (con {{1}}, {{2}}…). En campañas mixtas es el texto del correo. */
   waTemplateBody?: string;
   /** Huella única del formulario WA (una por campaña, no por destinatario). */

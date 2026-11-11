@@ -79,9 +79,14 @@ import {
 } from "@/lib/wa-template-fields";
 import { fieldsFromSavedWaTemplate } from "@/lib/wa-saved-template";
 import {
-  mixedWhatsAppUsesReaderLink,
+  DEFAULT_MIXED_DELIVERY_MODE,
+  effectiveMixedDeliveryMode,
+  isMixedDeliveryMode,
+  mixedModeEmailIsDirect,
+  mixedModeWhatsAppUsesReader,
   readerLetterFromMetaTemplate,
   usesMetaTemplateAsEmailBody,
+  type MixedDeliveryMode,
 } from "@/lib/campaign-mixed-message";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 import { WaSavedTemplates } from "@/components/empresa/wa-saved-templates";
@@ -218,6 +223,7 @@ export function CampaignWizard({
   const [waTemplateLang, setWaTemplateLang] = useState("es_AR");
   const [waTemplateVariables, setWaTemplateVariables] = useState<string[]>([...WA_TEMPLATE_DEFAULT_VARS]);
   const [waUrlButton, setWaUrlButton] = useState(false);
+  const [mixedMode, setMixedMode] = useState<MixedDeliveryMode>(DEFAULT_MIXED_DELIVERY_MODE);
   const [waTemplateBody, setWaTemplateBody] = useState("");
   const [campaniaNombre, setCampaniaNombre] = useState("");
   const [asunto, setAsunto] = useState("");
@@ -270,14 +276,26 @@ export function CampaignWizard({
   const needsMensajeStep = canal === "email" || canal === "ambos";
   const needsWaTemplateStep = (canal === "whatsapp" || canal === "ambos") && !simulated;
   const mixedMeta = usesMetaTemplateAsEmailBody(canal, waTemplateName);
+  /** Campaña mixta: modo efectivo (con el sobre de Notificas no existe «sin lector en WhatsApp»). */
+  const mixedModeEff: MixedDeliveryMode | undefined =
+    canal === "ambos"
+      ? effectiveMixedDeliveryMode(mixedMode, usesNotificasDefaultTemplate(waTemplateName))
+      : undefined;
+  const mixedEmailDirect = mixedModeEmailIsDirect(mixedModeEff);
+  const mixedSameText = mixedModeEff === "same_text";
+  /** En campañas mixtas con plantilla propia, el modo define si el botón URL lleva el lector. */
+  const waUrlButtonEff =
+    mixedModeEff && !usesNotificasDefaultTemplate(waTemplateName)
+      ? mixedModeWhatsAppUsesReader(mixedModeEff)
+      : waUrlButton;
   const waReaderLetter = useMemo(
     () =>
       readerLetterFromMetaTemplate({
         templateBody: waTemplateBody,
         variables: waTemplateVariables,
-        urlButton: waUrlButton,
+        urlButton: waUrlButtonEff,
       }),
-    [waTemplateBody, waTemplateVariables, waUrlButton]
+    [waTemplateBody, waTemplateVariables, waUrlButtonEff]
   );
   const waCsvExtraColumns = useMemo(() => {
     if (!needsWaTemplateStep || usesNotificasDefaultTemplate(waTemplateName)) return [];
@@ -295,10 +313,19 @@ export function CampaignWizard({
   }, [stepIds.length]);
 
   useEffect(() => {
+    // Sin lector no hay dónde abrir adjuntos.
+    if (!mixedSameText) return;
+    setFiles([]);
+    setExistingAttachments([]);
+    setPairByRecipient(false);
+  }, [mixedSameText]);
+
+  useEffect(() => {
     if (currentStepId !== "mensaje" || !mixedMeta || !waReaderLetter) return;
-    setCuerpo((cur) => (cur.trim() ? cur : waReaderLetter));
+    // «Mismo texto»: el correo es exactamente la plantilla de Meta, no hay carta propia para editar.
+    setCuerpo((cur) => (mixedSameText || !cur.trim() ? waReaderLetter : cur));
     setAsunto((cur) => (cur.trim() ? cur : READER_SUBJECT_PLACEHOLDER));
-  }, [currentStepId, mixedMeta, waReaderLetter]);
+  }, [currentStepId, mixedMeta, waReaderLetter, mixedSameText]);
 
   useEffect(() => {
     void fetch(`/api/art/status?orgId=${encodeURIComponent(orgId)}`)
@@ -444,6 +471,7 @@ export function CampaignWizard({
             waTemplateLang?: string;
             waTemplateVariables?: string[];
             waUrlButton?: boolean;
+            mixedMode?: string;
             waTemplateBody?: string;
             notificationType?: string;
           };
@@ -466,6 +494,7 @@ export function CampaignWizard({
             setWaTemplateVariables(c.waTemplateVariables);
           }
           setWaUrlButton(c.waUrlButton === true);
+          if (isMixedDeliveryMode(c.mixedMode)) setMixedMode(c.mixedMode);
           setWaTemplateBody(String(c.waTemplateBody || c.cuerpo || ""));
           if (c.notificationType === "SRT_ART" || c.notificationType === "ORDINARY") {
             setNotificationType(c.notificationType);
@@ -497,6 +526,7 @@ export function CampaignWizard({
             setWaTemplateVariables(x.waTemplateVariables);
           }
           setWaUrlButton(x.waUrlButton === true);
+          if (isMixedDeliveryMode(x.mixedMode)) setMixedMode(x.mixedMode);
           setWaTemplateBody(String(x.waTemplateBody || x.cuerpo || ""));
           if (x.notificationType === "SRT_ART" || x.notificationType === "ORDINARY") {
             setNotificationType(x.notificationType);
@@ -562,7 +592,8 @@ export function CampaignWizard({
       waTemplateName,
       waTemplateBody,
       waTemplateVariables,
-      waUrlButton,
+      waUrlButton: waUrlButtonEff,
+      mixedMode: mixedModeEff,
       row: {
         nombre,
         dni: r0?.dni,
@@ -584,7 +615,8 @@ export function CampaignWizard({
     waTemplateName,
     waTemplateBody,
     waTemplateVariables,
-    waUrlButton,
+    waUrlButtonEff,
+    mixedModeEff,
   ]);
 
   const recvSig = useMemo(
@@ -829,7 +861,8 @@ export function CampaignWizard({
             waTemplateName: waTemplateName.trim() || "",
             waTemplateLang,
             waTemplateVariables: waTemplateVariables.filter(Boolean),
-            waUrlButton,
+            waUrlButton: waUrlButtonEff,
+            ...(mixedModeEff ? { mixedMode: mixedModeEff } : {}),
             waTemplateBody: waTemplateBody.trim(),
             tandaSize: simulated ? 0 : tandaSize,
             ...(artModuleOn && notificationType ? { notificationType } : {}),
@@ -851,7 +884,8 @@ export function CampaignWizard({
             waTemplateName: waTemplateName.trim() || undefined,
             waTemplateLang,
             waTemplateVariables: waTemplateVariables.filter(Boolean),
-            waUrlButton,
+            waUrlButton: waUrlButtonEff,
+            ...(mixedModeEff ? { mixedMode: mixedModeEff } : {}),
             waTemplateBody: waTemplateBody.trim() || undefined,
             tandaSize: simulated ? 0 : tandaSize,
             simulated,
@@ -1063,7 +1097,7 @@ export function CampaignWizard({
               waTemplateName: waTemplateName.trim(),
               waTemplateLang: waTemplateLang.trim() || "es_AR",
               waTemplateVariables: waTemplateVariables.filter(Boolean),
-              waUrlButton: waUrlButton === true,
+              waUrlButton: waUrlButtonEff === true,
               ...(waTemplateBody.trim() ? { waTemplateBody: waTemplateBody.trim() } : {}),
             }
           : {
@@ -1074,6 +1108,7 @@ export function CampaignWizard({
         canal,
         tandaSize,
         ...waFields,
+        ...(mixedModeEff ? { mixedMode: mixedModeEff } : {}),
         nombre: copy.nombre,
         asunto: copy.asunto,
         cuerpo: copy.cuerpo,
@@ -1103,6 +1138,7 @@ export function CampaignWizard({
           ...(canal !== "email" && !customWa
             ? { waTemplateName: deleteField(), waTemplateVariables: deleteField(), waTemplateBody: deleteField() }
             : {}),
+          ...(canal !== "ambos" ? { mixedMode: deleteField() } : {}),
           ...(adjuntosPorDestinatario
             ? { adjuntosPorDestinatario }
             : existingPaired
@@ -1431,8 +1467,8 @@ export function CampaignWizard({
               <MixedChannelOptions
                 forceChoices
                 templateName={waTemplateName}
-                urlButton={waUrlButton}
-                onUrlButtonChange={setWaUrlButton}
+                mode={mixedMode}
+                onModeChange={setMixedMode}
               />
             )}
             <Button onClick={() => setStep((s) => s + 1)} disabled={isAdmin && !orgId}>Siguiente</Button>
@@ -1803,29 +1839,39 @@ export function CampaignWizard({
       {currentStepId === "mensaje" && (
         <Card>
           <CardHeader>
-            <CardTitle>Carta del lector</CardTitle>
+            <CardTitle>{mixedEmailDirect ? "Texto del correo" : "Carta del lector"}</CardTitle>
             <CardDescription>
-              {mixedMeta && waReaderLetter
-                ? "La carta del lector sale copiada de la plantilla de WhatsApp. Podés dejarla así o editarla. Gmail solo muestra el asunto y el botón de acceso."
-                : "WhatsApp ya salió de la plantilla de Meta. Acá se arma lo que certifica el correo: el asunto de Gmail y la carta que se ve al abrir el enlace."}
+              {mixedSameText
+                ? "El correo lleva exactamente el texto de la plantilla de Meta, igual al de WhatsApp. Acá solo definís el asunto."
+                : mixedEmailDirect
+                  ? "Este texto va completo en el cuerpo del correo. WhatsApp manda la plantilla de Meta con el enlace al lector, que muestra este mismo texto."
+                  : mixedMeta && waReaderLetter
+                    ? "La carta del lector sale copiada de la plantilla de WhatsApp. Podés dejarla así o editarla. Gmail solo muestra el asunto y el botón de acceso."
+                    : "WhatsApp ya salió de la plantilla de Meta. Acá se arma lo que certifica el correo: el asunto de Gmail y la carta que se ve al abrir el enlace."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {canal === "ambos" && needsWaTemplateStep && (
               <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground space-y-1">
                 <p>
-                  <strong className="text-foreground">Gmail:</strong> asunto + botón «Acceder a la notificación». No
-                  muestra esta carta.
+                  <strong className="text-foreground">Correo:</strong>{" "}
+                  {mixedEmailDirect
+                    ? "asunto + el texto completo en el cuerpo. Sin enlace al lector."
+                    : "asunto + botón «Acceder a la notificación». No muestra la carta."}
                 </p>
                 <p>
-                  <strong className="text-foreground">Lector:</strong> el cuerpo de abajo. Por defecto es el mismo texto
-                  que WhatsApp.
+                  <strong className="text-foreground">Lector:</strong>{" "}
+                  {mixedSameText
+                    ? "no hay. Ningún canal lleva el enlace."
+                    : mixedEmailDirect
+                      ? "se abre solo desde el enlace de WhatsApp y muestra este texto."
+                      : "la carta de abajo. Por defecto es el mismo texto que WhatsApp."}
                 </p>
                 <p>
                   <strong className="text-foreground">WhatsApp:</strong>{" "}
-                  {mixedWhatsAppUsesReaderLink(waUrlButton)
-                    ? "la plantilla de Meta y el mismo enlace al lector."
-                    : "la plantilla de Meta tal cual está aprobada (su propio enlace, si tiene)."}
+                  {mixedSameText
+                    ? "la plantilla de Meta tal cual está aprobada (su propio enlace, si tiene)."
+                    : "la plantilla de Meta y el mismo enlace al lector."}
                 </p>
               </div>
             )}
@@ -1850,9 +1896,21 @@ export function CampaignWizard({
               </p>
             </div>
 
+            {mixedSameText ? (
+              <div className="space-y-2">
+                <Label>Texto del correo (igual al de WhatsApp)</Label>
+                <div className="whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-sm">
+                  {waReaderLetter || "Falta el texto de la plantilla de Meta (paso WhatsApp)."}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Sale de la plantilla de Meta: {"{{1}}"}, {"{{2}}"}… se completan con las columnas del CSV. Para
+                  cambiarlo, editá la plantilla en el paso WhatsApp.
+                </p>
+              </div>
+            ) : (
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <Label>Carta que se ve en el lector</Label>
+                <Label>{mixedEmailDirect ? "Texto del correo y del lector" : "Carta que se ve en el lector"}</Label>
                 <Button
                   type="button"
                   variant="outline"
@@ -1882,7 +1940,18 @@ export function CampaignWizard({
                   : `Este texto se lacra. Variables del CSV: {{nombre}} {{dni}} {{legajo}} {{monto}} {{fecha}} {{dias}} {{cuotas}}.`}
               </p>
             </div>
-            {!isAdmin && (
+            )}
+            {!isAdmin && mixedSameText && (
+              <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                Sin lector no hay dónde abrir adjuntos: esta opción no admite archivos adjuntos.
+              </p>
+            )}
+            {!isAdmin && mixedEmailDirect && !mixedSameText && (
+              <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                Los adjuntos no viajan en el correo: solo se abren desde el lector, al que se llega por WhatsApp.
+              </p>
+            )}
+            {!isAdmin && !mixedSameText && (
               <>
             <div className="rounded-md border p-4 space-y-3">
               <div className="flex items-start gap-3">
@@ -1977,8 +2046,8 @@ export function CampaignWizard({
             {canal === "ambos" && (
               <MixedChannelOptions
                 templateName={waTemplateName}
-                urlButton={waUrlButton}
-                onUrlButtonChange={setWaUrlButton}
+                mode={mixedMode}
+                onModeChange={setMixedMode}
               />
             )}
             {isAdmin ? (
@@ -2025,7 +2094,7 @@ export function CampaignWizard({
             ) : !usesNotificasDefaultTemplate(waTemplateName) ? (
               <p className="text-xs text-muted-foreground">
                 Variables de esta plantilla: {waTemplateVariables.filter(Boolean).join(", ") || "—"}.
-                {waUrlButton
+                {waUrlButtonEff
                   ? " Incluye botón con enlace al lector."
                   : " El botón o enlace de WhatsApp es el de la plantilla (no el lector)."}
               </p>
@@ -2186,14 +2255,16 @@ export function CampaignWizard({
                   )
                     .map((v, i) => `{{${i + 1}}}→${v}`)
                     .join(", ")}
-                  {waUrlButton && !usesNotificasDefaultTemplate(waTemplateName) ? " · botón URL" : ""}
+                  {waUrlButtonEff && !usesNotificasDefaultTemplate(waTemplateName) ? " · botón URL" : ""}
                 </p>
               )}
               {canal === "ambos" && (
                 <p className="text-muted-foreground">
-                  {mixedWhatsAppUsesReaderLink(waUrlButton)
-                    ? "El correo es un aviso con enlace al lector. WhatsApp lleva la plantilla de Meta y el mismo acceso. El lector muestra esta carta."
-                    : "El correo es un aviso con enlace al lector (esta carta). WhatsApp lleva la plantilla de Meta; no abre el lector salvo que esa plantilla lo pida."}
+                  {mixedModeEff === "same_text"
+                    ? "Sin lector: el correo trae el mismo texto que la plantilla de WhatsApp y ninguno de los dos abre el lector. WhatsApp usa el enlace propio de la plantilla."
+                    : mixedModeEff === "email_text_wa_reader"
+                      ? "El correo trae el texto completo, sin enlace al lector. WhatsApp lleva la plantilla de Meta con el enlace al lector, que muestra este mismo texto."
+                      : "El correo es un aviso con enlace al lector. WhatsApp lleva la plantilla de Meta y el mismo acceso. El lector muestra esta carta."}
                 </p>
               )}
             </div>

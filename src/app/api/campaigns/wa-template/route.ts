@@ -12,6 +12,7 @@ const bodySchema = z.object({
   waTemplateLang: z.string().max(16),
   waTemplateVariables: z.array(z.string().max(200)).max(10),
   waUrlButton: z.boolean(),
+  mixedMode: z.enum(['reader_both', 'same_text', 'email_text_wa_reader']).optional(),
   waTemplateBody: z.string().max(20000).optional(),
 });
 
@@ -49,6 +50,7 @@ export async function POST(request: NextRequest) {
         waTemplateLang: parsed.data.waTemplateLang,
         waTemplateVariables: parsed.data.waTemplateVariables,
         waUrlButton: parsed.data.waUrlButton,
+        mixedMode: parsed.data.mixedMode,
         waTemplateBody: parsed.data.waTemplateBody,
       })
     );

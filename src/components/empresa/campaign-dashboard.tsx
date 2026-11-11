@@ -47,8 +47,14 @@ import {
 import { canEditWhatsAppTemplate, isAdminManagedCampaign, isUnsentCampaign } from "@/lib/campaign-edit";
 import { DailyQuotaField } from "@/components/empresa/daily-quota-field";
 import { DEFAULT_TANDA_SIZE } from "@/lib/campaign-tanda";
-import { explainWhatsAppSendError, WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-template-fields";
-import { mixedWhatsAppUsesReaderLink, usesMetaTemplateAsEmailBody } from "@/lib/campaign-mixed-message";
+import { explainWhatsAppSendError, usesNotificasDefaultTemplate, WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-template-fields";
+import {
+  DEFAULT_MIXED_DELIVERY_MODE,
+  mixedModeWhatsAppUsesReader,
+  normalizeMixedDeliveryMode,
+  usesMetaTemplateAsEmailBody,
+  type MixedDeliveryMode,
+} from "@/lib/campaign-mixed-message";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 import { WaSavedTemplates } from "@/components/empresa/wa-saved-templates";
 import { OrgWaTemplatePicker } from "@/components/empresa/org-wa-template-picker";
@@ -458,6 +464,7 @@ export const CampaignDashboard = forwardRef<
   const [tplLang, setTplLang] = useState("es_AR");
   const [tplVars, setTplVars] = useState<string[]>([...WA_TEMPLATE_DEFAULT_VARS]);
   const [tplUrlButton, setTplUrlButton] = useState(false);
+  const [tplMixedMode, setTplMixedMode] = useState<MixedDeliveryMode>(DEFAULT_MIXED_DELIVERY_MODE);
   const [tplBody, setTplBody] = useState("");
 
   const syncedTplId = useRef<string | null>(null);
@@ -473,6 +480,7 @@ export const CampaignDashboard = forwardRef<
         : [...WA_TEMPLATE_DEFAULT_VARS]
     );
     setTplUrlButton(campaign.waUrlButton === true);
+    setTplMixedMode(normalizeMixedDeliveryMode(campaign.mixedMode));
     setTplBody(String(campaign.waTemplateBody || ""));
   }, [campaign]);
   useEffect(() => {
@@ -825,7 +833,11 @@ export const CampaignDashboard = forwardRef<
           waTemplateName: tplName.trim(),
           waTemplateLang: tplLang,
           waTemplateVariables: tplVars.filter(Boolean),
-          waUrlButton: tplUrlButton,
+          waUrlButton:
+            campaign.canal === "ambos" && !usesNotificasDefaultTemplate(tplName)
+              ? mixedModeWhatsAppUsesReader(tplMixedMode)
+              : tplUrlButton,
+          ...(campaign.canal === "ambos" ? { mixedMode: tplMixedMode } : {}),
           waTemplateBody: tplBody,
         }),
       });
@@ -1395,11 +1407,15 @@ export const CampaignDashboard = forwardRef<
                 WhatsApp
               </p>
               <p className="text-xs text-muted-foreground">
-                {usesMetaTemplateAsEmailBody(campaign.canal, campaign.waTemplateName)
-                  ? mixedWhatsAppUsesReaderLink(campaign.waUrlButton)
-                    ? "El correo es un aviso con enlace al lector. WhatsApp lleva la plantilla de Meta y el mismo acceso. La carta está en el lector."
-                    : "El correo es un aviso con enlace al lector. WhatsApp lleva la plantilla de Meta; su enlace, si tiene, es el de la empresa (no el lector). La carta certificada está en el lector."
-                  : "El correo es un aviso con enlace al lector. Si WhatsApp usa el sobre de Notificas, lleva el mismo acceso. La carta está en el lector."}
+                {campaign.canal === "ambos" && campaign.mixedMode === "same_text"
+                  ? "Sin lector: el correo trae el mismo texto que la plantilla de Meta y WhatsApp usa el enlace propio de la plantilla. Ningún canal abre el lector."
+                  : campaign.canal === "ambos" && campaign.mixedMode === "email_text_wa_reader"
+                    ? "El correo trae el texto completo, sin enlace al lector. WhatsApp lleva la plantilla de Meta con el enlace al lector, que muestra ese mismo texto."
+                    : usesMetaTemplateAsEmailBody(campaign.canal, campaign.waTemplateName)
+                      ? campaign.waUrlButton === true
+                        ? "El correo es un aviso con enlace al lector. WhatsApp lleva la plantilla de Meta y el mismo acceso. La carta está en el lector."
+                        : "El correo es un aviso con enlace al lector. WhatsApp lleva la plantilla de Meta; su enlace, si tiene, es el de la empresa (no el lector). La carta certificada está en el lector."
+                      : "El correo es un aviso con enlace al lector. Si WhatsApp usa el sobre de Notificas, lleva el mismo acceso. La carta está en el lector."}
               </p>
               {canEditTpl ? (
                 <>
@@ -1420,8 +1436,8 @@ export const CampaignDashboard = forwardRef<
                   {campaign.canal === "ambos" ? (
                     <MixedChannelOptions
                       templateName={tplName}
-                      urlButton={tplUrlButton}
-                      onUrlButtonChange={setTplUrlButton}
+                      mode={tplMixedMode}
+                      onModeChange={setTplMixedMode}
                     />
                   ) : null}
                   {isAdmin ? (

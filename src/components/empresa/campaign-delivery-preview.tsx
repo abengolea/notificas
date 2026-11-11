@@ -43,7 +43,9 @@ export function CampaignDeliveryPreview({
               <div>
                 <p className="text-sm font-medium">Correo</p>
                 <p className="text-xs text-muted-foreground">
-                  Lo que llega a la bandeja: aviso y botón. La carta no va acá.
+                  {preview.emailDirect
+                    ? "Lo que llega a la bandeja: el texto completo, sin enlace al lector."
+                    : "Lo que llega a la bandeja: aviso y botón. La carta no va acá."}
                 </p>
               </div>
             </div>
@@ -55,11 +57,21 @@ export function CampaignDeliveryPreview({
               <div>
                 <p className="text-sm font-medium">Lector</p>
                 <p className="text-xs text-muted-foreground">
-                  Al abrir el enlace. Acá sí está el texto certificado.
+                  {!preview.readerHtml
+                    ? "No hay lector en esta opción."
+                    : preview.emailDirect
+                      ? "Se abre solo desde el enlace de WhatsApp. Acá está el texto certificado."
+                      : "Al abrir el enlace. Acá sí está el texto certificado."}
                 </p>
               </div>
             </div>
-            <PreviewFrame title="Vista previa del lector" html={preview.readerHtml} />
+            {preview.readerHtml ? (
+              <PreviewFrame title="Vista previa del lector" html={preview.readerHtml} />
+            ) : (
+              <p className="px-3 py-6 text-sm text-muted-foreground">
+                Ni el correo ni WhatsApp llevan el enlace al lector. Los dos mandan el mismo texto.
+              </p>
+            )}
           </section>
         </div>
       )}

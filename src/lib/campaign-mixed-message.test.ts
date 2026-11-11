@@ -1,10 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  effectiveMixedDeliveryMode,
   fillNumericPlaceholders,
   htmlFromFilledMetaBody,
   MAILBOX_READER_URL_SENTINEL,
+  mixedModeEmailIsDirect,
+  mixedModeWhatsAppUsesReader,
   mixedWhatsAppUsesReaderLink,
+  normalizeMixedDeliveryMode,
   readerLetterFromMetaTemplate,
   renderCampaignMessageBody,
   renderMetaTemplateBody,
@@ -163,4 +167,52 @@ test("campaña mixta: Gmail es sobre; el lector lacra la carta, no el globo", ()
   assert.match(html, /Intimación formal a Marcela Suárez/);
   assert.equal(/Registramos una deuda vencida/.test(html), false);
   assert.equal(/en este mismo correo/.test(html), false);
+});
+
+test("los tres modos de campaña mixta definen qué canal lleva el lector", () => {
+  assert.equal(normalizeMixedDeliveryMode(undefined), "reader_both");
+  assert.equal(normalizeMixedDeliveryMode("cualquier cosa"), "reader_both");
+  assert.equal(mixedModeEmailIsDirect("reader_both"), false);
+  assert.equal(mixedModeEmailIsDirect("same_text"), true);
+  assert.equal(mixedModeEmailIsDirect("email_text_wa_reader"), true);
+  assert.equal(mixedModeWhatsAppUsesReader("reader_both"), true);
+  assert.equal(mixedModeWhatsAppUsesReader("same_text"), false);
+  assert.equal(mixedModeWhatsAppUsesReader("email_text_wa_reader"), true);
+  // Con el sobre de Notificas WhatsApp siempre lleva el lector: "sin lector" pasa a la opción más cercana.
+  assert.equal(effectiveMixedDeliveryMode("same_text", true), "email_text_wa_reader");
+  assert.equal(effectiveMixedDeliveryMode("same_text", false), "same_text");
+  assert.equal(effectiveMixedDeliveryMode("reader_both", true), "reader_both");
+});
+
+test("same_text: el correo lleva exactamente el texto de la plantilla de Meta, aunque haya carta", () => {
+  const base = {
+    canal: "ambos",
+    waTemplateName: "notificacion_deuda_180_dias",
+    waTemplateBody: DEUDA,
+    waTemplateVariables: ["nombre", "dni", "fecha", "monto", "dias"],
+    waUrlButton: false,
+    cuerpo: "Carta editada a mano {{nombre}}",
+    row: { nombre: "Ana", dni: "1", fecha: "01/01/26", monto: "10", dias: "5" },
+  };
+  const same = renderCampaignMessageBody({ ...base, mixedMode: "same_text" });
+  assert.equal(same, "Hola Ana, DNI 1. Registramos una deuda vencida desde 01/01/26 por $10 con 5 días de mora.");
+  assert.equal(renderCampaignMessageBody({ ...base, mixedMode: "email_text_wa_reader" }), "Carta editada a mano Ana");
+  assert.equal(renderCampaignMessageBody({ ...base, mixedMode: "reader_both" }), "Carta editada a mano Ana");
+});
+
+test("correo directo: texto completo, sin botón ni enlace al lector", () => {
+  const html = buildCampaignMailHtml({
+    recipientEmail: "a@b.com",
+    recipientName: "Ana",
+    sender: "Empresa SA",
+    bodyHtml: campaignBodyToHtmlFragment("Texto completo del mensaje"),
+    attachments: [],
+    mode: "direct",
+  });
+  assert.match(html, /Texto completo del mensaje/);
+  assert.doesNotMatch(html, /data-email-hide/);
+  assert.doesNotMatch(html, /href="#"/);
+  assert.doesNotMatch(html, /class="btn"/);
+  assert.doesNotMatch(html, /El enlace se agregará/);
+  assert.doesNotMatch(html, /disponible en el enlace/);
 });

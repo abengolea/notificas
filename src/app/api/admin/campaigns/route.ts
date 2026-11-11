@@ -6,6 +6,11 @@ import { getAdminDb } from '@/lib/firebase-admin';
 import { ensureOrgCredits } from '@/lib/org-credits';
 import type { CanalCampaign } from '@/lib/types';
 import { usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
+import {
+  effectiveMixedDeliveryMode,
+  isMixedDeliveryMode,
+  mixedModeWhatsAppUsesReader,
+} from '@/lib/campaign-mixed-message';
 
 const createSchema = z.object({
   orgId: z.string().min(1),
@@ -17,6 +22,7 @@ const createSchema = z.object({
   waTemplateLang: z.string().max(16).optional(),
   waTemplateVariables: z.array(z.string().max(200)).max(10).optional(),
   waUrlButton: z.boolean().optional(),
+  mixedMode: z.enum(['reader_both', 'same_text', 'email_text_wa_reader']).optional(),
   waTemplateBody: z.string().max(20000).optional(),
   tandaSize: z.number().int().min(0).optional(),
   simulated: z.boolean().optional(),
@@ -44,6 +50,7 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     waTemplateLang: String(data.waTemplateLang || 'es_AR'),
     waTemplateVariables: Array.isArray(data.waTemplateVariables) ? data.waTemplateVariables : [],
     waUrlButton: data.waUrlButton === true,
+    mixedMode: isMixedDeliveryMode(data.mixedMode) ? data.mixedMode : '',
     waTemplateBody: String(data.waTemplateBody || ''),
     managedByAdmin: data.managedByAdmin === true,
     simulated: data.simulated === true,
@@ -129,6 +136,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Falta el texto del template de Meta' }, { status: 400 });
     }
 
+    const mixedMode =
+      canal === 'ambos' && parsed.data.mixedMode
+        ? effectiveMixedDeliveryMode(parsed.data.mixedMode, !customWa)
+        : undefined;
+
     const ref = await db.collection('campaigns').add({
       orgId: parsed.data.orgId,
       createdBy: adminUserId,
@@ -146,10 +158,11 @@ export async function POST(request: NextRequest) {
             waTemplateName: waName,
             waTemplateLang: parsed.data.waTemplateLang?.trim() || 'es_AR',
             waTemplateVariables: parsed.data.waTemplateVariables?.filter(Boolean) || ['nombre'],
-            waUrlButton: parsed.data.waUrlButton === true,
+            waUrlButton: mixedMode ? mixedModeWhatsAppUsesReader(mixedMode) : parsed.data.waUrlButton === true,
             ...(waTemplateBody ? { waTemplateBody } : {}),
           }
         : {}),
+      ...(mixedMode ? { mixedMode } : {}),
       senderUid: adminUserId,
       senderEmail: adminUserEmail,
       orgNombre: String(org.nombre || ''),

@@ -70,7 +70,11 @@ export function campaignBodyToHtmlFragment(body: string): string {
  */
 export const SITE_URL = 'https://notificas.com.ar';
 
-export type CampaignMailHtmlMode = 'teaser' | 'inline' | 'letter';
+/**
+ * teaser: aviso con botón al lector. inline/letter: texto visible junto al botón al lector.
+ * direct: texto completo en el correo y ningún enlace al lector (campañas mixtas sin lector en el correo).
+ */
+export type CampaignMailHtmlMode = 'teaser' | 'inline' | 'letter' | 'direct';
 
 /** Campañas (email o mixta): Gmail es un sobre; la carta vive en el lector. */
 export const CAMPAIGN_MAILBOX_MODE: CampaignMailHtmlMode = 'teaser';
@@ -91,7 +95,8 @@ export function buildCampaignMailHtml(params: {
   const { recipientName, sender, bodyHtml, attachments } = params;
   const kindCopy = messageKindCopy(params.kind);
   const disclaimer = messageDisclaimer(params.kind);
-  const showBodyInMailbox = params.mode === 'inline' || params.mode === 'letter';
+  const isDirect = params.mode === 'direct';
+  const showBodyInMailbox = params.mode === 'inline' || params.mode === 'letter' || isDirect;
   /** Inline = el cuerpo de Meta va igual al mail y al lector; sin sobre ni carta gemela. */
   const skipLead = params.mode === 'inline';
 
@@ -203,14 +208,22 @@ export function buildCampaignMailHtml(params: {
               </p>`}
               ${contentSection}
               ${attachmentsSection}
-              <p style="margin: 20px 0 12px 0;">
+              ${
+                isDirect
+                  ? ''
+                  : `<p style="margin: 20px 0 12px 0;">
                 <a class="btn" href="#" target="_blank" rel="noopener">${kindCopy.button}</a>
               </p>
               <p class="muted">
                 <a href="#" target="_blank" rel="noopener" style="color:inherit;">[El enlace se agregará al enviar el mensaje]</a>
-              </p>
+              </p>`
+              }
               <p class="muted notice-disclaimer" style="margin-top:16px;">
-                <strong>${disclaimer.lead}</strong>${escapeHtmlText(disclaimer.body)}
+                ${
+                  isDirect
+                    ? `<strong>Importante:</strong> este correo contiene una ${kindCopy.noun}. El envío queda registrado.`
+                    : `<strong>${disclaimer.lead}</strong>${escapeHtmlText(disclaimer.body)}`
+                }
               </p>
             </td>
           </tr>

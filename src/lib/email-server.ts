@@ -48,6 +48,8 @@ export type CreateMailAdminParams = {
   /** Campaña admin simulada: la CF sendEmail no debe despachar Mailgun/Meta. */
   simulated?: boolean;
   waOnly?: boolean;
+  /** Campaña mixta: el correo trae el texto completo y no lleva enlace al lector (la CF no lo agrega). */
+  emailDirect?: boolean;
   /** Campos de la API pública (opcional). No reemplazan createdBy/to/message. */
   orgId?: string;
   publicApiId?: string;
@@ -98,6 +100,7 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
     waTemplateBody,
     simulated,
     waOnly,
+    emailDirect,
     orgId,
     publicApiId,
     apiSource,
@@ -156,6 +159,7 @@ export async function createMailDocumentAdmin(params: CreateMailAdminParams): Pr
   if (waTemplateLang) payload.waTemplateLang = waTemplateLang;
   if (waTemplateVariables) payload.waTemplateVariables = waTemplateVariables;
   if (waUrlButton) payload.waUrlButton = true;
+  if (emailDirect) payload.emailDirect = true;
   if (waTemplateBody?.trim()) payload.waTemplateBody = waTemplateBody.trim();
   const sendNorm = normalizedEmailIdentity(senderName);
   if (sendNorm) payload.senderName = sendNorm;
