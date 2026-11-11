@@ -34,6 +34,22 @@ function isShortPublicRead(href) {
   }
 }
 
+/**
+ * Portada del sitio (el enlace "Visitar nuestra web" del pie del correo). Entrar a la web no es acceder al
+ * mensaje: si pasara por linkRedirect quedaría registrado como un clic del destinatario (y hasta como acceso al
+ * contenido). Se deja tal cual. Solo la portada sin parámetros: cualquier otro enlace del sitio sigue su camino.
+ */
+function isSiteHomeLink(href) {
+  try {
+    const u = new URL(href);
+    const host = u.hostname.toLowerCase();
+    if (host !== 'notificas.com.ar' && host !== 'www.notificas.com.ar') return false;
+    return u.pathname === '/' && !u.search;
+  } catch {
+    return false;
+  }
+}
+
 function injectTrackingIntoHtml(html, docId, token, urls) {
   if (!html) return html;
   const { linkRedirectUrl, appHostingUrl, publicReaderUrl } = urls || {};
@@ -74,7 +90,7 @@ function injectTrackingIntoHtml(html, docId, token, urls) {
       cleanHref.match(/^https?:\/\//i) &&
       !cleanHref.startsWith(`${linkRedirectUrl}`);
 
-    if (isMailtoOrTel || isScriptOrData || isListUnsubscribe) {
+    if (isMailtoOrTel || isScriptOrData || isListUnsubscribe || isSiteHomeLink(cleanHref)) {
       ignoredCount++;
       return;
     }

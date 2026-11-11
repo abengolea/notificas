@@ -47,7 +47,6 @@ function htmlToPlainText(html) {
 function buildCampaignPlainText(params) {
   const html = params && params.html;
   const readerUrl = String((params && params.readerUrl) || '').trim();
-  const recipientEmail = String((params && params.recipientEmail) || '').trim();
   const year = Number((params && params.year) || new Date().getFullYear());
   const parts = [];
   const fromHtml = htmlToPlainText(html);
@@ -55,14 +54,12 @@ function buildCampaignPlainText(params) {
   if (readerUrl && !fromHtml.includes(readerUrl)) {
     parts.push(`Constancia de apertura:\n${readerUrl}`);
   }
-  const dest = recipientEmail
-    ? `Este mensaje fue destinado a ${recipientEmail}.`
-    : '';
   parts.push(
-    `${year} Notificas.com  ${dest} Si no reconoce este correo, ignore el mensaje o escriba a contacto@notificas.com.`
+    `${year} Notificas.com  Si no reconoce este correo, ignore el mensaje o escriba a contacto@notificas.com.`
       .replace(/\s+/g, ' ')
       .trim()
   );
+  parts.push('Visitar nuestra web: https://notificas.com.ar');
   return parts.filter(Boolean).join('\n\n');
 }
 

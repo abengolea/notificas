@@ -37,11 +37,14 @@ export interface MailMessage {
 export function sanitizeHtmlForSender(html: string): string {
   if (!html) return "";
 
-  // Eliminar botón "Acceder a la notificación"
+  // Eliminar botón "Acceder a la notificación" (o comunicación / intimación, según el tipo de mensaje)
   let out = html.replace(
-    /<p[^>]*>\s*<a[^>]*class="btn"[^>]*>[\s]*Acceder a la notificaci[oó]n[\s]*<\/a>\s*<\/p>/gi,
+    /<p[^>]*>\s*<a[^>]*class="btn"[^>]*>[\s]*Acceder a la (?:notificaci|comunicaci|intimaci)[oó]n[\s]*<\/a>\s*<\/p>/gi,
     ""
   );
+
+  // Eliminar el aviso del pie del correo ("Importante: este correo contiene una …")
+  out = out.replace(/<p\b[^>]*\bclass="[^"]*\bnotice-disclaimer\b[^"]*"[^>]*>[\s\S]*?<\/p>/gi, "");
 
   // Eliminar sección "Si el botón no funciona..."
   out = out.replace(

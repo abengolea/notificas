@@ -1,4 +1,10 @@
 import type { CampaignAttachment } from '@/lib/types';
+import {
+  messageDisclaimer,
+  messageKindCopy,
+  messageKindPreviewFallback,
+  type MessageKind,
+} from '@/lib/message-kind';
 
 export function escapeHtmlText(s: string): string {
   return s
@@ -58,6 +64,12 @@ export function campaignBodyToHtmlFragment(body: string): string {
     .join('');
 }
 
+/**
+ * Enlace del pie del correo. Es la portada del sitio: el seguimiento de enlaces (functions/tracking-html.js)
+ * lo deja pasar sin registrarlo, porque entrar a la web no es acceder al mensaje.
+ */
+export const SITE_URL = 'https://notificas.com.ar';
+
 export type CampaignMailHtmlMode = 'teaser' | 'inline' | 'letter';
 
 /** Campañas (email o mixta): Gmail es un sobre; la carta vive en el lector. */
@@ -73,24 +85,28 @@ export function buildCampaignMailHtml(params: {
   mode?: CampaignMailHtmlMode;
   /** Vista previa en bandeja; si falta, se usa un texto genérico (sin jerga legal). */
   previewText?: string;
+  /** Cómo se nombra el mensaje (notificación, comunicación, intimación). Por defecto, notificación. */
+  kind?: MessageKind;
 }): string {
-  const { recipientEmail, recipientName, sender, bodyHtml, attachments } = params;
+  const { recipientName, sender, bodyHtml, attachments } = params;
+  const kindCopy = messageKindCopy(params.kind);
+  const disclaimer = messageDisclaimer(params.kind);
   const showBodyInMailbox = params.mode === 'inline' || params.mode === 'letter';
   /** Inline = el cuerpo de Meta va igual al mail y al lector; sin sobre ni carta gemela. */
   const skipLead = params.mode === 'inline';
 
   const hasInlineBody = !!(bodyHtml?.trim());
   const leadSecondParagraph = params.mode === 'letter' && hasInlineBody
-    ? `Recibió una comunicación de <strong>${escapeHtmlText(sender)}</strong>.
+    ? `Recibió una ${kindCopy.noun} de <strong>${escapeHtmlText(sender)}</strong>.
                 Puede leer el texto completo en este mismo correo. El enlace registra la apertura y es el mismo acceso que le enviamos por WhatsApp.`
-    : `<strong>${escapeHtmlText(sender)}</strong> le envió una comunicación.`;
+    : `<strong>${escapeHtmlText(sender)}</strong> le envió una ${kindCopy.noun}.`;
 
   const previewRaw = String(params.previewText || '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 140);
   const preview = previewRaw
-    || `Comunicación de ${sender} a través de Notificas.com`;
+    || messageKindPreviewFallback(params.kind, sender);
 
   const hideAttr = showBodyInMailbox ? '' : ' data-email-hide';
   const contentSection = bodyHtml?.trim()
@@ -148,7 +164,7 @@ export function buildCampaignMailHtml(params: {
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Nueva notificacion digital</title>
+  <title>Nueva ${kindCopy.noun} digital</title>
   <style>
     body, table, td, a { font-family: "Inter", -apple-system, Segoe UI, Roboto, Arial, sans-serif !important; }
     body { margin: 0; padding: 0; background-color: #F8FAFC; color: #1E293B; }
@@ -175,7 +191,7 @@ export function buildCampaignMailHtml(params: {
         <table role="presentation" class="container" cellspacing="0" cellpadding="0">
           <tr>
             <td class="header">
-              <span class="badge">NOTIFICACION</span>
+              <span class="badge">${kindCopy.badge}</span>
               <div class="title">${escapeHtmlText(sender)}</div>
             </td>
           </tr>
@@ -188,20 +204,20 @@ export function buildCampaignMailHtml(params: {
               ${contentSection}
               ${attachmentsSection}
               <p style="margin: 20px 0 12px 0;">
-                <a class="btn" href="#" target="_blank" rel="noopener">Acceder a la notificación</a>
+                <a class="btn" href="#" target="_blank" rel="noopener">${kindCopy.button}</a>
               </p>
               <p class="muted">
                 <a href="#" target="_blank" rel="noopener" style="color:inherit;">[El enlace se agregará al enviar el mensaje]</a>
               </p>
-              <p class="muted" style="margin-top:16px;">
-                El envío y la lectura quedan registrados.
+              <p class="muted notice-disclaimer" style="margin-top:16px;">
+                <strong>${disclaimer.lead}</strong>${escapeHtmlText(disclaimer.body)}
               </p>
             </td>
           </tr>
           <tr>
             <td class="footer">
               <div class="muted">
-                ${year} Notificas.com · ${escapeHtmlText(recipientEmail)}
+                ${year} Notificas.com · <a href="${SITE_URL}" target="_blank" rel="noopener" style="color:inherit;">Visitar nuestra web</a>
               </div>
             </td>
           </tr>

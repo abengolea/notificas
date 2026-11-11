@@ -63,3 +63,16 @@ test("si el mail tenía globo de Meta y carta oculta, el lector muestra el globo
   assert.equal(/Estimado\/a/.test(out), false);
   assert.equal(/data-reader-hide/.test(out), false);
 });
+
+test("el lector no muestra el aviso del pie ni el botón de intimación o comunicación", () => {
+  const html = `<p class="lead">Estimado/a Ana,</p>
+<div class="message-content"><p>Carta</p></div>
+<p style="margin: 20px 0 12px 0;"><a class="btn" href="#">Acceder a la intimación</a></p>
+<p class="muted notice-disclaimer" style="margin-top:16px;"><strong>Importante:</strong> este correo contiene una intimación cuyo contenido se encuentra disponible en el enlace indicado.</p>`;
+  const out = sanitizeHtmlForReader(html);
+  assert.equal(/Importante/.test(out), false);
+  assert.equal(/Acceder a la intimación/.test(out), false);
+  assert.match(out, /Carta/);
+  const out2 = sanitizeHtmlForReader(html.replace("intimación", "comunicación").replace("intimación", "comunicación"));
+  assert.equal(/Acceder a la comunicación/.test(out2), false);
+});

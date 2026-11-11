@@ -28,7 +28,9 @@ test('buildCampaignPlainText no usa jerga de blockchain ni fehaciente', () => {
     year: 2026,
   });
   assert.match(text, /Texto del template de Meta/);
-  assert.match(text, /a@hotmail\.com/);
+  // El pie no repite el email del destinatario; enlaza a la web.
+  assert.equal(/a@hotmail\.com/.test(text), false);
+  assert.match(text, /Visitar nuestra web: https:\/\/notificas\.com\.ar$/);
   assert.equal(/blockchain/i.test(text), false);
   assert.equal(/fehaciente/i.test(text), false);
   assert.equal(/Confirmar lectura/i.test(text), false);

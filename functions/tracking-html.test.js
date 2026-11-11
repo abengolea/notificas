@@ -188,3 +188,27 @@ test('regresión bug undefined: el módulo NO inyecta campos undefined al serial
   const { html } = injectTrackingIntoHtml('<html><body><p>x</p></body></html>', DOC_ID, TOKEN, URLS);
   assert.ok(!html.includes('undefined'), `HTML output contiene "undefined":\n${html}`);
 });
+
+test('el enlace "Visitar nuestra web" del pie NO se registra como clic ni como acceso al mensaje', () => {
+  const input =
+    '<html><body>' +
+    '<a href="https://notificas.com.ar">Visitar nuestra web</a>' +
+    '<a href="https://www.notificas.com.ar/">Visitar nuestra web</a>' +
+    '</body></html>';
+  const { html, stats } = injectTrackingIntoHtml(input, DOC_ID, TOKEN, URLS);
+  assert.ok(html.includes('href="https://notificas.com.ar"'), html);
+  assert.ok(html.includes('href="https://www.notificas.com.ar/"'), html);
+  assert.ok(!html.includes(URLS.linkRedirectUrl), html);
+  assert.equal(stats.processedCount, 0);
+  assert.equal(stats.ignoredCount, 2);
+});
+
+test('otros enlaces del sitio (verificación, lector) siguen pasando por el seguimiento', () => {
+  const input =
+    '<html><body>' +
+    '<a href="https://notificas.com.ar/verify">Verificar</a>' +
+    '<a href="https://notificas.com.ar/?utm=x">Con parámetros</a>' +
+    '</body></html>';
+  const { stats } = injectTrackingIntoHtml(input, DOC_ID, TOKEN, URLS);
+  assert.equal(stats.processedCount, 2);
+});

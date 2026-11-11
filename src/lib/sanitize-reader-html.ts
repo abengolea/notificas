@@ -23,8 +23,12 @@ export function sanitizeHtmlForReader(html: string): string {
     ""
   );
 
+  // Aviso al pie del correo ("Importante: este correo contiene una …"): es del sobre, no de la carta.
+  sanitized = sanitized.replace(/<p\b[^>]*\bclass="[^"]*\bnotice-disclaimer\b[^"]*"[^>]*>[\s\S]*?<\/p>/gi, "");
+
+  // Botón de acceso del sobre, sea cual sea el tipo de mensaje (notificación, comunicación, intimación).
   sanitized = sanitized.replace(
-    /<p[^>]*style="margin:\s*20px\s*0[^"]*"[^>]*>[\s\S]*?(?:Acceder\s+a\s+la\s+notificaci[oó]n|Leer\s+Notificaci[oó]n)[\s\S]*?<\/p>/gi,
+    /<p[^>]*style="margin:\s*20px\s*0[^"]*"[^>]*>[\s\S]*?(?:Acceder\s+a\s+la\s+(?:notificaci|comunicaci|intimaci)[oó]n|Leer\s+Notificaci[oó]n)[\s\S]*?<\/p>/gi,
     ""
   );
 

@@ -76,7 +76,7 @@ function generateEmailHtml(params) {
           <tr>
             <td class="footer">
               <div class="muted">
-                 {{year}} Notificas.com  Este mensaje fue destinado a {{recipientEmail}}. 
+                 {{year}} Notificas.com · <a href="https://notificas.com.ar" target="_blank" rel="noopener" style="color:inherit;">Visitar nuestra web</a>. 
                 Si no reconoce esta notificacion, ignore este correo o responda a 
                 <a href="mailto:contacto@notificas.com" style="color:inherit;">contacto@notificas.com</a>.
               </div>
@@ -170,7 +170,7 @@ function generateEmailWithTracking(params) {
           <tr>
             <td class="footer">
               <div class="muted">
-                 {{year}} Notificas.com  Este mensaje fue destinado a {{recipientEmail}}. 
+                 {{year}} Notificas.com · <a href="https://notificas.com.ar" target="_blank" rel="noopener" style="color:inherit;">Visitar nuestra web</a>. 
                 Si no reconoce esta notificacion, ignore este correo o responda a 
                 <a href="mailto:contacto@notificas.com" style="color:inherit;">contacto@notificas.com</a>.
               </div>

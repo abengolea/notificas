@@ -70,6 +70,13 @@ import {
 } from "@/lib/rich-text";
 import { usesNotificasDefaultTemplate, WA_DEFAULT_TEMPLATE_NAME, WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-template-fields";
 import { buildCampaignMailHtml, CAMPAIGN_MAILBOX_MODE, campaignBodyToHtmlFragment } from "@/lib/campaign-email-html";
+import {
+  DEFAULT_MESSAGE_KIND,
+  MESSAGE_KINDS,
+  MESSAGE_KIND_OPTIONS,
+  messageKindSentLine,
+  normalizeMessageKind,
+} from "@/lib/message-kind";
 import { resolveCampaignSenderDisplay } from "@/lib/campaign-sender";
 
 type SelectedAttachment = {
@@ -98,6 +105,8 @@ const messageSchema = z.object({
   }),
   attachments: z.array(z.custom<SelectedAttachment>()).optional(),
   notificationType: z.enum(["ORDINARY", "SRT_ART"]).optional(),
+  /** Cómo se nombra el mensaje en el correo (notificación, comunicación, intimación). */
+  messageKind: z.enum(MESSAGE_KINDS).optional(),
 }).superRefine((data, ctx) => {
   if (data.canal === "email" || data.canal === "ambos") {
     const email = data.recipient?.trim() || "";
@@ -304,6 +313,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
             content: "",
             attachments: [],
             notificationType: "ORDINARY",
+            messageKind: DEFAULT_MESSAGE_KIND,
         },
     });
 
@@ -622,6 +632,7 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                 }
             }
 
+            const messageKind = normalizeMessageKind(data.messageKind);
             const mailboxRecipientEmail = realEmail && !isSyntheticCampaignEmail(realEmail)
                 ? realEmail
                 : (phoneForWhatsApp || recipientEmail);
@@ -641,11 +652,13 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                     size: file.size,
                 })),
                 mode: CAMPAIGN_MAILBOX_MODE,
-                previewText: `${senderDisplay} le envió una comunicación.`,
+                kind: messageKind,
+                previewText: messageKindSentLine(messageKind, senderDisplay),
             });
 
             const mailRef = doc(db, 'mail', mailId);
             const updateData: Record<string, unknown> = {
+                messageKind,
                 'message.html': html,
                 'message.content': sanitizedContent,
                 'message.contentText': plainContent,
@@ -852,6 +865,29 @@ export function ComposeMessageDialog({ children, open, onOpenChange, user, initi
                     {!canAfford && canal !== "ambos" && (
                         <p className="text-sm text-destructive">No tenés envíos suficientes para enviar.</p>
                     )}
+                </div>
+                <div className="grid gap-2">
+                    <Label>Tipo de mensaje</Label>
+                    <p className="text-xs text-muted-foreground">
+                        Define cómo se nombra en el correo (etiqueta, texto y botón). El aviso de WhatsApp no cambia.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {MESSAGE_KIND_OPTIONS.map(({ value, label, desc }) => (
+                            <button
+                                key={value}
+                                type="button"
+                                onClick={() => form.setValue("messageKind", value)}
+                                className={`flex flex-col items-start gap-1 rounded-md border p-3 text-left transition-colors ${
+                                    (form.watch("messageKind") || DEFAULT_MESSAGE_KIND) === value
+                                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                                        : "border-border hover:border-primary/50"
+                                }`}
+                            >
+                                <span className="text-sm font-medium">{label}</span>
+                                <span className="text-xs text-muted-foreground">{desc}</span>
+                            </button>
+                        ))}
+                    </div>
                 </div>
                 {needsPhone && orgId ? (
                     <OrgWaTemplatePicker

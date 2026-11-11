@@ -29,6 +29,7 @@ const {
 const { isLinkPreviewCrawler, readerRedirectOrigin, PUBLIC_READER_ORIGIN, whatsappPublicReadUrl, emailPublicReadUrl } = require('./link-redirect-origin');
 const { allocateReadCode } = require('./read-code');
 const { contentAccessChannel, contentAccessAlreadyCertified } = require('./polygon-content-access');
+const { plainTextNotice } = require('./message-kind');
 
 initializeApp();
 
@@ -1053,30 +1054,14 @@ exports.sendEmail = onRequest(
             recipientEmail: emailData.recipientEmail || to,
             year: new Date().getFullYear(),
           })
-        : `NOTIFICACION
-Nueva comunicacion para usted
-Enviada por ${emailData.senderName || from} mediante Notificas.com
-
-Estimado/a ${emailData.recipientName || 'Usuario'},
-
-Ha recibido una comunicacion fehaciente digital remitida por ${emailData.senderName || from}. Le recomendamos acceder a su contenido, ya que puede ser relevante para:
-
-- Responder en tiempo y forma.
-- Ejercer sus derechos y dejar constancia tecnica de acceso.
-- Conservar evidencia de recepcion y lectura.
-
-Leer Notificacion: ${readerUrl}
-
-Si el boton no funciona, copie y pegue este enlace en su navegador:
-${readerUrl}
-
-La notificacion, sus metadatos de envio, recepcion y lectura quedan certificados y registrados en la red Blockchain a traves de Notificas.com. Esta constancia tecnica no implica conformidad con el contenido.
-
-Para dejar constancia de que ha accedido al mensaje, puede utilizar el siguiente enlace:
-Confirmar lectura: ${readerUrl}
-
-${new Date().getFullYear()} Notificas.com
-Este mensaje fue destinado a ${emailData.recipientEmail || to}. Si no reconoce esta notificacion, ignore este correo o responda a contacto@notificas.com.`;
+        : plainTextNotice({
+            kind: emailData.messageKind,
+            sender: emailData.senderName || from,
+            recipientName: emailData.recipientName || 'Usuario',
+            recipientEmail: emailData.recipientEmail || to,
+            readerUrl,
+            year: new Date().getFullYear(),
+          });
 
       const emailProvider = resolveEmailProvider(emailData);
       const envelope = emailProvider === 'resend'

@@ -86,14 +86,68 @@ test('modo teaser oculta el cuerpo (el lector lo muestra)', () => {
   assert.equal(CAMPAIGN_MAILBOX_MODE, 'teaser');
   assert.match(html, /data-email-hide/);
   assert.match(html, /Secreto/);
-  assert.match(html, /le envió una comunicación/);
+  assert.match(html, /le envió una notificación/);
   assert.equal(/en este mismo correo/.test(html), false);
   assert.equal(/Nueva comunicacion para usted/.test(html), false);
   const mailbox = stripMailboxHiddenHtml(html);
   assert.equal(/Secreto/.test(mailbox), false);
-  assert.match(mailbox, /le envió una comunicación/);
+  assert.match(mailbox, /le envió una notificación/);
   assert.match(mailbox, /Acceder a la notificación/);
   assert.match(mailbox, />GOcuotas</);
   assert.equal(/Si el boton no funciona/.test(mailbox), false);
   assert.equal(/abengolea1@hotmail/.test(mailbox), false);
+});
+
+test('el tipo elegido se refleja igual en etiqueta, frase, botón, título y aviso', () => {
+  for (const [kind, noun, badge] of [
+    ['notificacion', 'notificación', 'NOTIFICACIÓN'],
+    ['comunicacion', 'comunicación', 'COMUNICACIÓN'],
+    ['intimacion', 'intimación', 'INTIMACIÓN'],
+  ] as const) {
+    const html = buildCampaignMailHtml({
+      recipientEmail: 'a@b.com',
+      recipientName: 'Ana',
+      sender: 'Colegio',
+      bodyHtml: campaignBodyToHtmlFragment('Texto'),
+      attachments: [],
+      mode: CAMPAIGN_MAILBOX_MODE,
+      kind,
+    });
+    assert.match(html, new RegExp(`<span class="badge">${badge}</span>`));
+    assert.match(html, new RegExp(`le envió una ${noun}\.`));
+    assert.match(html, new RegExp(`>Acceder a la ${noun}</a>`));
+    assert.match(html, new RegExp(`<title>Nueva ${noun} digital</title>`));
+    assert.match(html, new RegExp(`Importante:</strong> este correo contiene una ${noun} cuyo contenido`));
+    assert.match(html, new RegExp(`impide que la ${noun} produzca los efectos`));
+    // Nunca queda otro sustantivo mezclado (la incoherencia que había antes).
+    for (const other of ['notificación', 'comunicación', 'intimación'].filter((n) => n !== noun)) {
+      assert.equal(new RegExp(`una ${other}|la ${other}|${other.toUpperCase()}`).test(html), false, `${kind} menciona ${other}`);
+    }
+  }
+});
+
+test('sin tipo se usa notificación y el aviso queda en el sobre del correo', () => {
+  const html = buildCampaignMailHtml({
+    recipientEmail: 'a@b.com',
+    recipientName: 'Ana',
+    sender: 'Colegio',
+    bodyHtml: '',
+    attachments: [],
+  });
+  assert.match(html, /<span class="badge">NOTIFICACIÓN<\/span>/);
+  assert.match(html, /class="muted notice-disclaimer"/);
+  assert.equal(/El envío y la lectura quedan registrados\.\s*<\/p>/.test(html), false);
+  assert.match(html, /El envío, el acceso y la lectura quedan registrados\./);
+});
+
+test('el pie no muestra el email del destinatario y enlaza a la web', () => {
+  const html = buildCampaignMailHtml({
+    recipientEmail: 'persona.privada@ejemplo.com',
+    recipientName: 'Ana',
+    sender: 'Colegio',
+    bodyHtml: '',
+    attachments: [],
+  });
+  assert.equal(html.includes('persona.privada@ejemplo.com'), false);
+  assert.match(html, /<a href="https:\/\/notificas\.com\.ar" target="_blank" rel="noopener"[^>]*>Visitar nuestra web<\/a>/);
 });
