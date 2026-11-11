@@ -194,6 +194,7 @@ const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   whatsapp_read: 'Meta informó que el mensaje fue leído en el chat',
   whatsapp_failed: 'WhatsApp no entregado',
   whatsapp_link_clicked: 'Acceso desde mensaje de WhatsApp',
+  attachment_opened: 'Adjunto abierto',
   attachment_downloaded: 'Descarga de adjunto',
   document_viewed: 'Documento visualizado',
   fallback_access: 'Ingreso por enlace alternativo',
