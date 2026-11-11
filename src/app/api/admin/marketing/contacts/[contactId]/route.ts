@@ -21,7 +21,7 @@ const patchSchema = z.object({
   tags: z.array(z.string().max(40)).optional(),
   linkedinUrl: z.string().max(500).nullable().optional(),
   linkedinStatus: z.enum([
-    "not_contacted", "connection_ready", "connection_sent", "connected", "message_ready",
+    "not_contacted", "connection_ready", "connection_sent", "connected", "message_ready", "message_drafted",
     "message_sent", "follow_up_due", "follow_up_sent", "replied", "interested",
     "not_interested", "do_not_contact", "not_found",
   ]).optional(),

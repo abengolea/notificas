@@ -17,6 +17,7 @@ const ACTION_ALIASES: Record<string, MarketingLinkedInAction> = {
 const ACTION_FOR_STATUS: Partial<Record<MarketingLinkedInMemberStatus, MarketingLinkedInAction>> = {
   connection_sent: "connection_sent",
   connected: "connected",
+  message_drafted: "message_drafted",
   message_sent: "message_sent",
   follow_up_sent: "followup_sent",
   replied: "replied",
@@ -30,6 +31,7 @@ export const LINKEDIN_OUTREACH_STATUS_INPUTS = [
   "connection_sent",
   "connected",
   "message_ready",
+  "message_drafted",
   "message_sent",
   "follow_up_due",
   "follow_up_sent",
@@ -47,6 +49,7 @@ export const LINKEDIN_OUTREACH_STATUS_INPUTS = [
 export const LINKEDIN_OUTREACH_ACTION_INPUTS = [
   "connection_sent",
   "connected",
+  "message_drafted",
   "message_sent",
   "followup_sent",
   "follow_up_sent",
@@ -91,7 +94,9 @@ export function linkedInOutreachView<T extends { status?: string; message?: stri
             ? "invitation_sent"
             : canonical === "message_ready"
               ? "message_prepared"
-              : canonical,
+              : canonical === "message_drafted"
+                ? "drafted_in_linkedin"
+                : canonical,
     invitationMessage: (row as { connectionMessage?: string }).connectionMessage || null,
     directMessage: message || null,
     automated: false,

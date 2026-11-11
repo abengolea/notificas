@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { Clipboard, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { MarketingSubnav } from "./marketing-subnav";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -94,6 +94,20 @@ export function LinkedInAssistantPanel() {
   }, [load]);
 
   const pendingCount = useMemo(() => actions.length, [actions]);
+
+  const copyMessage = async (action: AssistantAction) => {
+    const text = (action.message || "").trim();
+    if (!text) {
+      toast({ title: "No hay mensaje para copiar", variant: "destructive" });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: "Mensaje copiado" });
+    } catch {
+      toast({ title: "No se pudo copiar. Revisá el permiso del navegador.", variant: "destructive" });
+    }
+  };
 
   const markSent = async (action: AssistantAction) => {
     const res = await fetch(`/api/linkedin-assistant/actions/${action.memberId}/complete`, {
@@ -202,6 +216,10 @@ export function LinkedInAssistantPanel() {
                     <ExternalLink className="h-4 w-4" />
                   </a>
                 </Button>
+                <Button variant="outline" size="sm" onClick={() => void copyMessage(action)}>
+                  <Clipboard className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                  Copiar mensaje
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => setMessagePreview(action)}>
                   Ver mensaje
                 </Button>
@@ -230,6 +248,10 @@ export function LinkedInAssistantPanel() {
           </div>
           <Textarea readOnly value={messagePreview.message || ""} rows={8} />
           <div className="flex gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => void copyMessage(messagePreview)}>
+              <Clipboard className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+              Copiar mensaje
+            </Button>
             <Button asChild variant="outline" size="sm">
               <Link href={messagePreview.contact.linkedinUrl} target="_blank">
                 Abrir LinkedIn

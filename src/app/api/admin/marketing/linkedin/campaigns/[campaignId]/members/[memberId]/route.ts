@@ -5,7 +5,7 @@ import { linkedInAdminRuntime, linkedInApiError } from "../../../../_shared";
 
 const patchSchema = z.object({
   status: z.enum([
-    "not_contacted", "connection_ready", "connection_sent", "connected", "message_ready",
+    "not_contacted", "connection_ready", "connection_sent", "connected", "message_ready", "message_drafted",
     "message_sent", "follow_up_due", "follow_up_sent", "replied", "interested",
     "not_interested", "do_not_contact",
   ]).optional(),

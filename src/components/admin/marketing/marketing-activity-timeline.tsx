@@ -43,6 +43,7 @@ const ICONS: Record<string, React.ElementType> = {
   system_event: Bot,
   linkedin_connection_sent: Linkedin,
   linkedin_connected: Linkedin,
+  linkedin_message_prepared: Linkedin,
   linkedin_message_sent: Linkedin,
   linkedin_follow_up_sent: Linkedin,
   linkedin_replied: Linkedin,
@@ -64,6 +65,7 @@ const ICON_COLORS: Record<string, string> = {
   system_event: "text-muted-foreground",
   linkedin_connection_sent: "text-sky-600",
   linkedin_connected: "text-blue-600",
+  linkedin_message_prepared: "text-sky-700",
   linkedin_message_sent: "text-indigo-600",
   linkedin_follow_up_sent: "text-violet-600",
   linkedin_replied: "text-emerald-600",
@@ -74,6 +76,7 @@ const ICON_COLORS: Record<string, string> = {
 const LINKEDIN_TYPES = new Set([
   "linkedin_connection_sent",
   "linkedin_connected",
+  "linkedin_message_prepared",
   "linkedin_message_sent",
   "linkedin_follow_up_sent",
   "linkedin_replied",
@@ -92,6 +95,7 @@ const EMAIL_TYPES = new Set([
 const LINKEDIN_ACTIVITY_LABEL: Record<string, string> = {
   linkedin_connection_sent: "Solicitud de conexión enviada",
   linkedin_connected: "Conexión aceptada",
+  linkedin_message_prepared: "Borrador escrito en LinkedIn",
   linkedin_message_sent: "Mensaje de LinkedIn enviado",
   linkedin_follow_up_sent: "Seguimiento de LinkedIn enviado",
   linkedin_replied: "Respondió por LinkedIn",

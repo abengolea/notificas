@@ -60,6 +60,7 @@ export type MarketingActivityType =
   | "follow_up_completed"
   | "linkedin_connection_sent"
   | "linkedin_connected"
+  | "linkedin_message_prepared"
   | "linkedin_message_sent"
   | "linkedin_follow_up_sent"
   | "linkedin_replied"
@@ -86,6 +87,7 @@ export type MarketingLinkedInMemberStatus =
   | "connection_sent"
   | "connected"
   | "message_ready"
+  | "message_drafted"
   | "message_sent"
   | "follow_up_due"
   | "follow_up_sent"
@@ -103,6 +105,7 @@ export type MarketingLinkedInResponseType =
 export type MarketingLinkedInAction =
   | "connection_sent"
   | "connected"
+  | "message_drafted"
   | "message_sent"
   | "followup_sent"
   | "replied"
@@ -147,6 +150,7 @@ export type MarketingLinkedInCampaignMember = MarketingEntityBase & {
   followUpMessage?: string;
   notes?: string;
   nextActionAt?: MarketingInstant | null;
+  messagePreparedAt?: MarketingInstant | null;
   connectionSentAt?: MarketingInstant | null;
   connectedAt?: MarketingInstant | null;
   messageSentAt?: MarketingInstant | null;

@@ -43,6 +43,46 @@ test("LinkedIn URL normalization for assistant", () => {
   );
 });
 
+test("getNextAction skips excluded member ids", async () => {
+  const { services, context, assistant } = setup();
+  const campaign = await services.linkedInCampaigns.createCampaign(context, {
+    name: "Exclude queue",
+    connectionMessage: "Hola conexión",
+    message: "Hola mensaje",
+  });
+  await services.linkedInCampaigns.updateCampaign(context, campaign.id, { status: "active" });
+  const first = await services.contacts.createContact(context, {
+    email: "first@example.com",
+    linkedinUrl: "https://linkedin.com/in/first-user",
+    name: "First User",
+    country: "AR",
+  });
+  const second = await services.contacts.createContact(context, {
+    email: "second@example.com",
+    linkedinUrl: "https://linkedin.com/in/second-user",
+    name: "Second User",
+    country: "AR",
+  });
+  const memberA = await services.linkedInCampaigns.addMember(context, campaign.id, first.id);
+  const memberB = await services.linkedInCampaigns.addMember(context, campaign.id, second.id);
+  await services.linkedInCampaigns.updateMember(context, campaign.id, memberA.id, { status: "connection_ready" });
+  await services.linkedInCampaigns.updateMember(context, campaign.id, memberB.id, { status: "connection_ready" });
+
+  const original = await assistant.getNextAction(context, { campaignId: campaign.id });
+  assert.ok(original);
+  const skipped = await assistant.getNextAction(context, {
+    campaignId: campaign.id,
+    excludeMemberIds: [original.memberId],
+  });
+  assert.ok(skipped);
+  assert.notEqual(skipped.memberId, original.memberId);
+  const empty = await assistant.getNextAction(context, {
+    campaignId: campaign.id,
+    excludeMemberIds: [memberA.id, memberB.id],
+  });
+  assert.equal(empty, null);
+});
+
 test("next action priority: follow_up_due before connection_ready", async () => {
   const { services, context, assistant } = setup();
   const campaign = await services.linkedInCampaigns.createCampaign(context, {
@@ -134,6 +174,38 @@ test("audit prepared event does not change member status", async () => {
   await assistant.recordAuditEvent(context, member.id, { event: "prepared_message" });
   const unchanged = await repos.linkedInCampaignMembers.getById(context.workspaceId, member.id);
   assert.equal(unchanged?.status, "message_ready");
+});
+
+test("complete action drafts a LinkedIn message into CRM status", async () => {
+  const { services, context, assistant, repos } = setup();
+  const campaign = await services.linkedInCampaigns.createCampaign(context, {
+    name: "Draft CRM campaign",
+    message: "Hola desde el lote",
+  });
+  await services.linkedInCampaigns.updateCampaign(context, campaign.id, { status: "active" });
+  const contact = await services.contacts.createContact(context, {
+    email: "draft-crm@example.com",
+    linkedinUrl: "https://linkedin.com/in/draft-crm",
+    name: "Draft CRM",
+    country: "AR",
+  });
+  const member = await services.linkedInCampaigns.addMember(context, campaign.id, contact.id);
+  await services.linkedInCampaigns.updateMember(context, campaign.id, member.id, {
+    status: "connection_ready",
+  });
+
+  const result = await assistant.completeAction(context, member.id, {
+    action: "message_drafted",
+    notes: "Borrador escrito en LinkedIn. Envío pendiente.",
+  });
+  assert.equal(result.member.status, "message_drafted");
+  const stored = await repos.linkedInCampaignMembers.getById(context.workspaceId, member.id);
+  assert.equal(stored?.status, "message_drafted");
+  assert.ok(stored?.messagePreparedAt);
+  const contactRow = await services.contacts.getContact(context, contact.id);
+  assert.equal(contactRow.linkedinStatus, "message_drafted");
+  const stillQueued = await assistant.getNextAction(context, { campaignId: campaign.id });
+  assert.equal(stillQueued, null);
 });
 
 test("complete action records replied using existing CRM action", async () => {

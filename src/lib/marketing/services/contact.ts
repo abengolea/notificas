@@ -16,6 +16,7 @@ const linkedinStatusSchema = z.enum([
   "connection_sent",
   "connected",
   "message_ready",
+  "message_drafted",
   "message_sent",
   "follow_up_due",
   "follow_up_sent",

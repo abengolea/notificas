@@ -49,6 +49,7 @@ const STATUS_PRIORITY: Record<MarketingLinkedInMemberStatus, number> = {
   follow_up_due: 1,
   message_ready: 2,
   connection_ready: 3,
+  message_drafted: 6,
   not_contacted: 4,
   connection_sent: 5,
   connected: 6,
@@ -64,6 +65,7 @@ const completeActionSchema = z.object({
   action: z.enum([
     "connection_sent",
     "connected",
+    "message_drafted",
     "message_sent",
     "followup_sent",
     "follow_up_sent",

@@ -7,6 +7,7 @@ const actionSchema = z.object({
   action: z.enum([
     "connection_sent",
     "connected",
+    "message_drafted",
     "message_sent",
     "followup_sent",
     "replied",

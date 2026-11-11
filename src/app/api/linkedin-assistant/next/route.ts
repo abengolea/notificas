@@ -20,14 +20,19 @@ export async function GET(request: NextRequest) {
     const countryCode = params.get("countryCode") || undefined;
     const statusRaw = params.get("status") || undefined;
     const status = canonicalizeLinkedInMemberStatus(statusRaw);
-    const excludeMemberId = params.get("excludeMemberId") || undefined;
+    const excludeMemberIds = [
+      ...params.getAll("excludeMemberId"),
+      ...(params.get("excludeMemberIds") || "").split(","),
+    ]
+      .map((id) => id.trim())
+      .filter(Boolean);
 
     const { assistant, context } = linkedInAssistantRuntime(request);
     const action = await assistant.getNextAction(context, {
       campaignId,
       countryCode,
       status,
-      excludeMemberIds: excludeMemberId ? [excludeMemberId] : undefined,
+      excludeMemberIds: excludeMemberIds.length ? [...new Set(excludeMemberIds)] : undefined,
     });
 
     if (!action) {
