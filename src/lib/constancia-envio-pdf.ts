@@ -3,10 +3,12 @@ import fs from "fs";
 import path from "path";
 import jsPDF from "jspdf";
 import { getAdminBucket, sealEvidenceCopy } from "@/lib/firebase-admin";
-import { PDF_SCHEMA } from "@/lib/pdf-evidence-format";
+import { PDF_SCHEMA, formatEvidenceTimestamp } from "@/lib/pdf-evidence-format";
 
 export type ConstanciaEnvioInput = {
   mailId: string;
+  /** Momento en que se selló el expediente (= hora del envío). Acepta cualquier valor que formatEvidenceTimestamp pueda interpretar. */
+  sealedAt?: unknown;
   sender: {
     email: string;
     orgNombre: string | null;
@@ -108,7 +110,12 @@ export async function generateConstanciaEnvioPdf(data: ConstanciaEnvioInput): Pr
   doc.line(margin, y, pageWidth - margin, y);
   y += 18;
 
+  const sealedAtFormatted = formatEvidenceTimestamp(data.sealedAt) || '—';
+  const issuedAtFormatted = formatEvidenceTimestamp(issuedAt);
+
   const rows: Array<[string, string]> = [
+    ["Sellado el (hora del envío)", sealedAtFormatted],
+    ["Generado el (emisión de esta constancia)", issuedAtFormatted],
     ["Identificador", data.mailId],
     ["Remitente", [data.sender.orgNombre, data.sender.email, data.sender.orgCuit && `CUIT ${data.sender.orgCuit}`].filter(Boolean).join(" · ")],
     ["Destinatario", [data.recipient.nombre, data.recipient.email, data.recipient.phone].filter(Boolean).join(" · ")],
@@ -191,6 +198,73 @@ export async function generateConstanciaEnvioPdf(data: ConstanciaEnvioInput): Pr
     }
     doc.text(line, margin, y);
     y += 12;
+  }
+
+  // Hex dump del cuerpo para verificación independiente del SHA-256
+  if (body && body !== "(sin texto)") {
+    if (y > pageHeight - 100) {
+      doc.addPage();
+      y = margin;
+    }
+    y += 8;
+    doc.setFont("helvetica", "bold");
+    setMain();
+    doc.setFontSize(9);
+    doc.text("Texto sellado en hexadecimal (UTF-8)", margin, y);
+    y += 10;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    setMuted();
+    const hexNote = doc.splitTextToSize(
+      `SHA-256(UTF-8(trim(texto))) = «Hash del texto» de arriba. Para verificar: xxd -r -p texto.hex | sha256sum. ` +
+      `${new TextEncoder().encode(body).length} bytes UTF-8, ${body.split('\n').length} línea${body.split('\n').length === 1 ? '' : 's'}.`,
+      contentWidth
+    );
+    doc.text(hexNote, margin, y);
+    y += hexNote.length * 10 + 6;
+    doc.setFont("courier", "normal");
+    doc.setFontSize(7);
+    setMain();
+    const hex = Array.from(new TextEncoder().encode(body), (b) => b.toString(16).padStart(2, "0")).join("");
+    const hexLines = doc.splitTextToSize(hex, contentWidth);
+    for (const line of hexLines) {
+      if (y > pageHeight - 56) {
+        doc.addPage();
+        y = margin;
+      }
+      doc.text(line, margin, y);
+      y += 10;
+    }
+  }
+
+  // Alcance del documento
+  if (y > pageHeight - 100) {
+    doc.addPage();
+    y = margin;
+  }
+  y += 12;
+  doc.setFont("helvetica", "bold");
+  setMain();
+  doc.setFontSize(9);
+  doc.text("Alcance de este documento", margin, y);
+  y += 14;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  setMuted();
+  const alcance = [
+    "Este documento es una constancia técnica del pedido de envío: registra quién envió, a quién, qué y cuándo.",
+    "Se generó en el momento del envío y se guardó en almacenamiento de escritura única (WORM). No se reconstruye desde registros modificables.",
+    "No es el certificado de lectura. Los hechos posteriores (entrega, lectura) constan en el certificado que se emite una sola vez, cuando el destinatario lee.",
+    "La valoración jurídica de los hechos aquí registrados corresponde al juez.",
+  ];
+  for (const line of alcance) {
+    if (y > pageHeight - 56) {
+      doc.addPage();
+      y = margin;
+    }
+    const wrapped = doc.splitTextToSize(`• ${line}`, contentWidth);
+    doc.text(wrapped, margin, y);
+    y += wrapped.length * 11 + 4;
   }
 
   const pages = doc.getNumberOfPages();

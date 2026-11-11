@@ -138,6 +138,25 @@ export async function GET(request: NextRequest) {
           Boolean(e.httpBody || e.payloadHash)
       );
 
+    // Obtener número de bloque para cada TX única (send + eventos)
+    const allTxHashes = [...new Set(
+      [verified.send.txHash, ...verified.events.map((e) => ('txHash' in e ? (e as { txHash?: string }).txHash : undefined))]
+        .filter((h): h is string => typeof h === 'string' && h.length > 0)
+    )];
+    type BlockMeta = { blockNumber?: number; blockTime?: string };
+    const blockInfoMap = new Map<string, BlockMeta>();
+    await Promise.all(allTxHashes.map(async (hash) => {
+      try {
+        const info = await getTransactionInfo(hash);
+        blockInfoMap.set(hash, {
+          blockNumber: typeof info.blockNumber === 'number' ? info.blockNumber : undefined,
+          blockTime: typeof info.timestamp === 'number' ? new Date(info.timestamp * 1000).toISOString() : undefined,
+        });
+      } catch { /* bloque es opcional; el PDF sale igual */ }
+    }));
+
+    const sendBlockMeta = verified.send.txHash ? blockInfoMap.get(verified.send.txHash) : undefined;
+
     const pdf = await buildActaDestinatarioPdf({
       orgNombre: String(snapshot?.sender.orgNombre || org.nombre || ''),
       orgCuit:
@@ -194,8 +213,14 @@ export async function GET(request: NextRequest) {
         templateSealHash: verified.send.templateSealHash,
         merkleValid: verified.send.merkleValid,
         onChainMatch: verified.send.onChainMatch,
+        blockNumber: sendBlockMeta?.blockNumber ?? null,
+        blockTime: sendBlockMeta?.blockTime ?? null,
       },
-      events: verified.events,
+      events: verified.events.map((ev) => {
+        const evTxHash = 'txHash' in ev ? (ev as { txHash?: string }).txHash : undefined;
+        const bm = evTxHash ? blockInfoMap.get(evTxHash) : undefined;
+        return { ...ev, blockNumber: bm?.blockNumber ?? null, blockTime: bm?.blockTime ?? null };
+      }),
       verifyRef: campaignVerifyRef('campaign_acta_recipient', campaignId, messageId),
     });
     const hash = sha256Hex(pdf);

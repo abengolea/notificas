@@ -68,6 +68,11 @@ const EVENT_LABEL: Record<string, string> = {
   email_read: 'Correo abierto',
   wa_delivered: 'WhatsApp entregado',
   wa_read: 'WhatsApp leído',
+  content_access: 'Acceso al contenido',
+  content_access_email: 'Acceso al contenido (correo)',
+  content_access_whatsapp: 'Acceso al contenido (WhatsApp)',
+  read_confirmed: 'Lectura confirmada',
+  attachment_opened: 'Adjunto abierto',
 };
 
 function formatTs(v?: string): string {
@@ -518,6 +523,8 @@ export type ActaDestinatarioInput = {
     templateSealHash?: string | null;
     merkleValid: boolean | null;
     onChainMatch: boolean | null;
+    blockNumber?: number | null;
+    blockTime?: string | null;
   };
   events: Array<{
     type: string;
@@ -531,6 +538,8 @@ export type ActaDestinatarioInput = {
     leafPayload?: string | null;
     leafIndex?: number | null;
     proof?: string[] | null;
+    blockNumber?: number | null;
+    blockTime?: string | null;
   }>;
   verifyRef?: string;
 };
@@ -643,7 +652,7 @@ function hechoFecha(
         : 'Evento informado por Meta y registrado por Notificas',
     ];
   }
-  return [formatTs(iso), 'Registrado por el sistema'];
+  return [formatTs(iso), 'Aceptado por el proveedor SMTP de Notificas'];
 }
 
 export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Promise<ArrayBuffer> {
@@ -1289,6 +1298,8 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     merkleRoot?: string | null;
     txHash?: string | null;
     occurredAt?: string;
+    blockNumber?: number | null;
+    blockTime?: string | null;
     extra?: Array<[string, string]>;
   }> = [];
   if (input.send.txHash) {
@@ -1301,6 +1312,8 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
       proof: input.send.proof,
       merkleRoot: input.send.merkleRoot,
       txHash: input.send.txHash,
+      blockNumber: input.send.blockNumber,
+      blockTime: input.send.blockTime,
       extra: input.send.templateSealHash
         ? [['templateSealHash (último campo de la hoja de envío; es el «Hash plantilla» del lote)', input.send.templateSealHash]]
         : undefined,
@@ -1318,6 +1331,8 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
       merkleRoot: ev.merkleRoot,
       txHash: ev.txHash,
       occurredAt: ev.occurredAt,
+      blockNumber: ev.blockNumber,
+      blockTime: ev.blockTime,
     });
   }
 
@@ -1427,6 +1442,12 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
       }
       mono(block.merkleRoot || '—', 'Raíz Merkle (campo 5 del payload on-chain)');
       mono(block.txHash || '—', 'Transacción Polygon (completa)');
+      if (block.blockNumber != null) {
+        mono(
+          `Bloque ${block.blockNumber}${block.blockTime ? ` · ${blockTimePair(block.blockTime)}` : ''}`,
+          'Número de bloque y fecha cierta de publicación (UTC / ART)'
+        );
+      }
       y += 3;
     }
     doc.setFont('helvetica', 'normal');
