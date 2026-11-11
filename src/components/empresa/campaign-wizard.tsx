@@ -57,6 +57,13 @@ import {
 import { maxRecipientsForPlan } from "@/lib/org-limits-client";
 import { assignFilesToRecipientsGreedy, scoreFileForRecipient } from "@/lib/campaign-attachment-match";
 import { buildCampaignAttachmentFields, CAMPAIGN_ATTACHMENT_MAX_MB } from "@/lib/campaign-attachment-payload";
+import {
+  buildAttachmentReport,
+  CSV_ATTACHMENT_COLUMN,
+  describeAttachmentReportProblem,
+  type AttachmentReport,
+} from "@/lib/campaign-attachment-name";
+import { BulkAttachmentPicker } from "@/components/empresa/bulk-attachment-picker";
 import { uploadCampaignCsvInChunks, uploadCampaignRecipients } from "@/lib/upload-campaign-recipients";
 import { csvCamposRequeridos, csvContactColumns, csvPlaceholder, inspectCampaignCsv, parseCsvQuickResult, phoneDigits, presentRecipientValue, recipientValueText } from "@/lib/parse-campaign-csv";
 import { WIZARD_INLINE_LIST_MAX } from "@/lib/campaign-recipients";
@@ -112,8 +119,8 @@ function wizardStepIds(canal: CanalCampaign, simulated: boolean, withAdjuntosSte
   const ids: WizardStepId[] = ["canal"];
   if ((canal === "whatsapp" || canal === "ambos") && !simulated) ids.push("whatsapp");
   if (canal === "email" || canal === "ambos") ids.push("mensaje");
-  if (withAdjuntosStep) ids.push("adjuntos");
   ids.push("destinatarios");
+  if (withAdjuntosStep) ids.push("adjuntos");
   ids.push("confirmacion");
   return ids;
 }
@@ -167,6 +174,7 @@ function cleanRecipientForUpload(r: RecipientEntry): RecipientEntry {
   if (r.monto) clean.monto = r.monto;
   if (presentRecipientValue(r.cuotas)) clean.cuotas = recipientValueText(r.cuotas);
   if (r.area) clean.area = r.area;
+  if (r.adjunto) clean.adjunto = r.adjunto;
   return clean;
 }
 
@@ -234,6 +242,15 @@ export function CampaignWizard({
   const [cuerpo, setCuerpo] = useState("");
   const [files, setFiles] = useState<{ file: File; name: string; size: number }[]>([]);
   const [pairByRecipient, setPairByRecipient] = useState(false);
+  /** Admin: cada fila del CSV trae en «adjunto» el nombre exacto de su archivo (sirve para listas de cualquier tamaño). */
+  const [pairByColumn, setPairByColumn] = useState(false);
+  const [columnFiles, setColumnFiles] = useState<File[]>([]);
+  /** Archivos que ya están subidos a la campaña (al editar). */
+  const [existingColumnFileNames, setExistingColumnFileNames] = useState<string[]>([]);
+  const [csvAdjuntoNames, setCsvAdjuntoNames] = useState<string[] | null>(null);
+  const [attachUploadProgress, setAttachUploadProgress] = useState<{ done: number; total: number } | null>(null);
+  /** Informe guardado en el servidor (al editar, cuando el CSV no está en el navegador). */
+  const [serverAttachReport, setServerAttachReport] = useState<AttachmentReport | null>(null);
   const [pairingSelections, setPairingSelections] = useState<Record<string, number | null>>({});
   const pairingSignatureRef = useRef("");
   const [creditos, setCreditos] = useState(0);
@@ -312,7 +329,7 @@ export function CampaignWizard({
     () => wizardStepIds(canal, simulated, isAdmin && !simulated),
     [canal, simulated, isAdmin]
   );
-  const STEPS = stepIds.map((id) => WIZARD_STEP_LABELS[id]);
+  const STEPS = stepIds.map((id) => (isAdmin && id === "canal" ? "Configuración" : WIZARD_STEP_LABELS[id]));
   const currentStepId = stepIds[Math.max(0, Math.min(step, stepIds.length) - 1)] ?? "canal";
 
   useEffect(() => {
@@ -325,7 +342,40 @@ export function CampaignWizard({
     setFiles([]);
     setExistingAttachments([]);
     setPairByRecipient(false);
+    setPairByColumn(false);
+    setColumnFiles([]);
   }, [mixedSameText]);
+
+  // Adjunto por columna: los nombres que pide el CSV, para mostrar la coincidencia antes de enviar.
+  useEffect(() => {
+    if (!pairByColumn) {
+      setCsvAdjuntoNames(null);
+      return;
+    }
+    const file = csvFileRef.current;
+    if (!file || padronSelected.size > 0) {
+      setCsvAdjuntoNames(recipients.length > 0 ? recipients.map((r) => r.adjunto ?? "") : null);
+      return;
+    }
+    let cancelled = false;
+    void file.text().then((text) => {
+      if (cancelled) return;
+      const parsed = parseCsvQuickResult(text, canal, waCsvExtraColumns);
+      setCsvAdjuntoNames(parsed.error ? null : parsed.rows.map((r) => r.adjunto ?? ""));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // csvInspect cambia cuando se elige otro CSV.
+  }, [pairByColumn, csvInspect, recipients, canal, waCsvExtraColumns, padronSelected]);
+
+  const attachColumnReport = useMemo(() => {
+    if (!pairByColumn || !csvAdjuntoNames) return null;
+    return buildAttachmentReport({
+      rowNames: csvAdjuntoNames,
+      fileNames: [...existingColumnFileNames, ...columnFiles.map((f) => f.name)],
+    });
+  }, [pairByColumn, csvAdjuntoNames, existingColumnFileNames, columnFiles]);
 
   useEffect(() => {
     if (currentStepId !== "mensaje" || !mixedMeta || !waReaderLetter) return;
@@ -483,6 +533,7 @@ export function CampaignWizard({
             notificationType?: string;
             adjuntos?: CampaignAttachment[];
             adjuntosPorDestinatario?: Record<string, CampaignAttachment[]> | null;
+            attachmentsByColumn?: boolean;
           };
           if (!isUnsentCampaign(c)) throw new Error(UNSENT_EDIT_ERROR);
           if (cancelled) return;
@@ -512,6 +563,17 @@ export function CampaignWizard({
           if (c.adjuntosPorDestinatario && typeof c.adjuntosPorDestinatario === "object") {
             setExistingPaired(c.adjuntosPorDestinatario);
             setPairByRecipient(true);
+          }
+          if (c.attachmentsByColumn === true) {
+            setPairByColumn(true);
+            void fetch(`/api/admin/campaigns/${editCampaignId}/attachment-report`, { credentials: "include" })
+              .then((r) => r.json())
+              .then((j: { report?: AttachmentReport; fileNames?: string[] }) => {
+                if (cancelled) return;
+                if (Array.isArray(j.fileNames)) setExistingColumnFileNames(j.fileNames);
+                if (j.report) setServerAttachReport(j.report);
+              })
+              .catch(() => undefined);
           }
         } else {
           const snap = await getDoc(doc(db, "campaigns", editCampaignId));
@@ -643,7 +705,8 @@ export function CampaignWizard({
   );
   const fileNamesSig = useMemo(() => files.map((f) => f.name).join('\0'), [files]);
   const pairingUploadCap = useMemo(
-    () => Math.min(350, Math.max(12, recipients.length + 25)),
+    // Un archivo por destinatario, con un margen de 25 para sobrantes; nunca más que la lista en pantalla.
+    () => Math.min(WIZARD_INLINE_LIST_MAX, Math.max(12, recipients.length + 25)),
     [recipients.length]
   );
 
@@ -658,6 +721,7 @@ export function CampaignWizard({
     if (
       (currentStepId !== "mensaje" &&
         currentStepId !== "whatsapp" &&
+        currentStepId !== "adjuntos" &&
         currentStepId !== "destinatarios" &&
         currentStepId !== "confirmacion") ||
       !pairByRecipient ||
@@ -823,6 +887,55 @@ export function CampaignWizard({
     return true;
   }
 
+  /** Sube los archivos del modo columna de a 5, con reintentos. Un archivo repetido reemplaza al anterior. */
+  async function uploadColumnFiles(campaignId: string) {
+    const queue = [...columnFiles];
+    const total = queue.length;
+    const failed: string[] = [];
+    let done = 0;
+    setAttachUploadProgress({ done, total });
+
+    async function worker() {
+      for (let f = queue.shift(); f; f = queue.shift()) {
+        let ok = false;
+        for (let attempt = 0; attempt < 3 && !ok; attempt++) {
+          try {
+            const form = new FormData();
+            form.append("campaignId", campaignId);
+            form.append("mode", "column");
+            form.append("file", f);
+            const res = await fetch("/api/admin/campaigns/upload-attachment", {
+              method: "POST",
+              credentials: "include",
+              body: form,
+            });
+            const json = await res.json().catch(() => ({}));
+            if (res.ok && json.attachment) ok = true;
+            // 400/409: el servidor rechazó el archivo; repetirlo no cambia nada.
+            else if (res.status === 400 || res.status === 409) break;
+          } catch {
+            // Corte de red: se reintenta.
+          }
+        }
+        if (!ok) failed.push(f.name);
+        done += 1;
+        setAttachUploadProgress({ done, total });
+      }
+    }
+
+    await Promise.all(Array.from({ length: 5 }, worker));
+    setAttachUploadProgress(null);
+    if (failed.length > 0) {
+      const shown = failed.slice(0, 3).join(", ");
+      throw new Error(
+        `No se pudieron subir ${failed.length} ${failed.length === 1 ? "archivo" : "archivos"} (${shown}${failed.length > 3 ? "…" : ""}). La campaña quedó en borrador: abrila para volver a subirlos.`
+      );
+    }
+    // Los archivos subidos pasan a contarse como ya guardados.
+    setExistingColumnFileNames((cur) => [...cur, ...columnFiles.map((f) => f.name)]);
+    setColumnFiles([]);
+  }
+
   async function runSubmitAdmin(sendNow: boolean) {
     if (!orgId) {
       toast({ title: "Elegí la empresa", variant: "destructive" });
@@ -882,9 +995,31 @@ export function CampaignWizard({
         return;
       }
     }
+    if (pairByColumn) {
+      // Si se edita con la lista ya guardada y sin CSV nuevo, el servidor revisa la columna al enviar.
+      const keepsStoredList = !file && recipients.length === 0 && existingRecipientCount > 0;
+      const hasColumn = csvInspect ? csvInspect.hasAdjuntoColumn === true : recipients.some((r) => Boolean(r.adjunto));
+      if (!keepsStoredList && !hasColumn) {
+        toast({
+          title: `El CSV no tiene la columna «${CSV_ATTACHMENT_COLUMN}»`,
+          description: "Agregala con el nombre exacto del archivo de cada persona, o elegí otro modo de adjuntos.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (sendNow && attachColumnReport && !attachColumnReport.ok) {
+        toast({
+          title: "Faltan adjuntos",
+          description: `${describeAttachmentReportProblem(attachColumnReport)} Corregilo en el paso «Adjuntos» o guardá como borrador.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
 
     setSubmitting(true);
     setUploadProgress(null);
+    setAttachUploadProgress(null);
     try {
       let campaignId = editCampaignId || "";
       if (isEdit && editCampaignId) {
@@ -938,7 +1073,8 @@ export function CampaignWizard({
 
       // Adjuntos: el panel admin no tiene sesión de Firebase en el navegador, por eso se suben por el servidor.
       const uploadedNew: CampaignAttachment[] = [];
-      for (const f of files) {
+      if (pairByColumn && columnFiles.length > 0) await uploadColumnFiles(campaignId);
+      for (const f of pairByColumn ? [] : files) {
         const form = new FormData();
         form.append("campaignId", campaignId);
         form.append("file", f.file);
@@ -953,21 +1089,25 @@ export function CampaignWizard({
         }
         uploadedNew.push(upJson.attachment as CampaignAttachment);
       }
-      const attachmentFields = buildCampaignAttachmentFields({
-        existingAttachments,
-        uploadedNew,
-        existingPaired,
-        pairByRecipient,
-        recipients,
-        pairingSelections,
-      });
+      // En modo columna cada archivo vive aparte (uno por nombre); la campaña no guarda listas ni mapas.
+      const attachmentFields = pairByColumn
+        ? { adjuntosGlobales: [] as CampaignAttachment[], adjuntosPorDestinatario: undefined }
+        : buildCampaignAttachmentFields({
+            existingAttachments,
+            uploadedNew,
+            existingPaired,
+            pairByRecipient,
+            recipients,
+            pairingSelections,
+          });
       // Al crear sin adjuntos no hay nada que guardar; al editar se manda siempre para reflejar lo que se quitó.
-      if (isEdit || uploadedNew.length > 0 || existingAttachments.length > 0) {
+      if (isEdit || pairByColumn || uploadedNew.length > 0 || existingAttachments.length > 0) {
         const adjRes = await fetch(`/api/admin/campaigns/${campaignId}`, {
           method: "PATCH",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            attachmentsByColumn: pairByColumn,
             adjuntos: attachmentFields.adjuntosGlobales,
             adjuntosPorDestinatario: attachmentFields.adjuntosPorDestinatario ?? null,
           }),
@@ -1026,7 +1166,19 @@ export function CampaignWizard({
           body: JSON.stringify({ campaignId, tandaSize: simulated ? 0 : tandaSize }),
         });
         const sendData = await sendRes.json();
-        if (!sendRes.ok) throw new Error(sendData.error || "Falló el envío");
+        if (!sendRes.ok) {
+          if (sendRes.status === 409 && pairByColumn) {
+            // El servidor revisó la lista guardada y a alguien le falta su archivo: queda en borrador para completarlo.
+            toast({
+              title: "Quedó como borrador",
+              description: sendData.error || "Faltan adjuntos.",
+              variant: "destructive",
+            });
+            router.push(`/admin/campanas/${campaignId}/editar`);
+            return;
+          }
+          throw new Error(sendData.error || "Falló el envío");
+        }
         toast({
           title: simulated ? "Simulación iniciada" : "Envío iniciado",
           description: simulated
@@ -1346,11 +1498,140 @@ export function CampaignWizard({
     setWaTemplateBody(next.templateBody);
   }
 
+  /** Tabla archivo ↔ destinatario. Empresa la muestra en Confirmación; admin, en su paso Adjuntos. */
+  function renderPairingTable() {
+    if (!pairByRecipient || files.length === 0 || !csvListInline) return null;
+    const unassigned = recipients.filter((r) => {
+      const ix = pairingSelections[r.email.trim().toLowerCase()];
+      return ix === undefined || ix === null;
+    }).length;
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium">Emparejamiento de adjuntos</p>
+          <Button type="button" variant="outline" size="sm" onClick={suggestPairingAgain}>Sugerir de nuevo</Button>
+        </div>
+        {unassigned > 0 && (
+          <p className="text-sm text-destructive">
+            {unassigned === 1 ? "Hay 1 destinatario sin archivo asignado." : `Hay ${unassigned} destinatarios sin archivo asignado.`}
+          </p>
+        )}
+        <div className="max-h-72 overflow-auto rounded-md border text-sm">
+          <table className="w-full text-left">
+            <thead className="sticky top-0 z-[1] bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/80">
+              <tr>
+                <th className="p-2 font-medium">Nombre</th>
+                <th className="p-2 font-medium">Correo</th>
+                <th className="p-2 font-medium">Adjunto</th>
+                <th className="p-2 font-medium w-24">Coincidencia</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recipients.map((r) => {
+                const k = r.email.trim().toLowerCase();
+                const idx = pairingSelections[k];
+                const selStr = typeof idx === "number" ? String(idx) : "__none__";
+                const coincide = typeof idx === "number" ? scoreFileForRecipient(files[idx].name, r).label : "—";
+                return (
+                  <tr key={k} className="border-t border-border">
+                    <td className="p-2 align-middle">{r.nombre}</td>
+                    <td className="p-2 align-middle text-muted-foreground break-all">{r.email}</td>
+                    <td className="p-2 align-middle min-w-[12rem]">
+                      <Select
+                        value={selStr}
+                        onValueChange={(v) =>
+                          setPairingSelections((prev) => ({ ...prev, [k]: v === "__none__" ? null : Number.parseInt(v, 10) }))
+                        }
+                      >
+                        <SelectTrigger className="h-9 w-full max-w-[min(260px,100%)]"><SelectValue placeholder="Sin archivo" /></SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          <SelectItem value="__none__">— Sin archivo —</SelectItem>
+                          {files.map((f, i) => (
+                            <SelectItem key={`${i}-${f.name}`} value={String(i)}>
+                              <span className="truncate max-w-[220px]" title={f.name}>{f.name}</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="p-2 align-middle text-xs text-muted-foreground capitalize">{coincide}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  /** Cruce entre la columna «adjunto» del CSV y los archivos (admin, modo columna). */
+  function renderColumnReport() {
+    const report = attachColumnReport ?? serverAttachReport;
+    if (!report) return null;
+    const problem = describeAttachmentReportProblem(report);
+    const matched = report.rowsWithName - report.rowsMissingFile;
+    return (
+      <div
+        className={`space-y-2 rounded-md border p-3 text-sm ${
+          problem ? "border-amber-500/50 bg-amber-500/5" : "border-emerald-500/50 bg-emerald-500/5"
+        }`}
+      >
+        <p className="font-medium">
+          {problem
+            ? problem
+            : `Los ${report.totalRows.toLocaleString("es-AR")} destinatarios tienen su archivo.`}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Coinciden {matched.toLocaleString("es-AR")} de {report.totalRows.toLocaleString("es-AR")} destinatarios
+          {report.unusedFiles > 0 ? ` · ${report.unusedFiles.toLocaleString("es-AR")} archivos no los usa nadie` : ""}.
+          {attachColumnReport ? "" : " (Estado guardado en la campaña; cargá el CSV de nuevo para recalcular con los archivos nuevos.)"}
+        </p>
+        {report.missingFileNames.length > 0 ? (
+          <p className="text-xs">
+            <strong>Faltan:</strong> {report.missingFileNames.slice(0, 8).join(", ")}
+            {report.rowsMissingFile > 8 ? "…" : ""}
+          </p>
+        ) : null}
+        {report.unusedFileNames.length > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            <strong>Sobran:</strong> {report.unusedFileNames.slice(0, 8).join(", ")}
+            {report.unusedFiles > 8 ? "…" : ""}
+          </p>
+        ) : null}
+        {report.sharedFileNames.length > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            <strong>Un mismo archivo para varias personas:</strong> {report.sharedFileNames.slice(0, 5).join(", ")}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  /** Una línea con lo que se va a adjuntar, para mostrar en Confirmación (admin). Vacío si no hay adjuntos. */
+  const attachmentsSummary = (() => {
+    if (mixedSameText) return "";
+    if (pairByColumn) {
+      const total = columnFiles.length + existingColumnFileNames.length;
+      const r = attachColumnReport ?? serverAttachReport;
+      const state = r ? (describeAttachmentReportProblem(r) || "todos tienen su archivo") : "sin verificar";
+      return `un archivo por persona según la columna «${CSV_ATTACHMENT_COLUMN}» (${total.toLocaleString("es-AR")} archivos; ${state}).`;
+    }
+    if (pairByRecipient && files.length > 0) {
+      const assigned = recipients.filter((r) => typeof pairingSelections[r.email.trim().toLowerCase()] === "number").length;
+      return `un archivo distinto por destinatario (${assigned} de ${recipients.length} asignados).`;
+    }
+    if (pairByRecipient && existingPaired) return "se conserva el emparejamiento por destinatario ya guardado.";
+    const n = existingAttachments.length + files.length;
+    return n > 0 ? `${n} ${n === 1 ? "archivo" : "archivos"} para todos los destinatarios.` : "";
+  })();
+
   /** Casilla «distinto por destinatario», adjuntos ya guardados y zona de subida. Se usa en Mensaje, WhatsApp y Adjuntos (admin). */
-  function renderAttachmentsFields(idSuffix = "") {
+  function renderAttachmentsFields(idSuffix = "", withPairCheckbox = true) {
     const checkboxId = `adj-por-destinatario${idSuffix}`;
     return (
       <>
+        {withPairCheckbox && (
         <div className="rounded-md border p-4 space-y-3">
           <div className="flex items-start gap-3">
             <Checkbox
@@ -1366,12 +1647,16 @@ export function CampaignWizard({
               </label>
               <p className="text-xs text-muted-foreground">
                 Subí un archivo por persona. El nombre del archivo debe contener su nombre o correo (como en el
-                CSV). En el paso «Confirmación» podés corregir el emparejamiento.
+                CSV).{" "}
+                {isAdmin
+                  ? "Abajo podés corregir el emparejamiento."
+                  : "En el paso «Confirmación» podés corregir el emparejamiento."}
                 {!csvListInline ? " No aplica con CSV de más de 500 filas." : ""}
               </p>
             </div>
           </div>
         </div>
+        )}
         {existingAttachments.length > 0 && (
           <div className="space-y-2">
             <Label>Adjuntos ya guardados</Label>
@@ -1432,7 +1717,13 @@ export function CampaignWizard({
           </p>
         </div>
       )}
-      {isAdmin && (
+      <div>
+        <div className="flex justify-between text-xs text-muted-foreground mb-2">
+          <span>Paso {step} de {STEPS.length} — {STEPS[step - 1]}</span>
+        </div>
+        <Progress value={(step / STEPS.length) * 100} className="h-2" />
+      </div>
+      {isAdmin && step === 1 && (
         <Card>
           <CardHeader>
             <CardTitle>Empresa</CardTitle>
@@ -1465,7 +1756,7 @@ export function CampaignWizard({
           </CardContent>
         </Card>
       )}
-      {isAdmin && (
+      {isAdmin && step === 1 && (
         <Card>
           <CardHeader>
             <CardTitle>Modo de envío</CardTitle>
@@ -1521,13 +1812,6 @@ export function CampaignWizard({
           </CardContent>
         </Card>
       )}
-      <div>
-        <div className="flex justify-between text-xs text-muted-foreground mb-2">
-          <span>Paso {step} de {STEPS.length} — {STEPS[step - 1]}</span>
-        </div>
-        <Progress value={(step / STEPS.length) * 100} className="h-2" />
-      </div>
-
       {/* PASO 1: Canal */}
       {step === 1 && (
         <Card>
@@ -1573,6 +1857,8 @@ export function CampaignWizard({
                 </button>
               ))}
             </div>
+            {/* En admin el formato del CSV se explica en el paso Destinatarios. */}
+            {!isAdmin && (
             <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
               <p className="font-medium">CSV de destinatarios</p>
               <p className="text-muted-foreground text-xs">
@@ -1587,6 +1873,7 @@ export function CampaignWizard({
                 </p>
               )}
             </div>
+            )}
             {canal === "ambos" && !simulated && (
               <MixedChannelOptions
                 forceChoices
@@ -2111,12 +2398,113 @@ export function CampaignWizard({
                     Los adjuntos no viajan en el correo: solo se abren desde el lector, al que se llega por WhatsApp.
                   </p>
                 )}
-                {renderAttachmentsFields("-admin")}
+                <RadioGroup
+                  value={pairByColumn ? "column" : pairByRecipient ? "name" : "global"}
+                  onValueChange={(v) => {
+                    setPairByRecipient(v === "name");
+                    setPairByColumn(v === "column");
+                    if (v === "column") setFiles([]);
+                    else setColumnFiles([]);
+                  }}
+                  className="grid gap-3"
+                >
+                  {(
+                    [
+                      {
+                        value: "global",
+                        title: "El mismo archivo para todos",
+                        desc: "Uno o varios archivos que reciben todos los destinatarios.",
+                        disabled: false,
+                      },
+                      {
+                        value: "name",
+                        title: "Uno distinto por persona, emparejado por nombre",
+                        desc: "El sistema une cada archivo con su persona según el nombre del archivo, y vos corregís a mano. Hasta 500 destinatarios.",
+                        disabled: !csvListInline,
+                      },
+                      {
+                        value: "column",
+                        title: `Uno distinto por persona, según la columna «${CSV_ATTACHMENT_COLUMN}» del CSV`,
+                        desc: "Sin límite de destinatarios. Cada fila del CSV dice el nombre exacto de su archivo. Subís un ZIP o todos los archivos juntos.",
+                        disabled: false,
+                      },
+                    ] as const
+                  ).map((o) => {
+                    const selected = (pairByColumn ? "column" : pairByRecipient ? "name" : "global") === o.value;
+                    return (
+                      <label
+                        key={o.value}
+                        className={`flex items-start gap-3 rounded-md border p-4 ${
+                          o.disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+                        } ${selected ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border"}`}
+                      >
+                        <RadioGroupItem value={o.value} disabled={o.disabled} className="mt-1" />
+                        <span>
+                          <span className="block text-sm font-medium">{o.title}</span>
+                          <span className="block text-xs text-muted-foreground mt-1">
+                            {o.desc}
+                            {o.disabled ? " No disponible: la lista tiene más de 500 filas." : ""}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </RadioGroup>
+
+                {pairByColumn ? (
+                  <>
+                    {csvInspect && !csvInspect.hasAdjuntoColumn ? (
+                      <p className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+                        El CSV no tiene la columna «{CSV_ATTACHMENT_COLUMN}». Agregala al encabezado y poné en cada fila el nombre
+                        exacto del archivo (por ejemplo <code>recibo_30123456.pdf</code>), sin comas en el nombre. Después volvé a
+                        cargar la lista en «Destinatarios».
+                      </p>
+                    ) : null}
+                    {!csvInspect && recipients.length === 0 && existingColumnFileNames.length === 0 ? (
+                      <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                        Cargá la lista en «Destinatarios» para ver si cada persona tiene su archivo.
+                      </p>
+                    ) : null}
+                    {existingColumnFileNames.length > 0 ? (
+                      <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                        Esta campaña ya tiene {existingColumnFileNames.length.toLocaleString("es-AR")} archivos subidos. Subí solo los que
+                        falten; si repetís un nombre, se reemplaza.
+                      </p>
+                    ) : null}
+                    <BulkAttachmentPicker
+                      files={columnFiles}
+                      onChange={setColumnFiles}
+                      maxSizeMB={CAMPAIGN_ATTACHMENT_MAX_MB}
+                      disabled={submitting}
+                    />
+                    {renderColumnReport()}
+                  </>
+                ) : (
+                  <>
+                    {renderAttachmentsFields("-admin", false)}
+                    {pairByRecipient && files.length === 0 && existingPaired ? (
+                      <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                        Se conserva el emparejamiento por destinatario ya guardado. Para cambiarlo, subí los archivos de nuevo.
+                      </p>
+                    ) : null}
+                    {renderPairingTable()}
+                    {pairByRecipient && files.length > 0 && recipients.length === 0 && csvListInline ? (
+                      <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                        Cargá la lista en «Destinatarios» para poder emparejar cada archivo con su persona.
+                      </p>
+                    ) : null}
+                  </>
+                )}
               </>
             )}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
-              <Button onClick={() => setStep((s) => s + 1)}>Siguiente</Button>
+              <Button
+                onClick={() => setStep((s) => s + 1)}
+                disabled={pairByColumn && csvInspect != null && csvInspect.hasAdjuntoColumn !== true}
+              >
+                Siguiente
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -2322,54 +2710,13 @@ export function CampaignWizard({
               )}
             </div>
 
-            {/* Emparejamiento de adjuntos */}
-            {pairByRecipient && files.length > 0 && csvListInline && (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium">Emparejamiento de adjuntos</p>
-                  <Button type="button" variant="outline" size="sm" onClick={suggestPairingAgain}>Sugerir de nuevo</Button>
-                </div>
-                {recipients.some((r) => { const ix = pairingSelections[r.email.trim().toLowerCase()]; return ix === undefined || ix === null; }) && (
-                  <p className="text-sm text-destructive">Hay destinatarios sin archivo asignado.</p>
-                )}
-                <div className="max-h-72 overflow-auto rounded-md border text-sm">
-                  <table className="w-full text-left">
-                    <thead className="sticky top-0 z-[1] bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/80">
-                      <tr>
-                        <th className="p-2 font-medium">Nombre</th>
-                        <th className="p-2 font-medium">Correo</th>
-                        <th className="p-2 font-medium">Adjunto</th>
-                        <th className="p-2 font-medium w-24">Coincidencia</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recipients.map((r) => {
-                        const k = r.email.trim().toLowerCase();
-                        const idx = pairingSelections[k];
-                        const selStr = typeof idx === 'number' ? String(idx) : '__none__';
-                        const coincide = typeof idx === 'number' ? scoreFileForRecipient(files[idx].name, r).label : '—';
-                        return (
-                          <tr key={k} className="border-t border-border">
-                            <td className="p-2 align-middle">{r.nombre}</td>
-                            <td className="p-2 align-middle text-muted-foreground break-all">{r.email}</td>
-                            <td className="p-2 align-middle min-w-[12rem]">
-                              <Select value={selStr} onValueChange={(v) => setPairingSelections((prev) => ({ ...prev, [k]: v === '__none__' ? null : Number.parseInt(v, 10) }))}>
-                                <SelectTrigger className="h-9 w-full max-w-[min(260px,100%)]"><SelectValue placeholder="Sin archivo" /></SelectTrigger>
-                                <SelectContent className="max-h-60">
-                                  <SelectItem value="__none__">— Sin archivo —</SelectItem>
-                                  {files.map((f, i) => <SelectItem key={`${i}-${f.name}`} value={String(i)}><span className="truncate max-w-[220px]" title={f.name}>{f.name}</span></SelectItem>)}
-                                </SelectContent>
-                              </Select>
-                            </td>
-                            <td className="p-2 align-middle text-xs text-muted-foreground capitalize">{coincide}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+            {/* Emparejamiento de adjuntos (en admin se hace en el paso Adjuntos) */}
+            {!isAdmin && renderPairingTable()}
+            {isAdmin && attachmentsSummary ? (
+              <p className="rounded-md border bg-muted/40 p-3 text-sm">
+                <strong>Adjuntos:</strong> {attachmentsSummary}
+              </p>
+            ) : null}
 
             <CampaignDeliveryPreview canal={canal} preview={deliveryPreview} />
 
@@ -2440,6 +2787,11 @@ export function CampaignWizard({
                 {isEdit ? "Guardar cambios" : "Guardar borrador"}
               </Button>
             </div>
+            {submitting && attachUploadProgress && (
+              <p className="text-sm text-muted-foreground">
+                Subiendo adjuntos: {attachUploadProgress.done.toLocaleString("es-AR")} / {attachUploadProgress.total.toLocaleString("es-AR")}. No cierres esta pestaña.
+              </p>
+            )}
             {submitting && uploadProgress && (
               <p className="text-sm text-muted-foreground">
                 Subiendo destinatarios: {uploadProgress.uploadedChunks} / {uploadProgress.chunkCount}
@@ -2464,6 +2816,11 @@ export function CampaignWizard({
               Estás por enviar {creditNeed.toLocaleString("es-AR")} notificaciones certificadas{usesDailyTanda ? " (lote de hoy)" : ""}. Esta acción no se puede deshacer.
                 </>
               )}
+              {submitting && attachUploadProgress ? (
+                <span className="mt-2 block">
+                  Subiendo adjuntos: {attachUploadProgress.done.toLocaleString("es-AR")} / {attachUploadProgress.total.toLocaleString("es-AR")}. No cierres esta pestaña.
+                </span>
+              ) : null}
               {submitting && uploadProgress ? (
                 <span className="mt-2 block">
                   Subiendo destinatarios: {uploadProgress.uploadedChunks} / {uploadProgress.chunkCount}

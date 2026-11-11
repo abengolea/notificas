@@ -187,6 +187,8 @@ export interface RecipientEntry {
   monto?: string;
   /** Cantidad de cuotas (p. ej. template deuda GOcuotas {{5}}). */
   cuotas?: string;
+  /** Nombre exacto del archivo adjunto de esta persona (columna `adjunto` del CSV). */
+  adjunto?: string;
 }
 
 export interface RecipientList {

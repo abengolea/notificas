@@ -18,6 +18,8 @@ const attachmentSchema = z.object({
 });
 
 const patchSchema = z.object({
+  /** Cada persona recibe el archivo cuyo nombre figura en la columna `adjunto` de su fila. */
+  attachmentsByColumn: z.boolean().optional(),
   adjuntos: z.array(attachmentSchema).max(350).optional(),
   /** `null` borra el emparejamiento por destinatario. */
   adjuntosPorDestinatario: z
@@ -65,6 +67,7 @@ function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
     waUrlButton: data.waUrlButton === true,
     mixedMode: isMixedDeliveryMode(data.mixedMode) ? data.mixedMode : '',
     waTemplateBody: String(data.waTemplateBody || ''),
+    attachmentsByColumn: data.attachmentsByColumn === true,
     adjuntos: Array.isArray(data.adjuntos) ? data.adjuntos : [],
     adjuntosPorDestinatario:
       data.adjuntosPorDestinatario && typeof data.adjuntosPorDestinatario === 'object' && !Array.isArray(data.adjuntosPorDestinatario)
@@ -168,6 +171,7 @@ export async function PATCH(
       d.cuerpo != null ||
       d.canal != null ||
       d.adjuntos != null ||
+      d.attachmentsByColumn != null ||
       d.adjuntosPorDestinatario !== undefined;
     const templateTouched =
       d.waTemplateName != null ||
@@ -190,6 +194,7 @@ export async function PATCH(
     if (d.cuerpo != null) patch.cuerpo = d.cuerpo.trim();
     if (d.canal != null) patch.canal = d.canal as CanalCampaign;
     if (d.adjuntos != null) patch.adjuntos = d.adjuntos;
+    if (d.attachmentsByColumn != null) patch.attachmentsByColumn = d.attachmentsByColumn;
     if (d.adjuntosPorDestinatario === null) patch.adjuntosPorDestinatario = FieldValue.delete();
     else if (d.adjuntosPorDestinatario) patch.adjuntosPorDestinatario = d.adjuntosPorDestinatario;
     const resultingCanal = String(d.canal ?? current.canal ?? 'email');

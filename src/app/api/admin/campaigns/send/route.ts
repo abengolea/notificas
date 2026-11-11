@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { assertAdminSession } from '@/lib/assert-admin-session';
 import { startCampaignTanda } from '@/lib/campaign-start-tanda';
+import { getAdminDb } from '@/lib/firebase-admin';
+import { buildCampaignAttachmentReport } from '@/lib/campaign-attachment-files';
+import { describeAttachmentReportProblem } from '@/lib/campaign-attachment-name';
 
 const bodySchema = z.object({
   campaignId: z.string().min(1),
@@ -18,6 +21,20 @@ export async function POST(request: NextRequest) {
     const parsed = bodySchema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    }
+
+    // Adjunto por columna: no se arranca si alguien se quedaría sin su archivo.
+    const campSnap = await getAdminDb().collection('campaigns').doc(parsed.data.campaignId).get();
+    const camp = campSnap.data();
+    if (camp && camp.attachmentsByColumn === true && camp.simulated !== true) {
+      const report = await buildCampaignAttachmentReport(parsed.data.campaignId);
+      const problem = describeAttachmentReportProblem(report);
+      if (problem) {
+        return NextResponse.json(
+          { error: `No se envió: ${problem} Subí los archivos que faltan o corregí la columna «adjunto» y probá de nuevo.`, report },
+          { status: 409 }
+        );
+      }
     }
 
     const result = await startCampaignTanda({

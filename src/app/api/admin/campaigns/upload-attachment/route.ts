@@ -4,6 +4,7 @@ import { assertAdminSession } from '@/lib/assert-admin-session';
 import { getAdminBucket, getAdminDb } from '@/lib/firebase-admin';
 import { isUnsentCampaign, UNSENT_EDIT_ERROR } from '@/lib/campaign-edit';
 import { CAMPAIGN_ATTACHMENT_MAX_BYTES, CAMPAIGN_ATTACHMENT_MAX_MB } from '@/lib/campaign-attachment-payload';
+import { attachmentFileDocId, saveCampaignAttachmentFile } from '@/lib/campaign-attachment-files';
 import type { CampaignAttachment } from '@/lib/types';
 
 /**
@@ -48,8 +49,12 @@ export async function POST(request: NextRequest) {
     const bytes = Buffer.from(await file.arrayBuffer());
     const hash = createHash('sha256').update(bytes).digest('hex');
     const nombre = file.name || 'adjunto';
+    // Adjunto por columna: el archivo se busca después por su nombre, así que se registra aparte.
+    const byColumn = String(form.get('mode') || '') === 'column';
     const bucket = getAdminBucket();
-    const path = `pdfs/admin/${campaignId}/${Date.now()}_${safeFileName(nombre)}`;
+    const path = byColumn
+      ? `pdfs/admin/${campaignId}/files/${attachmentFileDocId(nombre)}_${safeFileName(nombre)}`
+      : `pdfs/admin/${campaignId}/${Date.now()}_${safeFileName(nombre)}`;
     const token = randomUUID();
 
     await bucket.file(path).save(bytes, {
@@ -68,6 +73,7 @@ export async function POST(request: NextRequest) {
 
     const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
     const attachment: CampaignAttachment = { nombre, url, hash, size: file.size };
+    if (byColumn) await saveCampaignAttachmentFile(campaignId, attachment, path);
     return NextResponse.json({ ok: true, attachment });
   } catch (e) {
     console.error('POST /api/admin/campaigns/upload-attachment', e);

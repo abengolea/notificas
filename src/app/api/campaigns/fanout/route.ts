@@ -310,6 +310,7 @@ async function processFanoutPage(
         recipientMonto: row.monto || null,
         recipientCuotas: presentRecipientValue(row.cuotas) ? recipientValueText(row.cuotas) : null,
         recipientTelefono: row.telefono || null,
+        recipientAdjunto: row.adjunto || null,
         sourceRowHash,
       };
       if (existing.estado === 'error' && !resetErrorIds.has(existing.id)) {
@@ -343,6 +344,7 @@ async function processFanoutPage(
         recipientMonto: row.monto || null,
         recipientCuotas: presentRecipientValue(row.cuotas) ? recipientValueText(row.cuotas) : null,
         recipientTelefono: row.telefono || null,
+        recipientAdjunto: row.adjunto || null,
         sourceRowHash,
         estado: 'pendiente',
         creditApplied: false,

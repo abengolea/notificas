@@ -1,3 +1,4 @@
+import { CSV_ATTACHMENT_COLUMN } from '@/lib/campaign-attachment-name';
 import type { CanalCampaign, RecipientEntry } from '@/lib/types';
 
 const PHONE_E164_RE = /^\+\d{10,15}$/;
@@ -26,7 +27,7 @@ export function recipientValueText(v: unknown): string {
 const CSV_IDENTITY_HEADERS = new Set(['nombre', 'email', 'telefono', 'dni', 'legajo']);
 
 /** Campos de template que sí se persisten si vienen en el CSV. El resto de columnas se ignora. */
-const CSV_TEMPLATE_FIELDS = new Set(['dias', 'fecha', 'monto', 'cuotas', 'area']);
+const CSV_TEMPLATE_FIELDS = new Set(['dias', 'fecha', 'monto', 'cuotas', 'area', CSV_ATTACHMENT_COLUMN]);
 
 function persistCsvFieldKeys(extraColumns: string[] = []): Set<string> {
   const keys = new Set(CSV_TEMPLATE_FIELDS);
@@ -95,6 +96,7 @@ const CSV_SAMPLE_CELL: Record<string, string> = {
   monto: '130000',
   cuotas: '7',
   area: 'Legales',
+  [CSV_ATTACHMENT_COLUMN]: 'recibo_30123456.pdf',
 };
 
 export function csvBaseColumns(canal: CanalCampaign): string[] {
@@ -261,6 +263,10 @@ export type CsvInspectResult = {
   count: number;
   skipped: number;
   sample: string[];
+  /** El encabezado trae la columna `adjunto` (nombre del archivo de cada persona). */
+  hasAdjuntoColumn?: boolean;
+  /** Filas válidas que tienen un nombre en la columna `adjunto`. */
+  adjuntoRows?: number;
 };
 
 /** Recorre el CSV y cuenta filas válidas sin armar el array completo. */
@@ -293,6 +299,8 @@ export async function inspectCampaignCsv(
   const seenPhones = new Set<string>();
   let count = 0;
   let skipped = 0;
+  let adjuntoRows = 0;
+  const hasAdjuntoColumn = cols.headers.includes(CSV_ATTACHMENT_COLUMN);
   const sample: string[] = [];
   for (let r = 1; r < lines.length; r++) {
     const line = lines[r];
@@ -311,6 +319,7 @@ export async function inspectCampaignCsv(
       if (key) seenPhones.add(key);
     }
     count += 1;
+    if (row.adjunto) adjuntoRows += 1;
     if (sample.length < 3) sample.push(row.nombre);
   }
   if (count === 0) {
@@ -321,7 +330,7 @@ export async function inspectCampaignCsv(
       sample: [],
     };
   }
-  return { error: null, count, skipped, sample };
+  return { error: null, count, skipped, sample, hasAdjuntoColumn, adjuntoRows };
 }
 
 export type ParseCsvQuickResult = {

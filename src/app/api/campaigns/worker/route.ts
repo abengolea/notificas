@@ -33,6 +33,7 @@ import { pauseCampaignIfLimit } from '@/lib/campaign-auto-pause';
 import { waitCampaignSendGap } from '@/lib/campaign-send-pace';
 import { completeSimulatedSend, isCampaignSimulated } from '@/lib/campaign-simulate';
 import { presentRecipientValue, recipientValueText } from '@/lib/parse-campaign-csv';
+import { getCampaignAttachmentFile } from '@/lib/campaign-attachment-files';
 import type { CampaignAttachment, RecipientEntry } from '@/lib/types';
 import { registerPublicApiNotification, syncPublicApiNotificationFromMail } from '@/lib/public-api/status-sync';
 
@@ -50,8 +51,14 @@ function verifyWorkerSecret(request: NextRequest): boolean {
   return (request.headers.get('X-Worker-Secret') || '').trim() === secret;
 }
 
-function attachmentsFor(campaign: FirebaseFirestore.DocumentData, emailKey: string): CampaignAttachment[] {
+function attachmentsFor(
+  campaign: FirebaseFirestore.DocumentData,
+  emailKey: string,
+  /** Archivo de la columna `adjunto` de esta fila, ya buscado (solo campañas con adjunto por columna). */
+  columnAttachment?: CampaignAttachment | null
+): CampaignAttachment[] {
   const glob = Array.isArray(campaign.adjuntos) ? (campaign.adjuntos as CampaignAttachment[]) : [];
+  if (columnAttachment) return [...glob, columnAttachment];
   const por = campaign.adjuntosPorDestinatario as Record<string, unknown> | undefined;
   const key = emailKey.trim().toLowerCase();
   let extra: CampaignAttachment[] = [];
@@ -265,7 +272,26 @@ async function processMessage(
     fecha: msg.recipientFecha || undefined,
     monto: msg.recipientMonto || undefined,
     cuotas: presentRecipientValue(msg.recipientCuotas) ? recipientValueText(msg.recipientCuotas) : undefined,
+    adjunto: msg.recipientAdjunto || undefined,
   };
+
+  // Adjunto por columna: sin su archivo la persona no recibe nada. Nunca se manda el aviso sin el documento.
+  let columnAttachment: CampaignAttachment | null = null;
+  if (campaign.attachmentsByColumn === true) {
+    const wanted = String(msg.recipientAdjunto || '').trim();
+    columnAttachment = wanted ? await getCampaignAttachmentFile(campaignId, wanted) : null;
+    if (!columnAttachment) {
+      const code = wanted ? 'ATTACHMENT_FILE_NOT_FOUND' : 'ATTACHMENT_NAME_MISSING';
+      await msgRef.update({
+        estado: 'error',
+        errorCode: code,
+        errorMsg: wanted
+          ? `No se envió: el archivo «${wanted}» no está cargado en la campaña.`
+          : 'No se envió: la fila no tiene nombre de archivo en la columna «adjunto».',
+      });
+      return 'skipped';
+    }
+  }
 
   const orgId = String(msg.orgId || campaign.orgId || '');
   let senderEmail = resolveCampaignSenderEmail({
@@ -308,10 +334,10 @@ async function processMessage(
     recipientName: row.nombre || email.split('@')[0],
     sender: senderDisplay,
     bodyHtml,
-    attachments: attachmentsFor(campaign, email),
+    attachments: attachmentsFor(campaign, email, columnAttachment),
     mode: emailDirect ? 'direct' : CAMPAIGN_MAILBOX_MODE,
   });
-  const adjuntos = attachmentsFor(campaign, email);
+  const adjuntos = attachmentsFor(campaign, email, columnAttachment);
 
   // Crear mail doc si todavía no existe (claim atómico para no duplicar Meta).
   let mailId = typeof msg.mailId === 'string' ? msg.mailId : null;
