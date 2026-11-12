@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Mail, MessageCircle, FileText } from "lucide-react";
 import type { CanalCampaign } from "@/lib/types";
 import type { CampaignDeliveryPreviewResult } from "@/lib/campaign-delivery-preview";
@@ -18,12 +19,31 @@ function withLightScheme(html: string): string {
   return html;
 }
 
+function hashString(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i += 1) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return `${s.length}-${(h >>> 0).toString(36)}`;
+}
+
+/**
+ * Cambiar `srcdoc` de un iframe con sandbox mientras todavía está cargando el anterior puede dejarlo en blanco
+ * (pasa al escribir en la carta: cada tecla cambia el HTML). Por eso se espera a que el texto se asiente y se
+ * monta un iframe nuevo por cada contenido: la primera carga con `srcdoc` ya puesto es la más confiable.
+ */
 function PreviewFrame({ title, html }: { title: string; html: string }) {
+  const [settled, setSettled] = useState(html);
+  useEffect(() => {
+    if (html === settled) return;
+    const t = setTimeout(() => setSettled(html), 250);
+    return () => clearTimeout(t);
+  }, [html, settled]);
+
   return (
     <iframe
+      key={hashString(settled)}
       title={title}
       sandbox=""
-      srcDoc={withLightScheme(html)}
+      srcDoc={withLightScheme(settled)}
       style={{ colorScheme: "light" }}
       className="h-[22rem] w-full border-0 bg-white"
     />
