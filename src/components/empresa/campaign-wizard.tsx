@@ -134,17 +134,21 @@ const CSV_EXTRA_HELP: Record<string, { ej: string; nota: string }> = {
   area: { ej: "Legales", nota: "Área" },
 };
 
-const READER_SUBJECT_PLACEHOLDER = "Notificación para {{nombre}}";
-const READER_BODY_PLACEHOLDER = `Estimado/a {{nombre}},
+const READER_SUBJECT_DEFAULT = "Notificación para {{nombre}}";
+/**
+ * Texto por defecto de la carta del lector. Sale del cuerpo del template de WhatsApp de Notificas
+ * (notificaciones_notificas) y usa solo {{nombre}}, que todo CSV trae: nada de monto, fecha ni días,
+ * que quedarían vacíos si la lista no tiene esas columnas.
+ */
+const READER_BODY_DEFAULT = `Estimado/a {{nombre}},
 
-Le notificamos que registra una comunicación pendiente.
+Le informamos que ha recibido una notificación digital certificada a través de Notificas.com.
 
-DNI: {{dni}}
-Monto: {{monto}}
-Fecha: {{fecha}}
-Días: {{dias}}
+El envío y la apertura de este mensaje quedan registrados.
 
-Esta carta se muestra al abrir el enlace. El envío y la apertura quedan registrados.`;
+Si no reconoce este envío, ignore este mensaje. Consultas: contacto@notificas.com
+
+— Notificas.com`;
 
 function campaignCopyFields(
   canal: CanalCampaign,
@@ -381,8 +385,15 @@ export function CampaignWizard({
     if (currentStepId !== "mensaje" || !mixedMeta || !waReaderLetter) return;
     // «Mismo texto»: el correo es exactamente la plantilla de Meta, no hay carta propia para editar.
     setCuerpo((cur) => (mixedSameText || !cur.trim() ? waReaderLetter : cur));
-    setAsunto((cur) => (cur.trim() ? cur : READER_SUBJECT_PLACEHOLDER));
+    setAsunto((cur) => (cur.trim() ? cur : READER_SUBJECT_DEFAULT));
   }, [currentStepId, mixedMeta, waReaderLetter, mixedSameText]);
+
+  useEffect(() => {
+    if (currentStepId !== "mensaje" || mixedMeta) return;
+    // Template por defecto de Notificas: se arranca con su texto ya cargado (se puede editar), no con un cuadro vacío.
+    setCuerpo((cur) => (cur.trim() ? cur : READER_BODY_DEFAULT));
+    setAsunto((cur) => (cur.trim() ? cur : READER_SUBJECT_DEFAULT));
+  }, [currentStepId, mixedMeta]);
 
   useEffect(() => {
     void fetch(`/api/art/status?orgId=${encodeURIComponent(orgId)}`)
@@ -2250,7 +2261,7 @@ export function CampaignWizard({
       {currentStepId === "mensaje" && (
         <Card>
           <CardHeader>
-            <CardTitle>{mixedEmailDirect ? "Texto del correo" : "Carta del lector"}</CardTitle>
+            <CardTitle>{mixedEmailDirect ? "Texto del correo" : "Mensaje de la notificación"}</CardTitle>
             <CardDescription>
               {mixedSameText
                 ? "El correo lleva exactamente el texto de la plantilla de Meta, igual al de WhatsApp. Acá solo definís el asunto."
@@ -2258,7 +2269,9 @@ export function CampaignWizard({
                   ? "Este texto va completo en el cuerpo del correo. WhatsApp manda la plantilla de Meta con el enlace al lector, que muestra este mismo texto."
                   : mixedMeta && waReaderLetter
                     ? "La carta del lector sale copiada de la plantilla de WhatsApp. Podés dejarla así o editarla. Gmail solo muestra el asunto y el botón de acceso."
-                    : "WhatsApp ya salió de la plantilla de Meta. Acá se arma lo que certifica el correo: el asunto de Gmail y la carta que se ve al abrir el enlace."}
+                    : canal === "email"
+                      ? "El correo lleva el asunto y un botón «Acceder a la notificación». El texto de abajo es la carta que se abre desde ese botón. Mirá la vista previa antes de seguir."
+                      : "WhatsApp sale con la plantilla de Meta. Acá definís el asunto del correo y la carta que se abre desde el botón del correo. Mirá la vista previa antes de seguir."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -2300,7 +2313,7 @@ export function CampaignWizard({
               <Input
                 value={asunto}
                 onChange={(e) => setAsunto(e.target.value)}
-                placeholder={READER_SUBJECT_PLACEHOLDER}
+                placeholder={READER_SUBJECT_DEFAULT}
               />
               <p className="text-xs text-muted-foreground">
                 Lo que aparece en Gmail. Podés usar {`{{nombre}}`}, {`{{dni}}`}, {`{{monto}}`}.
@@ -2321,7 +2334,11 @@ export function CampaignWizard({
             ) : (
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <Label>{mixedEmailDirect ? "Texto del correo y del lector" : "Carta que se ve en el lector"}</Label>
+                <Label>
+                  {mixedEmailDirect
+                    ? "Texto del correo y del lector"
+                    : "Carta que se abre desde el botón del correo"}
+                </Label>
                 <Button
                   type="button"
                   variant="outline"
@@ -2329,29 +2346,42 @@ export function CampaignWizard({
                   onClick={() => {
                     if (waReaderLetter) {
                       setCuerpo(waReaderLetter);
-                      if (!asunto.trim()) setAsunto(READER_SUBJECT_PLACEHOLDER);
+                      if (!asunto.trim()) setAsunto(READER_SUBJECT_DEFAULT);
                       return;
                     }
-                    if (!asunto.trim()) setAsunto(READER_SUBJECT_PLACEHOLDER);
-                    setCuerpo(READER_BODY_PLACEHOLDER);
+                    if (!asunto.trim()) setAsunto(READER_SUBJECT_DEFAULT);
+                    setCuerpo(READER_BODY_DEFAULT);
                   }}
                 >
-                  {waReaderLetter ? "Usar texto de WhatsApp" : "Pegar ejemplo"}
+                  {waReaderLetter ? "Usar texto de WhatsApp" : "Restaurar texto por defecto"}
                 </Button>
               </div>
               <Textarea
                 value={cuerpo}
                 onChange={(e) => setCuerpo(e.target.value)}
                 rows={10}
-                placeholder={waReaderLetter || READER_BODY_PLACEHOLDER}
+                placeholder={waReaderLetter || READER_BODY_DEFAULT}
               />
               <p className="text-xs text-muted-foreground">
                 {waReaderLetter
                   ? "Copiado de la plantilla de Meta. {{1}} ya está pasado a {{nombre}}, {{dni}}, etc. del CSV."
-                  : `Este texto se lacra. Variables del CSV: {{nombre}} {{dni}} {{legajo}} {{monto}} {{fecha}} {{dias}} {{cuotas}}.`}
+                  : `Es el texto por defecto de Notificas: dejalo así o reemplazalo por tu mensaje. Se lacra tal cual lo dejes. Variables del CSV: {{nombre}} {{dni}} {{legajo}} {{monto}} {{fecha}} {{dias}} {{cuotas}}.`}
               </p>
             </div>
             )}
+            {!mixedMeta && !mixedSameText && cuerpo.trim() === READER_BODY_DEFAULT.trim() && (
+              <p className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
+                Estás usando el texto por defecto de Notificas: avisa que hay una notificación certificada, pero no
+                incluye el detalle de tu comunicación. Si querés decir algo concreto, reemplazalo arriba.
+              </p>
+            )}
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Así lo recibe cada persona</p>
+              <p className="text-xs text-muted-foreground">
+                Es lo que va a salir por cada canal con esta configuración. Si está bien, seguí.
+              </p>
+              <CampaignDeliveryPreview canal={canal} preview={deliveryPreview} />
+            </div>
             {!isAdmin && mixedSameText && (
               <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
                 Sin lector no hay dónde abrir adjuntos: esta opción no admite archivos adjuntos.
