@@ -4,12 +4,27 @@ import { Mail, MessageCircle, FileText } from "lucide-react";
 import type { CanalCampaign } from "@/lib/types";
 import type { CampaignDeliveryPreviewResult } from "@/lib/campaign-delivery-preview";
 
+/**
+ * El correo y el lector se diseñan siempre sobre fondo claro. Si la app está en modo oscuro, el iframe hereda
+ * `color-scheme: dark` y el texto sin color explícito se pinta casi blanco sobre el fondo blanco: queda "vacío".
+ * Se fija el esquema claro tanto en el elemento como dentro del documento.
+ */
+const LIGHT_SCHEME_HEAD =
+  '<meta name="color-scheme" content="light"><style>:root{color-scheme:light}html,body{background:#fff;color:#111827}</style>';
+
+function withLightScheme(html: string): string {
+  // Dentro de <head> para conservar el doctype (si no, el navegador pasa a modo quirks).
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => m + LIGHT_SCHEME_HEAD);
+  return html;
+}
+
 function PreviewFrame({ title, html }: { title: string; html: string }) {
   return (
     <iframe
       title={title}
       sandbox=""
-      srcDoc={html}
+      srcDoc={withLightScheme(html)}
+      style={{ colorScheme: "light" }}
       className="h-[22rem] w-full border-0 bg-white"
     />
   );
