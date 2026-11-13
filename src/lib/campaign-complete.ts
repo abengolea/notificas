@@ -10,6 +10,8 @@ export async function maybeCompleteCampaign(
   const campSnap = await campRef.get();
   const campData = campSnap.data() ?? {};
   if (campData.estado === 'completada' || campData.estado === 'cancelada' || campData.estado === 'pausada') return;
+  // Un borrador todavía no empezó a enviar: sin destinatarios cargados también tiene 0 pendientes, y no por eso terminó.
+  if (campData.estado === 'borrador') return;
   const st = (campData.stats || {}) as { pendientes?: number; enviados?: number; total?: number };
   const pendientes = typeof st.pendientes === 'number' ? st.pendientes : 0;
   if (pendientes > 0) return;

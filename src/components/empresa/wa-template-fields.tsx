@@ -25,6 +25,7 @@ import {
   usesNotificasDefaultTemplate,
   waLiteralText,
 } from "@/lib/wa-template-fields";
+import { inferWaTemplateVariables } from "@/lib/meta-message-templates";
 import { fetchMetaApprovedTemplateBody, type WaTemplatesAuthMode } from "@/lib/wa-templates-client";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -69,6 +70,24 @@ export function WaTemplateFields({
   const [fetchingBody, setFetchingBody] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+  /** Solo reemplaza las filas vacías o genéricas (campo_N): lo que el usuario ya eligió no se toca. */
+  function fillGenericVariables(current: string[], body: string): string[] {
+    const inferred = inferWaTemplateVariables(body);
+    const total = Math.max(current.length, inferred.length);
+    return Array.from({ length: total }, (_, i) => {
+      const cur = current[i];
+      const isGeneric = cur === undefined || cur.trim() === "" || /^campo_\d+$/.test(cur.trim());
+      return isGeneric ? inferred[i] || cur || "" : cur;
+    });
+  }
+  const suggested = value.templateBody?.trim()
+    ? fillGenericVariables(value.variables, value.templateBody)
+    : null;
+  const canSuggest =
+    suggested !== null &&
+    suggested.length === value.variables.length &&
+    suggested.some((v, i) => v !== value.variables[i]);
+
   async function pullFromMeta() {
     if (!orgId || !authMode || !value.name.trim()) return;
     setFetchingBody(true);
@@ -79,7 +98,7 @@ export function WaTemplateFields({
         name: value.name.trim(),
         lang: value.lang,
       });
-      set({ templateBody: fetched.body });
+      set({ templateBody: fetched.body, variables: fillGenericVariables(value.variables, fetched.body) });
     } catch (e) {
       setFetchError(e instanceof Error ? e.message : "No se pudo traer el template");
     } finally {
@@ -219,6 +238,23 @@ export function WaTemplateFields({
             </Button>
           )}
         </div>
+        {canSuggest && suggested ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/5 p-2">
+            <p className="text-xs">
+              Leyendo el texto de la plantilla: {suggested.map((v, i) => `{{${i + 1}}} → ${v}`).join(", ")}.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="h-8"
+              disabled={disabled}
+              onClick={() => set({ variables: suggested })}
+            >
+              Completar campos según el texto
+            </Button>
+          </div>
+        ) : null}
         <p className="text-xs text-muted-foreground">{WA_TEMPLATE_HINT}</p>
         <div className="flex items-start gap-3 rounded-md border p-3">
           <Checkbox
@@ -239,13 +275,6 @@ export function WaTemplateFields({
             </p>
           </div>
         </div>
-        {value.name.trim() && (
-          <div className="rounded-md bg-muted/50 p-2 text-xs font-mono text-muted-foreground">
-            Preview de llamada a Meta: template=<strong>{value.name}</strong>, variables=[
-            {value.variables.map((v, i) => `{{${i + 1}}}→${isWaLiteralVar(v) ? `texto «${waLiteralText(v)}»` : v}`).join(", ")}]
-            {value.urlButton ? ", botón URL=sí" : ""}
-          </div>
-        )}
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <Label className="text-xs">Texto del BODY aprobado en Meta</Label>
@@ -273,8 +302,8 @@ export function WaTemplateFields({
           />
           {fetchError ? <p className="text-xs text-destructive">{fetchError}</p> : null}
           <p className="text-xs text-muted-foreground">
-            Copiá el texto tal como está aprobado en Meta, con {`{{1}}`}, {`{{2}}`}… En campañas mixtas el correo
-            muestra este mismo mensaje (no un aviso para hacer clic).
+            Copiá el texto tal como está aprobado en Meta, con {`{{1}}`}, {`{{2}}`}… Con él se muestra cómo sale el
+            mensaje y se arma la carta del lector.
           </p>
         </div>
       </div>

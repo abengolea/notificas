@@ -16,7 +16,7 @@ import {
 const createSchema = z.object({
   orgId: z.string().min(1),
   nombre: z.string().min(2).max(200),
-  asunto: z.string().min(1).max(300),
+  asunto: z.string().max(300),
   cuerpo: z.string().max(20000).optional(),
   canal: z.enum(['email', 'whatsapp', 'ambos']),
   waTemplateName: z.string().max(128).optional(),
@@ -28,6 +28,8 @@ const createSchema = z.object({
   tandaSize: z.number().int().min(0).optional(),
   simulated: z.boolean().optional(),
   notificationType: z.enum(['ORDINARY', 'SRT_ART']).optional(),
+  /** Borrador recién nombrado (paso 1 del wizard): todavía sin asunto, texto ni plantilla. */
+  draft: z.boolean().optional(),
 });
 
 function serializeCampaign(id: string, data: FirebaseFirestore.DocumentData) {
@@ -108,6 +110,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
+    const isDraftStart = parsed.data.draft === true;
+    if (!isDraftStart && !parsed.data.asunto.trim()) {
+      return NextResponse.json({ error: 'Completá el asunto del correo' }, { status: 400 });
+    }
+
     const db = getAdminDb();
     const orgSnap = await db.collection('organizations').doc(parsed.data.orgId).get();
     if (!orgSnap.exists) {
@@ -130,10 +137,10 @@ export async function POST(request: NextRequest) {
     const cuerpo =
       (parsed.data.cuerpo || '').trim() ||
       (canal === 'whatsapp' ? `Notificación por WhatsApp: ${parsed.data.nombre.trim()}` : '');
-    if ((canal === 'email' || canal === 'ambos') && !cuerpo) {
+    if (!isDraftStart && (canal === 'email' || canal === 'ambos') && !cuerpo) {
       return NextResponse.json({ error: 'Completá el cuerpo de la intimación (texto del lector)' }, { status: 400 });
     }
-    if (customWa && !waTemplateBody) {
+    if (!isDraftStart && customWa && !waTemplateBody) {
       return NextResponse.json({ error: 'Falta el texto del template de Meta' }, { status: 400 });
     }
 

@@ -132,7 +132,7 @@ function formatWhatsAppSenderDisplay(senderName, fromEmail) {
 /**
  * Plantilla Meta (3 variables): {{1}} destinatario, {{2}} remitente, {{3}} URL.
  * Sugerencia de cuerpo para alinear con el mensaje libre:
- * "Estimado/a {{1}},\n\nLe informamos que {{2}} le ha enviado una notificación digital certificada a través de Notificas.com.\n\nAcceda al contenido aquí:\n{{3}}\n\nSi no reconoce este envío, ignore este mensaje. Consultas: contacto@notificas.com\n\n— Notificas.com"
+ * "Hola {{1}}, {{2}} te ha enviado una notificación digital certificada. Accede aquí: {{3}} Saludos."
  */
 /**
  * @param {object} opts
@@ -157,7 +157,7 @@ function readerUrlButtonSuffix(readerUrl) {
 }
 
 const WA_DEFAULT_TEMPLATE_BODY =
-  'Estimado/a {{1}},\n\nLe informamos que {{2}} le ha enviado una notificación digital certificada a través de Notificas.com.\n\nAcceda al contenido aquí:\n{{3}}\n\nSi no reconoce este envío, ignore este mensaje. Consultas: contacto@notificas.com\n\n— Notificas.com';
+  'Hola {{1}}, {{2}} te ha enviado una notificación digital certificada. Accede aquí: {{3}} Saludos.';
 
 async function fetchApprovedWhatsAppTemplate(accessToken, wabaId, templateName, templateLang) {
   const waba = String(wabaId || '').trim();

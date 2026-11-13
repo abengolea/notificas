@@ -65,7 +65,7 @@ import {
 } from "@/lib/campaign-attachment-name";
 import { BulkAttachmentPicker } from "@/components/empresa/bulk-attachment-picker";
 import { uploadCampaignCsvInChunks, uploadCampaignRecipients } from "@/lib/upload-campaign-recipients";
-import { csvCamposRequeridos, csvContactColumns, csvPlaceholder, inspectCampaignCsv, parseCsvQuickResult, phoneDigits, presentRecipientValue, recipientValueText } from "@/lib/parse-campaign-csv";
+import { csvCamposRequeridos, csvContactColumns, csvHeaderColumns, csvPlaceholder, inspectCampaignCsv, parseCsvQuickResult, phoneDigits, presentRecipientValue, recipientValueText } from "@/lib/parse-campaign-csv";
 import { WIZARD_INLINE_LIST_MAX } from "@/lib/campaign-recipients";
 import { DEFAULT_TANDA_SIZE } from "@/lib/campaign-tanda";
 import { DailyQuotaField } from "@/components/empresa/daily-quota-field";
@@ -79,6 +79,7 @@ import type { CsvInspectResult } from "@/lib/parse-campaign-csv";
 import { ADMIN_CAMPAIGN_READONLY_ERROR, isUnsentCampaign, toDatetimeLocalValue, UNSENT_EDIT_ERROR } from "@/lib/campaign-edit";
 import { EmpresaEnviosSaldoBanner } from "@/components/empresa/empresa-envios-saldo-banner";
 import {
+  WA_DEFAULT_TEMPLATE_BODY,
   WA_DEFAULT_TEMPLATE_NAME,
   WA_TEMPLATE_DEFAULT_VARS,
   csvColumnsFromWaVariables,
@@ -88,6 +89,7 @@ import {
 import { fieldsFromSavedWaTemplate } from "@/lib/wa-saved-template";
 import {
   DEFAULT_MIXED_DELIVERY_MODE,
+  describeMetaTemplateBody,
   effectiveMixedDeliveryMode,
   isMixedDeliveryMode,
   mixedModeEmailIsDirect,
@@ -103,10 +105,11 @@ import { MixedChannelOptions } from "@/components/empresa/mixed-channel-options"
 import { CampaignPadronPicker, padronRowToRecipient, type PadronRow } from "@/components/empresa/campaign-padron-picker";
 import { SrtAdhesionWarning } from "@/components/art/srt-adhesion-warning";
 
-type WizardStepId = "canal" | "destinatarios" | "mensaje" | "whatsapp" | "adjuntos" | "confirmacion";
+type WizardStepId = "canal" | "entrega" | "destinatarios" | "mensaje" | "whatsapp" | "adjuntos" | "confirmacion";
 
 const WIZARD_STEP_LABELS: Record<WizardStepId, string> = {
   canal: "Canal",
+  entrega: "Entrega",
   destinatarios: "Destinatarios",
   mensaje: "Mensaje",
   whatsapp: "WhatsApp",
@@ -117,10 +120,13 @@ const WIZARD_STEP_LABELS: Record<WizardStepId, string> = {
 /** `withAdjuntosStep`: el panel admin sube los adjuntos en un paso propio; empresa los sube dentro de Mensaje / WhatsApp. */
 function wizardStepIds(canal: CanalCampaign, simulated: boolean, withAdjuntosStep = false): WizardStepId[] {
   const ids: WizardStepId[] = ["canal"];
+  if (canal === "ambos" && !simulated) ids.push("entrega");
   if ((canal === "whatsapp" || canal === "ambos") && !simulated) ids.push("whatsapp");
   if (canal === "email" || canal === "ambos") ids.push("mensaje");
-  ids.push("destinatarios");
+  // Adjuntos antes que Destinatarios: si cada persona lleva su archivo, el CSV tiene que traer la columna «adjunto»
+  // y hay que saberlo antes de armarlo (igual que las columnas de la plantilla de WhatsApp).
   if (withAdjuntosStep) ids.push("adjuntos");
+  ids.push("destinatarios");
   ids.push("confirmacion");
   return ids;
 }
@@ -136,17 +142,17 @@ const CSV_EXTRA_HELP: Record<string, { ej: string; nota: string }> = {
 
 const READER_SUBJECT_DEFAULT = "Notificación para {{nombre}}";
 /**
- * Texto por defecto de la carta del lector. Sale del cuerpo del template de WhatsApp de Notificas
- * (notificaciones_notificas) y usa solo {{nombre}}, que todo CSV trae: nada de monto, fecha ni días,
- * que quedarían vacíos si la lista no tiene esas columnas.
+ * Texto por defecto de la carta del lector, con el mismo tono que el WhatsApp aprobado de Notificas
+ * (notificaciones_notificas: «Hola …, … te ha enviado una notificación digital certificada»). Usa solo
+ * {{nombre}}, que todo CSV trae: nada de monto, fecha ni días, que quedarían vacíos si la lista no tiene esas columnas.
  */
-const READER_BODY_DEFAULT = `Estimado/a {{nombre}},
+const READER_BODY_DEFAULT = `Hola {{nombre}},
 
-Le informamos que ha recibido una notificación digital certificada a través de Notificas.com.
+Te han enviado una notificación digital certificada a través de Notificas.com.
 
 El envío y la apertura de este mensaje quedan registrados.
 
-Si no reconoce este envío, ignore este mensaje. Consultas: contacto@notificas.com
+Si no reconocés este envío, ignorá este mensaje. Consultas: contacto@notificas.com
 
 — Notificas.com`;
 
@@ -155,13 +161,15 @@ function campaignCopyFields(
   nombre: string,
   asunto: string,
   cuerpo: string,
+  /** Solo WhatsApp: el texto de la plantilla (sin el enlace) es lo que muestra el lector. */
+  whatsappReaderLetter = "",
 ) {
   const n = nombre.trim();
   if (canal === "whatsapp") {
     return {
       nombre: n,
       asunto: asunto.trim() || n,
-      cuerpo: cuerpo.trim() || `Notificación por WhatsApp: ${n}`,
+      cuerpo: whatsappReaderLetter.trim() || cuerpo.trim() || `Notificación por WhatsApp: ${n}`,
     };
   }
   return { nombre: n, asunto: asunto.trim(), cuerpo: cuerpo.trim() };
@@ -242,10 +250,17 @@ export function CampaignWizard({
   const [mixedMode, setMixedMode] = useState<MixedDeliveryMode>(DEFAULT_MIXED_DELIVERY_MODE);
   const [waTemplateBody, setWaTemplateBody] = useState("");
   const [campaniaNombre, setCampaniaNombre] = useState("");
+  /** Guardando el borrador al pasar del paso 1. */
+  const [creatingDraft, setCreatingDraft] = useState(false);
+  /** Se llegó a esta edición recién creado el borrador (paso 1): todavía no tiene plantilla elegida. */
+  const [freshDraft, setFreshDraft] = useState(false);
+  const freshDraftStepApplied = useRef(false);
   const [asunto, setAsunto] = useState("");
   const [cuerpo, setCuerpo] = useState("");
   const [files, setFiles] = useState<{ file: File; name: string; size: number }[]>([]);
   const [pairByRecipient, setPairByRecipient] = useState(false);
+  /** Admin: la campaña sale sin adjuntos (opción por defecto del paso Adjuntos). */
+  const [noAttachments, setNoAttachments] = useState(true);
   /** Admin: cada fila del CSV trae en «adjunto» el nombre exacto de su archivo (sirve para listas de cualquier tamaño). */
   const [pairByColumn, setPairByColumn] = useState(false);
   const [columnFiles, setColumnFiles] = useState<File[]>([]);
@@ -308,26 +323,64 @@ export function CampaignWizard({
       : undefined;
   const mixedEmailDirect = mixedModeEmailIsDirect(mixedModeEff);
   const mixedSameText = mixedModeEff === "same_text";
-  /** En campañas mixtas con plantilla propia, el modo define si el botón URL lleva el lector. */
+  /**
+   * En campañas mixtas con plantilla propia, el modo puede apagar el botón (WhatsApp con su propio enlace).
+   * Nunca lo prende solo: si el enlace al lector va en el cuerpo ({{N}} = link del lector) no hay botón,
+   * y forzarlo sacaba esa variable del envío.
+   */
   const waUrlButtonEff =
     mixedModeEff && !usesNotificasDefaultTemplate(waTemplateName)
-      ? mixedModeWhatsAppUsesReader(mixedModeEff)
+      ? mixedModeWhatsAppUsesReader(mixedModeEff) && waUrlButton
       : waUrlButton;
+  /** Con el sobre de Notificas no hay texto cargado a mano: se usa el cuerpo aprobado de notificaciones_notificas. */
+  const waUsesDefault = usesNotificasDefaultTemplate(waTemplateName);
+  const waPreviewBody = waUsesDefault ? WA_DEFAULT_TEMPLATE_BODY : waTemplateBody;
+  const waPreviewVars = waUsesDefault ? [...WA_TEMPLATE_DEFAULT_VARS] : waTemplateVariables;
+  const letterSenderName = (orgNombre || adminOrgs.find((o) => o.id === orgId)?.nombre || "").trim();
+  /**
+   * Carta del lector por defecto en campañas con WhatsApp: el mismo texto que WhatsApp (sin el enlace al lector, que
+   * ya está abierto). Vale con plantilla propia y con el sobre de Notificas.
+   */
   const waReaderLetter = useMemo(
     () =>
-      readerLetterFromMetaTemplate({
-        templateBody: waTemplateBody,
-        variables: waTemplateVariables,
-        urlButton: waUrlButtonEff,
+      canal === "ambos" || canal === "whatsapp"
+        ? readerLetterFromMetaTemplate({
+            templateBody: waPreviewBody,
+            variables: waPreviewVars,
+            urlButton: waUsesDefault ? false : waUrlButtonEff,
+            senderName: letterSenderName || "la empresa",
+          })
+        : "",
+    // waPreviewVars se arma en cada render; sus partes están en las dependencias.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canal, waPreviewBody, waUsesDefault, waTemplateVariables, waUrlButtonEff, letterSenderName]
+  );
+  const waTemplatePreviewText = useMemo(
+    () =>
+      describeMetaTemplateBody({
+        templateBody: waPreviewBody,
+        variables: waPreviewVars,
+        urlButton: waUsesDefault ? false : waUrlButton,
       }),
-    [waTemplateBody, waTemplateVariables, waUrlButtonEff]
+    [waPreviewBody, waPreviewVars, waUsesDefault, waUrlButton]
   );
   const waCsvExtraColumns = useMemo(() => {
     if (!needsWaTemplateStep || usesNotificasDefaultTemplate(waTemplateName)) return [];
     return csvColumnsFromWaVariables(waTemplateVariables);
   }, [needsWaTemplateStep, waTemplateName, waTemplateVariables]);
-  const csvExample = csvPlaceholder(canal, waCsvExtraColumns);
-  const csvRequiredLabel = csvCamposRequeridos(canal, waCsvExtraColumns);
+  const attachChoice: "none" | "global" | "name" | "column" = pairByColumn
+    ? "column"
+    : pairByRecipient
+      ? "name"
+      : noAttachments
+        ? "none"
+        : "global";
+  const csvExtraWithAttachment = useMemo(
+    () => (pairByColumn ? [...waCsvExtraColumns, CSV_ATTACHMENT_COLUMN] : waCsvExtraColumns),
+    [pairByColumn, waCsvExtraColumns]
+  );
+  const csvExample = csvPlaceholder(canal, csvExtraWithAttachment);
+  const csvRequiredLabel = csvCamposRequeridos(canal, csvExtraWithAttachment);
   const csvContactLabel = csvContactColumns(canal).join(", ");
   const stepIds = useMemo(
     () => wizardStepIds(canal, simulated, isAdmin && !simulated),
@@ -382,18 +435,18 @@ export function CampaignWizard({
   }, [pairByColumn, csvAdjuntoNames, existingColumnFileNames, columnFiles]);
 
   useEffect(() => {
-    if (currentStepId !== "mensaje" || !mixedMeta || !waReaderLetter) return;
+    if (currentStepId !== "mensaje" || !waReaderLetter) return;
     // «Mismo texto»: el correo es exactamente la plantilla de Meta, no hay carta propia para editar.
     setCuerpo((cur) => (mixedSameText || !cur.trim() ? waReaderLetter : cur));
     setAsunto((cur) => (cur.trim() ? cur : READER_SUBJECT_DEFAULT));
-  }, [currentStepId, mixedMeta, waReaderLetter, mixedSameText]);
+  }, [currentStepId, waReaderLetter, mixedSameText]);
 
   useEffect(() => {
-    if (currentStepId !== "mensaje" || mixedMeta) return;
+    if (currentStepId !== "mensaje" || waReaderLetter) return;
     // Template por defecto de Notificas: se arranca con su texto ya cargado (se puede editar), no con un cuadro vacío.
     setCuerpo((cur) => (cur.trim() ? cur : READER_BODY_DEFAULT));
     setAsunto((cur) => (cur.trim() ? cur : READER_SUBJECT_DEFAULT));
-  }, [currentStepId, mixedMeta]);
+  }, [currentStepId, waReaderLetter]);
 
   useEffect(() => {
     void fetch(`/api/art/status?orgId=${encodeURIComponent(orgId)}`)
@@ -637,6 +690,96 @@ export function CampaignWizard({
     };
   }, [editCampaignId, isAdmin, orgIdProp]);
 
+  // Borrador recién creado: se abre en el paso siguiente al nombre.
+  useEffect(() => {
+    if (!editCampaignId || loadingCampaign || freshDraftStepApplied.current) return;
+    freshDraftStepApplied.current = true;
+    const paso = Number(new URLSearchParams(window.location.search).get("paso"));
+    if (Number.isFinite(paso) && paso >= 2) {
+      setFreshDraft(true);
+      setStep(paso);
+    }
+  }, [editCampaignId, loadingCampaign]);
+
+  /**
+   * Paso 1 → Siguiente: en una campaña nueva se guarda enseguida como borrador (solo nombre y canal) y se
+   * sigue armando sobre ese borrador, que ya aparece en el listado. En una edición solo se avanza.
+   */
+  async function saveDraftAndContinue() {
+    if (isEdit) {
+      setStep((s) => s + 1);
+      return;
+    }
+    const nombre = campaniaNombre.trim();
+    if (!nombre || creatingDraft) return;
+    setCreatingDraft(true);
+    try {
+      const classification =
+        artModuleOn && (notificationType === "ORDINARY" || notificationType === "SRT_ART")
+          ? { notificationType }
+          : {};
+      let id = "";
+      if (isAdmin) {
+        const res = await fetch("/api/admin/campaigns", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orgId,
+            nombre,
+            asunto: "",
+            cuerpo: "",
+            canal,
+            tandaSize: simulated ? 0 : tandaSize,
+            simulated,
+            draft: true,
+            ...classification,
+          }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(typeof json.error === "string" ? json.error : "No se pudo crear el borrador");
+        }
+        id = String(json.id);
+      } else {
+        const user = auth.currentUser;
+        if (!user) throw new Error("Iniciá sesión de nuevo");
+        const ref = await addDoc(collection(db, "campaigns"), {
+          orgId,
+          createdBy: user.uid,
+          senderUid: user.uid,
+          senderEmail: user.email || "",
+          ...(orgNombre.trim() ? { orgNombre: orgNombre.trim() } : {}),
+          canal,
+          tandaSize,
+          nombre,
+          asunto: "",
+          cuerpo: "",
+          adjuntos: [],
+          recipientListId: null,
+          recipientCount: 0,
+          stats: { total: 0, enviados: 0, leidos: 0, pendientes: 0, errores: 0 },
+          createdAt: serverTimestamp(),
+          estado: "borrador",
+          startedAt: null,
+          ...classification,
+        });
+        id = ref.id;
+      }
+      toast({ title: "Borrador guardado", description: nombre });
+      router.replace(
+        isAdmin ? `/admin/campanas/${id}/editar?paso=2` : `/empresa/${orgId}/campanas/${id}/editar?paso=2`
+      );
+    } catch (e) {
+      toast({
+        title: "No se pudo guardar el borrador",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+      setCreatingDraft(false);
+    }
+  }
+
   async function resolveListRecipients(id: string) {
     if (!id) {
       setRecipients([]);
@@ -677,9 +820,9 @@ export function CampaignWizard({
       sender: campaignSenderDisplay || "la empresa",
       cuerpo,
       waTemplateName,
-      waTemplateBody,
-      waTemplateVariables,
-      waUrlButton: waUrlButtonEff,
+      waTemplateBody: waPreviewBody,
+      waTemplateVariables: waPreviewVars,
+      waUrlButton: waUsesDefault ? false : waUrlButtonEff,
       mixedMode: mixedModeEff,
       row: {
         nombre,
@@ -700,8 +843,9 @@ export function CampaignWizard({
     csvInspect,
     cuerpo,
     waTemplateName,
-    waTemplateBody,
-    waTemplateVariables,
+    waPreviewBody,
+    waPreviewVars,
+    waUsesDefault,
     waUrlButtonEff,
     mixedModeEff,
   ]);
@@ -720,6 +864,13 @@ export function CampaignWizard({
     () => Math.min(WIZARD_INLINE_LIST_MAX, Math.max(12, recipients.length + 25)),
     [recipients.length]
   );
+
+  // Al editar una campaña que ya tiene adjuntos, no arranca en «Sin adjuntos».
+  useEffect(() => {
+    if (existingAttachments.length > 0 || existingPaired || pairByColumn || pairByRecipient) {
+      setNoAttachments(false);
+    }
+  }, [existingAttachments.length, existingPaired, pairByColumn, pairByRecipient]);
 
   useEffect(() => {
     if (!pairByRecipient) {
@@ -954,7 +1105,7 @@ export function CampaignWizard({
     }
     if (!assertNotificationClassification()) return;
     if (!assertRecipientSources()) return;
-    const copy = campaignCopyFields(canal, campaniaNombre, asunto, cuerpo);
+    const copy = campaignCopyFields(canal, campaniaNombre, asunto, cuerpo, waReaderLetter);
     if (!copy.nombre || (needsMensajeStep && !copy.asunto) || (needsMensajeStep && !copy.cuerpo)) {
       toast({
         title: needsMensajeStep ? "Completá nombre interno, asunto y cuerpo" : "Completá el nombre interno de la campaña",
@@ -1021,7 +1172,7 @@ export function CampaignWizard({
       if (sendNow && attachColumnReport && !attachColumnReport.ok) {
         toast({
           title: "Faltan adjuntos",
-          description: `${describeAttachmentReportProblem(attachColumnReport)} Corregilo en el paso «Adjuntos» o guardá como borrador.`,
+          description: `${describeAttachmentReportProblem(attachColumnReport)} Corregilo en «Adjuntos» o «Destinatarios», o guardá como borrador.`,
           variant: "destructive",
         });
         return;
@@ -1222,7 +1373,7 @@ export function CampaignWizard({
     if (!user) return;
     if (!assertNotificationClassification()) return;
     if (!assertRecipientSources()) return;
-    const copy = campaignCopyFields(canal, campaniaNombre, asunto, cuerpo);
+    const copy = campaignCopyFields(canal, campaniaNombre, asunto, cuerpo, waReaderLetter);
     if (!copy.nombre || (needsMensajeStep && !copy.asunto) || (needsMensajeStep && !copy.cuerpo)) {
       toast({
         title: needsMensajeStep ? "Completá nombre interno, asunto y cuerpo" : "Completá el nombre interno de la campaña",
@@ -1576,6 +1727,27 @@ export function CampaignWizard({
     );
   }
 
+  /** CSV de partida: una fila por archivo subido, con la columna «adjunto» ya completa para que se agreguen los datos de cada persona. */
+  function downloadAttachmentCsvTemplate() {
+    const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const headers = csvHeaderColumns(canal, csvExtraWithAttachment);
+    const col = headers.indexOf(CSV_ATTACHMENT_COLUMN);
+    const rows = columnFiles.map((f) => {
+      const cells = headers.map(() => "");
+      if (col >= 0) cells[col] = f.name;
+      return cells.map(esc).join(",");
+    });
+    const blob = new Blob(["﻿" + [headers.join(","), ...rows].join("\n") + "\n"], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "destinatarios-con-adjuntos.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   /** Cruce entre la columna «adjunto» del CSV y los archivos (admin, modo columna). */
   function renderColumnReport() {
     const report = attachColumnReport ?? serverAttachReport;
@@ -1689,11 +1861,25 @@ export function CampaignWizard({
             </ul>
           </div>
         )}
-        <PDFUpload
-          onFileSelect={(fs) => setFiles(fs)}
-          maxFiles={pairByRecipient ? pairingUploadCap : 12}
-          maxSizeMB={CAMPAIGN_ATTACHMENT_MAX_MB}
-        />
+        {isAdmin ? (
+          // El panel admin también acepta un ZIP: se abre en el navegador y cada archivo queda como adjunto.
+          <BulkAttachmentPicker
+            files={files.map((f) => f.file)}
+            onChange={(list) => setFiles(list.map((file) => ({ file, name: file.name, size: file.size })))}
+            maxSizeMB={CAMPAIGN_ATTACHMENT_MAX_MB}
+            maxFiles={pairByRecipient ? pairingUploadCap : 12}
+            disabled={submitting}
+            hint={`Un ZIP o los archivos sueltos. El ZIP se abre en tu navegador. Hasta ${CAMPAIGN_ATTACHMENT_MAX_MB} MB por archivo y ${
+              pairByRecipient ? pairingUploadCap : 12
+            } archivos como máximo.`}
+          />
+        ) : (
+          <PDFUpload
+            onFileSelect={(fs) => setFiles(fs)}
+            maxFiles={pairByRecipient ? pairingUploadCap : 12}
+            maxSizeMB={CAMPAIGN_ATTACHMENT_MAX_MB}
+          />
+        )}
       </>
     );
   }
@@ -1835,10 +2021,22 @@ export function CampaignWizard({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="campania-nombre">Nombre de la campaña</Label>
+              <Input
+                id="campania-nombre"
+                value={campaniaNombre}
+                onChange={(e) => setCampaniaNombre(e.target.value)}
+                placeholder="Ej.: Intimación matrícula noviembre"
+              />
+              <p className="text-xs text-muted-foreground">
+                Es para encontrarla en tu listado. Los destinatarios no lo ven.
+              </p>
+            </div>
             <div className="grid grid-cols-3 gap-3">
               {(
                 [
-                  { value: "email",     label: "Email",     icon: Mail,          desc: "Aviso por correo con enlace al lector certificado" },
+                  { value: "email",     label: "Email",    icon: Mail,          desc: "Aviso por correo con enlace al lector certificado" },
                   { value: "whatsapp",  label: "WhatsApp",  icon: MessageCircle, desc: "Plantilla de Meta; se registra entregado y leído" },
                   { value: "ambos",     label: "Ambos",     icon: Layers,        desc: "Correo al lector + WhatsApp de la empresa" },
                 ] as const
@@ -1886,14 +2084,18 @@ export function CampaignWizard({
             </div>
             )}
             {canal === "ambos" && !simulated && (
-              <MixedChannelOptions
-                forceChoices
-                templateName={waTemplateName}
-                mode={mixedMode}
-                onModeChange={setMixedMode}
-              />
+              <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                Siguiente paso: definís qué recibe cada canal. Después elegís la plantilla de WhatsApp y, al final,
+                armás el correo y la carta que se abre desde el enlace.
+              </p>
             )}
-            <Button onClick={() => setStep((s) => s + 1)} disabled={isAdmin && !orgId}>Siguiente</Button>
+            <Button
+              onClick={() => void saveDraftAndContinue()}
+              disabled={(isAdmin && !orgId) || !campaniaNombre.trim() || creatingDraft}
+            >
+              {creatingDraft ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Siguiente
+            </Button>
           </CardContent>
         </Card>
       )}
@@ -2246,12 +2448,50 @@ export function CampaignWizard({
             {!csvListInline && csvInspect && (
               <p className="text-sm text-muted-foreground rounded-md border bg-muted/40 p-3">
                 Lista grande: no se muestra fila por fila. Al guardar se sube el CSV completo (un archivo).
-                El adjunto distinto por destinatario no está disponible.
+                {isAdmin
+                  ? ` El adjunto emparejado por nombre no está disponible; sí el de la columna «${CSV_ATTACHMENT_COLUMN}».`
+                  : " El adjunto distinto por destinatario no está disponible."}
               </p>
             )}
+            {isAdmin && pairByColumn ? (
+              <div className="space-y-3">
+                {csvInspect && !csvInspect.hasAdjuntoColumn ? (
+                  <p className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+                    Elegiste un archivo distinto por persona, pero el CSV no tiene la columna «{CSV_ATTACHMENT_COLUMN}».
+                    Agregala al encabezado con el nombre exacto de cada archivo (por ejemplo{" "}
+                    <code>recibo_30123456.pdf</code>) y volvé a cargar la lista.
+                  </p>
+                ) : null}
+                {!csvInspect && recipients.length === 0 ? (
+                  <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                    El CSV tiene que traer la columna «{CSV_ATTACHMENT_COLUMN}» con el nombre de archivo de cada fila. Al
+                    cargarlo se ve cuántas personas tienen su archivo.
+                  </p>
+                ) : null}
+                {renderColumnReport()}
+              </div>
+            ) : null}
+            {isAdmin && pairByRecipient ? (
+              <>
+                {files.length === 0 && !existingPaired ? (
+                  <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                    Elegiste emparejar archivos por nombre, pero todavía no subiste ninguno. Volvé a «Adjuntos».
+                  </p>
+                ) : null}
+                {renderPairingTable()}
+              </>
+            ) : null}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
-              <Button onClick={() => setStep((s) => s + 1)} disabled={!recipientTotal}>Siguiente</Button>
+              <Button
+                onClick={() => setStep((s) => s + 1)}
+                disabled={
+                  !recipientTotal ||
+                  (isAdmin && pairByColumn && csvInspect != null && csvInspect.hasAdjuntoColumn !== true)
+                }
+              >
+                Siguiente
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -2267,46 +2507,23 @@ export function CampaignWizard({
                 ? "El correo lleva exactamente el texto de la plantilla de Meta, igual al de WhatsApp. Acá solo definís el asunto."
                 : mixedEmailDirect
                   ? "Este texto va completo en el cuerpo del correo. WhatsApp manda la plantilla de Meta con el enlace al lector, que muestra este mismo texto."
-                  : mixedMeta && waReaderLetter
-                    ? "La carta del lector sale copiada de la plantilla de WhatsApp. Podés dejarla así o editarla. Gmail solo muestra el asunto y el botón de acceso."
+                  : waReaderLetter
+                    ? "La carta del lector arranca con el mismo texto que WhatsApp (sin el enlace). Podés dejarla así o escribir acá el mensaje completo que tiene que leer la persona. Gmail solo muestra el asunto y el botón de acceso."
                     : canal === "email"
                       ? "El correo lleva el asunto y un botón «Acceder a la notificación». El texto de abajo es la carta que se abre desde ese botón. Mirá la vista previa antes de seguir."
                       : "WhatsApp sale con la plantilla de Meta. Acá definís el asunto del correo y la carta que se abre desde el botón del correo. Mirá la vista previa antes de seguir."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {canal === "ambos" && needsWaTemplateStep && (
-              <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground space-y-1">
-                <p>
-                  <strong className="text-foreground">Correo:</strong>{" "}
-                  {mixedEmailDirect
-                    ? "asunto + el texto completo en el cuerpo. Sin enlace al lector."
-                    : "asunto + botón «Acceder a la notificación». No muestra la carta."}
-                </p>
-                <p>
-                  <strong className="text-foreground">Lector:</strong>{" "}
-                  {mixedSameText
-                    ? "no hay. Ningún canal lleva el enlace."
-                    : mixedEmailDirect
-                      ? "se abre solo desde el enlace de WhatsApp y muestra este texto."
-                      : "la carta de abajo. Por defecto es el mismo texto que WhatsApp."}
-                </p>
-                <p>
-                  <strong className="text-foreground">WhatsApp:</strong>{" "}
-                  {!mixedModeWhatsAppUsesReader(mixedModeEff)
-                    ? "la plantilla de Meta tal cual está aprobada (su propio enlace, si tiene)."
-                    : "la plantilla de Meta y el mismo enlace al lector."}
-                </p>
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label>Nombre interno del envío masivo</Label>
-              <Input
-                value={campaniaNombre}
-                onChange={(e) => setCampaniaNombre(e.target.value)}
-                placeholder="Solo lo ves vos en el listado"
-              />
-              <p className="text-xs text-muted-foreground">No lo ve el destinatario.</p>
+            <div className="space-y-1">
+              <p className="text-sm font-semibold">
+                {mixedEmailDirect ? "1. Correo" : "1. Correo (el aviso que llega a la bandeja)"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {mixedEmailDirect
+                  ? "El correo lleva el texto completo, sin enlace al lector."
+                  : "Lleva el asunto y un botón «Acceder a la notificación». La carta no va en el correo."}
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Asunto del correo</Label>
@@ -2333,6 +2550,17 @@ export function CampaignWizard({
               </div>
             ) : (
             <div className="space-y-2">
+              <div className="space-y-1 pt-2">
+                <p className="text-sm font-semibold">
+                  {mixedEmailDirect ? "2. Texto del correo y del lector" : "2. Lector (lo que se abre desde el enlace)"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {mixedEmailDirect
+                    ? "Se abre solo desde el enlace de WhatsApp y muestra este mismo texto."
+                    : "Es la carta certificada: lo que la persona lee al tocar el botón del correo" +
+                      (canal === "ambos" ? " o el enlace de WhatsApp." : ".")}
+                </p>
+              </div>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Label>
                   {mixedEmailDirect
@@ -2364,12 +2592,12 @@ export function CampaignWizard({
               />
               <p className="text-xs text-muted-foreground">
                 {waReaderLetter
-                  ? "Copiado de la plantilla de Meta. {{1}} ya está pasado a {{nombre}}, {{dni}}, etc. del CSV."
+                  ? "Es el texto de WhatsApp sin el enlace. {{1}} ya está pasado a {{nombre}}, {{dni}}, etc. del CSV."
                   : `Es el texto por defecto de Notificas: dejalo así o reemplazalo por tu mensaje. Se lacra tal cual lo dejes. Variables del CSV: {{nombre}} {{dni}} {{legajo}} {{monto}} {{fecha}} {{dias}} {{cuotas}}.`}
               </p>
             </div>
             )}
-            {!mixedMeta && !mixedSameText && cuerpo.trim() === READER_BODY_DEFAULT.trim() && (
+            {!waReaderLetter && !mixedSameText && cuerpo.trim() === READER_BODY_DEFAULT.trim() && (
               <p className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
                 Estás usando el texto por defecto de Notificas: avisa que hay una notificación certificada, pero no
                 incluye el detalle de tu comunicación. Si querés decir algo concreto, reemplazalo arriba.
@@ -2397,7 +2625,7 @@ export function CampaignWizard({
               <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
               <Button
                 onClick={() => setStep((s) => s + 1)}
-                disabled={!asunto.trim() || !campaniaNombre.trim() || !cuerpo.trim()}
+                disabled={!asunto.trim() || !cuerpo.trim()}
               >
                 Siguiente
               </Button>
@@ -2429,10 +2657,18 @@ export function CampaignWizard({
                   </p>
                 )}
                 <RadioGroup
-                  value={pairByColumn ? "column" : pairByRecipient ? "name" : "global"}
+                  value={attachChoice}
                   onValueChange={(v) => {
+                    setNoAttachments(v === "none");
                     setPairByRecipient(v === "name");
                     setPairByColumn(v === "column");
+                    if (v === "none") {
+                      setFiles([]);
+                      setColumnFiles([]);
+                      setExistingAttachments([]);
+                      setExistingPaired(null);
+                      return;
+                    }
                     if (v === "column") setFiles([]);
                     else setColumnFiles([]);
                   }}
@@ -2440,6 +2676,12 @@ export function CampaignWizard({
                 >
                   {(
                     [
+                      {
+                        value: "none",
+                        title: "Sin adjuntos",
+                        desc: "Las personas reciben solo el mensaje.",
+                        disabled: false,
+                      },
                       {
                         value: "global",
                         title: "El mismo archivo para todos",
@@ -2460,7 +2702,7 @@ export function CampaignWizard({
                       },
                     ] as const
                   ).map((o) => {
-                    const selected = (pairByColumn ? "column" : pairByRecipient ? "name" : "global") === o.value;
+                    const selected = attachChoice === o.value;
                     return (
                       <label
                         key={o.value}
@@ -2490,10 +2732,35 @@ export function CampaignWizard({
                         cargar la lista en «Destinatarios».
                       </p>
                     ) : null}
-                    {!csvInspect && recipients.length === 0 && existingColumnFileNames.length === 0 ? (
-                      <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-                        Cargá la lista en «Destinatarios» para ver si cada persona tiene su archivo.
-                      </p>
+                    {!csvInspect && recipients.length === 0 ? (
+                      columnFiles.length === 0 && existingColumnFileNames.length === 0 ? (
+                        <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                          <strong>Paso 1 de 2:</strong> subí el ZIP (o los archivos sueltos) con un documento por persona.
+                          Después, en «Destinatarios», cargás el CSV.
+                        </p>
+                      ) : (
+                        <div className="space-y-2 rounded-md border border-emerald-500/50 bg-emerald-500/5 p-3 text-sm">
+                          <p className="font-medium">
+                            Listo: {(columnFiles.length + existingColumnFileNames.length).toLocaleString("es-AR")}{" "}
+                            {columnFiles.length + existingColumnFileNames.length === 1 ? "archivo reconocido" : "archivos reconocidos"}.
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Ej.:{" "}
+                            {[...existingColumnFileNames, ...columnFiles.map((f) => f.name)].slice(0, 4).join(", ")}
+                            {columnFiles.length + existingColumnFileNames.length > 4 ? "…" : ""}
+                          </p>
+                          <p className="text-xs">
+                            <strong>Paso 2 de 2 (en «Destinatarios»):</strong> el CSV de personas tiene que traer una columna
+                            llamada «{CSV_ATTACHMENT_COLUMN}», con el nombre exacto del archivo de cada fila (con la
+                            extensión, por ejemplo <code>{columnFiles[0]?.name || "recibo_30123456.pdf"}</code>).
+                          </p>
+                          {columnFiles.length > 0 ? (
+                            <Button type="button" variant="outline" size="sm" onClick={downloadAttachmentCsvTemplate}>
+                              Descargar CSV con estos nombres
+                            </Button>
+                          ) : null}
+                        </div>
+                      )
                     ) : null}
                     {existingColumnFileNames.length > 0 ? (
                       <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
@@ -2509,7 +2776,7 @@ export function CampaignWizard({
                     />
                     {renderColumnReport()}
                   </>
-                ) : (
+                ) : attachChoice === "none" ? null : (
                   <>
                     {renderAttachmentsFields("-admin", false)}
                     {pairByRecipient && files.length === 0 && existingPaired ? (
@@ -2517,10 +2784,10 @@ export function CampaignWizard({
                         Se conserva el emparejamiento por destinatario ya guardado. Para cambiarlo, subí los archivos de nuevo.
                       </p>
                     ) : null}
-                    {renderPairingTable()}
-                    {pairByRecipient && files.length > 0 && recipients.length === 0 && csvListInline ? (
+                    {pairByRecipient && files.length > 0 ? (
                       <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-                        Cargá la lista en «Destinatarios» para poder emparejar cada archivo con su persona.
+                        El emparejamiento de cada archivo con su persona se hace en el paso siguiente («Destinatarios»), una
+                        vez cargada la lista.
                       </p>
                     ) : null}
                   </>
@@ -2531,10 +2798,39 @@ export function CampaignWizard({
               <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
               <Button
                 onClick={() => setStep((s) => s + 1)}
-                disabled={pairByColumn && csvInspect != null && csvInspect.hasAdjuntoColumn !== true}
+                disabled={
+                  (attachChoice === "column" && columnFiles.length === 0 && existingColumnFileNames.length === 0) ||
+                  (attachChoice === "global" && files.length === 0 && existingAttachments.length === 0) ||
+                  (attachChoice === "name" && files.length === 0 && !existingPaired)
+                }
               >
                 Siguiente
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* PASO Entrega: qué recibe cada canal (solo campañas mixtas) */}
+      {currentStepId === "entrega" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>¿Qué recibe cada canal?</CardTitle>
+            <CardDescription>
+              Primero definís cómo llega el mensaje. Después elegís la plantilla de WhatsApp y armás el correo y la
+              carta del lector.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <MixedChannelOptions
+              forceChoices
+              templateName={waTemplateName}
+              mode={mixedMode}
+              onModeChange={setMixedMode}
+            />
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
+              <Button onClick={() => setStep((s) => s + 1)}>Siguiente</Button>
             </div>
           </CardContent>
         </Card>
@@ -2552,31 +2848,85 @@ export function CampaignWizard({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {canal === "whatsapp" && (
-              <div className="space-y-2">
-                <Label>Nombre interno del envío masivo</Label>
-                <Input value={campaniaNombre} onChange={(e) => setCampaniaNombre(e.target.value)} />
-              </div>
-            )}
             <OrgWaTemplatePicker
               orgId={orgId}
               mode={isAdmin ? "admin" : "empresa"}
               selectedName={waTemplateName}
-              autoSelect={!isEdit}
+              autoSelect={!isEdit || freshDraft}
               onSelect={applyOrgWaTemplate}
             />
-            {canal === "ambos" && (
-              <MixedChannelOptions
-                templateName={waTemplateName}
-                mode={mixedMode}
-                onModeChange={setMixedMode}
-              />
+            {waTemplatePreviewText && (
+              <section className="overflow-hidden rounded-md border bg-background">
+                <div className="flex items-start gap-2 border-b bg-muted/40 px-3 py-2">
+                  <MessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm font-medium">Así sale por WhatsApp</p>
+                    <p className="text-xs text-muted-foreground">
+                      Los corchetes son las columnas del CSV que completa cada persona.
+                    </p>
+                  </div>
+                </div>
+                <pre className="max-h-56 overflow-auto whitespace-pre-wrap px-3 py-3 text-sm leading-6">
+                  {waTemplatePreviewText}
+                </pre>
+                {waUsesDefault && (
+                  <p className="border-t bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                    Es la plantilla aprobada de Notificas. El enlace de «Accede aquí» abre el lector.
+                  </p>
+                )}
+                {canal === "ambos" && mixedModeEff && !usesNotificasDefaultTemplate(waTemplateName) && (
+                  <p className="border-t bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                    {!mixedModeWhatsAppUsesReader(mixedModeEff)
+                      ? "El enlace de esta plantilla es el propio de Meta: no abre el lector."
+                      : waUrlButton
+                        ? "El botón de la plantilla abre el lector."
+                        : waTemplateVariables.some((v) => v === "url_lectura" || v === "boton_url")
+                          ? "[link del lector] es el enlace que abre el lector."
+                          : "Esta plantilla no tiene enlace al lector."}
+                  </p>
+                )}
+              </section>
             )}
+            {canal === "ambos" &&
+              mixedModeEff &&
+              !usesNotificasDefaultTemplate(waTemplateName) &&
+              mixedModeWhatsAppUsesReader(mixedModeEff) &&
+              !waUrlButton &&
+              !waTemplateVariables.some((v) => v === "url_lectura" || v === "boton_url") && (
+                <p className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
+                  Elegiste que WhatsApp lleve el enlace al lector, pero esta plantilla no lo tiene: ni botón de
+                  enlace ni una variable «link del lector». Agregalo, o elegí «WhatsApp con la plantilla tal cual».
+                </p>
+              )}
+            {canal === "ambos" &&
+              mixedSameText &&
+              !usesNotificasDefaultTemplate(waTemplateName) &&
+              waTemplateVariables.some((v) => v === "url_lectura" || v === "boton_url") && (
+                <p className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
+                  Elegiste «Mismo texto en los dos, sin lector», pero esta plantilla lleva el link del lector. Con
+                  esa opción no hay lector y el enlace quedaría vacío. Elegí otra opción o cambiá esa variable.
+                </p>
+              )}
             {isAdmin ? (
-              <>
+              <details
+                className="rounded-md border p-3"
+                open={
+                  !usesNotificasDefaultTemplate(waTemplateName) &&
+                  (waTemplateVariables.some((v) => isWaTemplateVarEmpty(v)) ||
+                    (mixedMeta && !waTemplateBody.trim()))
+                }
+              >
+                <summary className="cursor-pointer select-none text-sm font-medium">
+                  Ajustar la plantilla
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                    (nombre en Meta, idioma, qué columna va en cada {"{{N}}"}, texto aprobado)
+                  </span>
+                </summary>
+                <div className="space-y-4 pt-4">
             <WaSavedTemplates
               orgId={orgId}
               mode={isAdmin ? "admin" : "empresa"}
+              hideSelector
               current={{
                 name: waTemplateName,
                 lang: waTemplateLang,
@@ -2612,7 +2962,8 @@ export function CampaignWizard({
                 setWaTemplateBody(next.templateBody || "");
               }}
             />
-              </>
+                </div>
+              </details>
             ) : !usesNotificasDefaultTemplate(waTemplateName) ? (
               <p className="text-xs text-muted-foreground">
                 Variables de esta plantilla: {waTemplateVariables.filter(Boolean).join(", ") || "—"}.

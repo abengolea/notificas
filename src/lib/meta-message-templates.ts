@@ -76,6 +76,37 @@ export function countTemplatePlaceholders(body: string): number {
   return max;
 }
 
+/** Reglas: palabra clave junto al {{N}} → campo del CSV. Se prueba primero lo que está antes, luego lo que sigue. */
+const CONTEXT_FIELD_RULES: Array<[RegExp, string]> = [
+  [/\b(dni|documento)\b/i, "dni"],
+  [/\b(legajo|expediente)\b/i, "legajo"],
+  [/\bfecha\b/i, "fecha"],
+  [/\bcuotas?\b/i, "cuotas"],
+  [/\bd[ií]as\b/i, "dias"],
+  [/\b(monto|saldo|importe|total)\b|\$\s*$/i, "monto"],
+  [/\bmatr[ií]cula\b/i, "legajo"],
+];
+
+/** Mira las palabras alrededor de {{n}} para adivinar qué columna del CSV va ahí. Devuelve "" si no hay pista. */
+export function guessFieldFromContext(body: string, n: number): string {
+  const re = new RegExp(String.raw`\{\{\s*${n}\s*\}\}`);
+  const m = re.exec(body);
+  if (!m) return "";
+  const beforeAll = body.slice(0, m.index);
+  const prevPh = beforeAll.lastIndexOf("}}");
+  const before = beforeAll.slice(prevPh >= 0 ? prevPh + 2 : 0).slice(-28);
+  const afterAll = body.slice(m.index + m[0].length);
+  const nextPh = afterAll.indexOf("{{");
+  const after = (nextPh >= 0 ? afterAll.slice(0, nextPh) : afterAll).slice(0, 18);
+  for (const [rule, field] of CONTEXT_FIELD_RULES) {
+    if (rule.test(before)) return field;
+  }
+  for (const [rule, field] of CONTEXT_FIELD_RULES) {
+    if (field !== "monto" && rule.test(after)) return field;
+  }
+  return "";
+}
+
 export function inferWaTemplateVariables(body: string): string[] {
   const n = countTemplatePlaceholders(body);
   if (n <= 0) return [];
@@ -84,7 +115,7 @@ export function inferWaTemplateVariables(body: string): string[] {
   for (let i = 1; i <= n; i += 1) {
     if (i === 1) vars.push("nombre");
     else if (looksLikeLink && i === n) vars.push("url_lectura");
-    else vars.push(`campo_${i}`);
+    else vars.push(guessFieldFromContext(body, i) || `campo_${i}`);
   }
   return vars;
 }

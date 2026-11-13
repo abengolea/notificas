@@ -83,6 +83,8 @@ export function readerLetterFromMetaTemplate(input: {
   templateBody?: string | null;
   variables?: string[] | null;
   urlButton?: boolean;
+  /** Nombre de la empresa: reemplaza a la variable «remitente», que la carta del lector no admite. */
+  senderName?: string;
 }): string {
   const templateBody = String(input.templateBody || "").trim();
   if (!templateBody) return "";
@@ -93,7 +95,81 @@ export function readerLetterFromMetaTemplate(input: {
   const values = fields.map((field) => {
     if (isWaLiteralVar(field)) return waLiteralText(field);
     const f = String(field || "").trim();
+    if (f === "url_lectura" || f === "boton_url") return READER_LINK_MARK;
+    if ((f === "remitente" || f === "empresa") && input.senderName?.trim()) return input.senderName.trim();
     return f ? `{{${f}}}` : "";
+  });
+  return dropReaderLinkLines(fillNumericPlaceholders(templateBody, values)).trim();
+}
+
+/** Marca temporal del enlace al lector dentro del BODY: en el lector no tiene sentido (sería un enlace a sí mismo). */
+const READER_LINK_MARK = "";
+
+/**
+ * Saca de la carta el enlace al lector y la frase que lo anuncia («Lea el documento en el siguiente enlace:»,
+ * «Accede aquí:»). La persona ya está en el lector.
+ */
+function dropReaderLinkLines(text: string): string {
+  if (!text.includes(READER_LINK_MARK)) return text;
+  const lines = text.split("\n");
+  const out: string[] = [];
+  for (const line of lines) {
+    if (!line.includes(READER_LINK_MARK)) {
+      out.push(line);
+      continue;
+    }
+    if (line.split(READER_LINK_MARK).join("").trim() === "") {
+      // La línea era solo el enlace: también cae la frase anterior que termina en «:».
+      while (out.length && out[out.length - 1].trim() === "") out.pop();
+      if (out.length && out[out.length - 1].trim().endsWith(":")) out.pop();
+      continue;
+    }
+    // El enlace va dentro de una frase («… certificada. Accede aquí: {{3}} Saludos.»): se saca solo esa frase.
+    const cleaned = line
+      .replace(new RegExp(String.raw`[^.\n!?]*:\s*` + READER_LINK_MARK, "g"), "")
+      .split(READER_LINK_MARK)
+      .join("")
+      .replace(/[ \t]{2,}/g, " ")
+      .replace(/\s+([.,;])/g, "$1")
+      .trim();
+    if (cleaned) out.push(cleaned);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+const WA_FIELD_LABELS: Record<string, string> = {
+  nombre: "nombre",
+  dni: "DNI",
+  legajo: "legajo",
+  email: "email",
+  telefono: "teléfono",
+  dias: "días",
+  dias_atraso: "días de atraso",
+  fecha: "fecha",
+  monto: "monto",
+  cuotas: "cuotas",
+  area: "área",
+  remitente: "empresa",
+  empresa: "empresa",
+  url_lectura: "link del lector",
+  boton_url: "link del lector",
+};
+
+/** BODY de Meta con cada {{N}} reemplazado por el nombre del campo, p. ej. «Estimado/a [nombre]». Para mostrar la plantilla en el wizard. */
+export function describeMetaTemplateBody(input: {
+  templateBody?: string | null;
+  variables?: string[] | null;
+  urlButton?: boolean;
+}): string {
+  const templateBody = String(input.templateBody || "").trim();
+  if (!templateBody) return "";
+  const fields = (input.variables || []).filter(
+    (field) => !(input.urlButton === true && (field === "url_lectura" || field === "boton_url"))
+  );
+  const values = fields.map((field) => {
+    if (isWaLiteralVar(field)) return waLiteralText(field);
+    const f = String(field || "").trim();
+    return f ? `[${WA_FIELD_LABELS[f] ?? f}]` : "";
   });
   return fillNumericPlaceholders(templateBody, values).trim();
 }
