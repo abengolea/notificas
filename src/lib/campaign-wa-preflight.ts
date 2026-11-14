@@ -14,13 +14,22 @@ export async function assertCampaignWhatsAppVariables(campaign: Record<string, u
   // Ya arrancó: se validó en su primer envío.
   if (campaign.waTemplateSeal) return;
 
-  const useDefault = usesNotificasDefaultTemplate(String(campaign.waTemplateName || ''));
-  const variables = useDefault
-    ? [...WA_TEMPLATE_DEFAULT_VARS]
-    : Array.isArray(campaign.waTemplateVariables)
-      ? (campaign.waTemplateVariables as string[])
-      : [];
-  const urlButton = useDefault ? false : campaign.waUrlButton === true;
+  // Igual que el worker: sin nombre de plantilla se usa la preferida de la empresa (campañas viejas o por API).
+  let tpl = {
+    name: String(campaign.waTemplateName || ''),
+    variables: Array.isArray(campaign.waTemplateVariables) ? (campaign.waTemplateVariables as string[]) : [],
+    urlButton: campaign.waUrlButton === true,
+  };
+  if (!tpl.name.trim()) {
+    const { resolvePreferredOrgWaTemplate } = await import('@/lib/resolve-org-wa-template');
+    const preferred = await resolvePreferredOrgWaTemplate(String(campaign.orgId || ''));
+    if (preferred) {
+      tpl = { name: preferred.templateName, variables: preferred.templateVariables, urlButton: preferred.urlButton === true };
+    }
+  }
+  const useDefault = usesNotificasDefaultTemplate(tpl.name);
+  const variables = useDefault ? [...WA_TEMPLATE_DEFAULT_VARS] : tpl.variables;
+  const urlButton = useDefault ? false : tpl.urlButton;
 
   let rows: RecipientEntry[] = [];
   const storagePath = typeof campaign.recipientStoragePath === 'string' ? campaign.recipientStoragePath : '';

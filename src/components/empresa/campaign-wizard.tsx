@@ -1211,7 +1211,7 @@ export function CampaignWizard({
             asunto: copy.asunto,
             cuerpo: copy.cuerpo,
             canal,
-            waTemplateName: waTemplateName.trim() || "",
+            waTemplateName: canal === "email" ? "" : waTemplateName.trim() || WA_DEFAULT_TEMPLATE_NAME,
             waTemplateLang,
             waTemplateVariables: waTemplateVariables.filter(Boolean),
             waUrlButton: waUrlButtonEff,
@@ -1505,6 +1505,8 @@ export function CampaignWizard({
               ...(waTemplateBody.trim() ? { waTemplateBody: waTemplateBody.trim() } : {}),
             }
           : {
+              // Nombre explícito: vacío significa «sin elegir» y el worker lo reemplaza por otra plantilla de la empresa.
+              waTemplateName: WA_DEFAULT_TEMPLATE_NAME,
               waTemplateLang: waTemplateLang.trim() || "es_AR",
               waUrlButton: false,
             };
@@ -1540,7 +1542,7 @@ export function CampaignWizard({
         await updateDoc(refDoc, {
           ...content,
           ...(canal !== "email" && !customWa
-            ? { waTemplateName: deleteField(), waTemplateVariables: deleteField(), waTemplateBody: deleteField() }
+            ? { waTemplateVariables: deleteField(), waTemplateBody: deleteField() }
             : {}),
           ...(canal !== "ambos" ? { mixedMode: deleteField() } : {}),
           ...(adjuntosPorDestinatario

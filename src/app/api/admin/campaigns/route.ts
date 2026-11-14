@@ -5,7 +5,7 @@ import { assertAdminSession } from '@/lib/assert-admin-session';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { ensureOrgCredits } from '@/lib/org-credits';
 import type { CanalCampaign } from '@/lib/types';
-import { usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
+import { WA_DEFAULT_TEMPLATE_NAME, usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
 import {
   effectiveMixedDeliveryMode,
   isMixedDeliveryMode,
@@ -169,7 +169,14 @@ export async function POST(request: NextRequest) {
             waUrlButton: mixedMode ? mixedModeWhatsAppUsesReader(mixedMode) : parsed.data.waUrlButton === true,
             ...(waTemplateBody ? { waTemplateBody } : {}),
           }
-        : {}),
+        : canal !== 'email'
+          ? {
+              // Plantilla de Notificas elegida a propósito: nombre explícito (vacío = «sin elegir»).
+              waTemplateName: WA_DEFAULT_TEMPLATE_NAME,
+              waTemplateLang: parsed.data.waTemplateLang?.trim() || 'es_AR',
+              waUrlButton: false,
+            }
+          : {}),
       ...(mixedMode ? { mixedMode } : {}),
       senderUid: adminUserId,
       senderEmail: adminUserEmail,

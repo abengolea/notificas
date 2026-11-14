@@ -1,5 +1,5 @@
 import { FieldValue } from 'firebase-admin/firestore';
-import { usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
+import { WA_DEFAULT_TEMPLATE_NAME, usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
 import {
   effectiveMixedDeliveryMode,
   isMixedDeliveryMode,
@@ -26,7 +26,9 @@ export function whatsappTemplateCampaignPatch(input: {
       ? mixedModeWhatsAppUsesReader(mixedMode)
       : input.waUrlButton === true;
   const patch: Record<string, unknown> = {
-    waTemplateName: useDefault ? '' : name,
+    // Elegir la plantilla de Notificas se guarda con su nombre explícito: un nombre vacío significa
+    // «sin elegir» y el worker lo reemplaza por otra plantilla guardada de la empresa.
+    waTemplateName: useDefault ? (name ? WA_DEFAULT_TEMPLATE_NAME : '') : name,
     waTemplateLang: input.waTemplateLang.trim() || 'es_AR',
     waTemplateVariables: useDefault ? [] : input.waTemplateVariables.map((v) => v.trim()).filter(Boolean),
     waUrlButton,
