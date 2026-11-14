@@ -87,6 +87,7 @@ import {
   usesNotificasDefaultTemplate,
 } from "@/lib/wa-template-fields";
 import { fieldsFromSavedWaTemplate } from "@/lib/wa-saved-template";
+import { checkWaVariables } from "@/lib/wa-variables-check";
 import {
   DEFAULT_MIXED_DELIVERY_MODE,
   describeMetaTemplateBody,
@@ -368,6 +369,22 @@ export function CampaignWizard({
     if (!needsWaTemplateStep || usesNotificasDefaultTemplate(waTemplateName)) return [];
     return csvColumnsFromWaVariables(waTemplateVariables);
   }, [needsWaTemplateStep, waTemplateName, waTemplateVariables]);
+  // Meta rechaza cualquier {{N}} vacío: se frena antes de lanzar, no después.
+  const waVarsCheck = useMemo(
+    () =>
+      needsWaTemplateStep
+        ? checkWaVariables({
+            variables: waPreviewVars,
+            urlButton: waUrlButtonEff,
+            rows: recipients,
+            onlyWithPhone: canal === "ambos",
+          })
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [needsWaTemplateStep, waPreviewVars.join("\u0001"), waUrlButtonEff, recipients, canal]
+  );
+  const waVarsBlocked = waVarsCheck != null && !waVarsCheck.ok;
+  const waVarsUnassigned = (waVarsCheck?.problems ?? []).filter((p) => p.kind === "sin_asignar");
   const attachChoice: "none" | "global" | "name" | "column" = pairByColumn
     ? "column"
     : pairByRecipient
@@ -1365,6 +1382,11 @@ export function CampaignWizard({
   }
 
   async function runSubmit(sendNow: boolean) {
+    if (sendNow && waVarsBlocked && waVarsCheck) {
+      toast({ title: "No se puede enviar: faltan datos de WhatsApp", description: waVarsCheck.message, variant: "destructive" });
+      setConfirmOpen(false);
+      return;
+    }
     if (isAdmin) {
       await runSubmitAdmin(sendNow);
       return;
@@ -2481,12 +2503,18 @@ export function CampaignWizard({
                 {renderPairingTable()}
               </>
             ) : null}
+            {waVarsBlocked && waVarsCheck ? (
+              <p className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+                No se puede seguir: WhatsApp rechaza los mensajes con variables vacías. {waVarsCheck.message}
+              </p>
+            ) : null}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
               <Button
                 onClick={() => setStep((s) => s + 1)}
                 disabled={
                   !recipientTotal ||
+                  waVarsBlocked ||
                   (isAdmin && pairByColumn && csvInspect != null && csvInspect.hasAdjuntoColumn !== true)
                 }
               >
@@ -2982,6 +3010,15 @@ export function CampaignWizard({
                   Hay un {"{{N}}"} sin campo. Un valor vacío hace fallar el envío (error 131008).
                 </p>
               )}
+            {waVarsUnassigned.length > 0 &&
+              !waTemplateVariables.some((v) => isWaTemplateVarEmpty(v)) && (
+                <p className="text-sm text-destructive">
+                  {waVarsUnassigned.map((p) => `La variable {{${p.n}}} todavía no tiene un dato asignado.`).join(" ")}{" "}
+                  {isAdmin
+                    ? "Abrí «Ajustar la plantilla» y elegí qué columna va en cada una, o usá «Completar campos según el texto»."
+                    : "Pedile al administrador que complete el mapeo de la plantilla."}
+                </p>
+              )}
             {mixedMeta && !waTemplateBody.trim() && (
               <p className="text-sm text-destructive">
                 {isAdmin
@@ -3000,6 +3037,7 @@ export function CampaignWizard({
                   (canal === "whatsapp" && !campaniaNombre.trim()) ||
                   (!usesNotificasDefaultTemplate(waTemplateName) &&
                     waTemplateVariables.some((v) => isWaTemplateVarEmpty(v))) ||
+                  waVarsUnassigned.length > 0 ||
                   (mixedMeta && !waTemplateBody.trim())
                 }
               >
@@ -3158,9 +3196,15 @@ export function CampaignWizard({
               ) : null}
             </div>
 
+            {waVarsBlocked && waVarsCheck ? (
+              <p className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+                No se puede enviar: WhatsApp rechaza los mensajes con variables vacías. {waVarsCheck.message} Podés guardar
+                el borrador y corregirlo después.
+              </p>
+            ) : null}
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
-              <Button variant="secondary" disabled={submitting} onClick={() => setConfirmOpen(true)}>
+              <Button variant="secondary" disabled={submitting || waVarsBlocked} onClick={() => setConfirmOpen(true)}>
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 {simulated ? "Simular ahora" : "Enviar ahora"}
               </Button>

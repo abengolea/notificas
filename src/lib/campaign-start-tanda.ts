@@ -7,6 +7,7 @@ import { sealCampaignWhatsAppTemplate } from '@/lib/wa-template-seal';
 import { scheduleNextDailySend } from '@/lib/campaign-daily';
 import { pauseCampaignIfLimit } from '@/lib/campaign-auto-pause';
 import { resolveCampaignSenderEmail } from '@/lib/campaign-sender';
+import { assertCampaignWhatsAppVariables } from '@/lib/campaign-wa-preflight';
 import type { RecipientEntry } from '@/lib/types';
 
 export type StartTandaOk = {
@@ -111,6 +112,8 @@ export async function startCampaignTanda(params: {
   if (typeof params.maxRecipients === 'number' && total > params.maxRecipients) {
     throw Object.assign(new Error(`Máximo ${params.maxRecipients} destinatarios para este plan`), { status: 400 });
   }
+
+  await assertCampaignWhatsAppVariables(campaign);
 
   const orgId = String(campaign.orgId || '');
   if (orgId) {

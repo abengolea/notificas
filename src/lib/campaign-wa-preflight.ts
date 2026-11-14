@@ -1,0 +1,46 @@
+import { getAdminBucket } from '@/lib/firebase-admin';
+import { checkWaVariables } from '@/lib/wa-variables-check';
+import { WA_TEMPLATE_DEFAULT_VARS, usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
+import type { RecipientEntry } from '@/lib/types';
+
+/**
+ * Antes del primer envío: cada {{N}} del template de WhatsApp tiene que tener dato.
+ * Si no, Meta rechaza todos los mensajes (131008) y la campaña se quema en errores.
+ * Lanza un error 409 con el detalle si falta algo.
+ */
+export async function assertCampaignWhatsAppVariables(campaign: Record<string, unknown>): Promise<void> {
+  const canal = String(campaign.canal || 'email');
+  if (canal === 'email' || campaign.simulated === true) return;
+  // Ya arrancó: se validó en su primer envío.
+  if (campaign.waTemplateSeal) return;
+
+  const useDefault = usesNotificasDefaultTemplate(String(campaign.waTemplateName || ''));
+  const variables = useDefault
+    ? [...WA_TEMPLATE_DEFAULT_VARS]
+    : Array.isArray(campaign.waTemplateVariables)
+      ? (campaign.waTemplateVariables as string[])
+      : [];
+  const urlButton = useDefault ? false : campaign.waUrlButton === true;
+
+  let rows: RecipientEntry[] = [];
+  const storagePath = typeof campaign.recipientStoragePath === 'string' ? campaign.recipientStoragePath : '';
+  if (storagePath) {
+    const chunks = typeof campaign.recipientChunkCount === 'number' ? campaign.recipientChunkCount : 0;
+    const bucket = getAdminBucket();
+    for (let i = 0; i < chunks; i += 1) {
+      const [content] = await bucket.file(`${storagePath}/chunk_${i}.json`).download();
+      const part = JSON.parse(content.toString('utf-8'));
+      if (Array.isArray(part)) rows = rows.concat(part as RecipientEntry[]);
+    }
+  } else if (Array.isArray(campaign.recipientData)) {
+    rows = campaign.recipientData as RecipientEntry[];
+  }
+
+  const check = checkWaVariables({ variables, urlButton, rows, onlyWithPhone: canal === 'ambos' });
+  if (!check.ok) {
+    throw Object.assign(
+      new Error(`No se envió: WhatsApp rechaza los mensajes con variables vacías. ${check.message}`),
+      { status: 409 }
+    );
+  }
+}
