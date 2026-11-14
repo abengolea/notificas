@@ -97,6 +97,7 @@ export function buildCampaignDeliveryPreview(
           senderName: input.sender,
           recipientName: sampleName,
           phone: input.row.telefono,
+          readerUrl: "[enlace al lector]",
         })
       : "";
 

@@ -75,3 +75,14 @@ test("usa el mapeo conocido del Colegio y resume solo aprobadas", () => {
   assert.equal(list[0].urlButton, true);
   assert.equal(list[1].variableCount, 2);
 });
+
+test("infiere dni, fecha, monto y cuotas leyendo el texto alrededor de cada {{N}}", () => {
+  const vars = inferWaTemplateVariables(
+    "Hola {{1}}, DNI {{2}}.\n\nLe informamos que, a la fecha {{3}}, su cuenta registra un saldo pendiente de ${{4}}, correspondiente a {{5}} cuota(s) vencida(s) e impaga(s)."
+  );
+  assert.deepEqual(vars, ["nombre", "dni", "fecha", "monto", "cuotas"]);
+});
+
+test("sin pista en el texto deja campo_N", () => {
+  assert.deepEqual(inferWaTemplateVariables("Hola {{1}}, su código es {{2}}."), ["nombre", "campo_2"]);
+});

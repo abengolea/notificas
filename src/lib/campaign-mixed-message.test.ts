@@ -221,3 +221,25 @@ test("correo directo: texto completo, sin botón ni enlace al lector", () => {
   assert.doesNotMatch(html, /El enlace se agregará/);
   assert.doesNotMatch(html, /disponible en el enlace/);
 });
+
+test("la carta del lector no repite el enlace al propio lector ni la frase que lo anuncia", () => {
+  const letter = readerLetterFromMetaTemplate({
+    templateBody:
+      "Estimado/a {{1}},\n\nEl Colegio le envía una intimación.\n\nLea el documento completo en el siguiente enlace:\n\n{{2}}\n\nLa lectura queda registrada.",
+    variables: ["nombre", "url_lectura"],
+    urlButton: false,
+  });
+  assert.equal(
+    letter,
+    "Estimado/a {{nombre}},\n\nEl Colegio le envía una intimación.\n\nLa lectura queda registrada."
+  );
+});
+
+test("el sobre de Notificas como carta: sale el texto de WhatsApp sin el «Accede aquí» ni el enlace, con la empresa", () => {
+  const letter = readerLetterFromMetaTemplate({
+    templateBody: "Hola {{1}}, {{2}} te ha enviado una notificación digital certificada. Accede aquí: {{3}} Saludos.",
+    variables: ["nombre", "remitente", "url_lectura"],
+    senderName: "Colegio de Abogados",
+  });
+  assert.equal(letter, "Hola {{nombre}}, Colegio de Abogados te ha enviado una notificación digital certificada. Saludos.");
+});

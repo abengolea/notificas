@@ -82,11 +82,17 @@ export function BulkAttachmentPicker({
   onChange,
   maxSizeMB,
   disabled,
+  maxFiles,
+  hint,
 }: {
   files: File[];
   onChange: (files: File[]) => void;
   maxSizeMB: number;
   disabled?: boolean;
+  /** Tope de archivos (cuenta los que salen de un ZIP). Sin tope, no se limita. */
+  maxFiles?: number;
+  /** Texto bajo el título; por defecto el de la modalidad «según la columna». */
+  hint?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -100,8 +106,14 @@ export function BulkAttachmentPicker({
     try {
       const expanded = await expandToFiles(Array.from(list));
       const merged = mergeBulkFiles(files, expanded, maxSizeMB * 1024 * 1024);
-      setRejected(merged.rejected);
-      onChange(merged.files);
+      const rejectedAll = [...merged.rejected];
+      let kept = merged.files;
+      if (maxFiles != null && kept.length > maxFiles) {
+        rejectedAll.push(`Se agregaron los primeros ${maxFiles}: el máximo es ${maxFiles} archivos.`);
+        kept = kept.slice(0, maxFiles);
+      }
+      setRejected(rejectedAll);
+      onChange(kept);
     } catch {
       setError("No se pudo leer el ZIP. Revisá que no esté dañado ni protegido con contraseña.");
     } finally {
@@ -132,7 +144,7 @@ export function BulkAttachmentPicker({
         {busy ? <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /> : <FileArchive className="h-6 w-6 text-muted-foreground" />}
         <p className="text-sm font-medium">Arrastrá acá un ZIP o todos los archivos</p>
         <p className="text-xs text-muted-foreground">
-          El ZIP se abre en tu navegador. Hasta {maxSizeMB} MB por archivo. Los nombres tienen que ser los de la columna «adjunto».
+          {hint ?? `El ZIP se abre en tu navegador. Hasta ${maxSizeMB} MB por archivo. Los nombres tienen que ser los de la columna «adjunto».`}
         </p>
         <input
           ref={inputRef}

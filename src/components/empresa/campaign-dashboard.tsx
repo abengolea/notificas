@@ -1447,6 +1447,7 @@ export const CampaignDashboard = forwardRef<
                   <WaSavedTemplates
                     orgId={orgId}
                     mode={mode}
+                    hideSelector
                     current={{
                       name: tplName,
                       lang: tplLang,

@@ -753,6 +753,7 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
                   <WaSavedTemplates
                     orgId={c.orgId}
                     mode="admin"
+                    hideSelector
                     disabled={!canEditTpl}
                     current={{
                       name: templateName,

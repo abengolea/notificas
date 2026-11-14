@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookmarkPlus, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,7 @@ export function WaSavedTemplates({
   disabled,
   autoApply = false,
   reloadKey = 0,
+  hideSelector = false,
 }: {
   orgId: string;
   mode: WaTemplatesAuthMode;
@@ -43,6 +44,11 @@ export function WaSavedTemplates({
   disabled?: boolean;
   autoApply?: boolean;
   reloadKey?: number;
+  /**
+   * Cuando arriba ya hay un selector de plantilla (OrgWaTemplatePicker), este bloque no repite la lista:
+   * solo guarda, actualiza o quita el mapeo de la plantilla que está elegida.
+   */
+  hideSelector?: boolean;
 }) {
   const { toast } = useToast();
   const [items, setItems] = useState<SavedWaTemplate[]>([]);
@@ -70,13 +76,28 @@ export function WaSavedTemplates({
     }
   }, [mode, orgId, toast]);
 
+  const matchedId = useMemo(() => {
+    const name = current.name.trim().toLowerCase();
+    if (!name) return "";
+    const same = items.filter((t) => t.templateName.toLowerCase() === name);
+    return same.find((t) => t.id === selectedId)?.id || same[0]?.id || "";
+  }, [items, current.name, selectedId]);
+
+  // Con el selector oculto, lo elegido arriba manda: seguimos esa plantilla y su nombre guardado.
+  useEffect(() => {
+    if (!hideSelector) return;
+    setSelectedId(matchedId);
+    const item = items.find((t) => t.id === matchedId);
+    setLabel(item ? item.label : "");
+  }, [hideSelector, matchedId, items]);
+
   useEffect(() => {
     if (!orgId) return;
     let cancelled = false;
     void (async () => {
       const list = (await refresh()) || [];
       if (cancelled) return;
-      if (!autoApply || usesNotificasDefaultTemplate(current.name) === false) return;
+      if (hideSelector || !autoApply || usesNotificasDefaultTemplate(current.name) === false) return;
       const lastId = typeof window !== "undefined" ? window.localStorage.getItem(lastUsedWaTemplateKey(orgId)) : null;
       const last = lastId ? list.find((t) => t.id === lastId) : undefined;
       const chosen =
@@ -189,12 +210,15 @@ export function WaSavedTemplates({
 
   if (!orgId) return null;
 
-  return (
-    <div className="rounded-md border bg-muted/30 p-3 space-y-3">
+  const content = (
+    <>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium">Templates guardados de la organización</p>
+        <p className="text-xs font-medium">
+          {hideSelector ? "Mapeo de esta plantilla" : "Templates guardados de la organización"}
+        </p>
         {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
       </div>
+      {!hideSelector && (
       <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
         <div className="space-y-1">
           <Label className="text-xs">Cargar mapeo</Label>
@@ -237,6 +261,7 @@ export function WaSavedTemplates({
           </Button>
         ) : null}
       </div>
+      )}
       <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
         <div className="space-y-1">
           <Label className="text-xs">Nombre para reconocer</Label>
@@ -252,10 +277,36 @@ export function WaSavedTemplates({
           {busy ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <BookmarkPlus className="h-4 w-4 mr-1" />}
           {selectedId ? "Actualizar" : "Guardar mapeo"}
         </Button>
+        {hideSelector && selectedId ? (
+          <Button
+            type="button"
+            variant="ghost"
+            className="text-destructive h-9"
+            disabled={disabled || busy}
+            onClick={() => void removeSelected()}
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            Quitar
+          </Button>
+        ) : null}
       </div>
       <p className="text-xs text-muted-foreground">
         Guarda el nombre de Meta, el idioma y qué campo va en cada {"{{N}}"}. No cambia el template en Business Manager.
       </p>
-    </div>
+    </>
   );
+
+  if (hideSelector) {
+    return (
+      <details className="group rounded-md border bg-muted/30 p-3">
+        <summary className="cursor-pointer select-none text-xs font-medium">
+          {selectedId ? "Actualizar el mapeo guardado de esta plantilla" : "Guardar este mapeo para la próxima campaña"}
+          <span className="ml-1 font-normal text-muted-foreground">(opcional)</span>
+        </summary>
+        <div className="space-y-3 pt-3">{content}</div>
+      </details>
+    );
+  }
+
+  return <div className="rounded-md border bg-muted/30 p-3 space-y-3">{content}</div>;
 }
