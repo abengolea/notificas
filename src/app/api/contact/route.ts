@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { sendEmailCfHeaders } from "@/lib/cf-send-auth";
+import { clientIp, consumeArtPublicRateLimit } from "@/lib/art/http";
+import {
+  CONTACT_FORM_CLIENT_HEADER,
+  CONTACT_LIMIT_PER_HOUR,
+  contactRateLimitKey,
+  evaluateContactSpam,
+  hasContactFormClientHeader,
+} from "@/lib/contact-form-guard";
 import { countryName } from "@/lib/marketing/countries";
 import { createMailDocumentAdmin } from "@/lib/email-server";
 import {
@@ -53,7 +61,13 @@ const bodySchema = z.object({
   tipoOrganizacion: tipoOrganizacionSchema.optional(),
   finalidade: z.array(finalidadeSchema).max(6).optional().default([]),
   aceptoPrivacidad: z.boolean().optional().default(false),
+  website: z.string().max(400).optional().default(""),
+  formStartedAt: z.number().finite().optional(),
 });
+
+function silentOk() {
+  return NextResponse.json({ ok: true as const });
+}
 
 const CANAL_LABEL: Record<"whatsapp" | "email" | "ambos", string> = {
   whatsapp: "WhatsApp",
@@ -70,6 +84,10 @@ function escapeHtml(s: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  if (!hasContactFormClientHeader(request.headers.get(CONTACT_FORM_CLIENT_HEADER))) {
+    return silentOk();
+  }
+
   let json: unknown;
   try {
     json = await request.json();
@@ -109,7 +127,49 @@ export async function POST(request: NextRequest) {
     finalidade,
     aceptoPrivacidad,
     pais,
+    website,
+    formStartedAt,
   } = parsed.data;
+
+  const spam = evaluateContactSpam({
+    website,
+    formStartedAt,
+    nombre,
+    apellido,
+    email,
+    mensaje,
+    compania,
+  });
+  if (spam.drop) {
+    console.info("[contact] dropped", spam.reason);
+    return silentOk();
+  }
+
+  try {
+    const limited = await consumeArtPublicRateLimit({
+      key: contactRateLimitKey(clientIp(request)),
+      limit: CONTACT_LIMIT_PER_HOUR,
+      windowSeconds: 3600,
+    });
+    if (!limited.ok) {
+      return NextResponse.json(
+        {
+          error:
+            mercado === "BR"
+              ? "Muitos envios. Tente de novo mais tarde."
+              : mercado === "CO"
+                ? "Demasiados envíos. Intente de nuevo más tarde."
+                : "Demasiados envíos. Probá de nuevo más tarde.",
+        },
+        { status: 429, headers: { "Retry-After": String(limited.retryAfter) } }
+      );
+    }
+  } catch (e) {
+    console.warn(
+      "[contact] rate limit no disponible:",
+      e instanceof Error ? e.message : e
+    );
+  }
 
   if (mercado === "CO" && !aceptoPrivacidad) {
     return NextResponse.json(

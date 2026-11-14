@@ -15,6 +15,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ContactFormBotFields, useContactFormGuard } from "@/components/contact-form-bot-fields";
 
 const CONTACT_EMAIL = "contacto@notificas.com";
 
@@ -29,6 +30,7 @@ type CanalCotizacion = "" | "whatsapp" | "email" | "ambos";
 
 function ContactForm({ variant }: { variant: ContactFormVariant }) {
   const { toast } = useToast();
+  const guard = useContactFormGuard();
   const isQuote = variant === "quote";
   const [nombre, setNombre] = useState("");
   const [compania, setCompania] = useState("");
@@ -75,8 +77,8 @@ function ContactForm({ variant }: { variant: ContactFormVariant }) {
     try {
       const res = await fetch("/api/contact", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        headers: guard.headers(),
+        body: guard.body({
           nombre: n,
           compania: c,
           email: em,
@@ -130,7 +132,8 @@ function ContactForm({ variant }: { variant: ContactFormVariant }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+    <form onSubmit={handleSubmit} className="relative space-y-4" noValidate>
+      <ContactFormBotFields id={`${variant}-website`} inputRef={guard.websiteRef} />
       <div className={isQuote ? "grid gap-4 sm:grid-cols-2" : "space-y-4"}>
         <div>
           <Label htmlFor={`${variant}-nombre`} className={labelClass}>

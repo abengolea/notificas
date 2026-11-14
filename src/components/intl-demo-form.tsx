@@ -16,12 +16,14 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { COLOMBIA_PRIVACY_PATH } from "@/lib/colombia-site";
 import { MARKETING_COUNTRIES } from "@/lib/marketing/countries";
+import { ContactFormBotFields, useContactFormGuard } from "@/components/contact-form-bot-fields";
 
 const fieldClass =
   "border-white/25 bg-white/10 text-white placeholder:text-white/55 ring-offset-[hsl(208_38%_20%)]";
 
 export function IntlDemoForm() {
   const { toast } = useToast();
+  const guard = useContactFormGuard();
   const [nombre, setNombre] = useState("");
   const [compania, setCompania] = useState("");
   const [email, setEmail] = useState("");
@@ -54,8 +56,8 @@ export function IntlDemoForm() {
       const mercado = pais === "BR" || pais === "CO" ? pais : "AR";
       const res = await fetch("/api/contact", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        headers: guard.headers(),
+        body: guard.body({
           nombre: nombre.trim(),
           compania: compania.trim(),
           email: email.trim(),
@@ -97,7 +99,8 @@ export function IntlDemoForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4" noValidate>
+    <form onSubmit={onSubmit} className="relative space-y-4" noValidate>
+      <ContactFormBotFields id="intl-website" inputRef={guard.websiteRef} />
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <Label htmlFor="intl-nombre" className="mb-1.5 block text-sm text-white">

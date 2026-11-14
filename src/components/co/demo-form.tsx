@@ -25,6 +25,7 @@ import {
   type ColombiaVolumeValue,
 } from "@/lib/colombia-site";
 import { cn } from "@/lib/utils";
+import { ContactFormBotFields, useContactFormGuard } from "@/components/contact-form-bot-fields";
 
 const CONTACT_EMAIL = "contacto@notificas.com";
 const inputClass = "border-input bg-background dark:border-white/20 dark:bg-transparent";
@@ -53,6 +54,7 @@ function FieldLabel({
 export function DemoForm() {
   const copy = colombiaCopy.demo;
   const { toast } = useToast();
+  const guard = useContactFormGuard();
   const [nombre, setNombre] = useState("");
   const [apellido, setApellido] = useState("");
   const [empresa, setEmpresa] = useState("");
@@ -105,8 +107,8 @@ export function DemoForm() {
     try {
       const res = await fetch("/api/contact", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        headers: guard.headers(),
+        body: guard.body({
           nombre: first,
           apellido: last,
           compania: company,
@@ -168,9 +170,10 @@ export function DemoForm() {
 
         <form
           onSubmit={handleSubmit}
-          className="rounded-lg border border-border bg-card p-5 sm:p-8"
+          className="relative rounded-lg border border-border bg-card p-5 sm:p-8"
           noValidate
         >
+          <ContactFormBotFields id="co-website" inputRef={guard.websiteRef} />
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <FieldLabel htmlFor="co-nombre">{copy.fields.nombre}</FieldLabel>

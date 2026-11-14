@@ -22,6 +22,7 @@ import {
   type BrazilVolumeValue,
 } from "@/lib/brazil-site";
 import { cn } from "@/lib/utils";
+import { ContactFormBotFields, useContactFormGuard } from "@/components/contact-form-bot-fields";
 
 const CONTACT_EMAIL = "contacto@notificas.com";
 
@@ -51,6 +52,7 @@ function FieldLabel({
 
 export function BrazilQuoteForm() {
   const { toast } = useToast();
+  const guard = useContactFormGuard();
   const [empresa, setEmpresa] = useState("");
   const [cnpj, setCnpj] = useState("");
   const [nome, setNome] = useState("");
@@ -129,8 +131,8 @@ export function BrazilQuoteForm() {
     try {
       const res = await fetch("/api/contact", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        headers: guard.headers(),
+        body: guard.body({
           nombre: person,
           compania: company,
           email: em,
@@ -142,7 +144,7 @@ export function BrazilQuoteForm() {
           cnpj: cnpj.trim(),
           cargo: cargo.trim(),
           finalidade,
-          mensagem: mensagem.trim(),
+          mensaje: mensagem.trim(),
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -189,7 +191,8 @@ export function BrazilQuoteForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+    <form onSubmit={handleSubmit} className="relative space-y-4" noValidate>
+      <ContactFormBotFields id="br-website" inputRef={guard.websiteRef} />
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <FieldLabel htmlFor="br-empresa">Empresa</FieldLabel>
