@@ -1,3 +1,4 @@
+import { describeDelivery, type DeliveryFacts } from '@/lib/campaign-delivery-facts';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
@@ -490,6 +491,8 @@ export type ActaDestinatarioInput = {
     buttons: Array<{ text: string | null; url: string | null; urlParameter: string | null }>;
   } | null;
   attachments?: Array<{ nombre: string; hash?: string }>;
+  /** Qué viajó por cada canal (registrado al enviar). Sin dato, la constancia no afirma cómo viajó el correo. */
+  delivery?: DeliveryFacts | null;
   /** True si identidad y texto salen de evidence_snapshots (WORM). */
   evidenceSealed?: boolean;
   smtpMessageId?: string;
@@ -639,9 +642,12 @@ function writeWrapped(
   return y;
 }
 
-function hechoFecha(
+export const OBS_SMTP_ACCEPTED = 'Aceptado por el proveedor SMTP de Notificas';
+export const OBS_EMAIL_OPENED = 'Apertura registrada por Notificas (píxel del correo o lector)';
+
+export function hechoFecha(
   iso?: string,
-  opts?: { meta?: boolean; webhookPreserved?: boolean }
+  opts?: { meta?: boolean; webhookPreserved?: boolean; emailOpened?: boolean }
 ): [string, string] {
   if (!iso) return ['No consta a la fecha de esta constancia', 'Pendiente de registro'];
   if (opts?.meta) {
@@ -652,7 +658,7 @@ function hechoFecha(
         : 'Evento informado por Meta y registrado por Notificas',
     ];
   }
-  return [formatTs(iso), 'Aceptado por el proveedor SMTP de Notificas'];
+  return [formatTs(iso), opts?.emailOpened ? OBS_EMAIL_OPENED : OBS_SMTP_ACCEPTED];
 }
 
 export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Promise<ArrayBuffer> {
@@ -842,10 +848,46 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   });
   y = lastAutoY(doc, y) + 8;
 
+  // Qué recibió la persona por cada canal, según lo registrado al enviar.
+  const narrative0 = describeDelivery(
+    mixed ? input.delivery ?? null : null,
+    mixed && mixedActaSharesMessageBody(cuerpo, input.whatsappSent?.renderedBody)
+  );
+  if (mixed && input.evidenceSealed !== false && (narrative0.emailLine || narrative0.whatsappLine)) {
+    y = ensureY(doc, y, 30);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text('Cómo se entregó', 14, y);
+    y += 4;
+    autoTable(doc, {
+      startY: y,
+      theme: 'plain',
+      margin: PDF_TABLE_MARGIN,
+      styles: { fontSize: 8, cellPadding: 1.5, textColor: PDF_BRAND.textMain },
+      tableWidth: 180,
+      columnStyles: { 0: { cellWidth: 48, fontStyle: 'bold' }, 1: { cellWidth: 132 } },
+      body: [
+        ...(narrative0.emailLine ? [['Correo electrónico', narrative0.emailLine]] : []),
+        ...(narrative0.whatsappLine ? [['WhatsApp', narrative0.whatsappLine]] : []),
+      ],
+    });
+    y = lastAutoY(doc, y) + 2;
+    if (narrative0.sourceNote) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(7.5);
+      doc.setTextColor(71, 85, 105);
+      y = writeWrapped(doc, narrative0.sourceNote, 14, y + 2, 182, 3.4);
+    }
+    y += 6;
+  }
+
   const waSent = input.whatsappSent || null;
   const showEmailContent = showsEmailContent(input.canal);
   const showWaContent = showsWhatsAppContent(input.canal) || Boolean(waSent);
   const sharesBody = mixed && mixedActaSharesMessageBody(cuerpo, waSent?.renderedBody);
+  const narrative = narrative0;
+  const deliveryFacts = mixed ? input.delivery ?? null : null;
 
   const renderEmailBlock = (opts?: { skipBody?: boolean }) => {
     const skipBody = opts?.skipBody === true;
@@ -861,9 +903,13 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     const emailCaption = !input.evidenceSealed
       ? 'El texto no se transcribe: no hay snapshot sellado.'
       : skipBody
-        ? 'Lo que se despachó a la casilla. El cuerpo es el texto común de arriba: no se copia otra vez. Asunto e identificador SMTP son propios de este canal.'
+        ? narrative.emailCaption
         : mixed
-          ? 'Texto que viajó en el correo (bandeja o lector), con variables ya sustituidas. Este bloque es el canal correo, no el globo de WhatsApp.'
+          ? deliveryFacts?.email === 'reader_notice'
+            ? 'Texto de la carta que se lee en el lector, al que se accede desde el botón del correo (el correo en sí trae solo el aviso), con variables ya sustituidas. Este bloque es el canal correo, no el globo de WhatsApp.'
+            : deliveryFacts?.email === 'text'
+              ? 'Texto que viajó en el cuerpo del correo, con variables ya sustituidas. Este bloque es el canal correo, no el globo de WhatsApp.'
+              : 'Texto certificado del canal correo, con variables ya sustituidas. Este bloque no es el globo de WhatsApp.'
           : 'Texto del correo y del lector, con variables ya sustituidas. Huella SHA-256 en el anexo técnico.';
     y = writeWrapped(doc, emailCaption, 14, y, 182, 3.6);
     y += 3;
@@ -912,7 +958,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
       return;
     }
     const waCaption = skipBody
-      ? 'Globo pedido a Meta. El cuerpo es el texto común de arriba. Encabezado, pie, template y variables son propios de WhatsApp.'
+      ? narrative.whatsappCaption
       : !waSent.renderedBody
         ? waSent.templateBodyMissing
           ? 'No se pudo lacrar el texto fijo de Meta en este envío. Se certifican el nombre del template, el idioma y las variables (piezas del mensaje). El WhatsApp sí se envió.'
@@ -998,7 +1044,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(15, 23, 42);
-    doc.text('Texto del mensaje (común a correo y WhatsApp)', 14, y);
+    doc.text(narrative.textTitle, 14, y);
     y += 5;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
@@ -1006,7 +1052,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     y = writeWrapped(
       doc,
       input.evidenceSealed
-        ? 'En esta campaña mixta el correo y WhatsApp llevan el mismo cuerpo: el BODY del template aprobado en Meta, con variables ya sustituidas. No son dos textos distintos. Abajo, cada canal detalla solo lo propio (asunto y SMTP en correo; encabezado, pie y template en WhatsApp). La huella SHA-256 del anexo es de este cuerpo.'
+        ? narrative.textIntro
         : 'El texto no se transcribe: no hay snapshot sellado.',
       14,
       y,
@@ -1101,7 +1147,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   const chronoRows: string[][] = [];
   if (showEmail) {
     const [envFecha, envObs] = hechoFecha(input.chronology.emailEnviadoAt);
-    const [leiFecha, leiObs] = hechoFecha(input.chronology.emailLeidoAt);
+    const [leiFecha, leiObs] = hechoFecha(input.chronology.emailLeidoAt, { emailOpened: true });
     chronoRows.push(['Correo aceptado por el proveedor SMTP', envFecha, envObs]);
     chronoRows.push(['Correo abierto (pixel / reader)', leiFecha, leiObs]);
   }
@@ -1141,7 +1187,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   const statements = mixed
     ? [
         'Esta Parte I relata dos despachos (correo y WhatsApp), a qué destino técnico de cada canal y qué informaron después los proveedores. La valoración jurídica de estos hechos corresponde al juez.',
-        'La integridad del cuerpo común se puede comprobar con la huella SHA-256 y, si la tanda está anclada, con la transacción de Polygon. Alterar el texto hace que la huella deje de coincidir.',
+        'La integridad del texto certificado se puede comprobar con la huella SHA-256 y, si la tanda está anclada, con la transacción de Polygon. Alterar el texto hace que la huella deje de coincidir.',
         'La aceptación del correo por el servidor SMTP y los estados «entregado» y «leído» de WhatsApp se consignan tal como los informaron esos terceros.',
         `Emisión: ${input.generatedAt}.`,
       ]
@@ -1467,7 +1513,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     '2. Payload v2 de envío: CAMPAIGN_SEND|v2|{campaignId}|{batchId}|{merkleRoot}|{leafCount}|{timestamp}|{leavesDigest}|{templateSealHash?}. Una TX por tanda, no por persona. v1 no tiene leavesDigest.',
     '3. El template es el formulario de toda la campaña. Esta foja contiene los datos individualizados del destinatario, las variables efectivamente enviadas, el teléfono y el identificador WAMID correspondiente.',
     mixed && sharesBody
-      ? '4. Recalcular SHA-256(UTF-8(trim(cuerpo))) del texto bajo «Texto del mensaje (común a correo y WhatsApp)»: debe coincidir con la huella de contenido. El encabezado y el pie de WhatsApp no entran en esa huella.'
+      ? `4. Recalcular SHA-256(UTF-8(trim(cuerpo))) del texto bajo «${narrative.textTitle}»: debe coincidir con la huella de contenido. El encabezado y el pie de WhatsApp no entran en esa huella.`
       : '4. Recalcular SHA-256(UTF-8(trim(texto_plano_personalizado))) del texto transcrito en la Parte I: debe coincidir con la huella de contenido.',
     '5. Si se altera esta foja, la raíz Merkle deja de coincidir con la registrada on-chain.',
     `6. Hoja: SHA-256(UTF-8(leafPayload)) debe dar el leafHash del bloque correspondiente. En la hoja de envío el campo 12 es la huella de contenido y el 17 el templateSealHash; en una hoja de evento el campo 7 es el leafHash de envío (sendLeafHash). Formato completo: ${publicAppBase()}${LEAF_SPEC_PATH}.`,

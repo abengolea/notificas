@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {
   buildActaDestinatarioPdf,
   buildActaTandaPdf,
+  hechoFecha,
+  OBS_EMAIL_OPENED,
+  OBS_SMTP_ACCEPTED,
   loteClosingSentence,
   lotePositiveStatement,
   mixedActaSharesMessageBody,
@@ -52,6 +55,7 @@ function sampleMixed(overrides: Partial<ActaDestinatarioInput> = {}): ActaDestin
       ],
       buttons: [],
     },
+    delivery: { email: 'text', whatsapp: 'template', source: 'sealed' },
     evidenceSealed: true,
     smtpMessageId: '<e03a6127-7702-1f54-741b-0046c156035c@notificas.com.ar>',
     wamid: 'wamid.HBgNNTQ5MzM2NDY0NTM1NxUCABEYEjM2OEZCODFCREIzNUFBMEVENAA=',
@@ -406,4 +410,51 @@ test('las actas de campaña no se autodescalifican: dejan la valoración jurídi
     assert.match(raw, /corresponde al juez/);
   }
   assert.match(ind, /NOTIFICACIÓN FEHACIENTE CON FINES FISCALES/);
+});
+
+test('acta con correo-aviso + lector y WhatsApp-plantilla dice qué recibió cada canal y no afirma «mismo cuerpo»', async () => {
+  const buf = await buildActaDestinatarioPdf(
+    sampleMixed({
+      delivery: { email: 'reader_notice', whatsapp: 'template', source: 'sealed' },
+    })
+  );
+  const raw = pdfText(buf);
+  assert.match(raw, /Cómo se entregó/);
+  assert.match(raw, /Acceder a la notificación/);
+  assert.match(raw, /Texto de la carta/);
+  assert.match(raw, /No lleva enlace al lector/);
+  assert.equal(/llevan el mismo/.test(raw), false);
+  assert.equal(/común a correo y WhatsApp/.test(raw), false);
+});
+
+test('acta con el mismo texto en el cuerpo del correo y en WhatsApp sí lo dice', async () => {
+  const raw = pdfText(await buildActaDestinatarioPdf(sampleMixed()));
+  assert.match(raw, /llevan el mismo texto/);
+  assert.match(raw, /No llevaba enlace al lector/);
+});
+
+test('acta sin registro de cómo viajó el correo no afirma ni «mismo cuerpo» ni lector', async () => {
+  const raw = pdfText(await buildActaDestinatarioPdf(sampleMixed({ delivery: null })));
+  assert.match(raw, /no registra si el correo/);
+  assert.equal(/llevan el mismo/.test(raw), false);
+  assert.equal(/Acceder a la notificación/.test(raw), false);
+  assert.equal(/Cómo se entregó/.test(raw), false);
+});
+
+test('acta de un envío anterior al registro avisa que se dedujo de la configuración', async () => {
+  const raw = pdfText(
+    await buildActaDestinatarioPdf(
+      sampleMixed({ delivery: { email: 'reader_notice', whatsapp: 'template', source: 'campaign_config' } })
+    )
+  );
+  assert.match(raw, /anterior al registro/);
+});
+
+test('la apertura del correo no lleva la leyenda de aceptación SMTP', () => {
+  const [, sent] = hechoFecha('2026-08-28T23:12:43Z');
+  const [, opened] = hechoFecha('2026-08-28T23:18:41Z', { emailOpened: true });
+  assert.equal(sent, OBS_SMTP_ACCEPTED);
+  assert.equal(opened, OBS_EMAIL_OPENED);
+  assert.notEqual(opened, sent);
+  assert.doesNotMatch(opened, /SMTP/);
 });

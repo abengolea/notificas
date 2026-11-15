@@ -7,6 +7,7 @@ import { recordProviderEvent } from "@/lib/provider-events";
 import { hashWhatsAppBody, sealedWhatsAppRenderedBody } from "@/lib/whatsapp-evidence";
 import { metaAccountIdsFromSources } from "@/lib/pdf-evidence-format";
 import { isRealSmtpMessageId } from "@/lib/email-delivery-label";
+import { deliveryFactsFromMail, type DeliveryFacts } from "@/lib/campaign-delivery-facts";
 
 export type EvidenceSnapshot = {
   mailId: string;
@@ -46,6 +47,8 @@ export type EvidenceSnapshot = {
     messageId: string | null;
     accepted: unknown;
   };
+  /** Qué viajó por cada canal (texto en el correo o aviso con lector; plantilla con o sin lector). Ausente en sellos anteriores. */
+  delivery?: DeliveryFacts;
   snapshotHash: string;
   campaignId: string | null;
   campaignMessageId: string | null;
@@ -224,6 +227,10 @@ export async function sealEvidenceSnapshot(mailId: string): Promise<EvidenceSnap
       messageId: smtpMessageId || null,
       accepted: mail.smtpAccepted || null,
     },
+    delivery: deliveryFactsFromMail(mail, {
+      hasEmail: !mail.waOnly,
+      hasWhatsApp: Boolean(mail.waOnly || mail.waRequestSnapshot || wamid),
+    }),
     snapshotHash,
     canonical,
     campaignId,

@@ -7,6 +7,7 @@ import {
   parseEventLeafPayload,
 } from '@/lib/campaign-integrity';
 import { getTransactionInfo } from '@/lib/blockchain';
+import { deliveryFactsFromCampaignConfig } from '@/lib/campaign-delivery-facts';
 import { buildActaDestinatarioPdf, buildActaTandaPdf, type ActaLeafRow } from '@/lib/campaign-integrity-pdf';
 import { LotePdfIntegrityError } from '@/lib/lote-leaf-hash';
 import { formatCuit } from '@/lib/cuit';
@@ -182,6 +183,14 @@ export async function GET(request: NextRequest) {
         snapshot?.whatsapp.requestSnapshot,
         snapshot?.whatsapp.templateVariables
       ),
+      // Lo que viajó por cada canal: registrado al enviar; en sellos anteriores se deduce de la campaña y se avisa.
+      delivery:
+        snapshot?.delivery ??
+        deliveryFactsFromCampaignConfig({
+          canal: typeof campaign.canal === 'string' ? campaign.canal : snapshot?.channel,
+          mixedMode: campaign.mixedMode,
+          waTemplateName: campaign.waTemplateName,
+        }),
       attachments: (snapshot?.attachments || []).map((a) => ({ nombre: a.fileName, hash: a.hash })),
       evidenceSealed: Boolean(snapshot),
       smtpMessageId: smtpId || undefined,
