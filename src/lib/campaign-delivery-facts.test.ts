@@ -62,17 +62,21 @@ test('la redacción nunca afirma algo que el registro no dice (todas las combina
     for (const whatsapp of WA) {
       for (const shares of [true, false]) {
         const n = describeDelivery({ email, whatsapp, source: 'sealed' }, shares);
-        const all = Object.values(n).filter(Boolean).join(' ');
+        const all = Object.values(n).filter((v) => typeof v === 'string').join(' ');
         const tag = `email=${email} wa=${whatsapp} shares=${shares}`;
-        // «mismo texto» solo si el correo llevó el texto en su cuerpo.
-        if (email !== 'text') assert.doesNotMatch(all, /mismo texto|mismo cuerpo|común a correo/i, tag);
+        // «el mismo que el del correo» solo si el correo llevó el texto en su cuerpo.
+        if (email !== 'text') assert.doesNotMatch(all, /llevan el mismo|mismo cuerpo|común a correo|mismo que el del correo/i, tag);
         // Con aviso + lector no se puede decir que el texto está en el cuerpo del correo.
-        if (email === 'reader_notice') assert.doesNotMatch(all, /viajó en el cuerpo del correo|va en el cuerpo del correo/i, tag);
+        if (email === 'reader_notice') assert.doesNotMatch(all, /viajó en el cuerpo del correo|Texto en el cuerpo del correo/i, tag);
         // Solo se menciona el botón al lector si el correo fue un aviso.
         if (email !== 'reader_notice') assert.doesNotMatch(all, /Acceder a la notificación/, tag);
         // Solo se afirma «sin enlace al lector» si WhatsApp fue plantilla sin lector.
         if (whatsapp !== 'template') assert.doesNotMatch(all, /No lleva enlace al lector|sin enlace al lector/i, tag);
         if (whatsapp !== 'reader_link') assert.doesNotMatch(all, /con el enlace al lector/i, tag);
+        // El recuadro del lector existe solo si el correo fue un aviso; la nota de «no traía el texto» también.
+        assert.equal(n.hasReaderBox, email === 'reader_notice', tag);
+        assert.equal(Boolean(n.emailNotice), email === 'reader_notice', tag);
+        assert.equal(Boolean(n.emailTextLabel), email !== 'reader_notice', tag);
         assert.equal(Boolean(n.emailLine), email !== null, tag);
         assert.equal(Boolean(n.whatsappLine), whatsapp !== null, tag);
       }
@@ -85,10 +89,11 @@ test('sin registro de cómo viajó el correo no se afirma nada de eso', () => {
   assert.equal(n.emailLine, null);
   assert.equal(n.whatsappLine, null);
   assert.doesNotMatch(
-    Object.values(n).filter(Boolean).join(' '),
-    /mismo cuerpo|mismo texto|común a correo|Acceder a la notificación/
+    Object.values(n).filter((v) => typeof v === 'string').join(' '),
+    /llevan el mismo|mismo cuerpo|mismo que el del correo|común a correo|Acceder a la notificación/
   );
-  assert.match(n.textIntro, /no registra si el correo/);
+  assert.match(n.emailTextLabel || '', /no registra si llegó en el cuerpo del correo o se leía en el lector/);
+  assert.equal(n.hasReaderBox, false);
 });
 
 test('un envío deducido de la configuración lo dice', () => {

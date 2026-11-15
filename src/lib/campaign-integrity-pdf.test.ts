@@ -104,18 +104,22 @@ test('mixedActaSharesMessageBody detecta el mismo BODY de Meta', () => {
   assert.equal(mixedActaSharesMessageBody('', BODY), false);
 });
 
-test('acta mixta con el mismo cuerpo no lo imprime dos veces ni dice Contenido exacto enviado', async () => {
+test('acta mixta muestra el contenido exacto de cada canal en su propio recuadro', async () => {
   const buf = await buildActaDestinatarioPdf(sampleMixed());
   const raw = pdfText(buf);
   const phrase = 'vencida';
   const copies = raw.split(phrase).length - 1;
-  assert.equal(copies, 1, `el cuerpo mixto debía aparecer una vez, apareció ${copies}`);
+  // Un recuadro por canal: el texto aparece en el del correo y en el de WhatsApp.
+  assert.equal(copies, 2, `el cuerpo debía aparecer en cada recuadro (2), apareció ${copies}`);
+  assert.match(raw, /CORREO ELECTR.NICO/);
+  assert.match(raw, /lo que lleg. a la casilla/);
+  assert.match(raw, /WHATSAPP/);
+  assert.match(raw, /lo que lleg. al tel.fono/);
   assert.match(raw, /18283/);
   assert.equal(raw.includes('Contenido exacto enviado'), false);
   assert.equal(raw.includes('Contenido enviado por correo (lector)'), false);
   assert.match(raw, /Canal WhatsApp/);
   assert.match(raw, /Canal correo electr/);
-  assert.match(raw, /común a correo y WhatsApp/);
   assert.match(raw, /no un único mensaje duplicado/);
   assert.match(raw, /Encabezado \(WhatsApp\)/);
   assert.match(raw, /Pie \(WhatsApp\)/);
@@ -421,22 +425,28 @@ test('acta con correo-aviso + lector y WhatsApp-plantilla dice qué recibió cad
   const raw = pdfText(buf);
   assert.match(raw, /Cómo se entregó/);
   assert.match(raw, /Acceder a la notificación/);
-  assert.match(raw, /Texto de la carta/);
+  assert.match(raw, /LECTOR/);
+  assert.match(raw, /El correo no traía el texto/);
+  assert.match(raw, /Su texto es el mismo que el de la carta del lector/);
   assert.match(raw, /No lleva enlace al lector/);
+  assert.equal(/Texto en el cuerpo del correo/.test(raw), false);
   assert.equal(/llevan el mismo/.test(raw), false);
   assert.equal(/común a correo y WhatsApp/.test(raw), false);
 });
 
 test('acta con el mismo texto en el cuerpo del correo y en WhatsApp sí lo dice', async () => {
   const raw = pdfText(await buildActaDestinatarioPdf(sampleMixed()));
-  assert.match(raw, /llevan el mismo texto/);
+  assert.match(raw, /Texto en el cuerpo del correo/);
+  assert.match(raw, /Su texto es el mismo que el del correo/);
   assert.match(raw, /No llevaba enlace al lector/);
+  assert.equal(/LECTOR/.test(raw), false);
 });
 
 test('acta sin registro de cómo viajó el correo no afirma ni «mismo cuerpo» ni lector', async () => {
   const raw = pdfText(await buildActaDestinatarioPdf(sampleMixed({ delivery: null })));
-  assert.match(raw, /no registra si el correo/);
-  assert.equal(/llevan el mismo/.test(raw), false);
+  assert.match(raw, /no registra si lleg. en el cuerpo del correo o se le.a en el lector/);
+  assert.equal(/Su texto es el mismo que el del correo/.test(raw), false);
+  assert.equal(/LECTOR/.test(raw), false);
   assert.equal(/Acceder a la notificación/.test(raw), false);
   assert.equal(/Cómo se entregó/.test(raw), false);
 });

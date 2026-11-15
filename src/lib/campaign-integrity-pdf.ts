@@ -887,118 +887,169 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   const showWaContent = showsWhatsAppContent(input.canal) || Boolean(waSent);
   const sharesBody = mixed && mixedActaSharesMessageBody(cuerpo, waSent?.renderedBody);
   const narrative = narrative0;
-  const deliveryFacts = mixed ? input.delivery ?? null : null;
 
-  const renderEmailBlock = (opts?: { skipBody?: boolean }) => {
-    const skipBody = opts?.skipBody === true;
-    y = ensureY(doc, y, 16);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(15, 23, 42);
-    doc.text(mixed ? 'Canal correo electrónico' : 'Contenido del mensaje remitido', 14, y);
-    y += 5;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(71, 85, 105);
-    const emailCaption = !input.evidenceSealed
-      ? 'El texto no se transcribe: no hay snapshot sellado.'
-      : skipBody
-        ? narrative.emailCaption
-        : mixed
-          ? deliveryFacts?.email === 'reader_notice'
-            ? 'Texto de la carta que se lee en el lector, al que se accede desde el botón del correo (el correo en sí trae solo el aviso), con variables ya sustituidas. Este bloque es el canal correo, no el globo de WhatsApp.'
-            : deliveryFacts?.email === 'text'
-              ? 'Texto que viajó en el cuerpo del correo, con variables ya sustituidas. Este bloque es el canal correo, no el globo de WhatsApp.'
-              : 'Texto certificado del canal correo, con variables ya sustituidas. Este bloque no es el globo de WhatsApp.'
-          : 'Texto del correo y del lector, con variables ya sustituidas. Huella SHA-256 en el anexo técnico.';
-    y = writeWrapped(doc, emailCaption, 14, y, 182, 3.6);
-    y += 3;
-    if (asunto) {
-      y = ensureY(doc, y, 8);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      y = writeWrapped(doc, `Asunto: ${asunto}`, 14, y, 182, 3.8);
-      y += 2;
-    }
-    if (!skipBody) {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.setTextColor(15, 23, 42);
-      if (cuerpo) {
-        y = writeWrapped(doc, cuerpo, 14, y, 182, 4.2);
-      } else {
-        y = writeWrapped(doc, 'Sin texto de correo en snapshot sellado.', 14, y, 182, 4.2);
-      }
-    }
-    y += 8;
+  const BOX_X = 14;
+  const BOX_W = 182;
+  const BOX_PAD = 4;
+  type BoxPart = { kind: 'body' | 'bold' | 'italic' | 'note'; text: string };
+  const BOX_FONT: Record<BoxPart['kind'], { font: 'normal' | 'bold' | 'italic'; size: number; lh: number; color: [number, number, number] }> = {
+    body: { font: 'normal', size: 9.5, lh: 4.6, color: [15, 23, 42] },
+    bold: { font: 'bold', size: 9, lh: 4.2, color: [15, 23, 42] },
+    italic: { font: 'italic', size: 8.5, lh: 4, color: [71, 85, 105] },
+    note: { font: 'normal', size: 8, lh: 3.7, color: [71, 85, 105] },
   };
-
-  const renderWhatsAppBlock = (opts?: { skipBody?: boolean }) => {
-    const skipBody = opts?.skipBody === true;
-    y = ensureY(doc, y, 16);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(15, 23, 42);
-    doc.text('Canal WhatsApp', 14, y);
-    y += 5;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(71, 85, 105);
-    if (!waSent) {
-      y = writeWrapped(
-        doc,
-        'No hay pedido a Meta en el snapshot. No se reconstruye el globo desde datos vivos.',
-        14,
-        y,
-        182,
-        3.6
-      );
-      y += 8;
+  const BOX_TITLE_H = 8;
+  const emailBoxTitle = mixed ? 'CORREO ELECTRÓNICO — lo que llegó a la casilla' : 'CORREO ELECTRÓNICO — contenido remitido';
+  const readerBoxTitle = 'LECTOR — la carta que se abre desde el botón del correo';
+  const waBoxTitle = 'WHATSAPP — lo que llegó al teléfono';
+  /** Recuadro con el contenido exacto de un canal. Si no entra en una página, se imprime corrido y sin marco. */
+  const drawContentBox = (title: string, subtitle: string, parts: BoxPart[]) => {
+    const inner = BOX_W - 2 * BOX_PAD;
+    const measured = parts
+      .filter((p) => p.text)
+      .map((p) => {
+        const f = BOX_FONT[p.kind];
+        doc.setFont('helvetica', f.font);
+        doc.setFontSize(f.size);
+        return { p, f, lines: doc.splitTextToSize(p.text, inner) as string[] };
+      });
+    const subLines = subtitle ? (doc.splitTextToSize(subtitle, inner) as string[]) : [];
+    const height =
+      BOX_TITLE_H + 3 + subLines.length * 3.8 + measured.reduce((a, m) => a + m.lines.length * m.f.lh + 2.2, 0) + 2;
+    const usable = PDF_MM.contentBottom - PDF_MM.continueTop;
+    if (height > usable) {
+      y = ensureY(doc, y, 16);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(15, 23, 42);
+      doc.text(title, BOX_X, y);
+      y += 5;
+      if (subtitle) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(71, 85, 105);
+        y = writeWrapped(doc, subtitle, BOX_X, y, BOX_W, 3.8);
+      }
+      for (const m of measured) {
+        doc.setFont('helvetica', m.f.font);
+        doc.setFontSize(m.f.size);
+        doc.setTextColor(...m.f.color);
+        y = writeWrapped(doc, m.p.text, BOX_X, y, BOX_W, m.f.lh) + 2;
+      }
+      y += 6;
       return;
     }
-    const waCaption = skipBody
-      ? narrative.whatsappCaption
-      : !waSent.renderedBody
-        ? waSent.templateBodyMissing
-          ? 'No se pudo lacrar el texto fijo de Meta en este envío. Se certifican el nombre del template, el idioma y las variables (piezas del mensaje). El WhatsApp sí se envió.'
-          : 'No se almacena el texto fijo del template de Meta. Se transcriben las variables enviadas (ya sustituidas).'
-        : mixed
-          ? 'Globo pedido a Meta para este teléfono. Encabezado, pie y botones pueden diferir del correo; el identificador de este canal es el WAMID.'
-          : 'Globo pedido a Meta, con variables ya sustituidas.';
-    y = writeWrapped(doc, waCaption, 14, y, 182, 3.6);
-    y += 3;
-    if (waSent.renderedHeader) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(15, 23, 42);
-      y = writeWrapped(doc, `Encabezado (WhatsApp): ${waSent.renderedHeader}`, 14, y, 182, 3.6);
-      y += 2;
-    }
-    if (waSent.renderedBody && !skipBody) {
+    y = ensureY(doc, y, height + 6);
+    doc.setDrawColor(...PDF_BRAND.border);
+    doc.setLineWidth(0.3);
+    doc.rect(BOX_X, y, BOX_W, height);
+    doc.setFillColor(...PDF_BRAND.primary);
+    doc.rect(BOX_X, y, BOX_W, BOX_TITLE_H, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.text(title, BOX_X + BOX_PAD, y + 5.4);
+    let cy = y + BOX_TITLE_H + 4.5;
+    if (subLines.length) {
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.setTextColor(15, 23, 42);
-      y = writeWrapped(doc, waSent.renderedBody, 14, y, 182, 4.2);
-      y += 4;
-    }
-    if (waSent.renderedFooter) {
-      doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
       doc.setTextColor(71, 85, 105);
-      y = writeWrapped(doc, `Pie (WhatsApp): ${waSent.renderedFooter}`, 14, y, 182, 3.6);
-      y += 3;
+      for (const line of subLines) {
+        doc.text(line, BOX_X + BOX_PAD, cy);
+        cy += 3.8;
+      }
     }
+    for (const m of measured) {
+      doc.setFont('helvetica', m.f.font);
+      doc.setFontSize(m.f.size);
+      doc.setTextColor(...m.f.color);
+      for (const line of m.lines) {
+        doc.text(line, BOX_X + BOX_PAD, cy);
+        cy += m.f.lh;
+      }
+      cy += 2.2;
+    }
+    doc.setTextColor(15, 23, 42);
+    y += height + 7;
+  };
+
+  const renderEmailBlock = () => {
+    const parts: BoxPart[] = [];
+    if (asunto) parts.push({ kind: 'bold', text: `Asunto: ${asunto}` });
+    if (!input.evidenceSealed) {
+      parts.push({ kind: 'note', text: 'El texto no se transcribe: no hay snapshot sellado.' });
+    } else if (mixed) {
+      if (narrative.emailNotice) {
+        parts.push({ kind: 'note', text: narrative.emailNotice });
+      } else {
+        if (narrative.emailTextLabel) parts.push({ kind: 'note', text: narrative.emailTextLabel });
+        parts.push({ kind: 'body', text: cuerpo || 'Sin texto de correo en snapshot sellado.' });
+        parts.push({ kind: 'note', text: narrative.hashNote });
+      }
+    } else {
+      parts.push({
+        kind: 'note',
+        text: 'Texto del correo y del lector, con variables ya sustituidas. Huella SHA-256 en el anexo técnico.',
+      });
+      parts.push({ kind: 'body', text: cuerpo || 'Sin texto de correo en snapshot sellado.' });
+    }
+    drawContentBox(emailBoxTitle, email ? `Destino: ${email}` : '', parts);
+    if (mixed && input.evidenceSealed && narrative.hasReaderBox) {
+      drawContentBox(readerBoxTitle, '', [
+        { kind: 'note', text: 'Es lo que la persona lee al tocar el botón del correo, con variables ya sustituidas.' },
+        { kind: 'body', text: cuerpo || 'Sin texto en snapshot sellado.' },
+        { kind: 'note', text: narrative.hashNote },
+      ]);
+    }
+  };
+
+  const renderWhatsAppBlock = () => {
+    const phone = input.recipientTelefono ? `Destino: ${input.recipientTelefono}` : '';
+    if (!waSent) {
+      drawContentBox(waBoxTitle, phone, [
+        { kind: 'note', text: 'No hay pedido a Meta en el snapshot. No se reconstruye el globo desde datos vivos.' },
+      ]);
+      return;
+    }
+    const parts: BoxPart[] = [];
+    if (mixed && narrative.whatsappNote) parts.push({ kind: 'note', text: narrative.whatsappNote });
+    if (waSent.renderedHeader) parts.push({ kind: 'bold', text: `Encabezado (WhatsApp): ${waSent.renderedHeader}` });
+    if (waSent.renderedBody) {
+      if (!mixed) parts.push({ kind: 'note', text: 'Globo pedido a Meta, con variables ya sustituidas.' });
+      parts.push({ kind: 'body', text: waSent.renderedBody });
+      if (mixed && narrative.whatsappSameTextNote) parts.push({ kind: 'note', text: narrative.whatsappSameTextNote });
+    } else {
+      parts.push({
+        kind: 'note',
+        text: waSent.templateBodyMissing
+          ? 'No se pudo lacrar el texto fijo de Meta en este envío. Se certifican el nombre del template, el idioma y las variables (piezas del mensaje). El WhatsApp sí se envió.'
+          : 'No se almacena el texto fijo del template de Meta. Se transcriben las variables enviadas (ya sustituidas).',
+      });
+    }
+    if (waSent.renderedFooter) parts.push({ kind: 'italic', text: `Pie (WhatsApp): ${waSent.renderedFooter}` });
+    for (const btn of waSent.buttons) {
+      const label = btn.text ? `Botón WhatsApp: ${btn.text}` : 'Botón URL WhatsApp';
+      const dest = btn.url
+        ? `Destino: ${btn.url}`
+        : btn.urlParameter
+          ? `Parámetro enviado a Meta: ${btn.urlParameter}`
+          : null;
+      parts.push({ kind: 'note', text: dest ? `${label}. ${dest}` : label });
+    }
+    drawContentBox(waBoxTitle, phone, parts);
+
+    // Datos técnicos del pedido a Meta (fuera del recuadro: no son lo que vio la persona).
+    y = ensureY(doc, y, 14);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(100, 116, 139);
     y = writeWrapped(
       doc,
-      `Template Meta: ${waSent.templateName} · ${waSent.templateLang}` +
+      `Datos técnicos del pedido a Meta — Template: ${waSent.templateName} · ${waSent.templateLang}` +
         (waSent.templateHash ? ` · Hash del pedido a Meta: ${waSent.templateHash}` : '') +
         (waSent.templateId ? ` · ID ${waSent.templateId}` : ''),
       14,
-      y,
+      y - 3,
       182,
       3.4
     );
@@ -1008,11 +1059,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
       autoTable(doc, {
         startY: y,
         head: [['{{n}}', 'Campo', 'Valor enviado a Meta']],
-        body: waSent.variables.map((v) => [
-          `{{${v.n}}}`,
-          v.field || '—',
-          v.value || '—',
-        ]),
+        body: waSent.variables.map((v) => [`{{${v.n}}}`, v.field || '—', v.value || '—']),
         styles: { fontSize: 8, cellPadding: 1.4, overflow: 'ellipsize' },
         margin: PDF_TABLE_MARGIN,
         tableWidth: 180,
@@ -1021,65 +1068,12 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
       });
       y = lastAutoY(doc, y) + 4;
     }
-    if (waSent.buttons.length > 0) {
-      for (const btn of waSent.buttons) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-        doc.setTextColor(15, 23, 42);
-        const label = btn.text ? `Botón WhatsApp: ${btn.text}` : 'Botón URL WhatsApp';
-        const dest = btn.url
-          ? `Destino: ${btn.url}`
-          : btn.urlParameter
-            ? `Parámetro enviado a Meta: ${btn.urlParameter}`
-            : null;
-        y = writeWrapped(doc, dest ? `${label}. ${dest}` : label, 14, y, 182, 3.6);
-        y += 2;
-      }
-    }
-    y += 6;
-  };
-
-  const renderSharedBodyBlock = () => {
-    y = ensureY(doc, y, 16);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(15, 23, 42);
-    doc.text(narrative.textTitle, 14, y);
-    y += 5;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(71, 85, 105);
-    y = writeWrapped(
-      doc,
-      input.evidenceSealed
-        ? narrative.textIntro
-        : 'El texto no se transcribe: no hay snapshot sellado.',
-      14,
-      y,
-      182,
-      3.6
-    );
-    y += 3;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(15, 23, 42);
-    if (cuerpo) {
-      y = writeWrapped(doc, cuerpo, 14, y, 182, 4.2);
-    } else {
-      y = writeWrapped(doc, 'Sin texto de cuerpo en snapshot sellado.', 14, y, 182, 4.2);
-    }
-    y += 8;
+    y += 4;
   };
 
   if (mixed) {
-    if (sharesBody) {
-      renderSharedBodyBlock();
-      renderEmailBlock({ skipBody: true });
-      renderWhatsAppBlock({ skipBody: true });
-    } else {
-      renderEmailBlock();
-      renderWhatsAppBlock();
-    }
+    renderEmailBlock();
+    renderWhatsAppBlock();
   } else if (showWaContent && !showEmailContent) {
     renderWhatsAppBlock();
   } else if (showEmailContent) {
@@ -1512,8 +1506,8 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     '1. Abrir la transacción en polygonscan.com y decodificar Input Data (UTF-8).',
     '2. Payload v2 de envío: CAMPAIGN_SEND|v2|{campaignId}|{batchId}|{merkleRoot}|{leafCount}|{timestamp}|{leavesDigest}|{templateSealHash?}. Una TX por tanda, no por persona. v1 no tiene leavesDigest.',
     '3. El template es el formulario de toda la campaña. Esta foja contiene los datos individualizados del destinatario, las variables efectivamente enviadas, el teléfono y el identificador WAMID correspondiente.',
-    mixed && sharesBody
-      ? `4. Recalcular SHA-256(UTF-8(trim(cuerpo))) del texto bajo «${narrative.textTitle}»: debe coincidir con la huella de contenido. El encabezado y el pie de WhatsApp no entran en esa huella.`
+    mixed
+      ? `4. Recalcular SHA-256(UTF-8(trim(cuerpo))) del texto del recuadro «${narrative.hasReaderBox ? readerBoxTitle : emailBoxTitle}»: debe coincidir con la huella de contenido. El encabezado y el pie de WhatsApp no entran en esa huella.`
       : '4. Recalcular SHA-256(UTF-8(trim(texto_plano_personalizado))) del texto transcrito en la Parte I: debe coincidir con la huella de contenido.',
     '5. Si se altera esta foja, la raíz Merkle deja de coincidir con la registrada on-chain.',
     `6. Hoja: SHA-256(UTF-8(leafPayload)) debe dar el leafHash del bloque correspondiente. En la hoja de envío el campo 12 es la huella de contenido y el 17 el templateSealHash; en una hoja de evento el campo 7 es el leafHash de envío (sendLeafHash). Formato completo: ${publicAppBase()}${LEAF_SPEC_PATH}.`,

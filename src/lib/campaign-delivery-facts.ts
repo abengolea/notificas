@@ -76,14 +76,20 @@ export type DeliveryNarrative = {
   /** Una línea por canal para la tabla «Cómo se entregó». */
   emailLine: string | null;
   whatsappLine: string | null;
-  /** Título del bloque del texto certificado. */
-  textTitle: string;
-  /** Explicación bajo el título. */
-  textIntro: string;
-  emailCaption: string;
-  whatsappCaption: string;
   /** Aclaración sobre de dónde sale el dato (solo si no se registró al enviar). */
   sourceNote: string | null;
+  /** Dentro del recuadro del correo: aviso de lo que NO traía (solo si fue aviso con lector). */
+  emailNotice: string | null;
+  /** Rótulo del texto dentro del recuadro del correo (null si el correo no traía el texto). */
+  emailTextLabel: string | null;
+  /** El texto certificado se muestra en un recuadro propio, el del lector. */
+  hasReaderBox: boolean;
+  /** Dentro del recuadro de WhatsApp: qué tipo de mensaje fue. */
+  whatsappNote: string | null;
+  /** Dentro del recuadro de WhatsApp, cuando su texto es el mismo que el certificado. */
+  whatsappSameTextNote: string | null;
+  /** Marca el recuadro cuyo texto reproduce la huella SHA-256 del anexo. */
+  hashNote: string;
 };
 
 /**
@@ -108,40 +114,39 @@ export function describeDelivery(facts: DeliveryFacts | null, sharesBody: boolea
       ? 'Este envío es anterior al registro de la forma de entrega: se indica según la configuración de la campaña, no según una copia sellada al enviar.'
       : null;
 
-  let textTitle: string;
-  let textIntro: string;
-  if (facts?.email === 'reader_notice') {
-    textTitle = 'Texto de la carta (la que se lee en el lector)';
-    textIntro = sharesBody
-      ? 'Esta es la carta que el destinatario lee en el lector, al que accede desde el botón del correo. El correo no trae este texto en su cuerpo. WhatsApp envió por separado la plantilla de Meta, cuyo texto coincide con esta carta. La huella SHA-256 del anexo es de este texto.'
-      : 'Esta es la carta que el destinatario lee en el lector, al que accede desde el botón del correo. El correo no trae este texto en su cuerpo. La huella SHA-256 del anexo es de este texto.';
-  } else if (facts?.email === 'text' && sharesBody) {
-    textTitle = 'Texto del mensaje (común a correo y WhatsApp)';
-    textIntro =
-      'El cuerpo del correo y el globo de WhatsApp llevan el mismo texto: el BODY de la plantilla aprobada en Meta, con las variables ya sustituidas. No son dos textos distintos. Abajo, cada canal detalla solo lo propio. La huella SHA-256 del anexo es de este texto.';
-  } else if (facts?.email === 'text') {
-    textTitle = 'Texto del correo';
-    textIntro = 'Este es el texto que viajó en el cuerpo del correo. La huella SHA-256 del anexo es de este texto.';
-  } else {
-    // Sin registro de cómo viajó el correo: no se afirma nada de eso.
-    textTitle = 'Texto certificado';
-    textIntro = sharesBody
-      ? 'Este es el texto certificado de este envío; coincide con el BODY de la plantilla de Meta. Esta constancia no registra si el correo lo trajo en su cuerpo o se leía en el lector. La huella SHA-256 del anexo es de este texto.'
-      : 'Este es el texto certificado de este envío. La huella SHA-256 del anexo es de este texto.';
-  }
-
-  const emailCaption =
+  const emailNotice =
     facts?.email === 'reader_notice'
-      ? 'Lo que se despachó a la casilla: un aviso con botón que abre el lector, donde se lee la carta. Asunto e identificador SMTP son propios de este canal.'
+      ? 'El correo no traía el texto. Traía un aviso con el botón «Acceder a la notificación», que abre el lector. La carta que se lee ahí está en el recuadro siguiente.'
+      : null;
+  const emailTextLabel =
+    facts?.email === 'reader_notice'
+      ? null
       : facts?.email === 'text'
-        ? 'Lo que se despachó a la casilla: el texto va en el cuerpo del correo. Asunto e identificador SMTP son propios de este canal.'
-        : 'Lo que se despachó a la casilla. Asunto e identificador SMTP son propios de este canal.';
-  const whatsappCaption =
+        ? 'Texto en el cuerpo del correo:'
+        : 'Texto certificado (esta constancia no registra si llegó en el cuerpo del correo o se leía en el lector):';
+  const whatsappNote =
     facts?.whatsapp === 'template'
-      ? 'Plantilla de Meta, sin enlace al lector. Encabezado, pie, plantilla y variables son propios de WhatsApp.'
+      ? 'Plantilla de Meta, sin enlace al lector.'
       : facts?.whatsapp === 'reader_link'
-        ? 'Plantilla de Meta con el enlace al lector. Encabezado, pie, plantilla y variables son propios de WhatsApp.'
-        : 'Globo pedido a Meta. Encabezado, pie, plantilla y variables son propios de WhatsApp.';
+        ? 'Plantilla de Meta con el enlace al lector.'
+        : null;
+  const whatsappSameTextNote = sharesBody
+    ? facts?.email === 'reader_notice'
+      ? 'Su texto es el mismo que el de la carta del lector.'
+      : facts?.email === 'text'
+        ? 'Su texto es el mismo que el del correo.'
+        : 'Su texto coincide con el texto certificado.'
+    : null;
 
-  return { emailLine, whatsappLine, textTitle, textIntro, emailCaption, whatsappCaption, sourceNote };
+  return {
+    emailLine,
+    whatsappLine,
+    sourceNote,
+    emailNotice,
+    emailTextLabel,
+    hasReaderBox: facts?.email === 'reader_notice',
+    whatsappNote,
+    whatsappSameTextNote,
+    hashNote: 'Este es el texto que reproduce la huella SHA-256 del anexo técnico.',
+  };
 }
