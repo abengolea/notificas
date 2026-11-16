@@ -363,14 +363,9 @@ async function syncCampaignMessage(
           update.waEstado = 'leido';
           update.waLeidoAt = FieldValue.serverTimestamp();
         }
-        // Para campaña solo-WA, el estado principal también sube a leido
-        if (canal === 'whatsapp' && fd.estado !== 'leido') {
-          update.estado = 'leido';
-          update.leidoAt = FieldValue.serverTimestamp();
-          if (campId) t.update(db.collection('campaigns').doc(campId), { 'stats.leidos': FieldValue.increment(1) });
-        }
-        // Para ambos: estado global a leido solo si email también está leido
-        if (canal === 'ambos' && fd.emailEstado === 'leido' && fd.estado !== 'leido') {
+        // El estado principal sube a leido cuando se lee por CUALQUIER canal (WhatsApp solo, o correo + WhatsApp).
+        // El detalle por canal queda en waEstado / emailEstado.
+        if (isWaChannel && fd.estado !== 'leido') {
           update.estado = 'leido';
           update.leidoAt = FieldValue.serverTimestamp();
           if (campId) t.update(db.collection('campaigns').doc(campId), { 'stats.leidos': FieldValue.increment(1) });

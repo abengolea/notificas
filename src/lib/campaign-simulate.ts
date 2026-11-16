@@ -221,9 +221,10 @@ export async function completeSimulatedSend(params: {
     }
   }
 
-  const emailRead = !email || msgUpdate.emailEstado === 'leido';
-  const waReadOk = !wa || msgUpdate.waEstado === 'leido';
-  if (emailRead && waReadOk) {
+  // Leído por cualquier canal (igual que en producción).
+  const emailRead = Boolean(email) && msgUpdate.emailEstado === 'leido';
+  const waReadOk = Boolean(wa) && msgUpdate.waEstado === 'leido';
+  if (emailRead || waReadOk) {
     msgUpdate.estado = 'leido';
     msgUpdate.leidoAt = now;
   }

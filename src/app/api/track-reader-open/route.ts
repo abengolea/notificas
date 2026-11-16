@@ -75,9 +75,8 @@ async function syncCampaignMessageRead(mailId: string): Promise<void> {
         emailEstado: 'leido',
         emailLeidoAt: new Date(),
       };
-      // Para solo-email o cuando WA ya está leído, subir estado global
-      const waOk = canal !== 'ambos' || fd.waEstado === 'leido';
-      if (fd.estado !== 'leido' && waOk) {
+      // El estado global sube a leído con la lectura por cualquier canal (el detalle queda en emailEstado / waEstado).
+      if (fd.estado !== 'leido') {
         update.estado = 'leido';
         update.leidoAt = new Date();
         if (campId) {
