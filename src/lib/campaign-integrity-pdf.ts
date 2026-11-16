@@ -66,7 +66,7 @@ export type ActaTandaInput = {
 };
 
 const EVENT_LABEL: Record<string, string> = {
-  email_read: 'Correo abierto',
+  email_read: 'Lector abierto',
   wa_delivered: 'WhatsApp entregado',
   wa_read: 'WhatsApp leído',
   content_access: 'Acceso al contenido',
@@ -147,7 +147,7 @@ export function loteClosingSentence(input: ActaTandaInput): string {
   if (input.kind === 'send') what = `${n} envío${n === 1 ? '' : 's'}`;
   else if (onlyWaDelivered) what = `${n} entrega${n === 1 ? '' : 's'} de WhatsApp`;
   else if (onlyWaRead) what = `${n} lectura${n === 1 ? '' : 's'} de WhatsApp`;
-  else if (onlyMailRead) what = `${n} apertura${n === 1 ? '' : 's'} de correo`;
+  else if (onlyMailRead) what = `${n} apertura${n === 1 ? '' : 's'} del lector`;
   else what = `${n} hecho${n === 1 ? '' : 's'} (sin lecturas si no constan)`;
   const camp = input.campaignNombre || 'la campaña';
   const anchored = input.status === 'anchored' && Boolean(input.merkleRoot && input.txHash);
@@ -643,7 +643,7 @@ function writeWrapped(
 }
 
 export const OBS_SMTP_ACCEPTED = 'Aceptado por el proveedor SMTP de Notificas';
-export const OBS_EMAIL_OPENED = 'Apertura registrada por Notificas (píxel del correo o lector)';
+export const OBS_EMAIL_OPENED = 'Apertura del lector registrada por Notificas';
 
 export function hechoFecha(
   iso?: string,
@@ -806,15 +806,10 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
         ...origenRows,
         ['Fecha de emisión', input.generatedAt],
         tableSectionRow('Canal correo electrónico'),
-        ...(email ? [['Casilla de destino', email]] : [['Casilla de destino', 'No consignada']]),
-        ...(asunto ? [['Asunto', asunto]] : []),
         ...(input.smtpMessageId
           ? [['ID SMTP del correo', input.smtpMessageId]]
           : [['ID SMTP del correo', 'No consta a la fecha de esta constancia']]),
         tableSectionRow('Canal WhatsApp'),
-        ...(input.recipientTelefono
-          ? [['Teléfono de destino', input.recipientTelefono]]
-          : [['Teléfono de destino', 'No consignado']]),
         ...(input.wamid ? [['WAMID de WhatsApp', input.wamid]] : [['WAMID de WhatsApp', 'No consta']]),
         ...(input.phoneNumberId ? [['Phone Number ID (Meta)', input.phoneNumberId]] : []),
         ...(input.wabaId ? [['WABA ID (Meta)', input.wabaId]] : []),
@@ -993,7 +988,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
       });
       parts.push({ kind: 'body', text: cuerpo || 'Sin texto de correo en snapshot sellado.' });
     }
-    drawContentBox(emailBoxTitle, email ? `Destino: ${email}` : '', parts);
+    drawContentBox(emailBoxTitle, `Destino: ${email || 'No consignado'}`, parts);
     if (mixed && input.evidenceSealed && narrative.hasReaderBox) {
       drawContentBox(readerBoxTitle, '', [
         { kind: 'note', text: 'Es lo que la persona lee al tocar el botón del correo, con variables ya sustituidas.' },
@@ -1004,7 +999,7 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
   };
 
   const renderWhatsAppBlock = () => {
-    const phone = input.recipientTelefono ? `Destino: ${input.recipientTelefono}` : '';
+    const phone = `Destino: ${input.recipientTelefono || 'No consignado'}`;
     if (!waSent) {
       drawContentBox(waBoxTitle, phone, [
         { kind: 'note', text: 'No hay pedido a Meta en el snapshot. No se reconstruye el globo desde datos vivos.' },
@@ -1139,11 +1134,13 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     (input.canal !== 'ambos' || Boolean(input.smtpMessageId || input.chronology.emailEnviadoAt));
   const showWa = showsWhatsAppContent(input.canal);
   const chronoRows: string[][] = [];
+  // Con el envío registrado se sabe si hubo lector; sin ese dato se mantiene la fila (correo con lector).
+  const hasReader = input.delivery ? input.delivery.email === 'reader_notice' || input.delivery.whatsapp === 'reader_link' : true;
   if (showEmail) {
     const [envFecha, envObs] = hechoFecha(input.chronology.emailEnviadoAt);
     const [leiFecha, leiObs] = hechoFecha(input.chronology.emailLeidoAt, { emailOpened: true });
     chronoRows.push(['Correo aceptado por el proveedor SMTP', envFecha, envObs]);
-    chronoRows.push(['Correo abierto (pixel / reader)', leiFecha, leiObs]);
+    if (hasReader) chronoRows.push(['Lector abierto (enlace de lectura)', leiFecha, leiObs]);
   }
   if (showWa) {
     const [envFecha, envObs] = hechoFecha(input.chronology.waEnviadoAt, { meta: true });
@@ -1168,7 +1165,21 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     headStyles: { ...PDF_TABLE_HEAD, fontSize: 8 },
     columnStyles: { 0: { cellWidth: 62 }, 1: { cellWidth: 52 }, 2: { cellWidth: 68 } },
   });
-  y = lastAutoY(doc, y) + 10;
+  y = lastAutoY(doc, y) + 4;
+  if (!hasReader) {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    y = writeWrapped(
+      doc,
+      'Este envío no incluía lector (el correo traía el texto y WhatsApp una plantilla sin enlace al lector): no hay una apertura que registrar.',
+      14,
+      y,
+      182,
+      3.6
+    );
+  }
+  y += 6;
 
   y = ensureY(doc, y, 36);
   doc.setFont('helvetica', 'bold');

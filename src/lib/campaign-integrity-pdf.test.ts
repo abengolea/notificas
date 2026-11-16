@@ -466,5 +466,27 @@ test('la apertura del correo no lleva la leyenda de aceptación SMTP', () => {
   assert.equal(sent, OBS_SMTP_ACCEPTED);
   assert.equal(opened, OBS_EMAIL_OPENED);
   assert.notEqual(opened, sent);
-  assert.doesNotMatch(opened, /SMTP/);
+  assert.doesNotMatch(opened, /SMTP|p.xel/i);
+});
+
+test('la cronología habla de apertura del lector (no hay píxel) y solo si el envío tenía lector', async () => {
+  const conLector = pdfText(
+    await buildActaDestinatarioPdf(
+      sampleMixed({ delivery: { email: 'reader_notice', whatsapp: 'template', source: 'sealed' } })
+    )
+  );
+  assert.match(conLector, /Lector abierto/);
+  assert.match(conLector, /Apertura del lector registrada por Notificas/);
+  assert.equal(/Correo abierto/.test(conLector), false);
+  assert.equal(/p.xel|pixel/i.test(conLector), false);
+  assert.equal(/no inclu.a lector/.test(conLector), false);
+
+  const sinLector = pdfText(await buildActaDestinatarioPdf(sampleMixed()));
+  assert.equal(/Lector abierto/.test(sinLector), false);
+  assert.match(sinLector, /no inclu.a lector/);
+
+  // Sin dato del envío se conserva la fila: no se afirma que no hubiera lector.
+  const sinDato = pdfText(await buildActaDestinatarioPdf(sampleMixed({ delivery: null })));
+  assert.match(sinDato, /Lector abierto/);
+  assert.equal(/no inclu.a lector/.test(sinDato), false);
 });
