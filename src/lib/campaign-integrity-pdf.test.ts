@@ -490,3 +490,46 @@ test('la cronología habla de apertura del lector (no hay píxel) y solo si el e
   assert.match(sinDato, /Lector abierto/);
   assert.equal(/no inclu.a lector/.test(sinDato), false);
 });
+
+test('la cronología indica por dónde se abrió el lector, una fila por apertura', async () => {
+  const delivery = { email: 'reader_notice', whatsapp: 'template', source: 'sealed' } as const;
+  const base = sampleMixed({ delivery });
+  const una = pdfText(
+    await buildActaDestinatarioPdf({
+      ...base,
+      chronology: { ...base.chronology, readerOpens: [{ at: '2026-08-28T23:18:41Z', source: 'correo' }] },
+    })
+  );
+  assert.match(una, /Lector abierto desde el correo/);
+  assert.equal(/Lector abierto desde WhatsApp/.test(una), false);
+  assert.equal(/sin hoja anclada/.test(una), false);
+
+  const dos = pdfText(
+    await buildActaDestinatarioPdf({
+      ...base,
+      chronology: {
+        ...base.chronology,
+        readerOpens: [
+          { at: '2026-08-28T23:18:41Z', source: 'correo' },
+          { at: '2026-08-28T23:30:00Z', source: 'whatsapp' },
+        ],
+      },
+    })
+  );
+  assert.match(dos, /Lector abierto desde el correo/);
+  assert.match(dos, /Lector abierto desde WhatsApp/);
+  assert.match(dos, /sin hoja anclada/);
+
+  const sinOrigen = pdfText(
+    await buildActaDestinatarioPdf({
+      ...base,
+      chronology: { ...base.chronology, readerOpens: [{ at: '2026-08-28T23:18:41Z', source: 'unknown' }] },
+    })
+  );
+  assert.match(sinOrigen, /origen no determinado/);
+
+  // Sin el registro de aperturas se conserva la fila genérica: no se inventa un origen.
+  const sinRegistro = pdfText(await buildActaDestinatarioPdf(base));
+  assert.match(sinRegistro, /Lector abierto \(enlace de lectura\)/);
+  assert.equal(/Lector abierto desde/.test(sinRegistro), false);
+});

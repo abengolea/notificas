@@ -8,6 +8,7 @@ import {
 } from '@/lib/campaign-integrity';
 import { getTransactionInfo } from '@/lib/blockchain';
 import { deliveryFactsFromCampaignConfig } from '@/lib/campaign-delivery-facts';
+import { readerOpensFromMovements } from '@/lib/reader-opens';
 import { buildActaDestinatarioPdf, buildActaTandaPdf, type ActaLeafRow } from '@/lib/campaign-integrity-pdf';
 import { LotePdfIntegrityError } from '@/lib/lote-leaf-hash';
 import { formatCuit } from '@/lib/cuit';
@@ -120,6 +121,9 @@ export async function GET(request: NextRequest) {
     const emailOpenedAt =
       firstEventTime(providerEvents, (e) => e.eventType === 'email_read' || e.eventType === 'opened') ||
       toIso(evByType.email_read?.occurredAt);
+    // Cada apertura del lector y por dónde entró (correo o WhatsApp), tal como se registró al abrirse.
+    const mailForOpens = mailId ? (await db.collection('mail').doc(mailId).get()).data() : undefined;
+    const readerOpens = readerOpensFromMovements(mailForOpens?.tracking?.movements);
     const waDeliveredAt =
       firstEventTime(providerEvents, (e) => e.provider === 'meta' && e.eventType === 'delivered') ||
       toIso(evByType.wa_delivered?.occurredAt);
@@ -200,6 +204,7 @@ export async function GET(request: NextRequest) {
       chronology: {
         emailEnviadoAt: smtpAcceptedAt,
         emailLeidoAt: emailOpenedAt,
+        readerOpens,
         waEnviadoAt: waSentAt,
         waEntregadoAt: waDeliveredAt,
         waLeidoAt: waReadAt,

@@ -1,4 +1,5 @@
 import { describeDelivery, type DeliveryFacts } from '@/lib/campaign-delivery-facts';
+import { readerOpenRowLabel, type ReaderOpen } from '@/lib/reader-opens';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
@@ -502,6 +503,8 @@ export type ActaDestinatarioInput = {
   chronology: {
     emailEnviadoAt?: string;
     emailLeidoAt?: string;
+    /** Cada apertura del lector con su origen (correo o WhatsApp), según el registro de Notificas. */
+    readerOpens?: ReaderOpen[];
     waEnviadoAt?: string;
     waEntregadoAt?: string;
     waLeidoAt?: string;
@@ -644,6 +647,7 @@ function writeWrapped(
 
 export const OBS_SMTP_ACCEPTED = 'Aceptado por el proveedor SMTP de Notificas';
 export const OBS_EMAIL_OPENED = 'Apertura del lector registrada por Notificas';
+export const OBS_READER_OPEN_LATER = 'Apertura posterior (sin hoja anclada)';
 
 export function hechoFecha(
   iso?: string,
@@ -1140,7 +1144,17 @@ export async function buildActaDestinatarioPdf(input: ActaDestinatarioInput): Pr
     const [envFecha, envObs] = hechoFecha(input.chronology.emailEnviadoAt);
     const [leiFecha, leiObs] = hechoFecha(input.chronology.emailLeidoAt, { emailOpened: true });
     chronoRows.push(['Correo aceptado por el proveedor SMTP', envFecha, envObs]);
-    if (hasReader) chronoRows.push(['Lector abierto (enlace de lectura)', leiFecha, leiObs]);
+    if (hasReader) {
+      const opens = input.chronology.readerOpens ?? [];
+      if (opens.length > 0) {
+        // Una fila por apertura, con el origen que Notificas registró al abrirse.
+        opens.forEach((o, i) =>
+          chronoRows.push([readerOpenRowLabel(o.source), hechoFecha(o.at, { emailOpened: true })[0], i === 0 ? OBS_EMAIL_OPENED : OBS_READER_OPEN_LATER])
+        );
+      } else {
+        chronoRows.push(['Lector abierto (enlace de lectura)', leiFecha, leiObs]);
+      }
+    }
   }
   if (showWa) {
     const [envFecha, envObs] = hechoFecha(input.chronology.waEnviadoAt, { meta: true });
