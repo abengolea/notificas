@@ -88,6 +88,7 @@ import {
 } from "@/lib/wa-template-fields";
 import { fieldsFromSavedWaTemplate } from "@/lib/wa-saved-template";
 import { checkWaVariables } from "@/lib/wa-variables-check";
+import { describeBodyVariableMismatch } from "@/lib/wa-template-shape";
 import {
   checkLetterVariables,
   csvColumnsFromLetterText,
@@ -890,6 +891,34 @@ export function CampaignWizard({
     mixedModeEff,
   ]);
 
+  /**
+   * El texto de Meta pide más {{N}} de los que la campaña completa: WhatsApp falla (#132000) y, si el correo lleva ese
+   * texto, sale con «{{3}}» a la vista. Se marca acá, antes de poder enviar.
+   */
+  const waTemplateProblem = useMemo(() => {
+    if (!needsWaTemplateStep || waUsesDefault) return "";
+    const body = waTemplateBody.trim();
+    const mismatch = body
+      ? describeBodyVariableMismatch({
+          body,
+          variables: waPreviewVars,
+          urlButton: waUrlButtonEff,
+          templateName: waTemplateName.trim(),
+        })
+      : "";
+    if (mismatch) return mismatch;
+    // Red de seguridad: ningún texto que salga puede quedar con un {{N}} de Meta sin completar.
+    const left = new Set<string>();
+    for (const text of [deliveryPreview.letter, deliveryPreview.waText]) {
+      for (const m of String(text || "").matchAll(/\{\{\s*\d+\s*\}\}/g)) left.add(m[0].replace(/\s+/g, ""));
+    }
+    return left.size
+      ? `El mensaje todavía tiene ${[...left].join(", ")} sin completar. Definí en Template qué dato va en cada variable (una columna o un texto fijo).`
+      : "";
+    // waPreviewVars se arma en cada render; sus partes están en las dependencias.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsWaTemplateStep, waUsesDefault, waTemplateBody, waPreviewVars.join("\u0001"), waUrlButtonEff, waTemplateName, deliveryPreview]);
+
   const recvSig = useMemo(
     () =>
       [...recipients]
@@ -1407,6 +1436,11 @@ export function CampaignWizard({
   async function runSubmit(sendNow: boolean) {
     if (sendNow && waVarsBlocked && waVarsCheck) {
       toast({ title: "No se puede enviar: faltan datos de WhatsApp", description: waVarsCheck.message, variant: "destructive" });
+      setConfirmOpen(false);
+      return;
+    }
+    if (sendNow && waTemplateProblem) {
+      toast({ title: "No se puede enviar: el template no coincide", description: waTemplateProblem, variant: "destructive" });
       setConfirmOpen(false);
       return;
     }
@@ -2543,6 +2577,11 @@ export function CampaignWizard({
                 No se puede seguir: la carta usa datos que faltan en el CSV. {letterVarsCheck.message}
               </p>
             ) : null}
+            {waTemplateProblem ? (
+              <p className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+                No se puede seguir: {waTemplateProblem}
+              </p>
+            ) : null}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
               <Button
@@ -2551,6 +2590,7 @@ export function CampaignWizard({
                   !recipientTotal ||
                   waVarsBlocked ||
                   letterVarsBlocked ||
+                  Boolean(waTemplateProblem) ||
                   (isAdmin && pairByColumn && csvInspect != null && csvInspect.hasAdjuntoColumn !== true)
                 }
               >
@@ -3055,6 +3095,11 @@ export function CampaignWizard({
                     : "Pedile al administrador que complete el mapeo de la plantilla."}
                 </p>
               )}
+            {waTemplateProblem ? (
+              <p className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+                {waTemplateProblem}
+              </p>
+            ) : null}
             {mixedMeta && !waTemplateBody.trim() && (
               <p className="text-sm text-destructive">
                 {isAdmin
@@ -3074,6 +3119,7 @@ export function CampaignWizard({
                   (!usesNotificasDefaultTemplate(waTemplateName) &&
                     waTemplateVariables.some((v) => isWaTemplateVarEmpty(v))) ||
                   waVarsUnassigned.length > 0 ||
+                  Boolean(waTemplateProblem) ||
                   (mixedMeta && !waTemplateBody.trim())
                 }
               >
@@ -3244,9 +3290,18 @@ export function CampaignWizard({
                 borrador y corregirlo después.
               </p>
             ) : null}
+            {waTemplateProblem ? (
+              <p className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+                No se puede enviar: {waTemplateProblem} Podés guardar el borrador y corregirlo después.
+              </p>
+            ) : null}
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
-              <Button variant="secondary" disabled={submitting || waVarsBlocked || letterVarsBlocked} onClick={() => setConfirmOpen(true)}>
+              <Button
+                variant="secondary"
+                disabled={submitting || waVarsBlocked || letterVarsBlocked || Boolean(waTemplateProblem)}
+                onClick={() => setConfirmOpen(true)}
+              >
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 {simulated ? "Simular ahora" : "Enviar ahora"}
               </Button>
