@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { CampaignDashboard, type CampaignDashboardHandle } from "@/components/empresa/campaign-dashboard";
 import { canEditWhatsAppTemplate, isUnsentCampaign } from "@/lib/campaign-edit";
 import { WA_TEMPLATE_DEFAULT_VARS, csvColumnsFromWaVariables, usesNotificasDefaultTemplate } from "@/lib/wa-template-fields";
+import { campaignLetterTexts, csvColumnsFromLetterText, mergeCsvColumns } from "@/lib/campaign-letter-fields";
 import { WaTemplateFields } from "@/components/empresa/wa-template-fields";
 import { WaSavedTemplates } from "@/components/empresa/wa-saved-templates";
 import { OrgWaTemplatePicker } from "@/components/empresa/org-wa-template-picker";
@@ -63,6 +64,7 @@ type CampaignPayload = {
   waTemplateVariables: string[];
   waUrlButton?: boolean;
   waTemplateBody?: string;
+  mixedMode?: string;
   stats: { total: number; enviados: number; leidos: number; pendientes: number; errores: number };
 };
 
@@ -219,9 +221,10 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
     setUploading(true);
     setUploadPct({ parsed: 0, skipped: 0 });
     try {
-      const extraColumns = usesNotificasDefaultTemplate(templateName)
-        ? []
-        : csvColumnsFromWaVariables(templateVars);
+      const extraColumns = mergeCsvColumns(
+        usesNotificasDefaultTemplate(templateName) ? [] : csvColumnsFromWaVariables(templateVars),
+        csvColumnsFromLetterText(campaignLetterTexts({ ...data.campaign, waTemplateName: templateName }))
+      );
       const result = await uploadCampaignCsvInChunks({
         campaignId,
         orgId: data.campaign.orgId,
@@ -425,10 +428,12 @@ export function AdminCampaignOps({ campaignId }: { campaignId: string }) {
   const canEditTpl = canEditWhatsAppTemplate(c);
   const showEmail = c.canal === "email" || c.canal === "ambos";
   const showWa = c.canal === "whatsapp" || c.canal === "ambos";
-  const csvExtra =
+  const csvExtra = mergeCsvColumns(
     showWa && !c.simulated && !usesNotificasDefaultTemplate(templateName)
       ? csvColumnsFromWaVariables(templateVars)
-      : [];
+      : [],
+    csvColumnsFromLetterText(campaignLetterTexts({ ...c, waTemplateName: templateName }))
+  );
 
   return (
     <div className="max-w-6xl space-y-6">

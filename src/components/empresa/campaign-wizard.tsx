@@ -89,6 +89,12 @@ import {
 import { fieldsFromSavedWaTemplate } from "@/lib/wa-saved-template";
 import { checkWaVariables } from "@/lib/wa-variables-check";
 import {
+  checkLetterVariables,
+  csvColumnsFromLetterText,
+  mergeCsvColumns,
+  recipientExtraFields,
+} from "@/lib/campaign-letter-fields";
+import {
   DEFAULT_MIXED_DELIVERY_MODE,
   describeMetaTemplateBody,
   effectiveMixedDeliveryMode,
@@ -365,10 +371,26 @@ export function CampaignWizard({
       }),
     [waPreviewBody, waPreviewVars, waUsesDefault, waUrlButton]
   );
+  /** Textos que se personalizan por destinatario. Con «mismo texto» el correo lleva el cuerpo de Meta, no la carta. */
+  const letterTexts = useMemo(
+    () => (needsMensajeStep ? [asunto, mixedSameText ? "" : cuerpo] : []),
+    [needsMensajeStep, asunto, cuerpo, mixedSameText]
+  );
+  /** Columnas del CSV que pide la carta: cualquier {{variable}} que escribas se toma de la columna del mismo nombre. */
+  const letterCsvColumns = useMemo(() => csvColumnsFromLetterText(letterTexts), [letterTexts]);
   const waCsvExtraColumns = useMemo(() => {
-    if (!needsWaTemplateStep || usesNotificasDefaultTemplate(waTemplateName)) return [];
-    return csvColumnsFromWaVariables(waTemplateVariables);
-  }, [needsWaTemplateStep, waTemplateName, waTemplateVariables]);
+    const wa =
+      !needsWaTemplateStep || usesNotificasDefaultTemplate(waTemplateName)
+        ? []
+        : csvColumnsFromWaVariables(waTemplateVariables);
+    return mergeCsvColumns(wa, letterCsvColumns);
+  }, [needsWaTemplateStep, waTemplateName, waTemplateVariables, letterCsvColumns]);
+  // Un {{dato}} de la carta sin valor saldría vacío en un documento que se lacra: se frena antes de enviar.
+  const letterVarsCheck = useMemo(
+    () => (letterTexts.length ? checkLetterVariables({ texts: letterTexts, rows: recipients }) : null),
+    [letterTexts, recipients]
+  );
+  const letterVarsBlocked = letterVarsCheck != null && !letterVarsCheck.ok;
   // Meta rechaza cualquier {{N}} vacío: se frena antes de lanzar, no después.
   const waVarsCheck = useMemo(
     () =>
@@ -842,6 +864,7 @@ export function CampaignWizard({
       waUrlButton: waUsesDefault ? false : waUrlButtonEff,
       mixedMode: mixedModeEff,
       row: {
+        ...recipientExtraFields(r0),
         nombre,
         dni: r0?.dni,
         legajo: r0?.legajo,
@@ -1384,6 +1407,11 @@ export function CampaignWizard({
   async function runSubmit(sendNow: boolean) {
     if (sendNow && waVarsBlocked && waVarsCheck) {
       toast({ title: "No se puede enviar: faltan datos de WhatsApp", description: waVarsCheck.message, variant: "destructive" });
+      setConfirmOpen(false);
+      return;
+    }
+    if (sendNow && letterVarsBlocked && letterVarsCheck) {
+      toast({ title: "No se puede enviar: faltan datos de la carta", description: letterVarsCheck.message, variant: "destructive" });
       setConfirmOpen(false);
       return;
     }
@@ -2194,12 +2222,12 @@ export function CampaignWizard({
                     {waCsvExtraColumns.length > 0 && (
                     <div>
                       <p className="font-medium text-xs uppercase tracking-wide text-muted-foreground mb-1">
-                        Variables del mensaje de WhatsApp
+                        Variables del mensaje
                       </p>
                       <table className="w-full text-xs border-collapse">
                         <tbody>
                           {waCsvExtraColumns.map((col) => {
-                            const help = CSV_EXTRA_HELP[col] || { ej: "valor", nota: "Va en un {{N}} del template" };
+                            const help = CSV_EXTRA_HELP[col] || { ej: "valor", nota: "Se usa en el mensaje: {{" + col + "}} en la carta o un {{N}} del template" };
                             return (
                               <tr key={col} className="border-t bg-amber-50 dark:bg-amber-950/20">
                                 <td className="p-1.5 font-mono">{col}</td>
@@ -2273,7 +2301,7 @@ export function CampaignWizard({
             {waCsvExtraColumns.length > 0 && (
               <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/20 p-3 text-sm space-y-1">
                 <p className="font-medium text-amber-900 dark:text-amber-200">
-                  Columnas del texto de WhatsApp (además del teléfono)
+                  Columnas que usa el mensaje (además de los datos de contacto)
                 </p>
                 <p className="font-mono text-xs text-amber-800 dark:text-amber-300">{waCsvExtraColumns.join(", ")}</p>
                 <p className="text-xs text-amber-800/80 dark:text-amber-400">
@@ -2510,6 +2538,11 @@ export function CampaignWizard({
                 No se puede seguir: WhatsApp rechaza los mensajes con variables vacías. {waVarsCheck.message}
               </p>
             ) : null}
+            {letterVarsBlocked && letterVarsCheck ? (
+              <p className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+                No se puede seguir: la carta usa datos que faltan en el CSV. {letterVarsCheck.message}
+              </p>
+            ) : null}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
               <Button
@@ -2517,6 +2550,7 @@ export function CampaignWizard({
                 disabled={
                   !recipientTotal ||
                   waVarsBlocked ||
+                  letterVarsBlocked ||
                   (isAdmin && pairByColumn && csvInspect != null && csvInspect.hasAdjuntoColumn !== true)
                 }
               >
@@ -3204,9 +3238,15 @@ export function CampaignWizard({
                 el borrador y corregirlo después.
               </p>
             ) : null}
+            {letterVarsBlocked && letterVarsCheck ? (
+              <p className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+                No se puede enviar: la carta usa datos que faltan en el CSV. {letterVarsCheck.message} Podés guardar el
+                borrador y corregirlo después.
+              </p>
+            ) : null}
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
-              <Button variant="secondary" disabled={submitting || waVarsBlocked} onClick={() => setConfirmOpen(true)}>
+              <Button variant="secondary" disabled={submitting || waVarsBlocked || letterVarsBlocked} onClick={() => setConfirmOpen(true)}>
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 {simulated ? "Simular ahora" : "Enviar ahora"}
               </Button>

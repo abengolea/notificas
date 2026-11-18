@@ -33,6 +33,7 @@ import { pauseCampaignIfLimit } from '@/lib/campaign-auto-pause';
 import { waitCampaignSendGap } from '@/lib/campaign-send-pace';
 import { completeSimulatedSend, isCampaignSimulated } from '@/lib/campaign-simulate';
 import { presentRecipientValue, recipientValueText } from '@/lib/parse-campaign-csv';
+import { readRecipientExtras } from '@/lib/campaign-letter-fields';
 import { getCampaignAttachmentFile } from '@/lib/campaign-attachment-files';
 import type { CampaignAttachment, RecipientEntry } from '@/lib/types';
 import { registerPublicApiNotification, syncPublicApiNotificationFromMail } from '@/lib/public-api/status-sync';
@@ -262,7 +263,9 @@ async function processMessage(
   const waOnly = canal === 'whatsapp' && (!emailRaw || isSyntheticEmail);
   // Para campañas WA-only usamos dirección interna solo para el mail doc de tracking.
   const email = (!waOnly && emailRaw) ? emailRaw : `wa-${(msg.recipientTelefono || '').replace(/\D/g, '')}@notificas.internal`;
-  const row: RecipientEntry = {
+  const row: RecipientEntry & Record<string, unknown> = {
+    // Área y columnas propias del CSV; los campos de siempre van después y no se pisan.
+    ...readRecipientExtras(msg.recipientExtras),
     email: emailRaw,
     nombre: msg.recipientNombre || email.split('@')[0],
     dni: msg.recipientDni || undefined,

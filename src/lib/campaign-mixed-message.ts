@@ -185,6 +185,8 @@ export type MixedMessageRow = {
   monto?: string;
   cuotas?: string;
   area?: string;
+  /** Columnas propias del CSV. */
+  [extra: string]: unknown;
 };
 
 function asWaText(v: unknown): string {

@@ -25,29 +25,31 @@ export type CampaignPersonalizeRow = {
   monto?: string;
   cuotas?: string;
   area?: string;
+  /** Columnas propias del CSV (por ejemplo `anios_adeudados`): también se pueden usar como {{variable}}. */
+  [extra: string]: unknown;
 };
 
-/** Sustituye {{nombre}}, {{dni}}, {{legajo}}, {{fecha}}, {{monto}}, … en texto (asunto o cuerpo). */
+/**
+ * Sustituye {{nombre}}, {{dni}}, {{legajo}}, {{fecha}}, {{monto}}, … y cualquier columna propia del CSV
+ * en texto (asunto o cuerpo). Una variable que la fila no conoce se deja tal cual.
+ */
 export function personalizeCampaignText(
   template: string,
   row: CampaignPersonalizeRow
 ): string {
-  const vals: Record<string, string> = {
-    nombre: row.nombre || '',
-    dni: row.dni ?? '',
-    legajo: row.legajo ?? '',
-    email: row.email ?? '',
-    telefono: row.telefono ?? '',
-    dias: row.dias ?? '',
-    fecha: row.fecha ?? '',
-    monto: row.monto ?? '',
-    cuotas: row.cuotas ?? '',
-    area: row.area ?? '',
-  };
-  return template.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (full, raw: string) => {
+  const vals: Record<string, string> = Object.create(null);
+  for (const [rawKey, v] of Object.entries(row)) {
+    if (v === undefined || v === null || typeof v === 'object') continue;
+    vals[rawKey.toLowerCase()] = String(v);
+  }
+  // Las columnas de siempre existen aunque vengan vacías: salen en blanco, no con las llaves.
+  for (const key of ['nombre', 'dni', 'legajo', 'email', 'telefono', 'dias', 'fecha', 'monto', 'cuotas', 'area']) {
+    if (!(key in vals)) vals[key] = '';
+  }
+  return template.replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (full, raw: string) => {
     const key = String(raw || '').toLowerCase();
     const mapped = key === 'dias_atraso' ? 'dias' : key;
-    return Object.prototype.hasOwnProperty.call(vals, mapped) ? vals[mapped] : full;
+    return mapped in vals ? vals[mapped] : full;
   });
 }
 

@@ -12,6 +12,13 @@ import { RECIPIENT_CHUNK_SIZE } from '@/lib/campaign-recipients';
 import { isSyntheticCampaignEmail, phoneDigits, presentRecipientValue, recipientValueText } from '@/lib/parse-campaign-csv';
 import type { RecipientEntry } from '@/lib/types';
 import { newNotificationId } from '@/lib/public-api/ids';
+import { recipientExtraFields } from '@/lib/campaign-letter-fields';
+
+/** Área y columnas propias del CSV, para que la carta las use. Sin ninguna: null (no queda un mapa vacío). */
+function extrasForMessage(row: RecipientEntry): Record<string, string> | null {
+  const extras = recipientExtraFields(row);
+  return Object.keys(extras).length ? extras : null;
+}
 
 // Destinatarios que procesa cada invocación del fanout (un archivo de Storage).
 const FANOUT_PAGE = RECIPIENT_CHUNK_SIZE;
@@ -309,6 +316,7 @@ async function processFanoutPage(
         recipientFecha: row.fecha || null,
         recipientMonto: row.monto || null,
         recipientCuotas: presentRecipientValue(row.cuotas) ? recipientValueText(row.cuotas) : null,
+        recipientExtras: extrasForMessage(row),
         recipientTelefono: row.telefono || null,
         recipientAdjunto: row.adjunto || null,
         sourceRowHash,
@@ -343,6 +351,7 @@ async function processFanoutPage(
         recipientFecha: row.fecha || null,
         recipientMonto: row.monto || null,
         recipientCuotas: presentRecipientValue(row.cuotas) ? recipientValueText(row.cuotas) : null,
+        recipientExtras: extrasForMessage(row),
         recipientTelefono: row.telefono || null,
         recipientAdjunto: row.adjunto || null,
         sourceRowHash,

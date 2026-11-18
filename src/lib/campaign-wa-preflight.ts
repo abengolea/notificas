@@ -3,6 +3,24 @@ import { checkWaVariables } from '@/lib/wa-variables-check';
 import { WA_TEMPLATE_DEFAULT_VARS, usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
 import type { RecipientEntry } from '@/lib/types';
 
+/** Filas del CSV de la campaña: desde Storage (listas grandes) o inline. */
+export async function loadCampaignRecipientRows(campaign: Record<string, unknown>): Promise<RecipientEntry[]> {
+  let rows: RecipientEntry[] = [];
+  const storagePath = typeof campaign.recipientStoragePath === 'string' ? campaign.recipientStoragePath : '';
+  if (storagePath) {
+    const chunks = typeof campaign.recipientChunkCount === 'number' ? campaign.recipientChunkCount : 0;
+    const bucket = getAdminBucket();
+    for (let i = 0; i < chunks; i += 1) {
+      const [content] = await bucket.file(`${storagePath}/chunk_${i}.json`).download();
+      const part = JSON.parse(content.toString('utf-8'));
+      if (Array.isArray(part)) rows = rows.concat(part as RecipientEntry[]);
+    }
+  } else if (Array.isArray(campaign.recipientData)) {
+    rows = campaign.recipientData as RecipientEntry[];
+  }
+  return rows;
+}
+
 /**
  * Antes del primer envío: cada {{N}} del template de WhatsApp tiene que tener dato.
  * Si no, Meta rechaza todos los mensajes (131008) y la campaña se quema en errores.
@@ -31,19 +49,7 @@ export async function assertCampaignWhatsAppVariables(campaign: Record<string, u
   const variables = useDefault ? [...WA_TEMPLATE_DEFAULT_VARS] : tpl.variables;
   const urlButton = useDefault ? false : tpl.urlButton;
 
-  let rows: RecipientEntry[] = [];
-  const storagePath = typeof campaign.recipientStoragePath === 'string' ? campaign.recipientStoragePath : '';
-  if (storagePath) {
-    const chunks = typeof campaign.recipientChunkCount === 'number' ? campaign.recipientChunkCount : 0;
-    const bucket = getAdminBucket();
-    for (let i = 0; i < chunks; i += 1) {
-      const [content] = await bucket.file(`${storagePath}/chunk_${i}.json`).download();
-      const part = JSON.parse(content.toString('utf-8'));
-      if (Array.isArray(part)) rows = rows.concat(part as RecipientEntry[]);
-    }
-  } else if (Array.isArray(campaign.recipientData)) {
-    rows = campaign.recipientData as RecipientEntry[];
-  }
+  const rows = await loadCampaignRecipientRows(campaign);
 
   const check = checkWaVariables({ variables, urlButton, rows, onlyWithPhone: canal === 'ambos' });
   if (!check.ok) {

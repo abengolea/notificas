@@ -323,6 +323,8 @@ export interface CampaignMessage {
   recipientFecha?: string;
   recipientMonto?: string;
   recipientCuotas?: string;
+  /** Área y columnas propias del CSV (por ejemplo `anios_adeudados`), usables como {{variable}} en la carta. */
+  recipientExtras?: Record<string, string>;
   // Estado unificado (para campañas single-canal o compatibilidad legacy)
   estado: 'pendiente' | 'enviado' | 'leido' | 'error';
   enviadoAt?: unknown;

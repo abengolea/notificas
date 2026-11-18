@@ -8,6 +8,7 @@ import { scheduleNextDailySend } from '@/lib/campaign-daily';
 import { pauseCampaignIfLimit } from '@/lib/campaign-auto-pause';
 import { resolveCampaignSenderEmail } from '@/lib/campaign-sender';
 import { assertCampaignWhatsAppVariables } from '@/lib/campaign-wa-preflight';
+import { assertCampaignLetterVariables } from '@/lib/campaign-letter-preflight';
 import type { RecipientEntry } from '@/lib/types';
 
 export type StartTandaOk = {
@@ -136,6 +137,8 @@ export async function startCampaignTanda(params: {
   }
 
   const alreadySent = await countCampaignSuccess(params.campaignId);
+  // Primer envío: la carta ya se lacró para quienes recibieron; no se vuelve a revisar en cada tanda.
+  if (alreadySent === 0) await assertCampaignLetterVariables(campaign);
   const remaining = Math.max(0, total - alreadySent);
   const upcomingQuota =
     typeof params.upcomingQuota === 'number'

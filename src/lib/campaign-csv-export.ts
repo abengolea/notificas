@@ -13,6 +13,7 @@ import {
 } from '@/lib/campaign-export-csv';
 import { csvHeaderColumns } from '@/lib/parse-campaign-csv';
 import { csvColumnsFromWaVariables, usesNotificasDefaultTemplate } from '@/lib/wa-template-fields';
+import { campaignLetterTexts, csvColumnsFromLetterText, mergeCsvColumns } from '@/lib/campaign-letter-fields';
 import { publicAppBase } from '@/lib/public-verify-url';
 
 export const CSV_EXPORT_PAGE = 200;
@@ -206,7 +207,7 @@ export function campaignUploadHeaders(campaign: FirebaseFirestore.DocumentData):
   const extra = usesNotificasDefaultTemplate(String(campaign.waTemplateName || ''))
     ? []
     : csvColumnsFromWaVariables(Array.isArray(campaign.waTemplateVariables) ? campaign.waTemplateVariables : []);
-  return csvHeaderColumns(canal, extra);
+  return csvHeaderColumns(canal, mergeCsvColumns(extra, csvColumnsFromLetterText(campaignLetterTexts(campaign))));
 }
 
 function exportCtx(
