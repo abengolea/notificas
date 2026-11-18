@@ -3,7 +3,7 @@ import { WA_DEFAULT_TEMPLATE_NAME, usesNotificasDefaultTemplate } from '@/lib/wa
 import {
   effectiveMixedDeliveryMode,
   isMixedDeliveryMode,
-  mixedModeWhatsAppUsesReader,
+  resolveWaUrlButton,
 } from '@/lib/campaign-mixed-message';
 
 export function whatsappTemplateCampaignPatch(input: {
@@ -20,11 +20,11 @@ export function whatsappTemplateCampaignPatch(input: {
   const mixedMode = isMixedDeliveryMode(input.mixedMode)
     ? effectiveMixedDeliveryMode(input.mixedMode, useDefault)
     : undefined;
-  const waUrlButton = useDefault
-    ? false
-    : mixedMode
-      ? mixedModeWhatsAppUsesReader(mixedMode)
-      : input.waUrlButton === true;
+  const waUrlButton = resolveWaUrlButton({
+    urlButton: input.waUrlButton,
+    mixedMode,
+    usesDefaultTemplate: useDefault,
+  });
   const patch: Record<string, unknown> = {
     // Elegir la plantilla de Notificas se guarda con su nombre explícito: un nombre vacío significa
     // «sin elegir» y el worker lo reemplaza por otra plantilla guardada de la empresa.

@@ -10,7 +10,7 @@ import {
   effectiveMixedDeliveryMode,
   isMixedDeliveryMode,
   MIXED_DELIVERY_MODES,
-  mixedModeWhatsAppUsesReader,
+  resolveWaUrlButton,
 } from '@/lib/campaign-mixed-message';
 
 const createSchema = z.object({
@@ -166,7 +166,11 @@ export async function POST(request: NextRequest) {
             waTemplateName: waName,
             waTemplateLang: parsed.data.waTemplateLang?.trim() || 'es_AR',
             waTemplateVariables: parsed.data.waTemplateVariables?.filter(Boolean) || ['nombre'],
-            waUrlButton: mixedMode ? mixedModeWhatsAppUsesReader(mixedMode) : parsed.data.waUrlButton === true,
+            waUrlButton: resolveWaUrlButton({
+              urlButton: parsed.data.waUrlButton,
+              mixedMode,
+              usesDefaultTemplate: false,
+            }),
             ...(waTemplateBody ? { waTemplateBody } : {}),
           }
         : canal !== 'email'

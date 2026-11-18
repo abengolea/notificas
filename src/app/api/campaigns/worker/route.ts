@@ -12,7 +12,7 @@ import {
   effectiveMixedDeliveryMode,
   isMixedDeliveryMode,
   mixedModeEmailIsDirect,
-  mixedModeWhatsAppUsesReader,
+  resolveWaUrlButton,
   renderCampaignMessageBody,
 } from '@/lib/campaign-mixed-message';
 import { resolveCampaignSenderDisplay, resolveCampaignSenderEmail } from '@/lib/campaign-sender';
@@ -255,7 +255,15 @@ async function processMessage(
       : undefined;
   const emailDirect = mixedModeEmailIsDirect(mixedMode);
   if (mixedMode && !usesNotificasDefaultTemplate(campaign.waTemplateName)) {
-    campaign = { ...campaign, waUrlButton: mixedModeWhatsAppUsesReader(mixedMode) };
+    // El modo solo puede apagar el botón (WhatsApp con el enlace propio de Meta); nunca lo prende.
+    campaign = {
+      ...campaign,
+      waUrlButton: resolveWaUrlButton({
+        urlButton: campaign.waUrlButton === true,
+        mixedMode,
+        usesDefaultTemplate: false,
+      }),
+    };
   }
   const emailRaw = String(msg.recipientEmail || '').toLowerCase();
   // Tratar emails sintéticos (generados por CSV parser cuando no hay email real) como "sin email".
@@ -572,11 +580,19 @@ async function processMessage(
     });
     if (limit) return 'limit_paused';
 
+    // Mixta: el correo sale antes que el WhatsApp. Si falló solo WhatsApp, el correo sí llegó y no se marca como error.
+    const emailWentOut = canal === 'ambos' && cfResult.emailSent === true;
+    const cfError = cfResult.error || 'Error en Cloud Function de envío';
     const errUpdate: Record<string, unknown> = {
       estado: 'error',
-      errorMsg: cfResult.error || 'Error en Cloud Function de envío',
+      errorMsg: emailWentOut ? `WhatsApp falló (el correo sí se envió): ${cfError}` : cfError,
     };
-    if (canal === 'email' || canal === 'ambos') errUpdate.emailEstado = 'error';
+    if (emailWentOut) {
+      errUpdate.emailEstado = 'enviado';
+      errUpdate.emailEnviadoAt = FieldValue.serverTimestamp();
+    } else if (canal === 'email' || canal === 'ambos') {
+      errUpdate.emailEstado = 'error';
+    }
     if (canal === 'whatsapp' || canal === 'ambos') errUpdate.waEstado = 'error';
     await msgRef.update(errUpdate);
     await recordSendError({

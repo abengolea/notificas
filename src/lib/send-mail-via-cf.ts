@@ -11,6 +11,8 @@ export async function invokeSendEmail(
   errorCode?: unknown;
   limitHit?: boolean;
   limitSource?: unknown;
+  /** El correo salió aunque el envío en conjunto falló (por ejemplo, falló solo el WhatsApp). */
+  emailSent?: boolean;
 }> {
   const fnUrl = getFirebaseSendEmailUrl();
   const cfRes = await fetch(fnUrl, {
@@ -26,6 +28,7 @@ export async function invokeSendEmail(
     errorCode?: unknown;
     limitHit?: boolean;
     limitSource?: unknown;
+    messageId?: unknown;
   };
 
   if (cfBody.skipped === true || cfRes.status === 409) {
@@ -45,6 +48,8 @@ export async function invokeSendEmail(
       errorCode: cfBody.errorCode,
       limitHit: cfBody.limitHit === true,
       limitSource: cfBody.limitSource,
+      // La Cloud Function manda el correo primero y recién después el WhatsApp: con messageId, el mail salió.
+      emailSent: Boolean(cfBody.messageId),
     };
   }
   return { ok: true, httpStatus: cfRes.status };

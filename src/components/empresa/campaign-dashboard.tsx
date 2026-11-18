@@ -50,7 +50,7 @@ import { DEFAULT_TANDA_SIZE } from "@/lib/campaign-tanda";
 import { explainWhatsAppSendError, usesNotificasDefaultTemplate, WA_TEMPLATE_DEFAULT_VARS } from "@/lib/wa-template-fields";
 import {
   DEFAULT_MIXED_DELIVERY_MODE,
-  mixedModeWhatsAppUsesReader,
+  resolveWaUrlButton,
   normalizeMixedDeliveryMode,
   usesMetaTemplateAsEmailBody,
   type MixedDeliveryMode,
@@ -833,10 +833,11 @@ export const CampaignDashboard = forwardRef<
           waTemplateName: tplName.trim(),
           waTemplateLang: tplLang,
           waTemplateVariables: tplVars.filter(Boolean),
-          waUrlButton:
-            campaign.canal === "ambos" && !usesNotificasDefaultTemplate(tplName)
-              ? mixedModeWhatsAppUsesReader(tplMixedMode)
-              : tplUrlButton,
+          waUrlButton: resolveWaUrlButton({
+            urlButton: tplUrlButton,
+            mixedMode: campaign.canal === "ambos" ? tplMixedMode : undefined,
+            usesDefaultTemplate: usesNotificasDefaultTemplate(tplName),
+          }),
           ...(campaign.canal === "ambos" ? { mixedMode: tplMixedMode } : {}),
           waTemplateBody: tplBody,
         }),

@@ -56,6 +56,25 @@ export function mixedModeWhatsAppUsesReader(mode: unknown): boolean {
 }
 
 /**
+ * ¿La plantilla de Meta lleva el link del lector en un botón? Es una decisión de quien arma la campaña (el link
+ * puede ir en el botón o dentro del cuerpo como variable «link del lector»). El modo mixto solo puede apagarlo
+ * (WhatsApp con el enlace propio de Meta); nunca lo prende: forzarlo sacaba el link del cuerpo y Meta rechazaba
+ * el mensaje por cantidad de parámetros (#132000).
+ */
+export function resolveWaUrlButton(input: {
+  /** Valor guardado / elegido por la persona. */
+  urlButton: boolean | null | undefined;
+  /** Solo campañas mixtas (canal «ambos»). */
+  mixedMode?: unknown;
+  usesDefaultTemplate: boolean;
+}): boolean {
+  if (input.usesDefaultTemplate) return false;
+  if (input.urlButton !== true) return false;
+  if (!isMixedDeliveryMode(input.mixedMode)) return true;
+  return mixedModeWhatsAppUsesReader(input.mixedMode);
+}
+
+/**
  * Con el sobre de Notificas WhatsApp siempre lleva el lector; las opciones donde WhatsApp va con el enlace propio
  * de la plantilla necesitan una plantilla propia. Si llegan con el sobre se pasa a la opción más cercana
  * (mismo correo, WhatsApp con lector).
