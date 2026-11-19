@@ -92,9 +92,12 @@ import { describeBodyVariableMismatch } from "@/lib/wa-template-shape";
 import {
   checkLetterVariables,
   csvColumnsFromLetterText,
+  describeNumericLetterPlaceholders,
   mergeCsvColumns,
+  numericLetterPlaceholders,
   recipientExtraFields,
 } from "@/lib/campaign-letter-fields";
+import { LetterVariablesPanel } from "@/components/empresa/letter-variables-panel";
 import {
   DEFAULT_MIXED_DELIVERY_MODE,
   describeMetaTemplateBody,
@@ -391,7 +394,15 @@ export function CampaignWizard({
     () => (letterTexts.length ? checkLetterVariables({ texts: letterTexts, rows: recipients }) : null),
     [letterTexts, recipients]
   );
-  const letterVarsBlocked = letterVarsCheck != null && !letterVarsCheck.ok;
+  // {{1}}, {{2}}… son de Meta: en la carta se leen como texto y salen a la vista. Hay que darles un dato o sacarlos.
+  const letterNumericLeft = useMemo(() => numericLetterPlaceholders(letterTexts), [letterTexts]);
+  const letterBlockMessage = [
+    describeNumericLetterPlaceholders(letterNumericLeft),
+    letterVarsCheck && !letterVarsCheck.ok ? `La carta usa datos que faltan en el CSV. ${letterVarsCheck.message}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const letterVarsBlocked = letterBlockMessage !== "";
   // Meta rechaza cualquier {{N}} vacío: se frena antes de lanzar, no después.
   const waVarsCheck = useMemo(
     () =>
@@ -1444,8 +1455,8 @@ export function CampaignWizard({
       setConfirmOpen(false);
       return;
     }
-    if (sendNow && letterVarsBlocked && letterVarsCheck) {
-      toast({ title: "No se puede enviar: faltan datos de la carta", description: letterVarsCheck.message, variant: "destructive" });
+    if (sendNow && letterVarsBlocked) {
+      toast({ title: "No se puede enviar: faltan datos de la carta", description: letterBlockMessage, variant: "destructive" });
       setConfirmOpen(false);
       return;
     }
@@ -2572,9 +2583,9 @@ export function CampaignWizard({
                 No se puede seguir: WhatsApp rechaza los mensajes con variables vacías. {waVarsCheck.message}
               </p>
             ) : null}
-            {letterVarsBlocked && letterVarsCheck ? (
+            {letterVarsBlocked ? (
               <p className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
-                No se puede seguir: la carta usa datos que faltan en el CSV. {letterVarsCheck.message}
+                No se puede seguir: {letterBlockMessage}
               </p>
             ) : null}
             {waTemplateProblem ? (
@@ -2697,8 +2708,11 @@ export function CampaignWizard({
               <p className="text-xs text-muted-foreground">
                 {waReaderLetter
                   ? "Es el texto de WhatsApp sin el enlace. {{1}} ya está pasado a {{nombre}}, {{dni}}, etc. del CSV."
-                  : `Es el texto por defecto de Notificas: dejalo así o reemplazalo por tu mensaje. Se lacra tal cual lo dejes. Variables del CSV: {{nombre}} {{dni}} {{legajo}} {{monto}} {{fecha}} {{dias}} {{cuotas}}.`}
+                  : `Es el texto por defecto de Notificas: dejalo así o reemplazalo por tu mensaje. Se lacra tal cual lo dejes.`}{" "}
+                Podés usar {"{{nombre}}"} {"{{dni}}"} {"{{legajo}}"} {"{{monto}}"} {"{{fecha}}"} {"{{dias}}"}{" "}
+                {"{{cuotas}}"} o cualquier columna de tu CSV, por ejemplo {"{{plazo}}"}.
               </p>
+              <LetterVariablesPanel text={cuerpo} onChangeText={setCuerpo} columns={letterCsvColumns} />
             </div>
             )}
             {!waReaderLetter && !mixedSameText && cuerpo.trim() === READER_BODY_DEFAULT.trim() && (
@@ -2729,7 +2743,7 @@ export function CampaignWizard({
               <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Atrás</Button>
               <Button
                 onClick={() => setStep((s) => s + 1)}
-                disabled={!asunto.trim() || !cuerpo.trim()}
+                disabled={!asunto.trim() || !cuerpo.trim() || letterNumericLeft.length > 0}
               >
                 Siguiente
               </Button>
@@ -3284,10 +3298,9 @@ export function CampaignWizard({
                 el borrador y corregirlo después.
               </p>
             ) : null}
-            {letterVarsBlocked && letterVarsCheck ? (
+            {letterVarsBlocked ? (
               <p className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
-                No se puede enviar: la carta usa datos que faltan en el CSV. {letterVarsCheck.message} Podés guardar el
-                borrador y corregirlo después.
+                No se puede enviar: {letterBlockMessage} Podés guardar el borrador y corregirlo después.
               </p>
             ) : null}
             {waTemplateProblem ? (

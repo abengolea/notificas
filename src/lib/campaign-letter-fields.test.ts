@@ -3,11 +3,15 @@ import assert from 'node:assert/strict';
 import {
   campaignLetterTexts,
   checkLetterVariables,
+  contextAroundNumericPlaceholder,
   csvColumnsFromLetterText,
+  describeNumericLetterPlaceholders,
   letterPlaceholders,
   mergeCsvColumns,
+  numericLetterPlaceholders,
   readRecipientExtras,
   recipientExtraFields,
+  replaceNumericLetterPlaceholders,
 } from './campaign-letter-fields';
 import { personalizeCampaignText } from './campaign-email-html';
 import { renderCampaignMessageBody } from './campaign-mixed-message';
@@ -97,6 +101,55 @@ test('checkLetterVariables: 0 cuenta como dato y las variables del sistema no se
     rows: [{ nombre: 'Ana', monto: '0' }],
   });
   assert.equal(ok.ok, true);
+});
+
+const META_STYLE_LETTER =
+  'Hola {{1}}. Te informamos que registrás una deuda pendiente de ${{2}}, correspondiente a {{3}} cuota(s) vencida(s).\nTe solicitamos regularizar el pago dentro del plazo de {{4}}.';
+
+test('numericLetterPlaceholders detecta los {{N}} de Meta que la carta no completa', () => {
+  assert.deepEqual(numericLetterPlaceholders([META_STYLE_LETTER, 'Asunto {{nombre}} {{ 2 }}']), [1, 2, 3, 4]);
+  assert.deepEqual(numericLetterPlaceholders(['Hola {{nombre}}']), []);
+  assert.match(describeNumericLetterPlaceholders([1, 3]), /\{\{1\}\}, \{\{3\}\}/);
+  assert.equal(describeNumericLetterPlaceholders([]), '');
+});
+
+test('replaceNumericLetterPlaceholders pasa {{N}} a columnas con nombre o a texto fijo', () => {
+  const out = replaceNumericLetterPlaceholders(META_STYLE_LETTER, {
+    1: 'nombre',
+    2: 'monto',
+    3: 'cuotas',
+    4: ' Plazo ',
+  });
+  assert.equal(
+    out,
+    'Hola {{nombre}}. Te informamos que registrás una deuda pendiente de ${{monto}}, correspondiente a {{cuotas}} cuota(s) vencida(s).\nTe solicitamos regularizar el pago dentro del plazo de {{plazo}}.'
+  );
+  assert.equal(replaceNumericLetterPlaceholders('Plazo {{4}}', { 4: '=5 días' }), 'Plazo 5 días');
+  // Sin dato asignado, o con un nombre inválido, queda como está.
+  assert.equal(replaceNumericLetterPlaceholders('A {{1}} B {{2}}', { 2: '!!' }), 'A {{1}} B {{2}}');
+  assert.equal(replaceNumericLetterPlaceholders('A {{1}}', { 1: '=  ' }), 'A {{1}}');
+});
+
+test('la carta convertida usa las columnas del CSV, incluida la propia (plazo)', () => {
+  const letter = replaceNumericLetterPlaceholders(META_STYLE_LETTER, { 1: 'nombre', 2: 'monto', 3: 'cuotas', 4: 'plazo' });
+  assert.deepEqual(csvColumnsFromLetterText([letter]), ['monto', 'cuotas', 'plazo']);
+  const csv = [
+    'telefono,nombre,monto,cuotas,plazo,email,dni,legajo',
+    '+5493364645357,Adrian Bengolea,125000,4,5 dias,abengolea1@gmail.com,25715970,GC000001',
+  ].join('\n');
+  const parsed = parseCsvQuickResult(csv, 'ambos', csvColumnsFromLetterText([letter]));
+  assert.equal(parsed.error, null);
+  const row = { ...readRecipientExtras(recipientExtraFields(parsed.rows[0])), ...parsed.rows[0] };
+  assert.equal(
+    personalizeCampaignText(letter, row),
+    'Hola Adrian Bengolea. Te informamos que registrás una deuda pendiente de $125000, correspondiente a 4 cuota(s) vencida(s).\nTe solicitamos regularizar el pago dentro del plazo de 5 dias.'
+  );
+  assert.equal(checkLetterVariables({ texts: [letter], rows: parsed.rows }).ok, true);
+});
+
+test('contextAroundNumericPlaceholder muestra las palabras que rodean al {{N}}', () => {
+  assert.match(contextAroundNumericPlaceholder(META_STYLE_LETTER, 4), /plazo de \[4\]\./);
+  assert.equal(contextAroundNumericPlaceholder('sin variables', 1), '');
 });
 
 test('campaignLetterTexts: con «mismo texto» la carta no se usa y WhatsApp-only no tiene carta', () => {

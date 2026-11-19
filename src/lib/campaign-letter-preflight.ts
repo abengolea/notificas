@@ -1,4 +1,9 @@
-import { campaignLetterTexts, checkLetterVariables } from '@/lib/campaign-letter-fields';
+import {
+  campaignLetterTexts,
+  checkLetterVariables,
+  describeNumericLetterPlaceholders,
+  numericLetterPlaceholders,
+} from '@/lib/campaign-letter-fields';
 import { loadCampaignRecipientRows } from '@/lib/campaign-wa-preflight';
 
 /**
@@ -10,6 +15,11 @@ export async function assertCampaignLetterVariables(campaign: Record<string, unk
   if (campaign.simulated === true) return;
   const texts = campaignLetterTexts(campaign);
   if (!texts.some((t) => t.includes('{{'))) return;
+  // {{1}}, {{2}}… son de Meta: la carta no los completa y saldrían a la vista en el lector y en el correo.
+  const numeric = numericLetterPlaceholders(texts);
+  if (numeric.length) {
+    throw Object.assign(new Error(`No se envió: ${describeNumericLetterPlaceholders(numeric)}`), { status: 409 });
+  }
   const rows = await loadCampaignRecipientRows(campaign);
   const canal = String(campaign.canal || 'email');
   // En campañas mixtas el correo solo se manda a quien tiene email real; el resto recibe solo WhatsApp.

@@ -52,6 +52,59 @@ export function letterPlaceholders(texts: Array<string | null | undefined>): str
   return out;
 }
 
+const NUMERIC_PLACEHOLDER_RE = /\{\{\s*(\d+)\s*\}\}/g;
+
+/**
+ * {{1}}, {{2}}… son la sintaxis del template de Meta: la carta no sabe qué dato es cada uno y los deja a la vista.
+ * En la carta las variables van con el nombre de la columna ({{nombre}}, {{monto}}).
+ */
+export function numericLetterPlaceholders(texts: Array<string | null | undefined>): number[] {
+  const out: number[] = [];
+  for (const text of texts) {
+    for (const m of String(text || "").matchAll(NUMERIC_PLACEHOLDER_RE)) {
+      const n = Number(m[1]);
+      if (Number.isFinite(n) && !out.includes(n)) out.push(n);
+    }
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/** Palabras que rodean a {{n}} en la carta, para que quien arma el mensaje sepa qué dato es. */
+export function contextAroundNumericPlaceholder(text: string, n: number, radius = 34): string {
+  const m = new RegExp(String.raw`\{\{\s*${n}\s*\}\}`).exec(String(text || ""));
+  if (!m) return "";
+  const start = Math.max(0, m.index - radius);
+  const end = Math.min(text.length, m.index + m[0].length + radius);
+  const flat = (s: string) => s.replace(/\s+/g, " ");
+  return `${start > 0 ? "…" : ""}${flat(text.slice(start, m.index))}[${n}]${flat(text.slice(m.index + m[0].length, end))}${end < text.length ? "…" : ""}`;
+}
+
+/** Nombre de columna válido para una variable de la carta, o "" si no se puede usar. */
+export function normalizeLetterColumnName(raw: string): string {
+  const k = String(raw || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\s-]+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+  return /^[a-z][a-z0-9_]*$/.test(k) ? k : "";
+}
+
+/**
+ * Reemplaza cada {{N}} de la carta según `mapping`: un nombre de columna pasa a {{columna}}; un valor que empieza con
+ * «=» es un texto fijo y se escribe tal cual. Los {{N}} sin dato asignado quedan como están.
+ */
+export function replaceNumericLetterPlaceholders(text: string, mapping: Record<number, string>): string {
+  return String(text || "").replace(NUMERIC_PLACEHOLDER_RE, (full, raw: string) => {
+    const value = mapping[Number(raw)];
+    if (value === undefined || value === null) return full;
+    if (value.startsWith("=")) return value.slice(1).trim() ? value.slice(1) : full;
+    const col = normalizeLetterColumnName(value);
+    return col ? `{{${col}}}` : full;
+  });
+}
+
 /** Columnas del CSV que pide la carta (sin las de contacto ni las que completa el sistema). */
 export function csvColumnsFromLetterText(texts: Array<string | null | undefined>): string[] {
   return letterPlaceholders(texts).filter((k) => !BASE_CSV_FIELDS.has(k) && !SYSTEM_FIELDS.has(k));
@@ -145,6 +198,13 @@ export function describeLetterVariableProblems(problems: LetterVariableProblem[]
  * La carta se lacra con lo que se reemplace en ella. Un {{dato}} sin valor saldría vacío o con las llaves en un
  * documento legal: se frena antes de enviar. `rows` son las filas del CSV (con sus columnas propias).
  */
+/** Aviso para quien arma la carta cuando quedaron {{1}}, {{2}}… sin asignar. "" si no hay ninguno. */
+export function describeNumericLetterPlaceholders(numbers: number[]): string {
+  if (!numbers.length) return "";
+  const list = numbers.map((n) => `{{${n}}}`).join(", ");
+  return `La carta tiene ${list}, que no se completan solos: en la carta las variables llevan el nombre de la columna (por ejemplo {{nombre}}, {{monto}}). Indicá qué dato va en cada una en «Variables de la carta».`;
+}
+
 export function checkLetterVariables(opts: {
   texts: Array<string | null | undefined>;
   rows: object[];
